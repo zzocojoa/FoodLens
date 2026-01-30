@@ -1,0 +1,6 @@
+.env
+myenv/
+__pycache__/
+*.pyc
+.DS_Store
+FoodLens/node_modules/
