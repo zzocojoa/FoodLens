@@ -98,7 +98,7 @@ class NutritionLookup:
             }
             
             url = f"{KOREAN_FDA_API_BASE}/getFoodNtrCpntDbInq02"
-            response = httpx.get(url, params=params, timeout=10.0)
+            response = httpx.get(url, params=params, timeout=5.0)
             
             # If rate limit exceeded or error, print and return None to trigger fallback
             if response.status_code != 200:
@@ -146,7 +146,7 @@ class NutritionLookup:
                 FATSECRET_TOKEN_URL,
                 data={"grant_type": "client_credentials"},
                 auth=(self.fatsecret_id, self.fatsecret_secret),
-                timeout=10.0
+                timeout=5.0
             )
             response.raise_for_status()
             token_data = response.json()
@@ -178,13 +178,13 @@ class NutritionLookup:
             
             headers = {"Authorization": f"Bearer {self.fatsecret_token}"}
             
-            response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=10.0)
+            response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=5.0)
             
             # If 401 Unauthorized, maybe token expired. Retry once.
             if response.status_code == 401:
                  self.fatsecret_token = self._get_fatsecret_token()
                  headers = {"Authorization": f"Bearer {self.fatsecret_token}"}
-                 response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=10.0)
+                 response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=5.0)
             
             response.raise_for_status()
             data = response.json()
@@ -212,7 +212,7 @@ class NutritionLookup:
                 "format": "json"
             }
             
-            detail_res = httpx.get(FATSECRET_API_URL, params=detail_params, headers=headers, timeout=10.0)
+            detail_res = httpx.get(FATSECRET_API_URL, params=detail_params, headers=headers, timeout=5.0)
             detail_res.raise_for_status()
             detail_data = detail_res.json()
             
@@ -279,7 +279,7 @@ class NutritionLookup:
                 "pageSize": 5
             }
             
-            response = httpx.get(f"{USDA_API_BASE}/foods/search", params=params, timeout=10.0)
+            response = httpx.get(f"{USDA_API_BASE}/foods/search", params=params, timeout=5.0)
             
             # Handle limits/errors
             if response.status_code != 200:
@@ -338,7 +338,7 @@ class NutritionLookup:
             }
             
             headers = {"User-Agent": "FoodLens App - https://github.com/foodlens"}
-            response = httpx.get(OPEN_FOOD_FACTS_API, params=params, headers=headers, timeout=10.0)
+            response = httpx.get(OPEN_FOOD_FACTS_API, params=params, headers=headers, timeout=5.0)
             response.raise_for_status()
             data = response.json()
             

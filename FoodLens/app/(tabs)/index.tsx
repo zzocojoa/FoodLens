@@ -110,31 +110,60 @@ export default function HomeScreen() {
   };
 
   const handleStartAnalysis = async () => {
+    Alert.alert(
+      "Analyze Food",
+      "Choose a photo to analyze",
+      [
+        {
+          text: "Take Photo",
+          onPress: () => performImageSelection('camera')
+        },
+        {
+          text: "Choose from Library",
+          onPress: () => performImageSelection('library')
+        },
+        {
+          text: "Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  };
+
+  const performImageSelection = async (type: 'camera' | 'library') => {
     try {
-      // 1. Check Permissions
-      if (permission && !permission.granted && !permission.canAskAgain) {
-        Alert.alert(
-          "Camera Permission Needed",
-          "Please enable camera access in settings to analyze food.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Open Settings", onPress: () => Linking.openSettings() }
-          ]
-        );
-        return;
-      }
+      let result;
+      if (type === 'camera') {
+        // 1. Check Permissions
+        if (permission && !permission.granted && !permission.canAskAgain) {
+          Alert.alert(
+            "Camera Permission Needed",
+            "Please enable camera access in settings to analyze food.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() }
+            ]
+          );
+          return;
+        }
 
-      if (permission && !permission.granted) {
-        const result = await requestPermission();
-        if (!result.granted) return;
-      }
+        if (permission && !permission.granted) {
+          const res = await requestPermission();
+          if (!res.granted) return;
+        }
 
-      // 2. Launch Camera directly from Home
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        quality: 0.5,
-      });
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          quality: 0.5,
+        });
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          quality: 0.5,
+        });
+      }
 
       if (!result.canceled && result.assets[0].uri) {
         // 3. Navigate to camera screen with the image ready to analyze
@@ -144,8 +173,8 @@ export default function HomeScreen() {
         });
       }
     } catch (e) {
-      console.error("Camera launch failed from Home:", e);
-      Alert.alert("Error", "Failed to launch camera.");
+      console.error(`${type} launch failed:`, e);
+      Alert.alert("Error", `Failed to launch ${type}.`);
     }
   };
 

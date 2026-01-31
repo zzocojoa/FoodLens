@@ -61,28 +61,32 @@ export interface TranslationCard {
 export interface AnalyzedData {
   foodName: string;
   safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
-  confidence?: number; // 0-100 identification confidence percentage
+  confidence?: number;
   ingredients: {
     name: string;
     isAllergen: boolean;
-    box_2d?: number[]; // [ymin, xmin, ymax, xmax] (0-1000)
+    box_2d?: number[];
   }[];
-  nutrition?: NutritionData; // USDA FoodData Central nutrition info
+  nutrition?: NutritionData;
   translationCard?: TranslationCard;
   raw_result?: string;
 }
 
-// Timeout helper function
-const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Request timed out after ${ms / 1000} seconds`)), ms)
-    )
-  ]);
-};
+const ANALYSIS_TIMEOUT_MS = 120000; // 120 seconds
 
-const ANALYSIS_TIMEOUT_MS = 20000; // 20 seconds
+// Helper function to add a timeout to a promise
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    let timeoutId: any;
+    const timeout = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(`Operation timed out after ${ms} ms`));
+        }, ms);
+    });
+
+    return Promise.race([promise, timeout]).finally(() => {
+        clearTimeout(timeoutId);
+    });
+}
 
 export const analyzeImage = async (imageUri: string, isoCountryCode: string = "US"): Promise<AnalyzedData> => {
   try {
@@ -90,7 +94,7 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
     console.log('Uploading to Python Server:', activeServerUrl);
     
     // 1. Get User Profile for Allergies
-    const TEST_UID = "test-user-v1"; // Match the ID used in profile.tsx
+    const TEST_UID = "test-user-v1";
     let allergyString = "None";
     
     try {
@@ -107,47 +111,49 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
     
     console.log("Analyzing with allergies:", allergyString);
 
-    // Wrap the upload call with a 20-second timeout
-    const uploadResult = await withTimeout(
-      FileSystem.uploadAsync(`${activeServerUrl}/analyze`, imageUri, {
-        httpMethod: 'POST',
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-        fieldName: 'file',
-        parameters: {
-            'allergy_info': allergyString,
-            'iso_country_code': isoCountryCode
+    try {
+        const uploadResult = await withTimeout(
+            FileSystem.uploadAsync(`${activeServerUrl}/analyze`, imageUri, {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                fieldName: 'file',
+                parameters: {
+                    'allergy_info': allergyString,
+                    'iso_country_code': isoCountryCode
+                }
+            }),
+            ANALYSIS_TIMEOUT_MS
+        );
+
+        if (uploadResult.status !== 200) {
+            throw new Error(`Server error (${uploadResult.status}): ${uploadResult.body}`);
         }
-      }),
-      ANALYSIS_TIMEOUT_MS
-    );
 
-    console.log('Server Status:', uploadResult.status);
-    console.log('Server Body:', uploadResult.body);
-
-    if (uploadResult.status !== 200) {
-      throw new Error(`Server Error: ${uploadResult.status}`);
+        const data = JSON.parse(uploadResult.body);
+        
+        return {
+            foodName: data.foodName || "Analyzed Food",
+            safetyStatus: data.safetyStatus || "CAUTION",
+            confidence: typeof data.confidence === 'number' ? Math.max(0, Math.min(100, data.confidence)) : undefined,
+            ingredients: data.ingredients || [],
+            nutrition: data.nutrition || undefined,
+            translationCard: data.translationCard,
+            raw_result: data.raw_result
+        };
+    } catch (error: any) {
+        if (error.message?.includes('timed out')) {
+            throw new Error('Analysis timed out (60s). The server might be responding slowly.');
+        }
+        throw error;
     }
-
-    const data = JSON.parse(uploadResult.body);
-    
-    // Normalize data structure if server returns something slightly different
+  } catch (error: any) {
+    console.error("Error connecting to Python Server:", error);
     return {
-        foodName: data.foodName || "Analyzed Food",
-        safetyStatus: data.safetyStatus || "CAUTION",
-        confidence: typeof data.confidence === 'number' ? Math.max(0, Math.min(100, data.confidence)) : undefined,
-        ingredients: data.ingredients || [],
-        nutrition: data.nutrition || undefined,
-        translationCard: data.translationCard,
-        raw_result: data.raw_result
-    };
-
-  } catch (error) {
-    console.error('Error connecting to Python Server:', error);
-    return {
-      foodName: "Server Error",
-      safetyStatus: "DANGER",
-      confidence: 0,
-      ingredients: [{ name: "Check server connection", isAllergen: false }]
+        foodName: "Analysis Failed",
+        safetyStatus: "CAUTION",
+        confidence: 0,
+        ingredients: [{ name: "Please try again later", isAllergen: false }],
+        raw_result: `Error: ${error.message || 'Unknown server error'}`
     };
   }
 };
