@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserService } from './userService';
 
 // Default fallback URL
-const DEFAULT_SERVER_URL = 'http://192.168.219.108:8000';
+const DEFAULT_SERVER_URL = 'https://foodlens-2-w1xu.onrender.com';
 const STORAGE_KEY = 'foodlens_custom_server_url';
 
 export const ServerConfig = {
