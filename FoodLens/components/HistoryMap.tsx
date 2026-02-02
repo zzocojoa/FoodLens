@@ -111,26 +111,32 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
             </MapView>
 
             {/* Overlay Card */}
-            {isMapReady && data.length > 0 && (
-                <View style={[styles.mapOverlay, THEME.shadow]}>
-                    <BlurView intensity={90} tint="light" style={[styles.insightCard, THEME.glass]}>
-                        <View style={styles.insightHeader}>
-                            <View style={styles.insightIconBox}>
-                                <Globe size={16} color="#2563EB" />
+            {isMapReady && data.length > 0 && (() => {
+                const TOTAL_COUNTRIES = 195;
+                const visitedCount = data.length;
+                const percentage = Math.min((visitedCount / TOTAL_COUNTRIES) * 100, 100);
+
+                return (
+                    <View style={[styles.mapOverlay, THEME.shadow]}>
+                        <BlurView intensity={90} tint="light" style={[styles.insightCard, THEME.glass]}>
+                            <View style={styles.insightHeader}>
+                                <View style={styles.insightIconBox}>
+                                    <Globe size={16} color="#2563EB" />
+                                </View>
+                                <Text style={styles.insightTitle}>Global Insights</Text>
                             </View>
-                            <Text style={styles.insightTitle}>Global Insights</Text>
-                        </View>
-                        <View style={styles.insightRow}>
-                            <Text style={styles.insightLabel}>Favorite Destination</Text>
-                            <Text style={styles.insightValue}>{data.sort((a,b) => b.total - a.total)[0]?.country || '-'}</Text>
-                        </View>
-                        <View style={styles.progressBarBg}>
-                            <View style={[styles.progressBarFill, { width: '84%' }]} />
-                        </View>
-                        <Text style={styles.insightHint}>Tap pins to see details</Text>
-                    </BlurView>
-                </View>
-            )}
+                            <View style={styles.insightRow}>
+                                <Text style={styles.insightLabel}>Favorite Destination</Text>
+                                <Text style={styles.insightValue}>{data.sort((a,b) => b.total - a.total)[0]?.country || '-'}</Text>
+                            </View>
+                            <View style={styles.progressBarBg}>
+                                <View style={[styles.progressBarFill, { width: `${percentage}%` }]} />
+                            </View>
+                            <Text style={styles.insightHint}>Visited {visitedCount} of {TOTAL_COUNTRIES} countries</Text>
+                        </BlurView>
+                    </View>
+                );
+            })()}
         </View>
     );
 }

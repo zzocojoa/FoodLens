@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import { analyzeImage } from '../services/ai';
 import { dataStore } from '../services/dataStore';
 import { getLocationData, getEmoji, validateCoordinates } from '../services/utils';
+import { UserService } from '../services/userService';
 import AnalysisLoadingScreen from '../components/AnalysisLoadingScreen';
 
 
@@ -181,6 +182,8 @@ export default function CameraScreen() {
     };
   }, []);
 
+  const TEST_UID = "test-user-v1"; // Define constant for use in hooks/callbacks
+
   const processImage = useCallback(async (uri: string) => {
     try {
       isCancelled.current = false;
@@ -212,7 +215,22 @@ export default function CameraScreen() {
           return;
       }
 
-      const isoCode = locationData?.isoCountryCode || "US";
+      let isoCode = locationData?.isoCountryCode;
+
+      if (!isoCode) {
+          console.log("No location code, checking user preference...");
+          try {
+              const user = await UserService.getUserProfile(TEST_UID);
+              if (user && user.settings.targetLanguage) {
+                  isoCode = user.settings.targetLanguage;
+                  console.log("Using User Preferred Language:", isoCode);
+              }
+          } catch (e) {
+              console.warn("Failed to load user preference for language fallback", e);
+          }
+      }
+      
+      isoCode = isoCode || "US"; // Final fallback
       console.log("Analyzing with Country Code:", isoCode);
 
       // 2. Analyze Image
@@ -222,8 +240,20 @@ export default function CameraScreen() {
 
 
 
+      // Prepare location data for store (use fallback if real location missing)
+      const locationContext = locationData || {
+          latitude: 0,
+          longitude: 0,
+          country: null,
+          city: null,
+          district: "",
+          subregion: "",
+          isoCountryCode: isoCode,
+          formattedAddress: "Location Unavailable (Using Preference)"
+      };
+
       // Use DataStore to prevent URL parameter overflow
-      dataStore.setData(analysisResult, locationData, uri);
+      dataStore.setData(analysisResult, locationContext, uri);
 
       router.replace({
         pathname: '/result',

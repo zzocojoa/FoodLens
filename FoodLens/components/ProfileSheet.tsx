@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, Image, TextInput, 
-  Modal, ScrollView, Alert, Platform, ActivityIndicator 
+  Modal, ScrollView, Alert, Platform, ActivityIndicator, PanResponder, Animated as RNAnimated,
+  Pressable
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { X, Camera, Image as ImageIcon, User, Zap, ChevronRight, Edit3 } from 'lucide-react-native';
+import { X, Camera, Image as ImageIcon, User, Zap, ChevronRight, Edit3, Globe } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { UserService } from '../services/userService';
 
@@ -16,23 +17,95 @@ interface ProfileSheetProps {
   onUpdate: () => void;
 }
 
+const LANGUAGE_OPTIONS = [
+    { code: 'GPS', label: 'GPS Location', flag: '📍' },
+    { code: 'KR', label: 'Korean', flag: '🇰🇷' },
+    { code: 'US', label: 'English', flag: '🇺🇸' },
+    { code: 'JP', label: 'Japanese', flag: '🇯🇵' },
+    { code: 'CN', label: 'Chinese', flag: '🇨🇳' },
+    { code: 'TH', label: 'Thai', flag: '🇹🇭' },
+    { code: 'VN', label: 'Vietnamese', flag: '🇻🇳' },
+];
+
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
   const router = useRouter();
   const [name, setName] = useState("Traveler Joy");
   const [image, setImage] = useState("https://api.dicebear.com/7.x/avataaars/png?seed=Felix");
+  const [language, setLanguage] = useState<string | undefined>(undefined);
+  const [langModalVisible, setLangModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Swipe logic for Language Modal (Optimized)
+  const panY = React.useRef(new RNAnimated.Value(800)).current;
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
+      onPanResponderMove: (_, gestureState) => gestureState.dy >= 0 && panY.setValue(gestureState.dy),
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 120 || gestureState.vy > 0.5) closeLangModal();
+        else RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+      },
+    })
+  ).current;
+
+  // Swipe logic for Main Profile Sheet
+  const panYProfile = React.useRef(new RNAnimated.Value(800)).current;
+  const panResponderProfile = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
+      onPanResponderMove: (_, gestureState) => gestureState.dy >= 0 && panYProfile.setValue(gestureState.dy),
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 120 || gestureState.vy > 0.5) handleCloseProfile();
+        else RNAnimated.spring(panYProfile, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+      },
+    })
+  ).current;
+
+
+  const closeLangModal = () => {
+    RNAnimated.timing(panY, { 
+        toValue: 800, 
+        duration: 250, 
+        useNativeDriver: true 
+    }).start(() => {
+        setLangModalVisible(false);
+    });
+  };
+
+  const handleCloseProfile = () => {
+    RNAnimated.timing(panYProfile, { 
+        toValue: 800, 
+        duration: 250, 
+        useNativeDriver: true 
+    }).start(() => {
+        onClose();
+    });
+  };
+
+  // Entrance animations
   useEffect(() => {
-     if (isOpen) {
-         loadProfile();
-     }
+    if (isOpen) {
+        panYProfile.setValue(800);
+        RNAnimated.spring(panYProfile, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+        loadProfile();
+    }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (langModalVisible) {
+        panY.setValue(800);
+        RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+    }
+  }, [langModalVisible]);
 
   const loadProfile = async () => {
       const profile = await UserService.getUserProfile(userId);
       if (profile) {
           setName(profile.name || "Traveler Joy");
           setImage(profile.profileImage || "https://api.dicebear.com/7.x/avataaars/png?seed=Felix");
+          setLanguage(profile.settings?.targetLanguage);
       }
   };
 
@@ -48,9 +121,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   const handleUpdate = async () => {
       setLoading(true);
       try {
-          await UserService.updateUserProfile(userId, {
+          await UserService.CreateOrUpdateProfile(userId, "user@example.com", {
               name: name,
-              profileImage: image
+              profileImage: image,
+              settings: {
+                  targetLanguage: language,
+                  language: 'en', // default
+                  autoPlayAudio: false
+              }
           });
           onUpdate(); // Refresh parent
           onClose(); // Close modal
@@ -93,132 +171,218 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       }
   };
 
+  // No early return to ensure closing animation finishes
+  // Instead, the View container uses pointerEvents to handle interaction state
+
   return (
-    <Modal
-        visible={isOpen}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={onClose}
-    >
-        <BlurView intensity={20} style={styles.overlay}>
-             <View style={styles.sheetContainer}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Text style={styles.title}>Profile</Text>
-                    <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                        <X size={20} color="#94A3B8" />
-                    </TouchableOpacity>
-                </View>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999999 }]} pointerEvents={isOpen ? 'auto' : 'none'}>
+        <TouchableOpacity 
+            activeOpacity={1} 
+            style={[styles.overlay, { opacity: isOpen ? 1 : 0 }]} 
+            onPress={handleCloseProfile}
+        >
+             <Pressable style={{ flex: 1, justifyContent: 'flex-end' }}>
+                 <RNAnimated.View 
+                    style={[
+                        styles.sheetContainer,
+                        { transform: [{ translateY: panYProfile }] }
+                    ]}
+                 >
+                    <View {...panResponderProfile.panHandlers} style={styles.swipeHandleWrapper}>
+                        <View style={styles.swipeHandle} />
+                    </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 40}}>
-                    {/* Part 1: Visual Identity */}
-                    <View style={styles.section}>
-                        <View style={styles.avatarWrapper}>
-                           <View style={styles.avatarFrame}>
-                               <Image source={{ uri: image }} style={styles.avatarImage} />
-                           </View>
-                           <TouchableOpacity 
-                                onPress={() => pickImage(true)}
-                                style={styles.cameraBtn}
-                           >
-                               <Camera size={16} color="white" />
-                           </TouchableOpacity>
-                        </View>
+                    {/* Header */}
+                    <View {...panResponderProfile.panHandlers} style={[styles.header, { justifyContent: 'center' }]}>
+                        <Text style={styles.title}>Profile</Text>
+                    </View>
 
-                        {/* Name Edit */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>DISPLAY NAME</Text>
-                            <View style={styles.inputWrapper}>
-                                <TextInput
-                                    value={name}
-                                    onChangeText={setName}
-                                    style={styles.textInput}
-                                    placeholder="Enter your name"
-                                    placeholderTextColor="#94A3B8"
-                                />
-                                <Edit3 size={16} color="#CBD5E1" style={{position: 'absolute', right: 20}} />
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 40}}>
+                        {/* Part 1: Visual Identity */}
+                        <View style={styles.section}>
+                            <View style={styles.avatarWrapper}>
+                               <View style={styles.avatarFrame}>
+                                   <Image source={{ uri: image }} style={styles.avatarImage} />
+                               </View>
+                               <TouchableOpacity 
+                                    onPress={() => pickImage(true)}
+                                    style={styles.cameraBtn}
+                               >
+                                   <Camera size={16} color="white" />
+                               </TouchableOpacity>
+                            </View>
+
+                            {/* Name Edit */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>DISPLAY NAME</Text>
+                                <View style={styles.inputWrapper}>
+                                    <TextInput
+                                        value={name}
+                                        onChangeText={setName}
+                                        style={styles.textInput}
+                                        placeholder="Enter your name"
+                                        placeholderTextColor="#94A3B8"
+                                    />
+                                    <Edit3 size={16} color="#CBD5E1" style={{position: 'absolute', right: 20}} />
+                                </View>
+                            </View>
+
+                            {/* Presets */}
+                            <View>
+                                <Text style={[styles.label, {marginBottom: 12}]}>PRESETS</Text>
+                                <View style={styles.presetGrid}>
+                                    {defaultAvatars.map((url, idx) => (
+                                        <TouchableOpacity 
+                                            key={idx}
+                                            onPress={() => setImage(url)}
+                                            style={[
+                                                styles.presetItem, 
+                                                image === url && styles.presetActive
+                                            ]}
+                                        >
+                                            <Image source={{ uri: url }} style={styles.presetImage} />
+                                        </TouchableOpacity>
+                                    ))}
+                                    <TouchableOpacity 
+                                        onPress={() => pickImage(false)}
+                                        style={styles.uploadBtn}
+                                    >
+                                        <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}>
+                                            <ImageIcon size={18} color="#94A3B8" />
+                                            <Text style={styles.uploadText}>Upload</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
                         </View>
 
-                        {/* Presets */}
-                        <View>
-                            <Text style={[styles.label, {marginBottom: 12}]}>PRESETS</Text>
-                            <View style={styles.presetGrid}>
-                                {defaultAvatars.map((url, idx) => (
-                                    <TouchableOpacity 
-                                        key={idx}
-                                        onPress={() => setImage(url)}
-                                        style={[
-                                            styles.presetItem, 
-                                            image === url && styles.presetActive
-                                        ]}
-                                    >
-                                        <Image source={{ uri: url }} style={styles.presetImage} />
-                                    </TouchableOpacity>
-                                ))}
+                        {/* Part 2: Management */}
+                        <View style={styles.section}>
+                            <View style={styles.menuContainer}>
                                 <TouchableOpacity 
-                                    onPress={() => pickImage(false)}
-                                    style={styles.uploadBtn}
+                                    style={styles.menuItem}
+                                    onPress={() => {
+                                        router.push('/profile');
+                                    }}
                                 >
-                                    <ImageIcon size={18} color="#94A3B8" />
-                                    <Text style={styles.uploadText}>Upload</Text>
+                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                                        <View style={[styles.iconBox, {backgroundColor: '#EFF6FF'}]}>
+                                            <User size={20} color="#2563EB" />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.menuTitle}>Manage Profile</Text>
+                                            <Text style={styles.menuSub}>Account settings & details</Text>
+                                        </View>
+                                    </View>
+                                    <ChevronRight size={18} color="#CBD5E1" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.menuContainer}>
+                                <TouchableOpacity 
+                                    style={styles.menuItem}
+                                    onPress={() => setLangModalVisible(true)}
+                                >
+                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                                        <View style={[styles.iconBox, {backgroundColor: '#ECFDF5'}]}>
+                                            <Globe size={20} color="#059669" />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.menuTitle}>Translation Language</Text>
+                                            <Text style={styles.menuSub}>
+                                                {language ? LANGUAGE_OPTIONS.find(o => o.code === language)?.label : "Auto (GPS)"}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <ChevronRight size={18} color="#CBD5E1" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.menuContainer}>
+                                <TouchableOpacity style={styles.menuItem}>
+                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                                        <View style={[styles.iconBox, {backgroundColor: '#FFFBEB'}]}>
+                                            <Zap size={20} color="#D97706" fill="#D97706" />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.menuTitle}>Remove Ads</Text>
+                                            <Text style={styles.menuSub}>Premium benefits</Text>
+                                        </View>
+                                    </View>
+                                    <ChevronRight size={18} color="#CBD5E1" />
                                 </TouchableOpacity>
                             </View>
                         </View>
-                    </View>
 
-                    {/* Part 2: Management */}
-                    <View style={styles.section}>
-                        <View style={styles.menuContainer}>
-                            <TouchableOpacity 
-                                style={styles.menuItem}
-                                onPress={() => {
-                                    onClose();
-                                    router.push('/profile');
-                                }}
-                            >
-                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                                    <View style={[styles.iconBox, {backgroundColor: '#EFF6FF'}]}>
-                                        <User size={20} color="#2563EB" />
+                        {/* Language Modal */}
+                        <Modal
+                            visible={langModalVisible}
+                            transparent={true}
+                            animationType="none"
+                            onRequestClose={closeLangModal}
+                        >
+                             <TouchableOpacity 
+                                activeOpacity={1} 
+                                style={styles.overlay} 
+                                onPress={closeLangModal}
+                             >
+                                <RNAnimated.View 
+                                    style={[
+                                        styles.sheetContainer, 
+                                        { 
+                                            height: '55%',
+                                            transform: [{ translateY: panY }]
+                                        }
+                                    ]}
+                                >
+                                    <View {...panResponder.panHandlers} style={styles.swipeHandleWrapper}>
+                                        <View style={styles.swipeHandle} />
                                     </View>
-                                    <View>
-                                        <Text style={styles.menuTitle}>Manage Profile</Text>
-                                        <Text style={styles.menuSub}>Account settings & details</Text>
-                                    </View>
-                                </View>
-                                <ChevronRight size={18} color="#CBD5E1" />
-                            </TouchableOpacity>
-                        </View>
 
-                        <View style={styles.menuContainer}>
-                            <TouchableOpacity style={styles.menuItem}>
-                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                                    <View style={[styles.iconBox, {backgroundColor: '#FFFBEB'}]}>
-                                        <Zap size={20} color="#D97706" fill="#D97706" />
+                                    <View {...panResponder.panHandlers} style={[styles.header, { marginBottom: 20, justifyContent: 'center' }]}>
+                                        <Text style={styles.title}>Select Language</Text>
                                     </View>
-                                    <View>
-                                        <Text style={styles.menuTitle}>Remove Ads</Text>
-                                        <Text style={styles.menuSub}>Premium benefits</Text>
-                                    </View>
-                                </View>
-                                <ChevronRight size={18} color="#CBD5E1" />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+                                    <ScrollView showsVerticalScrollIndicator={false}>
+                                        {LANGUAGE_OPTIONS.map((opt) => (
+                                            <TouchableOpacity 
+                                                key={opt.code}
+                                                style={[
+                                                    styles.menuItem, 
+                                                    { marginBottom: 8, backgroundColor: (language === opt.code) || (!language && opt.code === 'GPS') ? '#F0F9FF' : 'white' }
+                                                ]}
+                                                onPress={() => {
+                                                    setLanguage(opt.code === 'GPS' ? undefined : opt.code);
+                                                    closeLangModal();
+                                                }}
+                                            >
+                                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+                                                    <Text style={{fontSize: 24}}>{opt.flag}</Text>
+                                                    <Text style={[styles.menuTitle, {fontSize: 18}]}>{opt.label}</Text>
+                                                </View>
+                                                {((language === opt.code) || (!language && opt.code === 'GPS')) && (
+                                                    <View style={{width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B82F6'}} />
+                                                )}
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </RNAnimated.View>
+                             </TouchableOpacity>
+                        </Modal>
 
-                    {/* Submit */}
-                    <TouchableOpacity 
-                        onPress={handleUpdate}
-                        disabled={loading}
-                        style={styles.saveButton}
-                    >
-                        {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>UPDATE PROFILE</Text>}
-                    </TouchableOpacity>
+                        {/* Submit */}
+                        <TouchableOpacity 
+                            onPress={handleUpdate}
+                            disabled={loading}
+                            style={styles.saveButton}
+                        >
+                            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>UPDATE PROFILE</Text>}
+                        </TouchableOpacity>
 
-                </ScrollView>
-             </View>
-        </BlurView>
-    </Modal>
+                    </ScrollView>
+                 </RNAnimated.View>
+             </Pressable>
+        </TouchableOpacity>
+    </View>
   );
 }
 
@@ -234,12 +398,25 @@ const styles = StyleSheet.create({
         borderTopRightRadius: 44,
         height: '92%',
         padding: 32,
+        paddingTop: 16,
         paddingBottom: 40,
         shadowColor: '#000',
         shadowOffset: {width: 0, height: -4},
         shadowOpacity: 0.1,
         shadowRadius: 12,
         elevation: 10,
+    },
+    swipeHandleWrapper: {
+        width: '100%',
+        height: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    swipeHandle: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: '#E2E8F0',
     },
     header: {
         flexDirection: 'row',
@@ -410,12 +587,12 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     saveButton: {
-        width: '100%',
         height: 72,
         backgroundColor: '#0F172A',
         borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
+        marginHorizontal: 24,
         shadowColor: '#0F172A',
         shadowOpacity: 0.3,
         shadowOffset: {width: 0, height: 8},

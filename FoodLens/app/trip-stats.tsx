@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Dimensions, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShieldCheck, ChevronLeft, MapPin, Navigation, ArrowRight } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { useFocusEffect } from '@react-navigation/native';
 import { UserService } from '../services/userService';
 import { AnalysisService } from '../services/analysisService';
 import * as Location from 'expo-location';
@@ -41,9 +42,11 @@ export default function TripStatisticsScreen() {
 
     const TEST_UID = "test-user-v1";
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            loadData();
+        }, [])
+    );
 
     const loadData = async () => {
         try {
@@ -54,13 +57,13 @@ export default function TripStatisticsScreen() {
             setTotalCount(allAnalyses.length);
 
             if (user?.currentTripStart) {
-                const startDate = new Date(user.currentTripStart);
-                setTripStartDate(startDate);
+                const startTime = new Date(user.currentTripStart).getTime();
+                setTripStartDate(new Date(user.currentTripStart));
                 
-                // Filter for current trip
+                // Filter for current trip with robust time comparison
                 const tripAnalyses = allAnalyses.filter(item => {
-                    const itemDate = new Date(item.timestamp);
-                    return itemDate >= startDate && item.safetyStatus === 'SAFE';
+                    const itemTime = new Date(item.timestamp).getTime();
+                    return itemTime >= startTime && item.safetyStatus === 'SAFE';
                 });
                 setSafeCount(tripAnalyses.length);
                 
@@ -69,7 +72,10 @@ export default function TripStatisticsScreen() {
                     setCurrentLocation(user.currentTripLocation);
                 }
             } else {
-                setSafeCount(0);
+                // Fallback: Show total safe items if no active trip
+                const totalSafe = allAnalyses.filter(item => item.safetyStatus === 'SAFE').length;
+                setSafeCount(totalSafe);
+                setTripStartDate(null);
             }
 
         } catch (e) {
@@ -184,9 +190,11 @@ export default function TripStatisticsScreen() {
                         <View style={styles.shieldIconContainer}>
                             <ShieldCheck size={40} color="#166534" />
                         </View>
+                        <ActivityIndicator animating={loading} style={{ position: 'absolute', top: 20 }} />
                         <Text style={styles.bigCount}>{safeCount}</Text>
                         <Text style={styles.statDescription}>
-                            Confirmed safe during{'\n'}current trip
+                            Confirmed safe during{'\n'}
+                            {tripStartDate ? 'current trip' : 'all-time record'}
                         </Text>
 
                         {/* Global Record Link */}
@@ -230,7 +238,7 @@ export default function TripStatisticsScreen() {
                              <View pointerEvents="none" style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
                                 {isLocating ? (
                                     <ActivityIndicator color="#94A3B8" />
-                                ) : (
+                               ) : (
                                     <Navigation size={20} color="white" />
                                 )}
                                 <Text style={[

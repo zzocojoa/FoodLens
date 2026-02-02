@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, Linking, Animated, Modal, TextInput, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, User, Bell, Settings, ShieldCheck, Heart, Trash2 } from 'lucide-react-native';
@@ -32,6 +32,7 @@ import ProfileSheet from '../../components/ProfileSheet';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [isPressed, setIsPressed] = useState(false);
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allergyCount, setAllergyCount] = useState(0);
@@ -45,6 +46,18 @@ export default function HomeScreen() {
   // const [isProfileOpen, setIsProfileOpen] = useState(false); // Replaced
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const TEST_UID = "test-user-v1";
+
+  // Camera Orb Animation
+  const orbAnim = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    Animated.spring(orbAnim, {
+        toValue: activeModal === 'PROFILE' ? 0 : 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 40
+    }).start();
+  }, [activeModal]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -424,7 +437,16 @@ export default function HomeScreen() {
       </SafeAreaView>
 
       {/* Camera Action Button */}
-      <View style={styles.orbContainer}>
+      <Animated.View 
+        style={[
+            styles.orbContainer,
+            { 
+                opacity: orbAnim,
+                transform: [{ scale: orbAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }]
+            }
+        ]}
+        pointerEvents={activeModal === 'PROFILE' ? 'none' : 'box-none'}
+      >
          <TouchableOpacity 
             onPress={handleStartAnalysis}
             activeOpacity={0.8}
@@ -438,7 +460,7 @@ export default function HomeScreen() {
                 <Camera color="white" size={32} />
             </LinearGradient>
          </TouchableOpacity>
-      </View>
+      </Animated.View>
     </View>
   );
 }

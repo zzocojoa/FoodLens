@@ -84,11 +84,19 @@ export default function HistoryScreen() {
             <SafeAreaView style={{flex: 1}} edges={['top']}> 
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                        <ChevronLeft size={24} color="#1E293B" />
+                    <TouchableOpacity 
+                        onPress={() => router.back()} 
+                        style={styles.backButton}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                        <View pointerEvents="none">
+                            <ChevronLeft size={24} color="#1E293B" />
+                        </View>
                     </TouchableOpacity>
                     
-                    <Text style={styles.headerTitle}>Food Passport</Text>
+                    <View style={styles.headerTitleContainer}>
+                        <Text style={styles.headerTitle}>Food Passport</Text>
+                    </View>
                     
                     <View style={styles.toggleContainer}>
                         {archiveMode === 'list' && (
@@ -97,9 +105,11 @@ export default function HistoryScreen() {
                                     onPress={toggleEditMode}
                                     style={[styles.toggleButton, isEditMode && styles.toggleButtonActive]}
                                 >
-                                    <Text style={{fontSize: 12, fontWeight: '700', color: isEditMode ? '#2563EB' : '#64748B', paddingHorizontal: 4}}>
-                                        {isEditMode ? 'Done' : 'Edit'}
-                                    </Text>
+                                    <View pointerEvents="none">
+                                        <Text style={{fontSize: 12, fontWeight: '700', color: isEditMode ? '#2563EB' : '#64748B', paddingHorizontal: 4}}>
+                                            {isEditMode ? 'Done' : 'Edit'}
+                                        </Text>
+                                    </View>
                                 </TouchableOpacity>
                                 <View style={styles.verticalDivider} />
                             </>
@@ -107,14 +117,20 @@ export default function HistoryScreen() {
                         <TouchableOpacity 
                             onPress={() => handleSwitchMode('map')}
                             style={[styles.toggleButton, archiveMode === 'map' && styles.toggleButtonActive]}
+                            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                         >
-                            <Globe size={18} color={archiveMode === 'map' ? '#2563EB' : '#64748B'} />
+                            <View pointerEvents="none">
+                                <Globe size={18} color={archiveMode === 'map' ? '#2563EB' : '#64748B'} />
+                            </View>
                         </TouchableOpacity>
                         <TouchableOpacity 
                             onPress={() => handleSwitchMode('list')}
                             style={[styles.toggleButton, archiveMode === 'list' && styles.toggleButtonActive]}
+                            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                         >
-                            <List size={18} color={archiveMode === 'list' ? '#2563EB' : '#64748B'} />
+                            <View pointerEvents="none">
+                                <List size={18} color={archiveMode === 'list' ? '#2563EB' : '#64748B'} />
+                            </View>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -156,6 +172,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 16, zIndex: 100 },
     backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
+    headerTitleContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
     headerTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
     toggleContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(226, 232, 240, 0.6)', padding: 4, borderRadius: 20 },
     toggleButton: { padding: 6, borderRadius: 16 },

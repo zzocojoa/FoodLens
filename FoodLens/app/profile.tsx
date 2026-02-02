@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +19,7 @@ const COLORS = {
     inputBg: '#F2F2F7'
 };
 
-// 3D Emoji Assets
+// ... existing emoji assets ...
 const ALLERGEN_IMAGES = {
   egg: require('../assets/images/allergens/egg.png'),
   milk: require('../assets/images/allergens/milk.png'),
@@ -50,6 +50,7 @@ export default function ProfileScreen() {
   
   const [allergies, setAllergies] = useState<string[]>([]);
   const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
+  // suggestions logic
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Mock UID
@@ -60,7 +61,6 @@ export default function ProfileScreen() {
   }, []);
 
   const loadProfile = async () => {
-    // Same loading logic...
     setLoading(true);
     try {
        const user = await UserService.getUserProfile(TEST_UID);
@@ -132,9 +132,13 @@ export default function ProfileScreen() {
         safetyProfile: {
           allergies: allergies,
           dietaryRestrictions: otherRestrictions
+        },
+        settings: {
+            language: 'en', // UI language (default en)
+            autoPlayAudio: false
         }
       });
-      Alert.alert("Updated", "Your safety profile is up to date.");
+      Alert.alert("Updated", "Your profile and preferences have been saved.");
     } catch (error) {
       Alert.alert("Error", "Failed to save.");
     } finally {
@@ -146,7 +150,10 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.safeArea}>
         {/* ... Navbar ... */}
         <View style={styles.navBar}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.navButton}>
+            <TouchableOpacity 
+                onPress={() => router.back()} 
+                style={styles.navButton}
+            >
                 <Ionicons name="chevron-back" size={28} color={COLORS.text} />
             </TouchableOpacity>
             <Text style={styles.navTitle}>Health Profile</Text>
