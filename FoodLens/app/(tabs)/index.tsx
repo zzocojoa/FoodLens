@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, Linking, Animated, Modal, TextInput, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, Linking, Animated, Modal, TextInput, InteractionManager, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -12,13 +12,18 @@ import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { usePermissionGuard } from '../../hooks/usePermissionGuard';
 
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
+// @ts-ignore
+import piexif from 'piexifjs';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 
 const { width } = Dimensions.get('window');
 
 // 2026 Design Tokens
+// 2026 Design Tokens
 import { THEME } from '../../constants/theme';
-import { getEmoji, formatDate, validateCoordinates } from '../../services/utils';
+import { getEmoji, formatDate, validateCoordinates, getLocationData, decimalToDMS } from '../../services/utils';
 import { SecureImage } from '../../components/SecureImage';
 
 import { useFocusEffect } from '@react-navigation/native';
@@ -38,11 +43,11 @@ export default function HomeScreen() {
   const [allergyCount, setAllergyCount] = useState(0);
   const [safeCount, setSafeCount] = useState(0); 
   // Unified Modal State
-  type ModalType = 'NONE' | 'SERVER' | 'PROFILE';
+  type ModalType = 'NONE' | 'PROFILE'; // Removed 'SERVER'
   const [activeModal, setActiveModal] = useState<ModalType>('NONE');
   
   // const [serverModalVisible, setServerModalVisible] = useState(false); // Replaced
-  const [newServerUrl, setNewServerUrl] = useState('');
+  // const [newServerUrl, setNewServerUrl] = useState(''); // Removed newServerUrl state
   // const [isProfileOpen, setIsProfileOpen] = useState(false); // Replaced
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const TEST_UID = "test-user-v1";
@@ -126,7 +131,10 @@ export default function HomeScreen() {
     });
     return (
         <TouchableOpacity onPress={onClick} style={styles.deleteAction}>
-            <Animated.View style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}>
+            <Animated.View 
+                style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}
+                pointerEvents="none"
+            >
                 <Trash2 size={24} color="white" />
                 <Text style={styles.deleteText}>Delete</Text>
             </Animated.View>
@@ -135,22 +143,8 @@ export default function HomeScreen() {
   };
 
 
-
-  const handleSaveServer = async () => {
-    if (!newServerUrl.trim()) {
-        Alert.alert("Error", "Please enter a valid URL.");
-        return;
-    }
-    await ServerConfig.setServerUrl(newServerUrl.trim());
-    setActiveModal('NONE');
-    Alert.alert("Success", "Server URL updated successfully.");
-  };
-
-  const openServerSettings = async () => {
-    const currentUrl = await ServerConfig.getServerUrl();
-    setNewServerUrl(currentUrl);
-    setActiveModal('SERVER');
-  };
+  // Removed handleSaveServer function
+  // Removed openServerSettings function
 
   const handleStartAnalysis = async () => {
     /* NEW: Network Guard */
@@ -204,6 +198,70 @@ export default function HomeScreen() {
           allowsEditing: true,
           quality: 0.5,
         });
+
+        // Save to gallery if capture was successful
+        if (!result.canceled && result.assets[0].uri) {
+          let finalUri = result.assets[0].uri;
+          
+          try {
+              // 1. Attempt to get location (with timeout and permission check)
+              // If this fails/times out, we just skip GPS injection
+              const loc = await getLocationData();
+              
+              if (loc) {
+                  console.log("Injecting GPS data into gallery image...");
+                  const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
+                  
+                  // Load EXIF
+                  const exifObj = piexif.load("data:image/jpeg;base64," + base64);
+                  
+                  // Initialize GPS IFD if not present
+                  if (!exifObj["GPS"]) {
+                      exifObj["GPS"] = {};
+                  }
+                  
+                  const gps = exifObj["GPS"];
+                  const latDMS = decimalToDMS(loc.latitude);
+                  const lngDMS = decimalToDMS(loc.longitude);
+                  
+                  // Set GPS Tags
+                  gps[piexif.GPSIFD.GPSLatitudeRef] = loc.latitude < 0 ? 'S' : 'N';
+                  gps[piexif.GPSIFD.GPSLatitude] = latDMS;
+                  gps[piexif.GPSIFD.GPSLongitudeRef] = loc.longitude < 0 ? 'W' : 'E';
+                  gps[piexif.GPSIFD.GPSLongitude] = lngDMS;
+
+                  // Dump and Insert
+                  const exifBytes = piexif.dump(exifObj);
+                  const newBase64 = piexif.insert(exifBytes, "data:image/jpeg;base64," + base64);
+                  
+                  // Save modified image to temp file
+                  // piexif.insert returns data uri, we need to strip prefix
+                  const strippedBase64 = newBase64.replace(/^data:image\/[a-z]+;base64,/, "");
+                  
+                  const tempUri = FileSystem.cacheDirectory + `temp_gps_${Date.now()}.jpg`;
+                  await FileSystem.writeAsStringAsync(tempUri, strippedBase64, { encoding: FileSystem.EncodingType.Base64 });
+                  
+                  finalUri = tempUri; // Update URI to point to the one with GPS
+              }
+          } catch (e) {
+              // Handle Error Types 1, 2, 3, 4 gracefully
+              // We log but continue to save the original photo
+              console.warn("GPS Injection failed (saving original):", e);
+          }
+
+          try {
+            await MediaLibrary.saveToLibraryAsync(finalUri);
+            
+            // Clean up temp file if we created one
+            if (finalUri !== result.assets[0].uri) {
+                await FileSystem.deleteAsync(finalUri, { idempotent: true });
+            }
+          } catch (e) {
+            // Handle Error Type 5: Gallery Save Failure
+            console.error("Failed to save food photo to gallery:", e);
+            Alert.alert("Gallery Error", "Could not save photo to gallery. Please check permissions.");
+          }
+        }
       } else {
         const granted = await checkAndRequest('mediaLibrary');
         if (!granted) return;
@@ -274,26 +332,25 @@ export default function HomeScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => setActiveModal('PROFILE')} activeOpacity={0.8}>
+            <Pressable 
+                onPress={() => setActiveModal('PROFILE')} 
+                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+                hitSlop={20}
+            >
                 <View style={styles.userInfo}>
-                <View style={styles.avatarContainer}>
+                <View style={styles.avatarContainer} pointerEvents="none">
                     <SecureImage 
                         source={{ uri: userProfile?.profileImage || "https://api.dicebear.com/7.x/avataaars/png?seed=Felix" }} 
                         style={styles.avatar}
                         fallbackIconSize={20}
                     />
                 </View>
-                <View>
+                <View pointerEvents="none">
                     <Text style={styles.welcomeText}>Welcome back,</Text>
                     <Text style={styles.userName}>{userProfile?.name || "Traveler Joy"} ✈️</Text>
                 </View>
                 </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.bellButton} onPress={openServerSettings}>
-              <View pointerEvents="none">
-                 <Settings size={20} color="#475569" />
-              </View>
-            </TouchableOpacity>
+            </Pressable>
           </View>
           
           {/* ... existing Hero and Stats ... */}
@@ -380,51 +437,6 @@ export default function HomeScreen() {
           </View>
 
         </ScrollView>
-
-        {/* Server Settings Modal */}
-        <Modal
-            animationType="slide"
-            transparent={true}
-            visible={activeModal === 'SERVER'}
-            onRequestClose={() => setActiveModal('NONE')}
-        >
-            <View style={styles.modalOverlay}>
-                <BlurView intensity={100} tint="light" style={styles.modalContainer}>
-                    <Text style={styles.modalTitle}>Server Configuration</Text>
-                    <Text style={styles.modalSubtitle}>Enter your cloud or local server URL</Text>
-                    
-                    <TextInput
-                        style={styles.serverInput}
-                        placeholder="https://your-server.render.com"
-                        value={newServerUrl}
-                        onChangeText={setNewServerUrl}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    
-                    <View style={styles.modalButtons}>
-                        <TouchableOpacity 
-                            style={[styles.modalButton, styles.cancelButton]} 
-                            onPress={() => setActiveModal('NONE')}
-                        >
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[styles.modalButton, styles.saveButton]} 
-                            onPress={handleSaveServer}
-                        >
-                            <LinearGradient
-                                colors={['#3B82F6', '#2563EB']}
-                                style={styles.saveButtonGradient}
-                            >
-                                <Text style={styles.saveButtonText}>Save URL</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-                </BlurView>
-            </View>
-        </Modal>
 
         {/* Profile Sheet */}
         <ProfileSheet 

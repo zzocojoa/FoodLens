@@ -26,7 +26,7 @@ export const usePermissionGuard = () => {
         status = libraryStatus;
         requestFunc = requestLibrary;
         permissionName = "Photos";
-        rationale = "FoodLens needs photo library access to choose images for analysis.";
+        rationale = "FoodLens needs photo library access to choose images for analysis and save your scan results to your gallery.";
         break;
       case 'location':
         status = locationStatus;

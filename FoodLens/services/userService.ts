@@ -1,4 +1,4 @@
-import { UserProfile, DEFAULT_USER_PROFILE } from '../models/User';
+import { UserProfile, DEFAULT_USER_PROFILE, DEFAULT_AVATARS } from '../models/User';
 import { SafeStorage } from './storage'; // NEW
 
 const USER_STORAGE_KEY = '@foodlens_user_profile';
@@ -15,12 +15,16 @@ export const UserService = {
       return profile;
     }
 
+    // Pick a random avatar from the presets
+    const randomAvatar = DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)];
+
     // Fallback: Default Object Pattern
     // Ensures UI never crashes due to null profile
     return {
         ...DEFAULT_USER_PROFILE,
         uid: uid || "guest-user",
         email: "guest@foodlens.ai",
+        profileImage: randomAvatar,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };

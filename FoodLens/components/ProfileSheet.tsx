@@ -8,7 +8,9 @@ import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { X, Camera, Image as ImageIcon, User, Zap, ChevronRight, Edit3, Globe } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { UserService } from '../services/userService';
+import { DEFAULT_AVATARS } from '../models/User';
 
 interface ProfileSheetProps {
   isOpen: boolean;
@@ -109,15 +111,6 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       }
   };
 
-  const defaultAvatars = [
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Aneka",
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Marley",
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Aiden",
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Luna",
-    "https://api.dicebear.com/7.x/avataaars/png?seed=Caleb"
-  ];
-
   const handleUpdate = async () => {
       setLoading(true);
       try {
@@ -163,8 +156,18 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
               });
           }
 
-          if (!result.canceled) {
-              setImage(result.assets[0].uri);
+          if (!result.canceled && result.assets[0].uri) {
+              const uri = result.assets[0].uri;
+              setImage(uri);
+              
+              // Save to gallery if captured via camera
+              if (useCamera) {
+                  try {
+                      await MediaLibrary.saveToLibraryAsync(uri);
+                  } catch (e) {
+                      console.error("Failed to save profile photo to gallery:", e);
+                  }
+              }
           }
       } catch (e) {
           Alert.alert("Error", "Failed to pick image");
@@ -175,7 +178,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   // Instead, the View container uses pointerEvents to handle interaction state
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 999999 }]} pointerEvents={isOpen ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999999, display: isOpen ? 'flex' : 'none' }]} pointerEvents={isOpen ? 'auto' : 'none'}>
         <TouchableOpacity 
             activeOpacity={1} 
             style={[styles.overlay, { opacity: isOpen ? 1 : 0 }]} 
@@ -231,7 +234,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                             <View>
                                 <Text style={[styles.label, {marginBottom: 12}]}>PRESETS</Text>
                                 <View style={styles.presetGrid}>
-                                    {defaultAvatars.map((url, idx) => (
+                                    {DEFAULT_AVATARS.map((url, idx) => (
                                         <TouchableOpacity 
                                             key={idx}
                                             onPress={() => setImage(url)}

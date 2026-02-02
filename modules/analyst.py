@@ -1,22 +1,40 @@
 import os
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Image as VertexImage, Part, HarmCategory, HarmBlockThreshold
 from PIL import Image
 import json
 import io
 import base64
+import tempfile
 from modules.nutrition import lookup_nutrition
 
 class FoodAnalyst:
     def __init__(self):
-        # Configure Gemini API
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            print("Warning: GOOGLE_API_KEY not found in environment variables")
+        # Configure Vertex AI
+        project_id = os.getenv("GCP_PROJECT_ID")
+        location = os.getenv("GCP_LOCATION", "us-central1")
+        service_account_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+
+        if service_account_json:
+            try:
+                # For Render/Cloud deployment where file upload is difficult
+                # Write JSON content to a temporary file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    f.write(service_account_json)
+                    temp_cred_path = f.name
+                
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_cred_path
+                print(f"Vertex AI: Using temporary credentials from environment variable")
+            except Exception as e:
+                print(f"Warning: Failed to process Service Account JSON: {e}")
+
+        if not project_id:
+            print("Warning: GCP_PROJECT_ID not found in environment variables. Vertex AI might fail.")
         else:
-            genai.configure(api_key=api_key)
+            vertexai.init(project=project_id, location=location)
             
-        model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
-        self.model = genai.GenerativeModel(model_name)
+        model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
+        self.model = GenerativeModel(model_name)
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
         """
@@ -75,11 +93,36 @@ class FoodAnalyst:
         }}
         """
         
+        # Configure generation and safety
+        generation_config = {
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 1024,
+            "response_mime_type": "application/json",
+        }
+
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+        }
+
         try:
-            # Generate response using Gemini API with PIL image
-            response = self.model.generate_content([prompt, food_image])
+            # Convert PIL Image to Vertex AI Image format
+            img_byte_arr = io.BytesIO()
+            food_image.save(img_byte_arr, format='JPEG')
+            vertex_image = VertexImage.from_bytes(img_byte_arr.getvalue())
+
+            # Generate response using Vertex AI
+            response = self.model.generate_content(
+                [prompt, vertex_image],
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
             
-            # Handle potential markdown code block wrapping
+            # Handle potential markdown code block wrapping (though response_mime_type helps)
             text = response.text.strip()
             if text.startswith("```json"):
                 text = text[7:]
@@ -103,11 +146,16 @@ class FoodAnalyst:
             
         except Exception as e:
             print(f"Error in analysis: {e}")
+            # Check for specific quota errors in the message
+            error_msg = str(e)
+            if "429" in error_msg or "Resource exhausted" in error_msg or "Quota" in error_msg:
+                error_msg = "Enterprise AI Quota issue. Please check Vertex AI billing or limits."
+            
             # Return a fallback error JSON
             return {
                 "foodName": "Error Analyzing Food",
                 "safetyStatus": "CAUTION",
                 "confidence": 0,
                 "ingredients": [],
-                "raw_result": f"Could not analyze image due to error: {str(e)}"
+                "raw_result": error_msg
             }

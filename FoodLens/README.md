@@ -43,6 +43,7 @@ cd FoodLens
 npm install
 npm run ios:dev # iOS 시뮬레이터 실행
 npx expo run:ios --device
+npx expo run:ios --configuration Release --device # iOS 7일간 사용가능
 # 또는
 npx expo start # Expo Go 실행
 npx expo start --tunnel
@@ -57,6 +58,7 @@ npx expo start --tunnel --go
 
 - [배포 전략 가이드(Korean)](file:///Users/beatlefeed/.gemini/antigravity/brain/7965f449-8d91-4265-bf73-2410d3d65c4d/deployment_strategy.md)
 - [로컬 서버 복구 가이드(Korean)](file:///Users/beatlefeed/.gemini/antigravity/brain/7965f449-8d91-4265-bf73-2410d3d65c4d/server_restoration_guide.md)
+- [iOS 개인 기기 무료 설치 가이드(Korean)](file:///Users/beatlefeed/Documents/FoodLens-project/FoodLens/.agent/workflows/free-ios-deployment.md)
 
 ---
 

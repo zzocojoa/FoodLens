@@ -13,12 +13,13 @@ export const ServerConfig = {
      * Note: Always using cloud server for now
      */
     getServerUrl: async (): Promise<string> => {
-        // Use SafeStorage to retrieve cached URL or fallback
-        // Current logic overrides this, but for robustness we implement safe fetching
-        return DEFAULT_SERVER_URL;
-        // If we wanted to use stored URL:
-        // const stored = await SafeStorage.get<string>(STORAGE_KEY, DEFAULT_SERVER_URL);
-        // return stored;
+        // Prioritize Environment Variable, then stored value (legacy support), then hardcoded fallback
+        const envUrl = process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL;
+        if (envUrl) return envUrl;
+
+        // Fallback to legacy stored URL if env is missing
+        const stored = await SafeStorage.get<string>(STORAGE_KEY, DEFAULT_SERVER_URL);
+        return stored;
     },
 
     /**

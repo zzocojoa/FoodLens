@@ -48,6 +48,16 @@ export default {
           },
         },
       ],
+      [
+        "expo-media-library",
+        {
+          photosPermission:
+            "Allow $(PRODUCT_NAME) to access your photos to save analysis results.",
+          savePhotosPermission:
+            "Allow $(PRODUCT_NAME) to save photos to your library.",
+          isAccessMediaLocationEnabled: true,
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

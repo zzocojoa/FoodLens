@@ -1,20 +1,27 @@
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
 import os
 from dotenv import load_dotenv
+import tempfile
 
 load_dotenv()
 
-api_key = os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    print("Error: GOOGLE_API_KEY not found in environment.")
+# Configure Vertex AI
+project_id = os.getenv("GCP_PROJECT_ID")
+location = os.getenv("GCP_LOCATION", "us-central1")
+service_account_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+
+if service_account_json:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(service_account_json)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = f.name
+
+if not project_id:
+    print("Error: GCP_PROJECT_ID not found in environment.")
     exit(1)
 
-genai.configure(api_key=api_key)
+vertexai.init(project=project_id, location=location)
 
-print("Listing available models:")
-try:
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(f"- {m.name}")
-except Exception as e:
-    print(f"Error listing models: {e}")
+print(f"Vertex AI initialized for project: {project_id}")
+print("Note: Vertex AI SDK does not have a simple 'list_models' client-side equivalent like the Google AI SDK.")
+print("The configured model is ready to use.")

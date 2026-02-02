@@ -49,3 +49,12 @@ export const DEFAULT_USER_PROFILE: Omit<UserProfile, 'uid' | 'email' | 'createdA
     autoPlayAudio: false,
   },
 };
+
+export const DEFAULT_AVATARS = [
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Aneka",
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Marley",
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Aiden",
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Luna",
+  "https://api.dicebear.com/7.x/avataaars/png?seed=Caleb"
+];

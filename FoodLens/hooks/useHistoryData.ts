@@ -141,8 +141,8 @@ export const useHistoryData = (userId: string) => {
         removeItemsLocally(itemIds);
 
         try {
-            const promises = Array.from(itemIds).map(id => AnalysisService.deleteAnalysis(userId, id));
-            await Promise.all(promises);
+            // Use batch deletion to prevent race conditions in concurrent storage writes
+            await AnalysisService.deleteAnalyses(userId, Array.from(itemIds));
         } catch(e) { 
             console.error("Failed to delete items", e);
             loadHistory(true);

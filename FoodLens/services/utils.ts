@@ -140,3 +140,17 @@ export const validateCoordinates = (lat: any, lng: any): { latitude: number, lon
 
   return { latitude, longitude };
 };
+
+/**
+ * Converts decimal coordinates to DMS (Degrees, Minutes, Seconds) format for EXIF
+ * Returns [[deg, 1], [min, 1], [sec, 100]]
+ */
+export const decimalToDMS = (coordinate: number): [[number, number], [number, number], [number, number]] => {
+  const absolute = Math.abs(coordinate);
+  const degrees = Math.floor(absolute);
+  const minutesNotTruncated = (absolute - degrees) * 60;
+  const minutes = Math.floor(minutesNotTruncated);
+  const seconds = Math.floor((minutesNotTruncated - minutes) * 60 * 100);
+
+  return [[degrees, 1], [minutes, 1], [seconds, 100]];
+};

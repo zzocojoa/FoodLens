@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Alert, Animated } from 'react-native'; // Animated imported
 import { BlurView } from 'expo-blur';
 import { ChevronDown, List, ShieldCheck, AlertCircle, AlertTriangle, Trash2, Circle, CheckCircle } from 'lucide-react-native';
@@ -38,6 +38,15 @@ export default function CountryCard({
     const router = useRouter();
     const swipeableRefs = useRef<Map<string, any>>(new Map());
 
+    // Reset swipe state when entering edit mode
+    useEffect(() => {
+        if (isEditMode) {
+            swipeableRefs.current.forEach((ref) => {
+                if (ref) ref.close();
+            });
+        }
+    }, [isEditMode]);
+
     const getFilteredItemsCount = (country: CountryData) => {
         let count = 0;
         (country.regions || []).forEach(r => {
@@ -59,7 +68,10 @@ export default function CountryCard({
         });
         return (
             <TouchableOpacity onPress={onClick} style={styles.deleteAction}>
-                <Animated.View style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}>
+                <Animated.View 
+                    style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}
+                    pointerEvents="none"
+                >
                     <Trash2 size={24} color="white" />
                     <Text style={styles.deleteText}>Delete</Text>
                 </Animated.View>
@@ -132,7 +144,10 @@ export default function CountryCard({
                                                     }
                                                 }}
                                             >
-                                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1}}>
+                                                <View 
+                                                    style={{flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1}}
+                                                    pointerEvents="none"
+                                                >
                                                     {isEditMode && (
                                                         <View style={{marginRight: 4}}>
                                                             {selectedItems.has(item.id) ? (
@@ -150,12 +165,15 @@ export default function CountryCard({
                                                         <Text style={styles.itemDate}>{item.date}</Text>
                                                     </View>
                                                 </View>
-                                                <View style={[
-                                                    styles.statusIconBox,
-                                                    item.type === 'safe' ? {backgroundColor: '#DCFCE7', borderColor: '#BBF7D0'} : 
-                                                    item.type === 'danger' ? {backgroundColor: '#FFE4E6', borderColor: '#FECDD3'} :
-                                                    {backgroundColor: '#FEF9C3', borderColor: '#FDE047'}
-                                                ]}>
+                                                <View 
+                                                    style={[
+                                                        styles.statusIconBox,
+                                                        item.type === 'safe' ? {backgroundColor: '#DCFCE7', borderColor: '#BBF7D0'} : 
+                                                        item.type === 'danger' ? {backgroundColor: '#FFE4E6', borderColor: '#FECDD3'} :
+                                                        {backgroundColor: '#FEF9C3', borderColor: '#FDE047'}
+                                                    ]}
+                                                    pointerEvents="none"
+                                                >
                                                     {item.type === 'safe' ? (
                                                         <ShieldCheck size={16} color="#22C55E" />
                                                     ) : item.type === 'danger' ? (
