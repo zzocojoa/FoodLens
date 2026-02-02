@@ -1,69 +1,65 @@
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebaseConfig';
 import { UserProfile, DEFAULT_USER_PROFILE } from '../models/User';
+import { SafeStorage } from './storage'; // NEW
 
-const COLLECTION_NAME = 'users';
+const USER_STORAGE_KEY = '@foodlens_user_profile';
 
 export const UserService = {
   /**
-   * Get user profile by UID
+   * Get user profile from local storage
    */
-  async getUserProfile(uid: string): Promise<UserProfile | null> {
-    try {
-      const docRef = doc(db, COLLECTION_NAME, uid);
-      const docSnap = await getDoc(docRef);
+  async getUserProfile(uid: string): Promise<UserProfile> {
+    // SafeStorage handles try-catch and JSON parsing internally
+    const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
 
-      if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
-      } else {
-        return null;
-      }
-    } catch (error) {
-      console.error("Error getting user profile:", error);
-      throw error;
+    if (profile) {
+      return profile;
     }
+
+    // Fallback: Default Object Pattern
+    // Ensures UI never crashes due to null profile
+    return {
+        ...DEFAULT_USER_PROFILE,
+        uid: uid || "guest-user",
+        email: "guest@foodlens.ai",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
   },
 
   /**
-   * Create or overwrite user profile
+   * Create or update user profile in local storage
    */
   async CreateOrUpdateProfile(uid: string, email: string, profileData: Partial<UserProfile> = {}) {
     try {
-      const docRef = doc(db, COLLECTION_NAME, uid);
       const now = new Date().toISOString();
-
-      // Check if exists
+      // Reuse getUserProfile to check existence (it now always returns an object, so we check uid)
+      // Actually, we need to know if it REALLY exists to decide "Create" vs "Update".
+      // But since we merge, it effectively works as Upsert.
+      
+      // To strictly follow "Create or Update", lets just get the current reliable object
       const exists = await this.getUserProfile(uid);
+      
+      const isNew = exists.uid === "guest-user" && uid !== "guest-user"; // Heuristic for new profile
 
-      if (!exists) {
-        // Create new
-        const newProfile: UserProfile = {
-            ...DEFAULT_USER_PROFILE,
-            uid,
-            email,
-            createdAt: now,
-            updatedAt: now,
-            ...profileData,
-            safetyProfile: {
-                ...DEFAULT_USER_PROFILE.safetyProfile,
-                ...(profileData.safetyProfile || {})
-            },
-            settings: {
-                ...DEFAULT_USER_PROFILE.settings,
-                ...(profileData.settings || {})
-            }
-        };
-        await setDoc(docRef, newProfile);
-        return newProfile;
-      } else {
-        // Update existing
-        const updatePayload = {
-            ...profileData,
-            updatedAt: now
-        };
-        await updateDoc(docRef, updatePayload);
-        return { ...exists, ...updatePayload };
-      }
+      const newProfile: UserProfile = {
+          ...exists,
+          uid, // Ensure UID is set
+          email: email || exists.email,
+          updatedAt: now,
+          createdAt: isNew ? now : exists.createdAt,
+          ...profileData,
+          safetyProfile: {
+            ...exists.safetyProfile,
+            ...(profileData.safetyProfile || {})
+          },
+          settings: {
+            ...exists.settings,
+            ...(profileData.settings || {})
+          }
+      };
+
+      await SafeStorage.set(USER_STORAGE_KEY, newProfile);
+      return newProfile;
     } catch (error) {
       console.error("Error saving user profile:", error);
       throw error;
@@ -74,6 +70,13 @@ export const UserService = {
    * Update specific fields (e.g. allergies)
    */
   async updateSafetyProfile(uid: string, safetyProfile: UserProfile['safetyProfile']) {
-      return this.CreateOrUpdateProfile(uid, "", { safetyProfile });
+    return this.CreateOrUpdateProfile(uid, "", { safetyProfile });
+  },
+
+  /**
+   * General purpose partial update
+   */
+  async updateUserProfile(uid: string, updates: Partial<UserProfile>) {
+    return this.CreateOrUpdateProfile(uid, "", updates);
   }
 };

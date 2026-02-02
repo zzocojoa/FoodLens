@@ -46,7 +46,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | nul
 }
 
 /**
- * Fetches current location and geocoded country/city data
+ * Fetches current location and geocoded country/city data with detailed address
  */
 export const getLocationData = async () => {
     try {
@@ -58,32 +58,85 @@ export const getLocationData = async () => {
         
         const locationResult = await withTimeout(
             Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-            5000 // 5 seconds timeout
+            3000 // 3 seconds timeout
         );
         
         if (!locationResult) return null;
         
         const { latitude, longitude } = locationResult.coords;
         
-        let country = "Unknown";
-        let city = "Unknown";
-        let isoCountryCode = undefined;
+        let country: string | null = null;
+        let city: string | null = null;
+        let district = "";      // 구/군 (e.g., 남구)
+        let subregion = "";     // 동/읍/면 (e.g., 무거동)
+        let street = "";        // 도로명/번지
+        let isoCountryCode: string | undefined = undefined;
+        let formattedAddress = "";
 
         try {
             const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
             if (reverseGeocode.length > 0) {
                 const place = reverseGeocode[0];
-                country = place.country || "Unknown";
-                city = place.city || place.region || "Unknown";
+                
+                // Extract all available fields
+                country = place.country || null;
+                city = place.city || place.region || null;
+                district = place.district || place.subregion || "";  // 구/군
+                subregion = place.name || place.street || "";       // 동/도로명
+                street = place.streetNumber ? `${place.street} ${place.streetNumber}` : (place.street || "");
                 isoCountryCode = place.isoCountryCode || undefined;
+                
+                // Build formatted address (most specific to least specific)
+                // e.g., "무거동, 남구, 울산광역시, 대한민국"
+                const addressParts = [
+                    subregion,
+                    district,
+                    city,
+                    country
+                ].filter(part => part && part !== city && part !== country || part === city || part === country);
+                
+                // Remove duplicates while preserving order
+                const uniqueParts: string[] = [];
+                addressParts.forEach(part => {
+                    if (part && !uniqueParts.includes(part)) {
+                        uniqueParts.push(part);
+                    }
+                });
+                
+                formattedAddress = uniqueParts.join(', ');
             }
         } catch (e) {
             console.warn("Reverse geocode failed", e);
         }
         
-        return { latitude, longitude, country, city, isoCountryCode };
+        return { 
+            latitude, 
+            longitude, 
+            country, 
+            city, 
+            district,
+            subregion,
+            isoCountryCode,
+            formattedAddress  // e.g., "무거동, 남구, 울산광역시, 대한민국"
+        };
     } catch (e) {
         console.error("getLocationData failed", e);
         return null;
     }
+};
+
+/**
+ * Validates latitude and longitude coordinates
+ */
+export const validateCoordinates = (lat: any, lng: any): { latitude: number, longitude: number } | null => {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+
+  if (isNaN(latitude) || isNaN(longitude)) return null;
+
+  // Simple range check
+  if (latitude < -90 || latitude > 90) return null;
+  if (longitude < -180 || longitude > 180) return null;
+
+  return { latitude, longitude };
 };

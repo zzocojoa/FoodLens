@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { dataStore } from '../services/dataStore';
 import TravelerAllergyCard from '../components/TravelerAllergyCard';
 import { AnalysisService } from '../services/analysisService';
+import { SecureImage } from '../components/SecureImage';
 
 const { width, height } = Dimensions.get('window');
 const HEADER_HEIGHT = height * 0.6;
@@ -33,6 +34,23 @@ export default function ResultScreen() {
   const { data, location, imageUri, fromStore, isNew } = useLocalSearchParams();
   const router = useRouter();
   
+  /* Persistence Logic: Restore from backup if memory is empty (Crash Recovery) */
+  const [isRestoring, setIsRestoring] = useState(fromStore === 'true' && !dataStore.getData().result);
+  
+  // Trigger re-render after restore
+  const [restoreTrigger, setRestoreTrigger] = useState(0);
+
+  useEffect(() => {
+      if (isRestoring) {
+          console.log("Attempting to restore analysis data from storage...");
+          dataStore.restoreBackup().then((success) => {
+              console.log("Restore result:", success);
+              setIsRestoring(false);
+              if (success) setRestoreTrigger(t => t + 1);
+          });
+      }
+  }, []);
+
   let result: any = null;
   let locationData: any = null;
   let imageSource: any = null;
@@ -90,30 +108,50 @@ export default function ResultScreen() {
     }
   }, [result, locationData, rawImageUri]);
 
-  // Fallback: Generate random coordinates for ingredients if missing (for demo purposes)
+  // Pin positioning: Use smart grid layout instead of unreliable AI bounding boxes
+  // Note: Gemini is not an object detection model, so box_2d coordinates are often inaccurate
   const ingredientsWithCoords = React.useMemo(() => {
       if (!result || !result.ingredients) return [];
       
-      // 1. Initial Position Calculation
-      let pins = result.ingredients.map((item: any) => {
-          let cx, cy;
+      const ingredients = result.ingredients;
+      const count = ingredients.length;
+      
+      if (count === 0) return [];
+      
+      // 1. Calculate grid-based positions for even distribution
+      // Strategy: Distribute pins in a visually balanced pattern within the image
+      // Helper for grid positioning
+      const calculatePinPosition = (idx: number, total: number) => {
+          if (total === 1) return [50, 50];
+          if (total === 2) return [idx === 0 ? 30 : 70, 50];
+          if (total === 3) return [[50, 30], [30, 65], [70, 65]][idx];
+          if (total === 4) return [[30, 35], [70, 35], [30, 65], [70, 65]][idx];
           
-          if (item.box_2d) {
-              const [ymin, xmin, ymax, xmax] = item.box_2d;
-              cx = ((xmin + xmax) / 2) / 10;
-              cy = ((ymin + ymax) / 2) / 10;
-          } else {
-              // Deterministic random fallback
-              const seed = item.name.length;
-              cx = (seed * 13) % 80 + 10;
-              cy = (seed * 17) % 60 + 20;
+          if (total <= 6) {
+              const row = idx < 3 ? 0 : 1;
+              const col = idx < 3 ? idx : idx - 3;
+              const itemsInRow = idx < 3 ? 3 : total - 3;
+              const spacing = 80 / (itemsInRow + 1);
+              return [10 + spacing * (col + 1), row === 0 ? 35 : 65];
           }
+          
+          const row = Math.floor(idx / 3);
+          const col = idx % 3;
+          const rowOffset = (row % 2) * 10;
+          return [
+              20 + col * 30 + rowOffset,
+              Math.min(75, 25 + row * 20)
+          ];
+      };
+
+      let pins = ingredients.map((item: any, index: number) => {
+          const [cx, cy] = calculatePinPosition(index, count);
           return { ...item, cx, cy, originalCx: cx, originalCy: cy };
       });
 
-      // 2. Collision Resolution (Iterative repulsion)
-      const MIN_DIST = 15; // Minimum distance % between pins
-      const ITERATIONS = 5;
+      // 2. Collision Resolution (Iterative repulsion) - still useful for edge cases
+      const MIN_DIST = 18; // Minimum distance % between pins
+      const ITERATIONS = 8;
 
       for (let iter = 0; iter < ITERATIONS; iter++) {
           for (let i = 0; i < pins.length; i++) {
@@ -136,18 +174,18 @@ export default function ResultScreen() {
                       p2.cx -= adjustX;
                       p2.cy -= adjustY;
                   } else if (dist === 0) {
-                      // Exact overlap -> random jitter
-                      p1.cx += 1;
-                      p1.cy += 1;
+                      // Exact overlap -> jitter
+                      p1.cx += 5;
+                      p1.cy += 3;
                   }
               }
           }
       }
 
-      // 3. Keep within bounds (5% padding)
+      // 3. Keep within bounds (10% padding from edges)
       pins.forEach((p: any) => {
-          p.cx = Math.max(5, Math.min(95, p.cx));
-          p.cy = Math.max(5, Math.min(95, p.cy));
+          p.cx = Math.max(10, Math.min(90, p.cx));
+          p.cy = Math.max(10, Math.min(85, p.cy)); // Less padding on bottom due to scroll hint
       });
 
       // 4. Convert back to box_2d format for rendering compatibility
@@ -183,6 +221,14 @@ export default function ResultScreen() {
       return { opacity };
   });
 
+  if (isRestoring) {
+      return (
+          <View style={styles.loadingContainer}>
+              <Text style={{color: '#64748B'}}>Restoring session...</Text>
+          </View>
+      );
+  }
+
   if (!result) return <View style={styles.loadingContainer}><Text>No Data</Text></View>;
 
   // Error Handling
@@ -192,7 +238,7 @@ export default function ResultScreen() {
       return (
         <View style={styles.errorContainer}>
             {imageSource && (
-                <Image 
+                <SecureImage 
                     source={imageSource} 
                     style={styles.errorImage} 
                     resizeMode="cover"
@@ -242,7 +288,7 @@ export default function ResultScreen() {
       {/* --- Sticky Header Image Section --- */}
       <View style={styles.headerContainer}>
         <Animated.View style={[styles.imageWrapper, imageAnimatedStyle]}>
-           {imageSource && <Image source={imageSource} style={styles.image} resizeMode="cover" />}
+           {imageSource && <SecureImage source={imageSource} style={styles.image} resizeMode="cover" />}
            
            
            {/* Note: BlurView overlay removed - navBar buttons now have white backgrounds for contrast */}
@@ -340,6 +386,17 @@ export default function ResultScreen() {
                         <Text style={styles.subHeaderText}>VISUAL RECOGNITION</Text>
                     </View>
                     <Text style={styles.titleText}>{result.foodName}</Text>
+                    
+                    {/* Location Info */}
+                    {/* Location Info - Always show, defaulting to "No Location Info" if missing */}
+                    <View style={styles.locationRow}>
+                        <MapPin size={12} color="#94A3B8" />
+                        <Text style={styles.locationText}>
+                            {locationData && (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', ')) 
+                                ? (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', '))
+                                : "No Location Info"}
+                        </Text>
+                    </View>
                     
                     <View style={styles.statsRow}>
                         <View style={[styles.statBadge, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
@@ -610,8 +667,19 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '900',
     color: '#0F172A',
-    marginBottom: 20,
+    marginBottom: 12,
     lineHeight: 38,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 16,
+  },
+  locationText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   statsRow: {
     flexDirection: 'row',

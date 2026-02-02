@@ -4,10 +4,30 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
-import { signInAnonymously } from 'firebase/auth';
-import { auth } from '../services/firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
+const DEVICE_ID_KEY = '@foodlens_device_id';
+
+// Generate or retrieve a persistent device ID
+const initializeDeviceId = async () => {
+  try {
+    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = 'device_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+      console.log(`[AUTH] Created new device ID: ${deviceId}`);
+    } else {
+      console.log(`[AUTH] Using existing device ID: ${deviceId}`);
+    }
+    return deviceId;
+  } catch (error) {
+    console.error('[AUTH] Failed to initialize device ID:', error);
+    return 'fallback_device_id';
+  }
+};
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -17,23 +37,23 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-      signInAnonymously(auth)
-        .then(userCred => console.log(`[AUTH] Signed in anonymously: ${userCred.user.uid}`))
-        .catch(err => console.error("[AUTH] Sign in failed", err));
+    initializeDeviceId();
   }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="profile" options={{ headerShown: false }} />
-          <Stack.Screen name="history" options={{ headerShown: false }} />
-          <Stack.Screen name="trip-stats" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <ErrorBoundary>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="profile" options={{ headerShown: false }} />
+            <Stack.Screen name="history" options={{ headerShown: false }} />
+            <Stack.Screen name="trip-stats" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          </Stack>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

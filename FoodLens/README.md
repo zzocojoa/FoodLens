@@ -42,6 +42,7 @@ python server.py
 cd FoodLens
 npm install
 npm run ios:dev # iOS 시뮬레이터 실행
+npx expo run:ios --device
 # 또는
 npx expo start # Expo Go 실행
 npx expo start --tunnel

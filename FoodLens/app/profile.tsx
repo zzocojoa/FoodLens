@@ -86,14 +86,22 @@ export default function ProfileScreen() {
   const scrollViewRef = React.useRef<ScrollView>(null);
   const shouldScroll = React.useRef(false);
 
-  const addOtherRestriction = () => {
-    if (inputValue.trim().length > 0) {
-      if (!otherRestrictions.includes(inputValue.trim())) {
-        shouldScroll.current = true;
-        setOtherRestrictions([...otherRestrictions, inputValue.trim()]);
+  /* Common helper to add item if not exists */
+  const addItemToRestrictions = (text: string) => {
+    const item = text.trim();
+    if (item.length > 0) {
+      if (!otherRestrictions.includes(item)) {
+         shouldScroll.current = true;
+         setOtherRestrictions([...otherRestrictions, item]);
       }
+      // Reset input state
       setInputValue('');
+      setSuggestions([]);
     }
+  };
+
+  const addOtherRestriction = () => {
+    addItemToRestrictions(inputValue);
   };
 
   const removeRestriction = (item: string) => {
@@ -114,12 +122,7 @@ export default function ProfileScreen() {
   };
 
   const selectSuggestion = (item: string) => {
-    if (!otherRestrictions.includes(item)) {
-        shouldScroll.current = true;
-        setOtherRestrictions([...otherRestrictions, item]);
-    }
-    setInputValue('');
-    setSuggestions([]);
+    addItemToRestrictions(item);
   };
 
   const saveProfile = async () => {

@@ -81,33 +81,20 @@ export default function TripStatisticsScreen() {
 
     const showTripToast = () => {
         setShowToast(true);
+
+        const animate = (value: Animated.Value, toValue: number, duration: number, easing?: any) => 
+            Animated.timing(value, { toValue, duration, useNativeDriver: true, easing });
+
         Animated.parallel([
-            Animated.timing(toastOpacity, {
-                toValue: 1,
-                duration: 300,
-                useNativeDriver: true,
-            }),
-            Animated.timing(toastTranslate, {
-                toValue: insets.top + 10, // Drop down below notch
-                duration: 400,
-                easing: Easing.out(Easing.back(1.5)),
-                useNativeDriver: true,
-            })
+            animate(toastOpacity, 1, 300),
+            animate(toastTranslate, insets.top + 10, 400, Easing.out(Easing.back(1.5)))
         ]).start();
 
         // Auto hide after 3 seconds
         setTimeout(() => {
             Animated.parallel([
-                Animated.timing(toastOpacity, {
-                    toValue: 0,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(toastTranslate, {
-                    toValue: -50,
-                    duration: 300,
-                    useNativeDriver: true,
-                })
+                animate(toastOpacity, 0, 300),
+                animate(toastTranslate, -50, 300)
             ]).start(() => setShowToast(false));
         }, 4000);
     };

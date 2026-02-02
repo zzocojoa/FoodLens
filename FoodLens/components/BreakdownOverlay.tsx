@@ -70,11 +70,11 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
   const nutrition = resultData.nutrition;
   const hasNutrition = nutrition && nutrition.calories !== null;
   
-  // Calculate macro percentages
-  const protein = nutrition?.protein ?? 0;
-  const carbs = nutrition?.carbs ?? 0;
-  const fat = nutrition?.fat ?? 0;
-  const calories = nutrition?.calories ?? 0;
+  // Safely convert to numbers - handle null, undefined, strings, etc.
+  const protein = Number(nutrition?.protein) || 0;
+  const carbs = Number(nutrition?.carbs) || 0;
+  const fat = Number(nutrition?.fat) || 0;
+  const calories = Number(nutrition?.calories) || 0;
 
   const totalMacros = protein + carbs + fat;
   const proteinPercent = totalMacros > 0 ? Math.round((protein / totalMacros) * 100) : 0;

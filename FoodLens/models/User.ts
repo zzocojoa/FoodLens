@@ -8,8 +8,9 @@
 export interface UserProfile {
   uid: string;           // Firebase Auth User ID
   email: string;
-  displayName?: string;
-  photoURL?: string;
+  name?: string;         // Display Name
+  profileImage?: string; // Avatar URL
+  photoURL?: string;     // Legacy support
   
   // 핵심: AI 분석의 기준이 되는 개인화 정보
   safetyProfile: {

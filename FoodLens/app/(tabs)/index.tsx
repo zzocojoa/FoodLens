@@ -1,5 +1,6 @@
+import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, Linking, Animated, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, Linking, Animated, Modal, TextInput, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -8,33 +9,50 @@ import { Camera, User, Bell, Settings, ShieldCheck, Heart, Trash2 } from 'lucide
 import * as ImagePicker from 'expo-image-picker';
 import { useCameraPermissions } from 'expo-image-picker';
 import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
+import { usePermissionGuard } from '../../hooks/usePermissionGuard';
+
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 
 const { width } = Dimensions.get('window');
 
 // 2026 Design Tokens
 import { THEME } from '../../constants/theme';
-import { getEmoji, formatDate } from '../../services/utils';
+import { getEmoji, formatDate, validateCoordinates } from '../../services/utils';
+import { SecureImage } from '../../components/SecureImage';
 
 import { useFocusEffect } from '@react-navigation/native';
 import { AnalysisService, AnalysisRecord } from '../../services/analysisService';
 import { UserService } from '../../services/userService';
 import { dataStore } from '../../services/dataStore';
 import { ServerConfig } from '../../services/ai';
+import { UserProfile } from '../../models/User';
+import ProfileSheet from '../../components/ProfileSheet';
+
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [permission, requestPermission] = useCameraPermissions();
   const [isPressed, setIsPressed] = useState(false);
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allergyCount, setAllergyCount] = useState(0);
   const [safeCount, setSafeCount] = useState(0); 
-  const [serverModalVisible, setServerModalVisible] = useState(false);
+  // Unified Modal State
+  type ModalType = 'NONE' | 'SERVER' | 'PROFILE';
+  const [activeModal, setActiveModal] = useState<ModalType>('NONE');
+  
+  // const [serverModalVisible, setServerModalVisible] = useState(false); // Replaced
   const [newServerUrl, setNewServerUrl] = useState('');
+  // const [isProfileOpen, setIsProfileOpen] = useState(false); // Replaced
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const TEST_UID = "test-user-v1";
 
   useFocusEffect(
     React.useCallback(() => {
-        loadDashboardData();
+        // Prevent stutter by waiting for transitions to finish
+        const task = InteractionManager.runAfterInteractions(() => {
+            loadDashboardData();
+        });
+        return () => task.cancel();
     }, [])
   );
 
@@ -46,12 +64,15 @@ export default function HomeScreen() {
             UserService.getUserProfile(TEST_UID)
         ]);
         
+        console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
+        
         setRecentScans(recentData);
 
         const safeItems = allHistory.filter(item => item.safetyStatus === 'SAFE').length;
         setSafeCount(safeItems);
 
-        if (userProfile && userProfile.safetyProfile) {
+        if (userProfile) {
+            setUserProfile(userProfile); // <--- Add this line
             const count = (userProfile.safetyProfile.allergies?.length || 0) + 
                           (userProfile.safetyProfile.dietaryRestrictions?.length || 0);
             setAllergyCount(count);
@@ -62,16 +83,25 @@ export default function HomeScreen() {
   };
 
   const handleDeleteItem = async (itemId: string) => {
+    const previousScans = [...recentScans]; // 1. Backup state
+
     try {
-        // Optimistic UI update
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        
+        // 2. Optimistic Update (Immediate UI Feeback)
         setRecentScans(prev => prev.filter(item => item.id !== itemId));
         
+        // 3. Perform Actual Deletion
         await AnalysisService.deleteAnalysis(TEST_UID, itemId);
-        loadDashboardData(); // Refresh counts
+        
+        // Background refresh for other stats (counts)
+        loadDashboardData(); 
     } catch (error) {
         console.error("Home delete failed:", error);
-        Alert.alert("Error", "Could not delete item.");
-        loadDashboardData(); // Revert on error
+        
+        // 4. Rollback on Failure
+        setRecentScans(previousScans);
+        Alert.alert("Error", "Failed to delete item. Restoring data.");
     }
   };
 
@@ -99,17 +129,26 @@ export default function HomeScreen() {
         return;
     }
     await ServerConfig.setServerUrl(newServerUrl.trim());
-    setServerModalVisible(false);
+    setActiveModal('NONE');
     Alert.alert("Success", "Server URL updated successfully.");
   };
 
   const openServerSettings = async () => {
     const currentUrl = await ServerConfig.getServerUrl();
     setNewServerUrl(currentUrl);
-    setServerModalVisible(true);
+    setActiveModal('SERVER');
   };
 
   const handleStartAnalysis = async () => {
+    /* NEW: Network Guard */
+    if (isConnected === false) {
+      Alert.alert(
+        "Offline Mode",
+        "Internet connection is required to analyze new food items. Please check your connection."
+      );
+      return;
+    }
+
     Alert.alert(
       "Analyze Food",
       "Choose a photo to analyze",
@@ -130,27 +169,22 @@ export default function HomeScreen() {
     );
   };
 
+  /* 
+   * NEW: Integrated Permission Guard 
+   * Handles Camera and Gallery permissions with settings redirection
+   */
+  const { checkAndRequest } = usePermissionGuard();
+
+  const { isConnected } = useNetworkStatus();
+
   const performImageSelection = async (type: 'camera' | 'library') => {
     try {
       let result;
-      if (type === 'camera') {
-        // 1. Check Permissions
-        if (permission && !permission.granted && !permission.canAskAgain) {
-          Alert.alert(
-            "Camera Permission Needed",
-            "Please enable camera access in settings to analyze food.",
-            [
-              { text: "Cancel", style: "cancel" },
-              { text: "Open Settings", onPress: () => Linking.openSettings() }
-            ]
-          );
-          return;
-        }
+      let hasPermission = false;
 
-        if (permission && !permission.granted) {
-          const res = await requestPermission();
-          if (!res.granted) return;
-        }
+      if (type === 'camera') {
+        const granted = await checkAndRequest('camera');
+        if (!granted) return;
 
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: 'images',
@@ -158,18 +192,46 @@ export default function HomeScreen() {
           quality: 0.5,
         });
       } else {
+        const granted = await checkAndRequest('mediaLibrary');
+        if (!granted) return;
+
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: 'images',
           allowsEditing: true,
           quality: 0.5,
+          exif: true,
+          // Force local file copy for iCloud assets to prevent file access errors
+          preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
         });
       }
 
       if (!result.canceled && result.assets[0].uri) {
-        // 3. Navigate to camera screen with the image ready to analyze
+        const asset = result.assets[0];
+        let photoLatitude: number | undefined;
+        let photoLongitude: number | undefined;
+        
+        if (asset.exif) {
+          const exif = asset.exif as any;
+          // Robust check: Validate coordinates range and existence
+          // Some devices use 'Latitude', others 'GPSLatitude'
+          const latCandidate = exif.GPSLatitude ?? exif.Latitude;
+          const lngCandidate = exif.GPSLongitude ?? exif.Longitude;
+
+          const valid = validateCoordinates(latCandidate, lngCandidate);
+          if (valid) {
+            photoLatitude = valid.latitude;
+            photoLongitude = valid.longitude;
+          }
+        }
+
         router.push({
           pathname: '/camera',
-          params: { imageUri: result.assets[0].uri }
+          params: { 
+            imageUri: asset.uri,
+            photoLat: photoLatitude?.toString(),
+            photoLng: photoLongitude?.toString(),
+            sourceType: type
+          }
         });
       }
     } catch (e) {
@@ -185,31 +247,43 @@ export default function HomeScreen() {
       </View>
 
       <SafeAreaView style={{flex: 1}}>
+        <StatusBar style="light" />
+
+        {/* NEW: Offline Banner */}
+        {isConnected === false && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineText}>Offline Mode: Using cached data</Text>
+          </View>
+        )}
         <ScrollView 
           contentContainerStyle={{paddingBottom: 150, paddingHorizontal: 24}} 
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.userInfo}>
-              <View style={styles.avatarContainer}>
-                 <Image 
-                    source={{ uri: "https://api.dicebear.com/7.x/avataaars/png?seed=Felix" }} 
-                    style={styles.avatar}
-                 />
-              </View>
-              <View>
-                <Text style={styles.welcomeText}>Welcome back,</Text>
-                <Text style={styles.userName}>Traveler Joy ✈️</Text>
-              </View>
-            </View>
+            <TouchableOpacity onPress={() => setActiveModal('PROFILE')} activeOpacity={0.8}>
+                <View style={styles.userInfo}>
+                <View style={styles.avatarContainer}>
+                    <SecureImage 
+                        source={{ uri: userProfile?.profileImage || "https://api.dicebear.com/7.x/avataaars/png?seed=Felix" }} 
+                        style={styles.avatar}
+                        fallbackIconSize={20}
+                    />
+                </View>
+                <View>
+                    <Text style={styles.welcomeText}>Welcome back,</Text>
+                    <Text style={styles.userName}>{userProfile?.name || "Traveler Joy"} ✈️</Text>
+                </View>
+                </View>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.bellButton} onPress={openServerSettings}>
               <View pointerEvents="none">
                  <Settings size={20} color="#475569" />
               </View>
             </TouchableOpacity>
           </View>
-
+          
+          {/* ... existing Hero and Stats ... */}
           {/* Hero Section */}
           <View style={[styles.heroCard, THEME.glass]}>
              <View style={styles.heroGlow} />
@@ -298,8 +372,8 @@ export default function HomeScreen() {
         <Modal
             animationType="slide"
             transparent={true}
-            visible={serverModalVisible}
-            onRequestClose={() => setServerModalVisible(false)}
+            visible={activeModal === 'SERVER'}
+            onRequestClose={() => setActiveModal('NONE')}
         >
             <View style={styles.modalOverlay}>
                 <BlurView intensity={100} tint="light" style={styles.modalContainer}>
@@ -318,7 +392,7 @@ export default function HomeScreen() {
                     <View style={styles.modalButtons}>
                         <TouchableOpacity 
                             style={[styles.modalButton, styles.cancelButton]} 
-                            onPress={() => setServerModalVisible(false)}
+                            onPress={() => setActiveModal('NONE')}
                         >
                             <Text style={styles.cancelButtonText}>Cancel</Text>
                         </TouchableOpacity>
@@ -338,60 +412,81 @@ export default function HomeScreen() {
                 </BlurView>
             </View>
         </Modal>
+
+        {/* Profile Sheet */}
+        <ProfileSheet 
+            isOpen={activeModal === 'PROFILE'} 
+            onClose={() => setActiveModal('NONE')}
+            userId={TEST_UID}
+            onUpdate={loadDashboardData}
+        />
+
       </SafeAreaView>
 
-      {/* Floating Action Area (Bottom) */}
-      <View style={styles.floatingContainer}>
-        <BlurView intensity={90} tint="light" style={styles.floatingDock}>
-           {/* Start Analysis Button */}
-           <TouchableOpacity 
-              activeOpacity={0.9}
-              onPress={handleStartAnalysis}
-              onPressIn={() => setIsPressed(true)}
-              onPressOut={() => setIsPressed(false)}
-              style={{width: '100%', marginBottom: 12}}
-           >
-             <LinearGradient
+      {/* Camera Action Button */}
+      <View style={styles.orbContainer}>
+         <TouchableOpacity 
+            onPress={handleStartAnalysis}
+            activeOpacity={0.8}
+            style={styles.cameraButtonShadow}
+         >
+            <LinearGradient
                 colors={['#3B82F6', '#2563EB']}
-                style={[styles.mainButton, isPressed && {transform: [{scale: 0.98}]}]}
+                style={styles.cameraButton}
                 pointerEvents="none"
-             >
-                <View style={styles.mainBtnIconCircle}>
-                   <Camera size={24} color="white" fill="white" />
-                </View>
-                <Text style={styles.mainButtonText}>Start Analysis</Text>
-             </LinearGradient>
-           </TouchableOpacity>
-
-           {/* Secondary Buttons Row */}
-           <View style={styles.secondaryRow}>
-              <TouchableOpacity 
-                style={styles.secondaryButton}
-                onPress={() => router.push('/profile')}
-              >
-                 <View pointerEvents="none" style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                    <User size={18} color="#334155" />
-                    <Text style={styles.secondaryButtonText}>Manage Profile</Text>
-                 </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.iconButton}>
-                 <View pointerEvents="none">
-                    <Settings size={20} color="#334155" />
-                 </View>
-              </TouchableOpacity>
-           </View>
-        </BlurView>
+            >
+                <Camera color="white" size={32} />
+            </LinearGradient>
+         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  orbContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+    pointerEvents: 'box-none',
+  },
+  cameraButtonShadow: {
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  cameraButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: 'white',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F0F4F8',
   },
+  offlineBanner: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  offlineText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+
   backgroundContainer: {
     ...StyleSheet.absoluteFillObject,
   },

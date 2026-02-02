@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeStorage } from './storage'; // Replaced AsyncStorage
 
 import { UserService } from './userService';
 
@@ -10,14 +10,15 @@ const STORAGE_KEY = 'foodlens_custom_server_url';
 export const ServerConfig = {
     /**
      * Get the currently configured server URL
+     * Note: Always using cloud server for now
      */
     getServerUrl: async (): Promise<string> => {
-        try {
-            const savedUrl = await AsyncStorage.getItem(STORAGE_KEY);
-            return savedUrl || DEFAULT_SERVER_URL;
-        } catch (e) {
-            return DEFAULT_SERVER_URL;
-        }
+        // Use SafeStorage to retrieve cached URL or fallback
+        // Current logic overrides this, but for robustness we implement safe fetching
+        return DEFAULT_SERVER_URL;
+        // If we wanted to use stored URL:
+        // const stored = await SafeStorage.get<string>(STORAGE_KEY, DEFAULT_SERVER_URL);
+        // return stored;
     },
 
     /**
@@ -26,11 +27,11 @@ export const ServerConfig = {
     setServerUrl: async (url: string): Promise<void> => {
         try {
             if (!url) {
-                await AsyncStorage.removeItem(STORAGE_KEY);
+                await SafeStorage.remove(STORAGE_KEY);
             } else {
                 // Ensure no trailing slash
                 const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-                await AsyncStorage.setItem(STORAGE_KEY, cleanUrl);
+                await SafeStorage.set(STORAGE_KEY, cleanUrl);
             }
         } catch (e) {
             console.error("Failed to save server URL", e);
@@ -72,7 +73,7 @@ export interface AnalyzedData {
   raw_result?: string;
 }
 
-const ANALYSIS_TIMEOUT_MS = 120000; // 120 seconds
+const ANALYSIS_TIMEOUT_MS = 180000; // 180 seconds (to account for Render cold starts)
 
 // Helper function to add a timeout to a promise
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -88,8 +89,50 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     });
 }
 
+// Helper for delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper to upload with retry
+const uploadWithRetry = async (url: string, imageUri: string, options: any, maxRetries = 3): Promise<FileSystem.FileSystemUploadResult> => {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`Upload attempt ${attempt}/${maxRetries}`);
+            const result = await withTimeout(
+                FileSystem.uploadAsync(url, imageUri, options),
+                ANALYSIS_TIMEOUT_MS
+            );
+            
+            if (result.status === 200) {
+                return result;
+            }
+            
+            // If server returns non-200, throw to trigger retry
+            // NOTE: 4xx errors (client error) usually shouldn't be retried, but for robustness we treat them as retryable for now unless 400/401
+            if (result.status >= 400 && result.status < 500 && result.status !== 429) {
+                 // Don't retry client errors except rate limit
+                 throw new Error(`Server rejected request (${result.status}): ${result.body}`); 
+            }
+            
+            throw new Error(`Server returned status ${result.status}`);
+        } catch (error: any) {
+            console.warn(`Attempt ${attempt} failed:`, error.message);
+            lastError = error;
+            
+            if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s...
+                console.log(`Waiting ${delay}ms before next retry...`);
+                await sleep(delay);
+            }
+        }
+    }
+    
+    throw lastError;
+};
+
 export const analyzeImage = async (imageUri: string, isoCountryCode: string = "US"): Promise<AnalyzedData> => {
-  try {
+    // Note: We intentionally allow errors to propagate so the UI can handle them (Retry/Alert)
     const activeServerUrl = await ServerConfig.getServerUrl();
     console.log('Uploading to Python Server:', activeServerUrl);
     
@@ -112,8 +155,10 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
     console.log("Analyzing with allergies:", allergyString);
 
     try {
-        const uploadResult = await withTimeout(
-            FileSystem.uploadAsync(`${activeServerUrl}/analyze`, imageUri, {
+        const uploadResult = await uploadWithRetry(
+            `${activeServerUrl}/analyze`, 
+            imageUri, 
+            {
                 httpMethod: 'POST',
                 uploadType: FileSystem.FileSystemUploadType.MULTIPART,
                 fieldName: 'file',
@@ -121,13 +166,9 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
                     'allergy_info': allergyString,
                     'iso_country_code': isoCountryCode
                 }
-            }),
-            ANALYSIS_TIMEOUT_MS
+            },
+            3 // Max retries
         );
-
-        if (uploadResult.status !== 200) {
-            throw new Error(`Server error (${uploadResult.status}): ${uploadResult.body}`);
-        }
 
         const data = JSON.parse(uploadResult.body);
         
@@ -142,18 +183,8 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
         };
     } catch (error: any) {
         if (error.message?.includes('timed out')) {
-            throw new Error('Analysis timed out (60s). The server might be responding slowly.');
+            throw new Error(`Analysis timed out (${ANALYSIS_TIMEOUT_MS / 1000}s). The server might be "Cold Starting" on Render free tier.`);
         }
         throw error;
     }
-  } catch (error: any) {
-    console.error("Error connecting to Python Server:", error);
-    return {
-        foodName: "Analysis Failed",
-        safetyStatus: "CAUTION",
-        confidence: 0,
-        ingredients: [{ name: "Please try again later", isAllergen: false }],
-        raw_result: `Error: ${error.message || 'Unknown server error'}`
-    };
-  }
 };

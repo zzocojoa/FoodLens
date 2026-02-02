@@ -1,4 +1,7 @@
 import { AnalyzedData } from './ai';
+import { SafeStorage } from './storage';
+
+const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
 
 class AnalysisDataStore {
   private static instance: AnalysisDataStore;
@@ -19,6 +22,9 @@ class AnalysisDataStore {
     this.currentResult = result;
     this.currentLocation = location;
     this.currentImageUri = imageUri;
+    
+    // Fire-and-forget backup
+    this.saveBackup().catch(e => console.warn("Failed to backup analysis data", e));
   }
 
   public getData() {
@@ -29,10 +35,38 @@ class AnalysisDataStore {
     };
   }
 
-  public clear() {
+  public async saveBackup() {
+      if (!this.currentResult) return;
+      await SafeStorage.set(DATA_STORE_BACKUP_KEY, {
+          result: this.currentResult,
+          location: this.currentLocation,
+          imageUri: this.currentImageUri,
+          timestamp: Date.now()
+      });
+  }
+
+  public async restoreBackup(): Promise<boolean> {
+      try {
+          const backup = await SafeStorage.get<any>(DATA_STORE_BACKUP_KEY, null);
+          if (backup && backup.result) {
+              // Optional: Check timestamp validity (e.g. 1 hour expiry)
+              // For now, infinite validity for crash recovery
+              this.currentResult = backup.result;
+              this.currentLocation = backup.location;
+              this.currentImageUri = backup.imageUri;
+              return true;
+          }
+      } catch (e) {
+          console.warn("Failed to restore backup", e);
+      }
+      return false;
+  }
+
+  public async clear() {
     this.currentResult = null;
     this.currentLocation = null;
     this.currentImageUri = null;
+    await SafeStorage.remove(DATA_STORE_BACKUP_KEY);
   }
 }
 

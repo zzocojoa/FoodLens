@@ -73,6 +73,11 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
     transform: [{ rotate: `${rotation.value}deg` }]
   }));
 
+  // Counter-rotating inner orbit (opposite direction)
+  const orbitInnerStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `-${rotation.value}deg` }]
+  }));
+
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }]
   }));
@@ -100,7 +105,7 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
       <View style={styles.coreContainer}>
         {/* Orbit Rings */}
         <Animated.View style={[styles.orbitRing, orbitStyle, { borderColor: isError ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)' }]} />
-        <Animated.View style={[styles.orbitRingInner, { transform: [{ rotate: `-${rotation.value}deg` }], borderColor: isError ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.2)' }]} />
+        <Animated.View style={[styles.orbitRingInner, orbitInnerStyle, { borderColor: isError ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.2)' }]} />
         
         {/* Ripple */}
         <Animated.View style={[styles.ripple, rippleStyle, { borderColor: isError ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)' }]} />
