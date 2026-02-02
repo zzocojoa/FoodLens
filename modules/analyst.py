@@ -7,6 +7,8 @@ import io
 import base64
 import tempfile
 from modules.nutrition import lookup_nutrition
+from google.api_core import retry
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 
 class FoodAnalyst:
     def __init__(self):
@@ -115,8 +117,21 @@ class FoodAnalyst:
             food_image.save(img_byte_arr, format='JPEG')
             vertex_image = VertexImage.from_bytes(img_byte_arr.getvalue())
 
-            # Generate response using Vertex AI
-            response = self.model.generate_content(
+            # Define Retry Policy for 429 (Resource Exhausted)
+            # Initial allowed delay 2.0s, multiplier 2.0, max delay 30s, total timeout 60s
+            retry_policy = retry.Retry(
+                predicate=retry.if_exception_type(ResourceExhausted, ServiceUnavailable),
+                initial=2.0,
+                maximum=30.0,
+                multiplier=2.0,
+                timeout=60.0
+            )
+
+            print("Vertex AI: Sending request with exponential backoff for 429/503 errors...")
+
+            # Generate response using Vertex AI with retry wrapper
+            # Note: We wrap the call lambda or use the retry object to call the method
+            response = retry_policy(self.model.generate_content)(
                 [prompt, vertex_image],
                 generation_config=generation_config,
                 safety_settings=safety_settings
