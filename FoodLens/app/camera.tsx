@@ -387,16 +387,20 @@ export default function CameraScreen() {
         Phase 1: Location Check (permission dialog might show here)
         Phase 2: Analysis Process 
       */}
-      {!isLocationReady ? null : isAnalyzing ? (
+      {/* 
+        Show Loading Screen Immediately if we have an image
+        This prevents the "black screen" flash while waiting for location/permissions
+      */}
+      {externalImageUri ? (
         <AnalysisLoadingScreen 
           onCancel={handleCancelAnalysis} 
-          imageUri={capturedImage || undefined}
-          manualStep={activeStep}
+          imageUri={capturedImage || externalImageUri}
+          manualStep={activeStep ?? 0}
           manualProgress={uploadProgress}
         />
-      ) : (
+      ) : !isLocationReady ? null : (
         <View style={styles.launchingTextContainer}>
-          <Text style={styles.launchingText}>Preparing Analysis...</Text>
+          <Text style={styles.launchingText}>Preparing Camera...</Text>
         </View>
       )}
     </View>

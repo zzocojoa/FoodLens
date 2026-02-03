@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Platform, UIManager, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Globe, List } from 'lucide-react-native';
 import { useHistoryData } from '../hooks/useHistoryData';
@@ -81,6 +81,7 @@ export default function HistoryScreen() {
 
     return (
         <View style={styles.container}>
+            <Stack.Screen options={{ headerShown: false }} />
             <SafeAreaView style={{flex: 1}} edges={['top']}> 
                 {/* Header */}
                 <View style={styles.header}>
