@@ -227,9 +227,24 @@ class FoodAnalyst:
         project_id = os.getenv("GCP_PROJECT_ID")
         location = os.getenv("GCP_LOCATION", "us-central1")
         service_account_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        
+        # === DEBUG LOGGING ===
+        print(f"[Credential Debug] GCP_PROJECT_ID: {project_id}")
+        print(f"[Credential Debug] GCP_LOCATION: {location}")
+        print(f"[Credential Debug] GCP_SERVICE_ACCOUNT_JSON exists: {bool(service_account_json)}")
+        if service_account_json:
+            print(f"[Credential Debug] JSON length: {len(service_account_json)} chars")
+            print(f"[Credential Debug] JSON starts with: {service_account_json[:50]}...")
+            print(f"[Credential Debug] Contains 'private_key': {'private_key' in service_account_json}")
+        # === END DEBUG ===
 
         if service_account_json:
             try:
+                # Validate JSON format before writing
+                import json
+                parsed = json.loads(service_account_json)
+                print(f"[Credential Debug] ✓ JSON parsing successful, keys: {list(parsed.keys())}")
+                
                 # For Render/Cloud deployment where file upload is difficult
                 # Write JSON content to a temporary file
                 # NOTE: This file is deleted on process exit via atexit hook.
@@ -238,18 +253,25 @@ class FoodAnalyst:
                     FoodAnalyst._temp_cred_path = f.name
                 
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = FoodAnalyst._temp_cred_path
-                print(f"Vertex AI: Using temporary credentials (will be cleaned up on exit)")
+                print(f"[Credential Debug] ✓ Temp file created: {FoodAnalyst._temp_cred_path}")
+                print(f"[Credential Debug] ✓ GOOGLE_APPLICATION_CREDENTIALS set")
                 
                 # Register cleanup handler
                 atexit.register(FoodAnalyst._cleanup_temp_credentials)
                 
+            except json.JSONDecodeError as e:
+                print(f"[Credential Debug] ✗ JSON parsing FAILED: {e}")
+                print(f"[Credential Debug] First 100 chars: {repr(service_account_json[:100])}")
             except Exception as e:
-                print(f"Warning: Failed to process Service Account JSON: {e}")
+                print(f"[Credential Debug] ✗ Credential setup FAILED: {e}")
+        else:
+            print(f"[Credential Debug] ✗ GCP_SERVICE_ACCOUNT_JSON not found in environment!")
 
         if not project_id:
             print("Warning: GCP_PROJECT_ID not found in environment variables. Vertex AI might fail.")
         else:
             vertexai.init(project=project_id, location=location)
+            print(f"[Credential Debug] ✓ Vertex AI initialized (project={project_id}, location={location})")
 
     @staticmethod
     def _cleanup_temp_credentials():
