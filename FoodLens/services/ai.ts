@@ -94,23 +94,46 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper to upload with retry
-const uploadWithRetry = async (url: string, imageUri: string, options: any, maxRetries = 3): Promise<FileSystem.FileSystemUploadResult> => {
+const uploadWithRetry = async (
+    url: string, 
+    imageUri: string, 
+    options: any, 
+    maxRetries = 3,
+    onProgress?: (progress: number) => void
+): Promise<FileSystem.FileSystemUploadResult> => {
     let lastError: any;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Upload attempt ${attempt}/${maxRetries}`);
+            
+            const task = FileSystem.createUploadTask(
+                url,
+                imageUri,
+                options,
+                (data) => {
+                    const progress = data.totalBytesExpectedToSend > 0 
+                        ? data.totalBytesSent / data.totalBytesExpectedToSend
+                        : 0;
+                    if (onProgress) onProgress(progress);
+                }
+            );
+
+            // Note: withTimeout might be tricky with createUploadTask cancellation, 
+            // but for now we wrap the promise same as before.
             const result = await withTimeout(
-                FileSystem.uploadAsync(url, imageUri, options),
+                task.uploadAsync(),
                 ANALYSIS_TIMEOUT_MS
             );
             
+            // Type guard to ensure result is not undefined (uploadAsync returns UploadResult | undefined in some types, but here likely UploadResult)
+            if (!result) throw new Error("Upload failed: No result");
+
             if (result.status === 200) {
                 return result;
             }
             
             // If server returns non-200, throw to trigger retry
-            // NOTE: 4xx errors (client error) usually shouldn't be retried, but for robustness we treat them as retryable for now unless 400/401
             if (result.status >= 400 && result.status < 500 && result.status !== 429) {
                  // Don't retry client errors except rate limit
                  throw new Error(`Server rejected request (${result.status}): ${result.body}`); 
@@ -132,7 +155,11 @@ const uploadWithRetry = async (url: string, imageUri: string, options: any, maxR
     throw lastError;
 };
 
-export const analyzeImage = async (imageUri: string, isoCountryCode: string = "US"): Promise<AnalyzedData> => {
+export const analyzeImage = async (
+    imageUri: string, 
+    isoCountryCode: string = "US",
+    onProgress?: (progress: number) => void
+): Promise<AnalyzedData> => {
     // Note: We intentionally allow errors to propagate so the UI can handle them (Retry/Alert)
     const activeServerUrl = await ServerConfig.getServerUrl();
     console.log('Uploading to Python Server:', activeServerUrl);
@@ -168,7 +195,8 @@ export const analyzeImage = async (imageUri: string, isoCountryCode: string = "U
                     'iso_country_code': isoCountryCode
                 }
             },
-            3 // Max retries
+            3, // Max retries
+            onProgress
         );
 
         const data = JSON.parse(uploadResult.body);

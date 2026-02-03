@@ -19,9 +19,17 @@ interface AnalysisLoadingScreenProps {
   onCancel: () => void;
   isError?: boolean;
   imageUri?: string;
+  manualStep?: number;
+  manualProgress?: number;
 }
 
-const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel, isError = false, imageUri }) => {
+const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ 
+  onCancel, 
+  isError = false, 
+  imageUri,
+  manualStep,
+  manualProgress
+}) => {
   const [step, setStep] = useState(0);
   const steps = ["Image Ready", "Uploading", "AI Analyzing", "Syncing Results"];
   
@@ -30,6 +38,8 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
   const pulseScale = useSharedValue(1);
   const rippleScale = useSharedValue(1);
   const rippleOpacity = useSharedValue(0.8);
+
+  const isManual = typeof manualStep === 'number';
 
   useEffect(() => {
     // 1. Orbit Rotation
@@ -61,13 +71,14 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
       false
     );
 
-    // 4. Step Progression Logic
-    const interval = setInterval(() => {
-        setStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, []);
+    // 4. Step Progression Logic (Only if not manual)
+    if (!isManual) {
+        const interval = setInterval(() => {
+            setStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
+        }, 1500);
+        return () => clearInterval(interval);
+    }
+  }, [isManual]); // Re-run if switching mode (unlikely but safe)
 
   const orbitStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }]
@@ -89,6 +100,58 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
 
   const themeColor = isError ? '#EF4444' : '#3B82F6'; // Red for Error, Blue for Normal
 
+  // Determine what to show
+  const currentStep = isManual && manualStep !== undefined ? manualStep : step;
+  
+  // Unified Color Logic
+  const colors = {
+      primary: isError ? '#EF4444' : '#3B82F6',
+      orbit: isError ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)',
+      orbitInner: isError ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.2)',
+      ripple: isError ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)',
+      hub: isError ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.2)',
+      icon: isError ? '#EF4444' : '#3B82F6'
+  };
+
+  // Progress Calculation Helper
+  const getProgressWidth = () => {
+      if (!isManual || manualProgress === undefined) {
+          return isError ? '100%' : `${((currentStep + 1) / steps.length) * 100}%`;
+      }
+      
+      if (currentStep === 1) { // Uploading (10% -> 60% range concept)
+          const startOffset = 0.25; 
+          const uploadRange = 0.5;   
+          const calculated = startOffset + (manualProgress * uploadRange);
+          return `${Math.min(calculated * 100, 75)}%`;
+      } 
+      
+      if (currentStep > 1) {
+          return currentStep === 2 ? '85%' : '100%';
+      }
+      
+      return '10%'; // Step 0
+  };
+
+  const progressWidth = getProgressWidth();
+
+  // Long wait feedback
+  const [isLongWait, setIsLongWait] = useState(false);
+  
+  // Reset long wait when step changes
+  useEffect(() => {
+      setIsLongWait(false);
+      let timer: any;
+      
+      if (currentStep === 2) { // AI Analyzing Phase
+          timer = setTimeout(() => {
+              setIsLongWait(true);
+          }, 8000); // 8 seconds threshold
+      }
+      
+      return () => clearTimeout(timer);
+  }, [currentStep]);
+
   return (
     <View style={styles.container}>
       {/* Ambient Background */}
@@ -104,20 +167,20 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
       {/* Center Core */}
       <View style={styles.coreContainer}>
         {/* Orbit Rings */}
-        <Animated.View style={[styles.orbitRing, orbitStyle, { borderColor: isError ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)' }]} />
-        <Animated.View style={[styles.orbitRingInner, orbitInnerStyle, { borderColor: isError ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.2)' }]} />
+        <Animated.View style={[styles.orbitRing, orbitStyle, { borderColor: colors.orbit }]} />
+        <Animated.View style={[styles.orbitRingInner, orbitInnerStyle, { borderColor: colors.orbitInner }]} />
         
         {/* Ripple */}
-        <Animated.View style={[styles.ripple, rippleStyle, { borderColor: isError ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)' }]} />
+        <Animated.View style={[styles.ripple, rippleStyle, { borderColor: colors.ripple }]} />
         
         {/* Main Hub */}
-        <Animated.View style={[styles.hub, pulseStyle, { borderColor: isError ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.2)' }]}>
+        <Animated.View style={[styles.hub, pulseStyle, { borderColor: colors.hub }]}>
             <BlurView intensity={40} tint="dark" style={styles.hubBlur}>
                 <View style={styles.iconCircle}>
                     {isError ? (
-                        <AlertTriangle size={24} color="#EF4444" fill="#EF4444" />
+                        <AlertTriangle size={24} color={colors.icon} fill={colors.icon} />
                     ) : (
-                        <Sparkles size={24} color="#3B82F6" fill="#3B82F6" />
+                        <Sparkles size={24} color={colors.icon} fill={colors.icon} />
                     )}
                 </View>
             </BlurView>
@@ -135,7 +198,7 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
         {/* Status Message */}
         <View style={styles.messageArea}>
             <Text style={styles.mainMessage}>
-                {isError ? "ANALYSIS FAILED" : steps[step]}
+                {isError ? "ANALYSIS FAILED" : (isLongWait && currentStep === 2 ? "SERVER WARMING UP..." : steps[currentStep])}
             </Text>
             
             {!isError && (
@@ -152,8 +215,8 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({ onCancel,
                     style={[
                         styles.progressBarFill, 
                         { 
-                            width: isError ? '100%' : `${((step + 1) / steps.length) * 100}%`,
-                            backgroundColor: themeColor
+                            width: progressWidth as any,
+                            backgroundColor: colors.primary
                         }
                     ]} 
                 />

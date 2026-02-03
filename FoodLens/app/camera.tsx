@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system/legacy';
 import { analyzeImage } from '../services/ai';
 import { dataStore } from '../services/dataStore';
 import { getLocationData, getEmoji, validateCoordinates } from '../services/utils';
@@ -13,7 +14,20 @@ import AnalysisLoadingScreen from '../components/AnalysisLoadingScreen';
 
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 
+// Helper: Create standardized location object
+const createFallbackLocation = (lat: number, lng: number, isoCode?: string, address: string = "") => ({
+  latitude: lat,
+  longitude: lng,
+  country: null,
+  city: null,
+  district: "",
+  subregion: "",
+  isoCountryCode: isoCode,
+  formattedAddress: address,
+});
+
 export default function CameraScreen() {
+  const TEST_UID = "test-user-v1";
   // === ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS ===
   const [permission, requestPermission] = ImagePicker.useCameraPermissions();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -74,16 +88,7 @@ export default function CameraScreen() {
           const { latitude: lat, longitude: lng } = validCoords;
           console.log("Using photo EXIF GPS:", lat, lng);
         
-        const fallbackLocation = {
-          latitude: lat,
-          longitude: lng,
-          country: null,
-          city: null,
-          district: "",
-          subregion: "",
-          isoCountryCode: undefined,
-          formattedAddress: "",
-        };
+        const fallbackLocation = createFallbackLocation(lat, lng);
 
         // Reverse geocode the photo location
         try {
@@ -168,21 +173,64 @@ export default function CameraScreen() {
   }, [externalImageUri, photoLat, photoLng, sourceType]);
 
 
-  const handleCancelAnalysis = useCallback(() => {
-    isCancelled.current = true;
+  // Helper: Reset all analysis state
+  const resetState = useCallback(() => {
     setIsAnalyzing(false);
     setCapturedImage(null);
-    router.replace('/');
-  }, [router]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isCancelled.current = true;
-    };
+    setUploadProgress(undefined);
+    setActiveStep(undefined);
   }, []);
 
-  const TEST_UID = "test-user-v1"; // Define constant for use in hooks/callbacks
+  const handleCancelAnalysis = useCallback(() => {
+    isCancelled.current = true;
+    resetState();
+    router.replace('/');
+  }, [router, resetState]);
+
+  // Helper: Centralized Error Handler
+  const handleError = useCallback((error: any, uri: string) => {
+      console.error(error);
+      resetState();
+      
+      const errorMessage = error?.message?.toLowerCase() || '';
+      
+      // Server 5xx Error (Retryable)
+      if (errorMessage.includes('status 5') || errorMessage.includes('status 500')) {
+          Alert.alert(
+              "서버 오류",
+              "일시적인 서버 문제가 발생했습니다.\n다시 시도하시겠습니까?",
+              [
+                  { text: '취소', style: 'cancel', onPress: () => router.replace('/') },
+                  { 
+                      text: '재시도', 
+                      onPress: () => {
+                          if (uri) processImage(uri);
+                      } 
+                  }
+              ]
+          );
+          return; 
+      }
+
+      const isFileError = errorMessage.includes('file') || 
+                          errorMessage.includes('read') || 
+                          errorMessage.includes('access') ||
+                          errorMessage.includes('permission') ||
+                          errorMessage.includes('corrupt') ||
+                          errorMessage.includes('validation');
+      
+      if (isFileError) {
+        Alert.alert("파일 오류", "이미지 파일을 불러올 수 없습니다. 다른 사진을 선택해주세요.");
+      } else {
+        Alert.alert("분석 실패", "서버 연결에 문제가 있습니다. 네트워크를 확인하고 다시 시도해주세요.");
+      }
+      
+      router.replace('/');
+  }, [router, resetState]); // processImage dependency is cyclic if added directly, but loop is safely broken by user action
+
+  // Progress State
+  const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
+  const [activeStep, setActiveStep] = useState<number | undefined>(undefined);
 
   const processImage = useCallback(async (uri: string) => {
     try {
@@ -190,6 +238,9 @@ export default function CameraScreen() {
       setIsAnalyzing(true);
       setCapturedImage(uri);
       
+      // Step 0: Image Ready / Location Context
+      setActiveStep(0);
+
       // 1. Get Location Context (Use Cache if available)
       let locationData = cachedLocation.current;
 
@@ -209,8 +260,7 @@ export default function CameraScreen() {
       // Network Check
       if (!isConnectedRef.current) {
           Alert.alert("오프라인", "인터넷 연결을 확인해주세요.");
-          setIsAnalyzing(false);
-          setCapturedImage(null);
+          resetState();
           router.replace('/');
           return;
       }
@@ -233,24 +283,39 @@ export default function CameraScreen() {
       isoCode = isoCode || "US"; // Final fallback
       console.log("Analyzing with Country Code:", isoCode);
 
+      // Validation: Check file before upload
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (!fileInfo.exists || (fileInfo as any).size === 0) {
+          throw new Error("File validation failed: Image is empty or missing.");
+      }
+
       // 2. Analyze Image
-      const analysisResult = await analyzeImage(uri, isoCode);
+      // Transition to Step 1: Uploading
+      setActiveStep(1); // Uploading
+      setUploadProgress(0);
+
+      const analysisResult = await analyzeImage(uri, isoCode, (progress) => {
+          if (!isCancelled.current) {
+              setUploadProgress(progress);
+              if (progress >= 1) {
+                  // Upload complete, now waiting for server (AI Analyzing)
+                  setActiveStep(2); 
+              }
+          }
+      });
       
       if (isCancelled.current) return;
 
-
+      // Analysis complete
+      setActiveStep(3); // Syncing Results
 
       // Prepare location data for store (use fallback if real location missing)
-      const locationContext = locationData || {
-          latitude: 0,
-          longitude: 0,
-          country: null,
-          city: null,
-          district: "",
-          subregion: "",
-          isoCountryCode: isoCode,
-          formattedAddress: "Location Unavailable (Using Preference)"
-      };
+      const locationContext = locationData || createFallbackLocation(
+          0, 
+          0, 
+          isoCode, 
+          "Location Unavailable (Using Preference)"
+      );
 
       // Use DataStore to prevent URL parameter overflow
       dataStore.setData(analysisResult, locationContext, uri);
@@ -260,53 +325,13 @@ export default function CameraScreen() {
         params: { fromStore: 'true', isNew: 'true' }
       });
       
-      setIsAnalyzing(false);
-      setCapturedImage(null);
+      resetState();
+
     } catch (error: any) {
       if (isCancelled.current) return;
-      
-      console.error(error);
-      setIsAnalyzing(false);
-      setCapturedImage(null);
-      
-      const errorMessage = error?.message?.toLowerCase() || '';
-      
-      // Server 5xx Error (Retryable)
-      // "Server returned status 500" from ai.ts
-      if (errorMessage.includes('status 5') || errorMessage.includes('status 500')) {
-          Alert.alert(
-              "서버 오류",
-              "일시적인 서버 문제가 발생했습니다.\n다시 시도하시겠습니까?",
-              [
-                  { text: '취소', style: 'cancel', onPress: () => router.replace('/') },
-                  { 
-                      text: '재시도', 
-                      onPress: () => {
-                          // Simple retry: call processImage again with the same URI
-                          if (uri) processImage(uri);
-                      } 
-                  }
-              ]
-          );
-          return; // Stay on screen if retrying
-      }
-
-      const isFileError = errorMessage.includes('file') || 
-                          errorMessage.includes('read') || 
-                          errorMessage.includes('access') ||
-                          errorMessage.includes('permission') ||
-                          errorMessage.includes('corrupt');
-      
-      if (isFileError) {
-        Alert.alert("파일 오류", "이미지 파일을 불러올 수 없습니다. 다른 사진을 선택해주세요.");
-      } else {
-        // Generic or Network Error
-        Alert.alert("분석 실패", "서버 연결에 문제가 있습니다. 네트워크를 확인하고 다시 시도해주세요.");
-      }
-      
-      router.replace('/');
+      handleError(error, uri);
     }
-  }, [router, getLocationData]);
+  }, [router, getLocationData, resetState, handleError]);
 
   // No longer auto-launching camera from here to prevent flickering. 
   // This screen now acts purely as an analysis processing gateway.
@@ -362,14 +387,12 @@ export default function CameraScreen() {
         Phase 1: Location Check (permission dialog might show here)
         Phase 2: Analysis Process 
       */}
-      {!isLocationReady ? (
-        <View style={styles.launchingTextContainer}>
-          <Text style={styles.launchingText}>Checking Location...</Text>
-        </View>
-      ) : isAnalyzing ? (
+      {!isLocationReady ? null : isAnalyzing ? (
         <AnalysisLoadingScreen 
           onCancel={handleCancelAnalysis} 
           imageUri={capturedImage || undefined}
+          manualStep={activeStep}
+          manualProgress={uploadProgress}
         />
       ) : (
         <View style={styles.launchingTextContainer}>

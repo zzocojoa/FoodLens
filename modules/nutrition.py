@@ -15,6 +15,85 @@ OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl"
 FATSECRET_TOKEN_URL = "https://oauth.fatsecret.com/connect/token"
 FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 
+# Timeout Configuration (seconds)
+# Shorter timeouts for faster fallback to next API
+API_TIMEOUT_FAST = 3.0       # For reliable APIs (USDA, Korean FDA)
+API_TIMEOUT_SLOW = 2.0       # For slow/unreliable APIs (Open Food Facts)
+API_CONNECT_TIMEOUT = 2.0    # Connection timeout (fail fast if server unreachable)
+
+# Food name synonyms for fuzzy matching
+# Maps common variations → standardized search term
+FOOD_SYNONYMS = {
+    # Korean dishes
+    "kimchi stew": "kimchi jjigae",
+    "kimchi soup": "kimchi jjigae",
+    "김치찌개": "kimchi jjigae",
+    "bibimbap": "bibimbap",
+    "비빔밥": "bibimbap",
+    "bulgogi": "bulgogi",
+    "불고기": "bulgogi",
+    "korean bbq": "bulgogi",
+    "tteokbokki": "tteokbokki",
+    "떡볶이": "tteokbokki",
+    "spicy rice cake": "tteokbokki",
+    "samgyeopsal": "pork belly",
+    "삼겹살": "pork belly",
+    
+    # Japanese
+    "sashimi": "raw fish",
+    "onigiri": "rice ball",
+    
+    # Western
+    "mac and cheese": "macaroni and cheese",
+    "mac n cheese": "macaroni and cheese",
+    "burger": "hamburger",
+    "fries": "french fries",
+    
+    # Common variations
+    "fried rice": "fried rice",
+    "볶음밥": "fried rice",
+}
+
+def normalize_food_name(food_name: str) -> list[str]:
+    """
+    Returns a list of normalized food name variants for API queries.
+    Includes the original name plus any synonyms.
+    
+    Args:
+        food_name: Original food name from AI analysis
+        
+    Returns:
+        List of search terms to try (original + synonyms + variations)
+    """
+    if not food_name:
+        return []
+    
+    variants = [food_name]
+    lower_name = food_name.lower().strip()
+    
+    # Check direct synonym match
+    if lower_name in FOOD_SYNONYMS:
+        variants.append(FOOD_SYNONYMS[lower_name])
+    
+    # Check partial matches
+    for key, value in FOOD_SYNONYMS.items():
+        if key in lower_name or lower_name in key:
+            if value not in variants:
+                variants.append(value)
+    
+    # Add common transformations
+    # Remove common prefixes/suffixes
+    transforms = [
+        lower_name.replace("korean ", ""),
+        lower_name.replace(" dish", ""),
+        lower_name.replace(" bowl", ""),
+    ]
+    for t in transforms:
+        if t != lower_name and t not in variants:
+            variants.append(t)
+    
+    return variants
+
 
 class NutritionLookup:
     def __init__(self):
@@ -35,7 +114,22 @@ class NutritionLookup:
         """
         Multi-tier nutrition lookup based on food origin.
         Priority: Korean FDA → USDA → FatSecret → Open Food Facts
+        
+        Uses fuzzy matching via normalize_food_name() to try multiple
+        name variants for improved matching success.
         """
+        # Get all name variants for fuzzy matching
+        name_variants = normalize_food_name(food_name)
+        
+        for query in name_variants:
+            result = self._search_food_single(query, food_origin)
+            if result and result.get("calories") is not None:
+                return result
+        
+        return self._get_fallback_nutrition(food_name)
+    
+    def _search_food_single(self, food_name: str, food_origin: str) -> Optional[Dict[str, Any]]:
+        """Internal: Search with a single food name query."""
         result = None
         
         # 1. 한국 음식 → 식약처 먼저
@@ -80,7 +174,7 @@ class NutritionLookup:
                     # Open Food Facts
                     result = self._search_open_food_facts(food_name)
         
-        return result if result else self._get_fallback_nutrition(food_name)
+        return result  # Let caller handle fallback
     
     # ==================== Korean FDA (식약처) ====================
     def _search_korean_fda(self, food_name: str) -> Optional[Dict[str, Any]]:
@@ -98,7 +192,7 @@ class NutritionLookup:
             }
             
             url = f"{KOREAN_FDA_API_BASE}/getFoodNtrCpntDbInq02"
-            response = httpx.get(url, params=params, timeout=5.0)
+            response = httpx.get(url, params=params, timeout=API_TIMEOUT_FAST)
             
             # If rate limit exceeded or error, print and return None to trigger fallback
             if response.status_code != 200:
@@ -146,7 +240,7 @@ class NutritionLookup:
                 FATSECRET_TOKEN_URL,
                 data={"grant_type": "client_credentials"},
                 auth=(self.fatsecret_id, self.fatsecret_secret),
-                timeout=5.0
+                timeout=API_TIMEOUT_FAST
             )
             response.raise_for_status()
             token_data = response.json()
@@ -178,13 +272,13 @@ class NutritionLookup:
             
             headers = {"Authorization": f"Bearer {self.fatsecret_token}"}
             
-            response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=5.0)
+            response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=API_TIMEOUT_FAST)
             
             # If 401 Unauthorized, maybe token expired. Retry once.
             if response.status_code == 401:
                  self.fatsecret_token = self._get_fatsecret_token()
                  headers = {"Authorization": f"Bearer {self.fatsecret_token}"}
-                 response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=5.0)
+                 response = httpx.get(FATSECRET_API_URL, params=search_params, headers=headers, timeout=API_TIMEOUT_FAST)
             
             response.raise_for_status()
             data = response.json()
@@ -212,7 +306,7 @@ class NutritionLookup:
                 "format": "json"
             }
             
-            detail_res = httpx.get(FATSECRET_API_URL, params=detail_params, headers=headers, timeout=5.0)
+            detail_res = httpx.get(FATSECRET_API_URL, params=detail_params, headers=headers, timeout=API_TIMEOUT_FAST)
             detail_res.raise_for_status()
             detail_data = detail_res.json()
             
@@ -279,7 +373,7 @@ class NutritionLookup:
                 "pageSize": 5
             }
             
-            response = httpx.get(f"{USDA_API_BASE}/foods/search", params=params, timeout=5.0)
+            response = httpx.get(f"{USDA_API_BASE}/foods/search", params=params, timeout=API_TIMEOUT_FAST)
             
             # Handle limits/errors
             if response.status_code != 200:
@@ -338,7 +432,9 @@ class NutritionLookup:
             }
             
             headers = {"User-Agent": "FoodLens App - https://github.com/foodlens"}
-            response = httpx.get(OPEN_FOOD_FACTS_API, params=params, headers=headers, timeout=5.0)
+            # Use shorter timeout for Open Food Facts (often slow/unreliable)
+            timeout = httpx.Timeout(API_TIMEOUT_SLOW, connect=API_CONNECT_TIMEOUT)
+            response = httpx.get(OPEN_FOOD_FACTS_API, params=params, headers=headers, timeout=timeout)
             response.raise_for_status()
             data = response.json()
             

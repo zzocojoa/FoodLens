@@ -29,6 +29,54 @@ const LANGUAGE_OPTIONS = [
     { code: 'VN', label: 'Vietnamese', flag: '🇻🇳' },
 ];
 
+const useSheetGesture = (onCloseComplete: () => void) => {
+    const panY = React.useRef(new RNAnimated.Value(800)).current;
+
+    const closeSheet = () => {
+        RNAnimated.timing(panY, { 
+            toValue: 800, 
+            duration: 250, 
+            useNativeDriver: true 
+        }).start(onCloseComplete);
+    };
+
+    const openSheet = () => {
+        panY.setValue(800);
+        RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+    };
+
+    const panResponder = React.useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
+            onPanResponderMove: (_, gestureState) => gestureState.dy >= 0 && panY.setValue(gestureState.dy),
+            onPanResponderRelease: (_, gestureState) => {
+                if (gestureState.dy > 120 || gestureState.vy > 0.5) closeSheet();
+                else RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+            },
+        })
+    ).current;
+
+    return { panY, panResponder, openSheet, closeSheet };
+};
+
+const MenuItem = ({ icon, title, subtitle, onPress, iconBgColor }: { icon: React.ReactNode, title: string, subtitle: string, onPress?: () => void, iconBgColor: string }) => (
+    <View style={styles.menuContainer}>
+        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                <View style={[styles.iconBox, {backgroundColor: iconBgColor}]}>
+                    {icon}
+                </View>
+                <View>
+                    <Text style={styles.menuTitle}>{title}</Text>
+                    <Text style={styles.menuSub}>{subtitle}</Text>
+                </View>
+            </View>
+            <ChevronRight size={18} color="#CBD5E1" />
+        </TouchableOpacity>
+    </View>
+);
+
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
   const router = useRouter();
   const [name, setName] = useState("Traveler Joy");
@@ -37,69 +85,33 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Swipe logic for Language Modal (Optimized)
-  const panY = React.useRef(new RNAnimated.Value(800)).current;
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
-      onPanResponderMove: (_, gestureState) => gestureState.dy >= 0 && panY.setValue(gestureState.dy),
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 120 || gestureState.vy > 0.5) closeLangModal();
-        else RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
-      },
-    })
-  ).current;
-
   // Swipe logic for Main Profile Sheet
-  const panYProfile = React.useRef(new RNAnimated.Value(800)).current;
-  const panResponderProfile = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
-      onPanResponderMove: (_, gestureState) => gestureState.dy >= 0 && panYProfile.setValue(gestureState.dy),
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 120 || gestureState.vy > 0.5) handleCloseProfile();
-        else RNAnimated.spring(panYProfile, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
-      },
-    })
-  ).current;
+  const { 
+      panY: panYProfile, 
+      panResponder: panResponderProfile, 
+      openSheet: openProfile, 
+      closeSheet: closeProfile 
+  } = useSheetGesture(onClose);
 
+  // Swipe logic for Language Modal
+  const { 
+      panY, 
+      panResponder, 
+      openSheet: openLangModal, 
+      closeSheet: closeLangModal 
+  } = useSheetGesture(() => setLangModalVisible(false));
 
-  const closeLangModal = () => {
-    RNAnimated.timing(panY, { 
-        toValue: 800, 
-        duration: 250, 
-        useNativeDriver: true 
-    }).start(() => {
-        setLangModalVisible(false);
-    });
-  };
-
-  const handleCloseProfile = () => {
-    RNAnimated.timing(panYProfile, { 
-        toValue: 800, 
-        duration: 250, 
-        useNativeDriver: true 
-    }).start(() => {
-        onClose();
-    });
-  };
 
   // Entrance animations
   useEffect(() => {
     if (isOpen) {
-        panYProfile.setValue(800);
-        RNAnimated.spring(panYProfile, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
+        openProfile();
         loadProfile();
     }
   }, [isOpen]);
 
   useEffect(() => {
-    if (langModalVisible) {
-        panY.setValue(800);
-        RNAnimated.spring(panY, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }).start();
-    }
+    if (langModalVisible) openLangModal();
   }, [langModalVisible]);
 
   const loadProfile = async () => {
@@ -182,7 +194,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
         <TouchableOpacity 
             activeOpacity={1} 
             style={[styles.overlay, { opacity: isOpen ? 1 : 0 }]} 
-            onPress={handleCloseProfile}
+            onPress={closeProfile}
         >
              <Pressable style={{ flex: 1, justifyContent: 'flex-end' }}>
                  <RNAnimated.View 
@@ -261,60 +273,26 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
 
                         {/* Part 2: Management */}
                         <View style={styles.section}>
-                            <View style={styles.menuContainer}>
-                                <TouchableOpacity 
-                                    style={styles.menuItem}
-                                    onPress={() => {
-                                        router.push('/profile');
-                                    }}
-                                >
-                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                                        <View style={[styles.iconBox, {backgroundColor: '#EFF6FF'}]}>
-                                            <User size={20} color="#2563EB" />
-                                        </View>
-                                        <View>
-                                            <Text style={styles.menuTitle}>Manage Profile</Text>
-                                            <Text style={styles.menuSub}>Account settings & details</Text>
-                                        </View>
-                                    </View>
-                                    <ChevronRight size={18} color="#CBD5E1" />
-                                </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.menuContainer}>
-                                <TouchableOpacity 
-                                    style={styles.menuItem}
-                                    onPress={() => setLangModalVisible(true)}
-                                >
-                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                                        <View style={[styles.iconBox, {backgroundColor: '#ECFDF5'}]}>
-                                            <Globe size={20} color="#059669" />
-                                        </View>
-                                        <View>
-                                            <Text style={styles.menuTitle}>Translation Language</Text>
-                                            <Text style={styles.menuSub}>
-                                                {language ? LANGUAGE_OPTIONS.find(o => o.code === language)?.label : "Auto (GPS)"}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <ChevronRight size={18} color="#CBD5E1" />
-                                </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.menuContainer}>
-                                <TouchableOpacity style={styles.menuItem}>
-                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                                        <View style={[styles.iconBox, {backgroundColor: '#FFFBEB'}]}>
-                                            <Zap size={20} color="#D97706" fill="#D97706" />
-                                        </View>
-                                        <View>
-                                            <Text style={styles.menuTitle}>Remove Ads</Text>
-                                            <Text style={styles.menuSub}>Premium benefits</Text>
-                                        </View>
-                                    </View>
-                                    <ChevronRight size={18} color="#CBD5E1" />
-                                </TouchableOpacity>
-                            </View>
+                             <MenuItem 
+                                icon={<User size={20} color="#2563EB" />}
+                                title="Manage Profile"
+                                subtitle="Account settings & details"
+                                iconBgColor="#EFF6FF"
+                                onPress={() => router.push('/profile')}
+                             />
+                             <MenuItem 
+                                icon={<Globe size={20} color="#059669" />}
+                                title="Translation Language"
+                                subtitle={language ? (LANGUAGE_OPTIONS.find(o => o.code === language)?.label || "Auto (GPS)") : "Auto (GPS)"}
+                                iconBgColor="#ECFDF5"
+                                onPress={() => setLangModalVisible(true)}
+                             />
+                             <MenuItem 
+                                icon={<Zap size={20} color="#D97706" fill="#D97706" />}
+                                title="Remove Ads"
+                                subtitle="Premium benefits"
+                                iconBgColor="#FFFBEB"
+                             />
                         </View>
 
                         {/* Language Modal */}

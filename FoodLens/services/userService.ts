@@ -1,5 +1,6 @@
 import { UserProfile, DEFAULT_USER_PROFILE, DEFAULT_AVATARS } from '../models/User';
-import { SafeStorage } from './storage'; // NEW
+import { SafeStorage } from './storage'; 
+import * as FileSystem from 'expo-file-system/legacy';
 
 const USER_STORAGE_KEY = '@foodlens_user_profile';
 
@@ -12,6 +13,47 @@ export const UserService = {
     const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
 
     if (profile) {
+      console.log(`[UserService] Loaded profile:`, { 
+        uid: profile.uid, 
+        hasImage: !!profile.profileImage, 
+        imageLen: profile.profileImage?.length 
+      });
+
+      // VALIDATION: If it's a local file, check if it exists
+      let isValidImage = true;
+      if (profile.profileImage?.startsWith('file://')) {
+          try {
+              const fileInfo = await FileSystem.getInfoAsync(profile.profileImage);
+              if (!fileInfo.exists) {
+                  console.warn("[UserService] Saved profile image file does not exist. Resetting.");
+                  isValidImage = false;
+              }
+          } catch (e) {
+              console.warn("Failed to validate local image file", e);
+              isValidImage = false;
+          }
+      }
+
+      // Lazy Migration: If existing profile has no image OR INVALID image, assign one now
+      if (!isValidImage || !profile.profileImage || profile.profileImage.trim() === '') {
+          console.log("[UserService] Image missing or invalid. Starting migration...");
+          try {
+              // Guard against empty presets
+              const avatars = DEFAULT_AVATARS.length > 0 ? DEFAULT_AVATARS : ["https://api.dicebear.com/7.x/avataaars/png?seed=Felix"];
+              const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
+              
+              profile.profileImage = randomAvatar;
+
+              // Persist the migration
+              await SafeStorage.set(USER_STORAGE_KEY, profile);
+              console.log(`[Migration] Auto-assigned avatar for user ${uid}: ${randomAvatar}`);
+          } catch (error) {
+              // Silent fail to keep app running
+              console.warn("[Migration] Failed to persist auto-assigned avatar:", error);
+          }
+      } else {
+        console.log("[UserService] Profile has valid image:", profile.profileImage);
+      }
       return profile;
     }
 

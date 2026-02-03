@@ -33,6 +33,7 @@ import { dataStore } from '../../services/dataStore';
 import { ServerConfig } from '../../services/ai';
 import { UserProfile } from '../../models/User';
 import ProfileSheet from '../../components/ProfileSheet';
+import { FoodThumbnail } from '../../components/FoodThumbnail'; // NEW
 
 
 export default function HomeScreen() {
@@ -143,6 +144,17 @@ export default function HomeScreen() {
   };
 
 
+  const getBadgeStyle = (status: string) => {
+      switch (status) {
+          case 'SAFE':
+              return { container: styles.badgeSafe, text: { color: '#15803D' } };
+          case 'DANGER':
+              return { container: styles.badgeDanger, text: { color: '#BE123C' } };
+          default:
+              return { container: { backgroundColor: '#FEF3C7' }, text: { color: '#B45309' } };
+      }
+  };
+
   // Removed handleSaveServer function
   // Removed openServerSettings function
 
@@ -189,10 +201,11 @@ export default function HomeScreen() {
       let result;
       let hasPermission = false;
 
-      if (type === 'camera') {
-        const granted = await checkAndRequest('camera');
-        if (!granted) return;
+      const permissionType = type === 'camera' ? 'camera' : 'mediaLibrary';
+      const granted = await checkAndRequest(permissionType);
+      if (!granted) return;
 
+      if (type === 'camera') {
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: 'images',
           allowsEditing: true,
@@ -263,9 +276,6 @@ export default function HomeScreen() {
           }
         }
       } else {
-        const granted = await checkAndRequest('mediaLibrary');
-        if (!granted) return;
-
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: 'images',
           allowsEditing: true,
@@ -415,18 +425,30 @@ export default function HomeScreen() {
                   >
                      <View style={styles.scanInfo}>
                         <View style={styles.scanEmojiBox}>
-                          <Text style={{fontSize: 24}}>{getEmoji(item.foodName)}</Text>
+                          <FoodThumbnail 
+                              uri={item.imageUri}
+                              emoji={getEmoji(item.foodName)}
+                              style={{width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent'}}
+                              imageStyle={{borderRadius: 12}}
+                              fallbackFontSize={24}
+                          />
                         </View>
                         <View>
                           <Text style={styles.scanName}>{item.foodName}</Text>
                           <Text style={styles.scanDate}>{formatDate(item.timestamp)}</Text>
                         </View>
                      </View>
-                     <View style={[styles.badge, item.safetyStatus === 'SAFE' ? styles.badgeSafe : (item.safetyStatus === 'DANGER' ? styles.badgeDanger : {backgroundColor: '#FEF3C7'})]}>
-                       <Text style={[styles.badgeText, item.safetyStatus === 'SAFE' ? {color: '#15803D'} : (item.safetyStatus === 'DANGER' ? {color: '#BE123C'} : {color: '#B45309'})]}>
-                         {item.safetyStatus}
-                       </Text>
-                     </View>
+                     
+                     {(() => {
+                        const badgeStyle = getBadgeStyle(item.safetyStatus);
+                        return (
+                            <View style={[styles.badge, badgeStyle.container]}>
+                                <Text style={[styles.badgeText, badgeStyle.text]}>
+                                    {item.safetyStatus}
+                                </Text>
+                            </View>
+                        );
+                     })()}
                   </TouchableOpacity>
                 </Swipeable>
               </View>

@@ -5,7 +5,6 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { AlertCircle } from 'lucide-react-native'; 
 import { BlurView as ExpoBlurView } from 'expo-blur'; // Correct import
 
 // Hooks
@@ -70,10 +69,46 @@ export default function ResultScreen() {
   // No Data State
   if (!result) return <View style={styles.loadingContainer}><Text>No Data</Text></View>;
 
-  // Error State
-  const isError = result.foodName === "Error Analyzing Food" || result.foodName === "Not Food";
+  // Error State - includes all error food names (English and Korean)
+  const isError = 
+    result.foodName === "Error Analyzing Food" || 
+    result.foodName === "Not Food" ||
+    result.foodName === "분석 오류" ||  // Korean error from 429/fallback
+    result.foodName === "Analysis Error";
   
   if (isError) {
+      // Determine user-friendly error message based on error type
+      const getErrorInfo = () => {
+          const rawMsg = result.raw_result || "";
+          
+          // 429/Server busy errors
+          if (rawMsg.includes("서버가 바쁩니다") || rawMsg.includes("429") || rawMsg.includes("많습니다")) {
+              return {
+                  title: "잠시만 기다려주세요",
+                  desc: "지금 요청이 많아 분석이 지연되고 있어요.\n15~30초 후 다시 시도해주세요.",
+                  icon: "time-outline"
+              };
+          }
+          
+          // Not food
+          if (result.foodName === "Not Food") {
+              return {
+                  title: "음식을 찾을 수 없어요",
+                  desc: "이 이미지에서 음식을 인식하지 못했어요.\n다른 사진으로 시도해보세요.",
+                  icon: "image-outline"
+              };
+          }
+          
+          // Generic error
+          return {
+              title: "분석을 못했어요",
+              desc: "일시적인 문제가 발생했어요.\n다시 시도해주세요.",
+              icon: "camera-outline"
+          };
+      };
+      
+      const errorInfo = getErrorInfo();
+      
       return (
         <View style={styles.errorContainer}>
             {imageSource && (
@@ -83,20 +118,20 @@ export default function ResultScreen() {
                     resizeMode="cover"
                 />
             )}
-            <ExpoBlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+            <ExpoBlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
             
             <View style={styles.errorContent}>
                 <View style={styles.errorIconCircle}>
-                    <AlertCircle size={48} color="#EF4444" />
+                    <Ionicons name={errorInfo.icon as any} size={40} color="#3B82F6" />
                 </View>
-                <Text style={styles.errorTitle}>Analysis Failed</Text>
+                <Text style={styles.errorTitle}>{errorInfo.title}</Text>
                 <Text style={styles.errorDesc}>
-                    {result.raw_result || "We couldn't identify this food. Please try again with a clearer photo."}
+                    {errorInfo.desc}
                 </Text>
                 
                 {/* Fallback Static Card for Safety */}
                 {locationData?.isoCountryCode && (
-                    <View style={{ width: '100%', marginBottom: 30 }}>
+                    <View style={{ width: '100%', marginBottom: 24 }}>
                          <Text style={{ color: '#64748B', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>
                              SAFETY CARD (OFFLINE MODE)
                          </Text>
@@ -107,8 +142,31 @@ export default function ResultScreen() {
                     </View>
                 )}
                 
-                <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-                    <Text style={styles.retryText}>Try Again</Text>
+                <TouchableOpacity 
+                    style={styles.retryButton} 
+                    onPress={() => {
+                        if (rawImageUri) {
+                            router.replace({
+                                pathname: '/camera',
+                                params: { 
+                                    imageUri: rawImageUri,
+                                    sourceType: 'retry'
+                                }
+                            });
+                        } else {
+                            router.replace('/');
+                        }
+                    }}
+                >
+                    <Ionicons name="refresh" size={18} color="white" style={{marginRight: 8}} />
+                    <Text style={styles.retryText}>다시 시도</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                    style={styles.homeButton} 
+                    onPress={() => router.replace('/')}
+                >
+                    <Text style={styles.homeText}>홈으로 돌아가기</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -220,16 +278,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   
-  // Error Styles
+  // Error Styles - Friendly Design
   errorContainer: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
   },
   errorImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.5,
+    opacity: 0.3,
   },
   errorContent: {
     padding: 32,
@@ -240,35 +298,47 @@ const styles = StyleSheet.create({
       width: 80,
       height: 80,
       borderRadius: 40,
-      backgroundColor: 'rgba(239, 68, 68, 0.2)', // red-500/20
+      backgroundColor: 'rgba(59, 130, 246, 0.1)', // blue-500/10
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 24,
+      marginBottom: 20,
       borderWidth: 1,
-      borderColor: 'rgba(239, 68, 68, 0.5)',
+      borderColor: 'rgba(59, 130, 246, 0.3)',
   },
   errorTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: 'white',
+      fontSize: 22,
+      fontWeight: '600',
+      color: '#1E293B',
       marginBottom: 12,
   },
   errorDesc: {
-      fontSize: 16,
-      color: '#CBD5E1', // slate-300
+      fontSize: 15,
+      color: '#64748B',
       textAlign: 'center',
-      marginBottom: 32,
-      lineHeight: 24,
+      marginBottom: 28,
+      lineHeight: 22,
   },
   retryButton: {
-      backgroundColor: 'white',
-      paddingHorizontal: 32,
-      paddingVertical: 16,
-      borderRadius: 16,
+      backgroundColor: '#3B82F6',
+      paddingHorizontal: 28,
+      paddingVertical: 14,
+      borderRadius: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
   },
   retryText: {
-      color: '#0F172A',
+      color: 'white',
       fontSize: 16,
-      fontWeight: 'bold',
+      fontWeight: '600',
+  },
+  homeButton: {
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+  },
+  homeText: {
+      color: '#64748B',
+      fontSize: 14,
+      fontWeight: '500',
   },
 });

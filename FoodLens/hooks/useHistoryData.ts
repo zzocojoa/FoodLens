@@ -58,6 +58,7 @@ export const useHistoryData = (userId: string) => {
                     type: safetyType as 'safe' | 'danger' | 'caution',
                     date: record.timestamp.toLocaleDateString(),
                     emoji: getEmoji(record.foodName),
+                    imageUri: record.imageUri, // Pass image URI
                     originalRecord: record
                 };
 

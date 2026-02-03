@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { CountryData } from '../models/History';
 import { THEME } from '../constants/theme';
 import { dataStore } from '../services/dataStore';
+import { FoodThumbnail } from './FoodThumbnail'; // NEW
 
 interface CountryCardProps {
     country: CountryData;
@@ -115,15 +116,16 @@ export default function CountryCard({
                             <Text style={{color: '#94A3B8', fontSize: 12}}>No {filter.toUpperCase()} records in this trip.</Text>
                         </View>
                     )}
-                    {(country.regions || []).map((region, rIdx) => (
-                        <View key={rIdx} style={{marginBottom: 16}}>
-                            {(region.items || []).some(i => isAllowedItemType(i.type) && matchesFilter(i.type)) && (
-                                <Text style={styles.regionTitle}>{region.name}</Text>
-                            )}
-                            
-                            {(region.items || [])
-                                .filter(i => isAllowedItemType(i.type) && matchesFilter(i.type))
-                                .map((item, itemIdx) => (
+                    {(country.regions || []).map((region, rIdx) => {
+                        const visibleItems = (region.items || []).filter(i => isAllowedItemType(i.type) && matchesFilter(i.type));
+                        
+                        return (
+                            <View key={rIdx} style={{marginBottom: 16}}>
+                                {visibleItems.length > 0 && (
+                                    <Text style={styles.regionTitle}>{region.name}</Text>
+                                )}
+                                
+                                {visibleItems.map((item, itemIdx) => (
                                     <View style={{marginBottom: 10}} key={`${country.country}-${region.name ?? rIdx}-${item.id}-${itemIdx}`}>
                                         <Swipeable
                                             ref={(ref) => {
@@ -158,7 +160,14 @@ export default function CountryCard({
                                                         </View>
                                                     )}
                                                     <View style={styles.emojiBox}>
-                                                        <Text style={{fontSize: 20}}>{item.emoji}</Text>
+                                                        {/* REPLACED: Text based emoji with FoodThumbnail */}
+                                                        <FoodThumbnail 
+                                                            uri={(item as any).imageUri} // Temporary cast until interface update
+                                                            emoji={item.emoji}
+                                                            style={{width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent'}}
+                                                            imageStyle={{borderRadius: 12}}
+                                                            fallbackFontSize={20}
+                                                        />
                                                     </View>
                                                     <View style={{flex: 1}}>
                                                         <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
@@ -186,8 +195,9 @@ export default function CountryCard({
                                         </Swipeable>
                                     </View>
                                 ))}
-                        </View>
-                    ))}
+                            </View>
+                        );
+                    })}
                 </View>
             )}
         </BlurView>

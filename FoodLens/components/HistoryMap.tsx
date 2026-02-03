@@ -1,6 +1,7 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
+import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import useSupercluster from 'use-supercluster';
 import { BlurView } from 'expo-blur';
 import { Globe } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
@@ -13,11 +14,103 @@ interface HistoryMapProps {
     onReady?: () => void;
 }
 
+const INITIAL_REGION = {
+    latitude: 20, longitude: 0,
+    latitudeDelta: 50, longitudeDelta: 50,
+};
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MAP_WIDTH = SCREEN_WIDTH - 40; // Subtract horizontal margins
+
+// Helper: Convert Zoom Level to Longitude Delta
+const getDeltaFromZoom = (zoom: number) => {
+    return (360 * (MAP_WIDTH / 256)) / Math.pow(2, zoom);
+};
+
+// Helper: Convert Longitude Delta to Zoom Level
+const getZoomFromDelta = (delta: number) => {
+    return Math.round(Math.log2(360 * ((MAP_WIDTH / 256) / delta)));
+};
+
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady }: HistoryMapProps) {
     const mapRef = useRef<MapView>(null);
     const [isMapReady, setIsMapReady] = useState(false);
     const [isMapError, setIsMapError] = useState(false);
     const [mapReloadKey, setMapReloadKey] = useState(0);
+    const [bounds, setBounds] = useState<any>(null);
+    const [zoom, setZoom] = useState(1);
+
+    // Flatten data to GeoJSON points for Supercluster
+    const points = useMemo(() => {
+        const _points: any[] = [];
+        data.forEach((country, countryIdx) => {
+            country.regions.forEach(region => {
+                region.items.forEach(item => {
+                     const loc = item.originalRecord.location;
+                     if (loc && loc.latitude && loc.longitude && (loc.latitude !== 0 || loc.longitude !== 0)) {
+                         _points.push({
+                             type: 'Feature',
+                             properties: {
+                                 cluster: false,
+                                 itemId: item.id,
+                                 countryId: `${country.country}-${countryIdx}`,
+                                 emoji: item.emoji,
+                                 name: item.name,
+                                 imageUri: item.originalRecord.imageUri, // Pass image URI
+                                 category: 'food'
+                             },
+                             geometry: {
+                                 type: 'Point',
+                                 coordinates: [loc.longitude, loc.latitude]
+                             }
+                         });
+                     }
+                });
+            });
+        });
+        return _points;
+    }, [data]);
+
+    // Use Supercluster Hook
+    const { clusters, supercluster } = useSupercluster({
+        points,
+        bounds,
+        zoom,
+        options: { radius: 35, maxZoom: 15 } // Reduced radius and maxZoom to force separation
+    });
+
+    // Update map bounds and zoom on change
+    const updateMapState = async (region?: Region) => {
+        if (!mapRef.current) return;
+        
+        try {
+            const boundaries = await mapRef.current.getMapBoundaries();
+            
+            // Convert region to bbox [west, south, east, north]
+            const newBounds = [
+                boundaries.southWest.longitude,
+                boundaries.southWest.latitude,
+                boundaries.northEast.longitude,
+                boundaries.northEast.latitude
+            ];
+            setBounds(newBounds);
+
+            // Calculate zoom level manually (Reliable on all platforms)
+            let longitudeDelta = region?.longitudeDelta;
+            
+            // If region object behaves oddly (iOS edge case), derive delta from boundaries
+            if (!longitudeDelta) {
+                longitudeDelta = boundaries.northEast.longitude - boundaries.southWest.longitude;
+                if (longitudeDelta < 0) longitudeDelta += 360; // Handle date line crossing
+            }
+
+            if (longitudeDelta) {
+                setZoom(getZoomFromDelta(longitudeDelta));
+            }
+        } catch (e) {
+            console.warn("Map update error:", e);
+        }
+    };
 
     // Timeout watchdog
     useEffect(() => {
@@ -60,7 +153,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
             )}
 
             {/* Empty State */}
-            {isMapReady && data.length === 0 && (
+            {isMapReady && points.length === 0 && (
                 <View style={[StyleSheet.absoluteFill, {alignItems: 'center', justifyContent: 'center', zIndex: 5, pointerEvents: 'none'}]}>
                     <BlurView intensity={40} tint="light" style={{padding: 20, borderRadius: 20, overflow: 'hidden', alignItems: 'center'}}>
                         <Text style={{fontSize: 32}}>🌏</Text>
@@ -74,34 +167,94 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 ref={mapRef}
                 style={styles.map}
                 provider={PROVIDER_DEFAULT}
-                initialRegion={initialRegion || {
-                    latitude: 20, longitude: 0,
-                    latitudeDelta: 50, longitudeDelta: 50,
-                }}
+                initialRegion={initialRegion || INITIAL_REGION}
                 onMapReady={() => {
                     setIsMapReady(true);
                     if (initialRegion) mapRef.current?.animateToRegion(initialRegion, 1000);
                     onReady?.();
+                    updateMapState();
                 }}
+                onRegionChangeComplete={updateMapState}
             >
-                {data.map((country, countryIdx) => {
-                    const coords = country.coordinates;
-                    if (!coords || coords.length < 2) return null;
+                {clusters.map((cluster) => {
+                    const [longitude, latitude] = cluster.geometry.coordinates;
+                    const { cluster: isCluster, point_count: pointCount } = cluster.properties;
+
+                    if (isCluster) {
+                        // CLUSTER MARKER (Photo Stack)
+                        const clusterId = cluster.id;
+                        
+                        // Get leaves to find the first image
+                        const leaves = supercluster?.getLeaves(clusterId, 1);
+                        const firstImage = (leaves && leaves[0]?.properties?.imageUri) || null;
+
+                        return (
+                            <Marker
+                                key={`cluster-${clusterId}`}
+                                coordinate={{ latitude, longitude }}
+                                onPress={() => {
+                                    const expansionZoom = Math.min(
+                                        supercluster.getClusterExpansionZoom(clusterId),
+                                        20
+                                    );
+                                    
+                                    // Apple Maps (compatible with Google Maps too) requires animateToRegion with deltas
+                                    // animateCamera({ zoom }) is often ignored or unreliable on iOS default maps
+                                    const longitudeDelta = getDeltaFromZoom(expansionZoom);
+                                    const latitudeDelta = longitudeDelta; // Use square ratio, map will adjust aspect
+
+                                    mapRef.current?.animateToRegion({
+                                        latitude,
+                                        longitude,
+                                        latitudeDelta,
+                                        longitudeDelta
+                                    }, 500);
+                                }}
+                            >
+                                <View style={styles.clusterContainer}>
+                                    {/* Photo Thumbnail */}
+                                    {firstImage ? (
+                                        <Image 
+                                            source={{ uri: firstImage }} 
+                                            style={styles.clusterImage} 
+                                        />
+                                    ) : (
+                                        <View style={[styles.clusterImage, { backgroundColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' }]}>
+                                             <Text>📷</Text>
+                                        </View>
+                                    )}
+                                    {/* Count Badge */}
+                                    <View style={styles.clusterBadge}>
+                                        <Text style={styles.clusterCountText}>{pointCount}</Text>
+                                    </View>
+                                </View>
+                            </Marker>
+                        );
+                    }
+
+                    // INDIVIDUAL MARKER
                     return (
-                        <Marker 
-                            key={`${country.country}-${countryIdx}`}
-                            coordinate={{ latitude: coords[1], longitude: coords[0] }}
-                            onPress={() => onMarkerPress(`${country.country}-${countryIdx}`)}
+                        <Marker
+                            key={`pin-${cluster.properties.itemId}`}
+                            coordinate={{ latitude, longitude }}
+                            onPress={() => onMarkerPress(cluster.properties.countryId)}
                         >
-                            <TouchableOpacity activeOpacity={0.9} style={styles.mapPinContainer}>
+                             <TouchableOpacity activeOpacity={0.9} style={styles.mapPinContainer}>
                                 <View pointerEvents="none">
                                     <BlurView intensity={80} tint="light" style={styles.mapLabel}>
                                         <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
-                                            {country.country} ({country.total})
+                                            {cluster.properties.name}
                                         </Text>
                                     </BlurView>
                                     <View style={styles.mapPinCircle}>
-                                        <Text style={{fontSize: 16}}>{country.flag}</Text>
+                                        {cluster.properties.imageUri ? (
+                                            <Image 
+                                                source={{ uri: cluster.properties.imageUri }} 
+                                                style={{ width: '100%', height: '100%', borderRadius: 16 }}
+                                            />
+                                        ) : (
+                                            <Text style={{fontSize: 16}}>{cluster.properties.emoji}</Text>
+                                        )}
                                     </View>
                                 </View>
                             </TouchableOpacity>
@@ -148,6 +301,13 @@ const styles = StyleSheet.create({
     mapLabel: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', marginBottom: 4 },
     mapLabelText: { fontSize: 10, fontWeight: '700', color: '#1E293B', maxWidth: 100 },
     mapPinCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
+    
+    // Cluster Styles
+    clusterContainer: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    clusterImage: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#FFFFFF' },
+    clusterBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#2563EB', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'white' },
+    clusterCountText: { color: 'white', fontSize: 10, fontWeight: '700' },
+
     mapOverlay: { position: 'absolute', bottom: 20, left: 20, right: 20, borderRadius: 32 },
     insightCard: { padding: 20, borderRadius: 32, overflow: 'hidden' },
     insightHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
