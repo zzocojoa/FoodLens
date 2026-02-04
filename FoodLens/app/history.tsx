@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Platform, UIManager, Alert } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +27,9 @@ export default function HistoryScreen() {
     } = useHistoryFilter();
 
     const [archiveMode, setArchiveMode] = useState<'map' | 'list'>('map');
+    
+    // NEW: Persist user's last map viewport between view toggles
+    const savedMapRegionRef = useRef<any>(null);
     
     // Edit Mode State
     const [isEditMode, setIsEditMode] = useState(false);
@@ -139,10 +142,13 @@ export default function HistoryScreen() {
                 {archiveMode === 'map' ? (
                     <HistoryMap 
                         data={archiveData}
-                        initialRegion={initialRegion}
+                        initialRegion={savedMapRegionRef.current || initialRegion}
                         onMarkerPress={(id) => {
                             handleSwitchMode('list');
                             setExpandedCountries(new Set([id]));
+                        }}
+                        onRegionChange={(region) => {
+                            savedMapRegionRef.current = region;
                         }}
                     />
                 ) : (
