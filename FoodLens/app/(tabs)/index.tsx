@@ -25,6 +25,7 @@ const { width } = Dimensions.get('window');
 import { THEME } from '../../constants/theme';
 import { getEmoji, formatDate, validateCoordinates, getLocationData, decimalToDMS } from '../../services/utils';
 import { SecureImage } from '../../components/SecureImage';
+import SpatialApple from '../../components/SpatialApple';
 
 import { useFocusEffect } from '@react-navigation/native';
 import { AnalysisService, AnalysisRecord } from '../../services/analysisService';
@@ -365,12 +366,14 @@ export default function HomeScreen() {
           
           {/* ... existing Hero and Stats ... */}
           {/* Hero Section */}
-          <View style={[styles.heroCard, THEME.glass]}>
-             <View style={styles.heroGlow} />
-             <Text style={styles.heroEmoji}>🍎</Text>
-             <Text style={styles.heroTitle}>Food Lens</Text>
-             <Text style={styles.heroSubtitle}>Travel Safe, Eat Smart</Text>
-          </View>
+           <View style={[styles.heroCard, THEME.glass]}>
+              <View style={styles.heroGlow} />
+              <View style={styles.heroEmoji}>
+                  <SpatialApple size={100} />
+              </View>
+              <Text style={styles.heroTitle}>Food Lens</Text>
+              <Text style={styles.heroSubtitle}>Travel Safe, Eat Smart</Text>
+           </View>
 
           {/* Bento Grid Stats */}
           <View style={styles.statsGrid}>
