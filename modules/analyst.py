@@ -301,6 +301,7 @@ class FoodAnalyst:
         - **Naming Rule**: Use ONLY standard proper nouns (Strict Naming). No adjectives like "Delicious" or "Spicy".
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
+        - **Safety Status**: MUST be one of "SAFE", "WARNING", "DANGER". Do not use sentences.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
 
         ## 4. Output Format (Flat JSON Only)
