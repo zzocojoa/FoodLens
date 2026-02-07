@@ -13,6 +13,7 @@ import tempfile
 from modules.nutrition import lookup_nutrition
 from google.api_core import retry
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+import traceback
 
 # ISO 3166-1 alpha-2 country code → Primary language mapping
 # Used for translation card generation and localization
@@ -213,7 +214,6 @@ class FoodAnalyst:
             print(f"[Model Debug] ✓ GenerativeModel created successfully")
         except Exception as e:
             print(f"[Model Debug] ✗ GenerativeModel creation FAILED: {e}")
-            import traceback
             traceback.print_exc()
             raise
 
@@ -670,7 +670,6 @@ class FoodAnalyst:
                     # If primary model fails (404, 429, etc.), switch to backup
                     print(f"[Model Fallback] Primary model ({self.model_name}) failed: {e}")
                     print(f"[Model Fallback] Error type: {type(e).__name__}")
-                    import traceback
                     print(f"[Model Fallback] Full traceback:")
                     traceback.print_exc()
                     print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
@@ -716,20 +715,5 @@ class FoodAnalyst:
             else:
                 user_msg = "이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요."
             
-            # Return unified fallback schema (same structure as normal response)
-            return {
-                "foodName": "분석 오류",
-                "foodName_en": "Analysis Error",
-                "foodName_ko": "분석 오류",
-                "canonicalFoodId": "error",
-                "foodOrigin": "unknown",
-                "safetyStatus": "CAUTION",
-                "confidence": 0,
-                "ingredients": [],
-                "translationCard": {
-                    "language": "Korean",
-                    "text": None,
-                    "audio_query": None
-                },
-                "raw_result": user_msg
-            }
+            # Return unified fallback schema (reuse existing method)
+            return self._get_safe_fallback_response(user_msg)
