@@ -781,10 +781,10 @@ class FoodAnalyst:
                     print(f"[Model Fallback] Error type: {type(e).__name__}")
                     print(f"[Model Fallback] Full traceback:")
                     traceback.print_exc()
-                    print(f"[Model Fallback] Switching to backup model: gemini-1.5-flash-002")
+                    print(f"[Model Fallback] Switching to backup model: gemini-1.5-flash")
                     
                     try:
-                        backup_model = GenerativeModel("gemini-1.5-flash-002")
+                        backup_model = GenerativeModel("gemini-1.5-flash")
                         # Reuse same config/safety settings
                         response = retry_policy(backup_model.generate_content)(
                             [prompt, vertex_image],
