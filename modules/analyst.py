@@ -341,9 +341,10 @@ class FoodAnalyst:
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
-        - **Response Cleanliness Rule (CRITICAL)**:
-          - translationCard.text must be CONCISE (max 150 characters)
-          - DO NOT add unnecessary whitespace, newlines, or padding
+        - **Response Cleanliness Rule (CRITICAL - PREVENT LOOPS)**:
+          - translationCard.text: EXACTLY 1 sentence, MAX 50 characters total
+          - DO NOT repeat any phrase or sentence
+          - DO NOT add emojis, whitespace, newlines, or padding
           - End JSON cleanly - NO trailing characters after the closing }}
           - Output ONLY valid JSON, nothing else
 
@@ -369,7 +370,7 @@ class FoodAnalyst:
             ],
            "translationCard": {{
                "language": "ko",
-               "text": "Short allergy warning (max 150 chars)",
+               "text": "Allergy safe (max 50 chars)",
                "audio_query": "TTS version"
            }}
         }}
@@ -405,6 +406,10 @@ class FoodAnalyst:
         text = re.sub(r'\n{3,}', '\n', text)  # 3+ consecutive newlines -> 1
         text = re.sub(r'\\n{3,}', '\\n', text)  # Escaped \n spam -> single \n
         
+        # Step 0.5: Remove repetition loops (same 20+ char pattern repeated 2+ times)
+        text = re.sub(r'(.{20,}?)\1{2,}', r'\1', text)
+        print(f"[PARSE DEBUG] After repetition removal: {len(text)} chars")
+        
         # Step 1: Remove markdown code block wrappers
         original_text = text
         if text.startswith("```json"):
@@ -425,6 +430,13 @@ class FoodAnalyst:
         try:
             result = json.loads(text)
             print(f"[PARSE DEBUG] ✓ Standard JSON parse SUCCESS")
+            # Truncate translationCard.text if too long
+            if 'translationCard' in result and isinstance(result['translationCard'], dict):
+                if 'text' in result['translationCard'] and result['translationCard']['text']:
+                    original_len = len(result['translationCard']['text'])
+                    result['translationCard']['text'] = result['translationCard']['text'][:100]
+                    if original_len > 100:
+                        print(f"[PARSE DEBUG] Truncated translationCard.text from {original_len} to 100 chars")
             return result
         except json.JSONDecodeError as e:
             print(f"[PARSE DEBUG] ✗ Standard JSON parse FAILED: {e}")
