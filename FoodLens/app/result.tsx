@@ -41,7 +41,7 @@ export default function ResultScreen() {
   useAutoSave(result, locationData, rawImageUri);
 
   // 3. Algorithm Layer (Pins)
-  const { pins } = usePinLayout(result?.ingredients, rawImageUri);
+  const { pins, layoutStyle } = usePinLayout(result?.ingredients, rawImageUri);
 
   // 4. UI Layer (Animations & State)
   const { 
@@ -197,6 +197,7 @@ export default function ResultScreen() {
         headerOverlayStyle={headerOverlayStyle}
         pins={pins}
         scrollY={scrollY}
+        layoutStyle={layoutStyle}
       />
 
       {/* 2. Nav Bar */}
@@ -219,7 +220,7 @@ export default function ResultScreen() {
       <Animated.ScrollView 
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 40, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 160, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         <ResultContent 
@@ -245,7 +246,7 @@ export default function ResultScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#000',
   },
   loadingContainer: {
     flex: 1,

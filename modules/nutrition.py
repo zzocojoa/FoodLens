@@ -4,6 +4,8 @@ Priority: 1. Korean FDA (식약처) → 2. USDA → 3. Open Food Facts
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import httpx
 from typing import Optional, Dict, Any
 from urllib.parse import quote
@@ -18,7 +20,7 @@ FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 # Timeout Configuration (seconds)
 # Shorter timeouts for faster fallback to next API
 API_TIMEOUT_FAST = 3.0       # For reliable APIs (USDA, Korean FDA)
-API_TIMEOUT_SLOW = 2.0       # For slow/unreliable APIs (Open Food Facts)
+API_TIMEOUT_SLOW = 10.0      # Increased for Open Food Facts reliability
 API_CONNECT_TIMEOUT = 2.0    # Connection timeout (fail fast if server unreachable)
 
 # Food name synonyms for fuzzy matching
@@ -455,9 +457,14 @@ class NutritionLookup:
                         energy_kj = nutrients.get("energy_100g", 0)
                         energy = energy_kj / 4.184 if energy_kj else 0
                     
-                    return {
-                        "calories": round(energy, 1) if energy else None,
-                        "protein": nutrients.get("proteins_100g"),
+                    if energy:
+                        try:
+                            # Debug log for type issue
+                            # print(f"DEBUG: Energy value: {energy}, Type: {type(energy)}")
+                            energy = float(energy)
+                            return {
+                                "calories": round(energy, 1),
+                                "protein": nutrients.get("proteins_100g"),
                         "carbs": nutrients.get("carbohydrates_100g"),
                         "fat": nutrients.get("fat_100g"),
                         "fiber": nutrients.get("fiber_100g"),

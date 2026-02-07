@@ -202,8 +202,8 @@ class FoodAnalyst:
 
     def __init__(self):
         self._configure_vertex_ai()
-        model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
-        self.model = GenerativeModel(model_name)
+        self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
+        self.model = GenerativeModel(self.model_name)
 
     def _configure_vertex_ai(self):
         """
@@ -286,57 +286,41 @@ class FoodAnalyst:
     def _build_analysis_prompt(self, allergy_info: str, iso_current_country: str) -> str:
         """Constructs the analysis prompt based on user context."""
         return f"""
-        You are an expert nutritionist and food safety AI.
-        
-        Analyze this food image.
-        The user has the following allergies/dietary restrictions: {allergy_info}.
-        The user is currently in a country with ISO code: {iso_current_country}.
-        
-        Identify the food name. Return ONLY the concise, common name of the dish (e.g., "Kimchi Jjigae", "Pepperoni Pizza"). Avoid descriptive adjectives (e.g., "Spicy homemade steam...").
-        Classify the food origin as one of: "korean", "western", "asian", "single_ingredient", or "other".
-        - "korean": Korean dishes (김치찌개, 비빔밥, 불고기, etc.)
-        - "western": Western dishes (pasta, pizza, steak, etc.)
-        - "asian": Other Asian dishes (sushi, pad thai, mapo tofu, etc.)
-        - "single_ingredient": Simple single items (orange, banana, egg, chicken breast, etc.)
-        - "other": Everything else
-        
-        List the likely ingredients. For each ingredient name, provide ONLY the common name (e.g., "Egg", "Rice"). Do NOT use parentheses or extra descriptions (e.g., avoid "Egg (boiled)" or "White Rice").
-        Determine if the food is SAFE, CAUTION, or DANGER based on the visible ingredients and the user's restrictions.
-        Provide a confidence score (0-100) for how certain you are about the food identification.
+        # [System Prompt: Food Lens Expert Engine v3.0 - Flat Edition]
 
-        [Traveler Allergy Card Generation]
-        If the user has allergies (`{allergy_info}` is not "None"), generate a translation card in the LOCAL LANGUAGE of the country code `{iso_current_country}`.
-        The card text should be a polite request to remove or warn about the specific allergens found in this dish. 
-        Example (if in Thailand, Peanut Allergy): "ฉันแพ้ถั่วลิสงครับ ช่วยระวังไม่ให้มีถั่วลิสงในอาหารนี้ได้ไหมครับ" (I am allergic to peanuts. Can you please ensure there are no peanuts in this dish?)
-        If `{iso_current_country}` is 'US' or 'UK' or English-speaking, just provide the English text.
-        If the user has NO allergies, set "text" to null.
+        ## 1. Role & Identity
+        You are an expert nutritionist, food safety AI, and the core analysis engine for the iOS app 'Food Lens'. You will analyze the uploaded image through a 3-stage reasoning logic (Dish Identification -> Contextual Probability -> Texture Verification) and output the result as a single-layer JSON (Flat JSON).
+
+        ## 2. Mandatory Analysis Logic
+        1. **Dish Identification**: Determine the cuisine origin (korean, western, etc.) and specific name based on table setting and utensils.
+        2. **Contextual Probability**: Adjust the probability of visual ingredients based on the standard recipe of the identified dish.
+        3. **Texture Verification**: Verify detailed textures such as muscle fibers (meat), leaf veins (vegetables), and gloss (processed foods).
+
+        ## 3. Constraints & Input Data
+        - **Input Variables**: User allergy info `{allergy_info}`, Current ISO country code `{iso_current_country}`.
+        - **Naming Rule**: Use ONLY standard proper nouns (Strict Naming). No adjectives like "Delicious" or "Spicy".
+        - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
+        - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
+        - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
+
+        ## 4. Output Format (Flat JSON Only)
+        All fields must be at the root level (no nested objects, except for lists).
         
-        If the image is not food, return "Not Food" as the food name and DANGER with low confidence.
-        
-        IMPORTANT: Do NOT include bounding boxes (box_2d) in your response. They are not needed.
-        
-        Return ONLY a valid JSON object (no comments, no trailing commas) with this exact structure:
+        Return ONLY a valid JSON object with this EXACT structure:
         {{
-            "foodName": "Name of the food (primary display name)",
-            "foodName_en": "English name for nutrition lookup (e.g., Kimchi Stew)",
-            "foodName_ko": "Korean name if applicable (e.g., 김치찌개)",
-            "canonicalFoodId": "Standardized ID for DB matching (e.g., kimchi_jjigae, pepperoni_pizza)",
-            "foodOrigin": "korean",
-            "safetyStatus": "SAFE",
-            "confidence": 85,
-            "ingredients": [
-                {{ 
-                    "name": "ingredient name", 
-                    "isAllergen": false
+           "foodName": "Name of the food",
+           ...
+           "ingredients": [
+                {{
+                  "name": "Ingredient Name",
+                  "bbox": [100, 200, 300, 400],  <-- MANDATORY: [ymin, xmin, ymax, xmax]
+                  "isAllergen": true,
+                  "riskReason": "Visible ingredient"
                 }}
             ],
-            "translationCard": {{
-                "language": "Target Language Name",
-                "text": "Translated Alert Message in Local Script",
-                "audio_query": "English description for TTS"
-            }},
-            "raw_result": "A brief 1-sentence explanation of why it is safe or not."
+           ...
         }}
+        Example of bbox: [150, 200, 450, 600] (Normalized 0-1000)
         """
 
     def _prepare_vertex_image(self, pil_image: Image.Image) -> VertexImage:
@@ -574,7 +558,7 @@ class FoodAnalyst:
             "temperature": 0.2,
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 1024,
+            "max_output_tokens": 4096,
             "response_mime_type": "application/json",
         }
 
@@ -582,10 +566,10 @@ class FoodAnalyst:
         # - BLOCK_LOW_AND_ABOVE: Block most inappropriate content
         # - Second layer filtering at app level via _sanitize_response()
         safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
         }
 
         try:
@@ -623,12 +607,17 @@ class FoodAnalyst:
                     safety_settings=safety_settings
                 )
             
+
+            print(f"[Internal Log] Finish Reason: {response.candidates[0].finish_reason}")
             result = self._parse_ai_response(response.text)
-            result = self._strip_box2d(result)  # Remove unreliable bbox data
+            # result = self._strip_box2d(result)  # ENABLED: Keep bbox data from v3.0 prompt
             print(f"AI Response JSON: {json.dumps(result, indent=2)}")  # Debug log
             
             result = self._enrich_with_nutrition(result)
             result = self._sanitize_response(result)  # P2: App-level content filter
+            
+            # Attach model info for debugging/verification
+            result["used_model"] = self.model_name
             
             return result
             

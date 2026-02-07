@@ -72,6 +72,7 @@ export interface AnalyzedData {
   nutrition?: NutritionData;
   translationCard?: TranslationCard;
   raw_result?: string;
+  used_model?: string;
 }
 
 const ANALYSIS_TIMEOUT_MS = 180000; // 180 seconds (to account for Render cold starts)

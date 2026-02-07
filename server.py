@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 import os
 
 # Load Env
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+print(f"DEBUG: Loaded .env from {dotenv_path}")
+print(f"DEBUG: MAX_OUTPUT_TOKENS check -> {os.getenv('GEMINI_MODEL_NAME')}")
 
 app = FastAPI()
 
