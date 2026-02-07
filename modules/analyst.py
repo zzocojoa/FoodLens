@@ -315,6 +315,11 @@ class FoodAnalyst:
           - ❌ FORBIDDEN: "Gnocchi with Chicken Wings", "한국 전통 음식의 곱창전골", "Spicy Ramen"
           - ✅ CORRECT: "Gnocchi", "곱창전골", "Ramen" (main dish name only)
           - For multi-item plates, use the MAIN dish name only.
+        - **safetyStatus Rule (MANDATORY ENUM)**:
+          - Must be EXACTLY one of: "SAFE", "CAUTION", "DANGER"
+          - SAFE: No allergens detected for this user
+          - CAUTION: Possible allergens or uncertain ingredients
+          - DANGER: Confirmed allergen present (isAllergen: true exists)
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
@@ -612,7 +617,7 @@ class FoodAnalyst:
                 "foodName_ko": {"type": "STRING"},
                 "canonicalFoodId": {"type": "STRING"},
                 "foodOrigin": {"type": "STRING"},
-                "safetyStatus": {"type": "STRING"},
+                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
                 "confidence": {"type": "INTEGER"},
                 "ingredients": {
                     "type": "ARRAY",
