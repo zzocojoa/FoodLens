@@ -676,7 +676,7 @@ class FoodAnalyst:
                     print("[Model Fallback] Switching to backup model: gemini-1.5-flash-001")
                     
                     try:
-                        backup_model = GenerativeModel("gemini-1.5-flash-001")
+                        backup_model = GenerativeModel("gemini-2.0-flash")
                         # Reuse same config/safety settings
                         response = retry_policy(backup_model.generate_content)(
                             [prompt, vertex_image],
