@@ -341,6 +341,11 @@ class FoodAnalyst:
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
+        - **Response Cleanliness Rule (CRITICAL)**:
+          - translationCard.text must be CONCISE (max 150 characters)
+          - DO NOT add unnecessary whitespace, newlines, or padding
+          - End JSON cleanly - NO trailing characters after the closing }}
+          - Output ONLY valid JSON, nothing else
 
         ## 4. Output Format (Flat JSON Only) - ALL FIELDS MANDATORY
         All fields must be at the root level (no nested objects, except for lists).
@@ -364,8 +369,8 @@ class FoodAnalyst:
             ],
            "translationCard": {{
                "language": "ko",
-               "text": "Allergy warning message",
-               "audio_query": "Text-to-speech version"
+               "text": "Short allergy warning (max 150 chars)",
+               "audio_query": "TTS version"
            }}
         }}
         """
@@ -394,6 +399,11 @@ class FoodAnalyst:
         # === DIAGNOSTIC LOGGING END ===
         
         text = response_text.strip()
+        
+        # Step 0: Normalize excessive newlines (prevent JSON parsing failures)
+        import re
+        text = re.sub(r'\n{3,}', '\n', text)  # 3+ consecutive newlines -> 1
+        text = re.sub(r'\\n{3,}', '\\n', text)  # Escaped \n spam -> single \n
         
         # Step 1: Remove markdown code block wrappers
         original_text = text
