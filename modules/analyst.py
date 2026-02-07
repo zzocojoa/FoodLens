@@ -766,34 +766,13 @@ class FoodAnalyst:
                 print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
                 print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
 
-                try:
-                    # [Primary Attempt]
-                    response = retry_policy(self.model.generate_content)(
-                        [prompt, vertex_image],
-                        generation_config=generation_config,
-                        safety_settings=safety_settings
-                    )
-                    print(f"[API Debug] ✓ Primary model response received")
-                except Exception as e:
-                    # [Fallback Logic]
-                    # If primary model fails (404, 429, etc.), switch to backup
-                    print(f"[Model Fallback] Primary model ({self.model_name}) failed: {e}")
-                    print(f"[Model Fallback] Error type: {type(e).__name__}")
-                    print(f"[Model Fallback] Full traceback:")
-                    traceback.print_exc()
-                    print(f"[Model Fallback] Switching to backup model: gemini-1.5-flash")
-                    
-                    try:
-                        backup_model = GenerativeModel("gemini-1.5-flash")
-                        # Reuse same config/safety settings
-                        response = retry_policy(backup_model.generate_content)(
-                            [prompt, vertex_image],
-                            generation_config=generation_config,
-                            safety_settings=safety_settings
-                        )
-                    except Exception as fallback_error:
-                        print(f"[Model Fallback] Backup model also failed: {fallback_error}")
-                        raise fallback_error  # Re-raise if both fail
+                # [Primary Attempt]
+                response = retry_policy(self.model.generate_content)(
+                    [prompt, vertex_image],
+                    generation_config=generation_config,
+                    safety_settings=safety_settings
+                )
+                print(f"[API Debug] ✓ Primary model response received")
             
 
             print(f"[Internal Log] Finish Reason: {response.candidates[0].finish_reason}")
