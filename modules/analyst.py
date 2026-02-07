@@ -310,7 +310,11 @@ class FoodAnalyst:
 
         ## 3. Constraints & Input Data
         - **Input Variables**: User allergy info `{allergy_info}`, Current ISO country code `{iso_current_country}`.
-        - **Naming Rule**: Use ONLY standard proper nouns (Strict Naming). No adjectives like "Delicious" or "Spicy".
+        - **Naming Rule (엄격 준수)**: 
+          - Use ONLY standard proper nouns. NO modifiers or descriptions allowed.
+          - ❌ FORBIDDEN: "Gnocchi with Chicken Wings", "한국 전통 음식의 곱창전골", "Spicy Ramen"
+          - ✅ CORRECT: "Gnocchi", "곱창전골", "Ramen" (main dish name only)
+          - For multi-item plates, use the MAIN dish name only.
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
