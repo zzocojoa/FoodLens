@@ -37,9 +37,12 @@ export function usePinLayout(ingredients: any[] | undefined, imageUri: string | 
         return { ...ing, cx, cy };
       });
     } else {
-       // Fallback to algorithmic layout
        basePins = generatePinLayout(ingredients);
     }
+    
+    console.log("[usePinLayout] Ingredients count:", ingredients.length);
+    console.log("[usePinLayout] Has Real Coordinates:", hasRealCoordinates);
+    console.log("[usePinLayout] Base Pins:", JSON.stringify(basePins, null, 2));
     
     // Calculate layout style for the image itself to match pin logic
     let layoutStyle = {};
