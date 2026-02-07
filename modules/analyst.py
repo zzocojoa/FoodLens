@@ -360,6 +360,11 @@ class FoodAnalyst:
            "foodOrigin": "korean|western|japanese|chinese|etc",
            "confidence": 85,
            "safetyStatus": "SAFE|CAUTION|DANGER",
+           "translationCard": {{
+               "language": "ko",
+               "text": "Allergy safe (max 50 chars)",
+               "audio_query": "TTS version"
+           }},
            "ingredients": [
                 {{
                   "name": "Ingredient Name",
@@ -367,12 +372,7 @@ class FoodAnalyst:
                   "isAllergen": false,
                   "riskReason": "Visible ingredient"
                 }}
-            ],
-           "translationCard": {{
-               "language": "ko",
-               "text": "Allergy safe (max 50 chars)",
-               "audio_query": "TTS version"
-           }}
+            ]
         }}
         """
 
@@ -781,10 +781,10 @@ class FoodAnalyst:
                     print(f"[Model Fallback] Error type: {type(e).__name__}")
                     print(f"[Model Fallback] Full traceback:")
                     traceback.print_exc()
-                    print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
+                    print(f"[Model Fallback] Switching to backup model: gemini-1.5-flash-002")
                     
                     try:
-                        backup_model = GenerativeModel("gemini-2.0-flash")
+                        backup_model = GenerativeModel("gemini-1.5-flash-002")
                         # Reuse same config/safety settings
                         response = retry_policy(backup_model.generate_content)(
                             [prompt, vertex_image],
