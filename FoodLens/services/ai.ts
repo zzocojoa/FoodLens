@@ -68,6 +68,8 @@ export interface AnalyzedData {
     name: string;
     isAllergen: boolean;
     box_2d?: number[];
+    bbox?: number[];
+    nutrition?: NutritionData;
   }[];
   nutrition?: NutritionData;
   translationCard?: TranslationCard;

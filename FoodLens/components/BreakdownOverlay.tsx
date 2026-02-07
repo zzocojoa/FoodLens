@@ -206,36 +206,50 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
               </View>
             )}
 
-            {/* ID Confidence Section */}
+            {/* Per-Ingredient Nutrition Section */}
             <View style={styles.confidenceSection}>
               <View style={styles.sectionHeader}>
                 <Zap size={18} color="#FBBF24" fill="#FBBF24" />
-                <Text style={styles.sectionTitle}>ID Confidence</Text>
+                <Text style={styles.sectionTitle}>Ingredients</Text>
               </View>
               
-              {resultData.ingredients.map((item, index) => (
-                <View key={index} style={styles.ingredientRow}>
-                  <View style={styles.ingredientInfo}>
-                    <Text style={styles.ingredientName}>{item.name}</Text>
-                    {item.isAllergen && (
-                      <View style={styles.allergenTag}>
-                        <Text style={styles.allergenTagText}>ALLERGEN</Text>
+              {resultData.ingredients.map((item, index) => {
+                const ingNutrition = item.nutrition;
+                const ingCal = ingNutrition?.calories ?? null;
+                
+                return (
+                  <View key={index} style={styles.ingredientRow}>
+                    <View style={styles.ingredientInfo}>
+                      <Text style={styles.ingredientName}>{item.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {item.isAllergen && (
+                          <View style={styles.allergenTag}>
+                            <Text style={styles.allergenTagText}>ALLERGEN</Text>
+                          </View>
+                        )}
+                        {ingCal !== null && (
+                          <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>
+                            {Math.round(ingCal)} kcal
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    {ingNutrition && (
+                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                          P: {ingNutrition.protein?.toFixed(1) ?? '-'}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                          C: {ingNutrition.carbs?.toFixed(1) ?? '-'}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                          F: {ingNutrition.fat?.toFixed(1) ?? '-'}g
+                        </Text>
                       </View>
                     )}
                   </View>
-                  <View style={styles.confidenceBar}>
-                    <View 
-                      style={[
-                        styles.confidenceFill,
-                        { 
-                          width: '80%', // Default confidence since we don't have per-ingredient confidence
-                          backgroundColor: item.isAllergen ? '#F43F5E' : '#3B82F6' 
-                        }
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
 
           </ScrollView>

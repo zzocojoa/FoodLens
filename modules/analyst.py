@@ -453,8 +453,8 @@ class FoodAnalyst:
 
     def _enrich_with_nutrition(self, result: dict) -> dict:
         """
-        Enriches the analysis result with nutrition data if applicable.
-        Uses multiple food name variants for better matching success.
+        Enriches the analysis result with nutrition data for each ingredient.
+        Also calculates total nutrition across all ingredients.
         """
         food_origin = result.get("foodOrigin", "unknown")
         
@@ -463,31 +463,65 @@ class FoodAnalyst:
         if result.get("foodName", "") in error_names:
             return result
         
-        # Try multiple name variants for better matching
-        name_variants = []
+        # Initialize total nutrition accumulator
+        total_nutrition = {
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0,
+            "fiber": 0,
+            "sodium": 0,
+            "sugar": 0,
+            "servingSize": "100g (total)",
+            "dataSource": "Multiple Sources"
+        }
+        sources = set()
+        has_any_nutrition = False
         
-        # Priority order: English name (best for APIs) → Korean → Display name → Canonical ID
-        if result.get("foodName_en"):
-            name_variants.append(result["foodName_en"])
-        if result.get("foodName_ko") and food_origin == "korean":
-            name_variants.append(result["foodName_ko"])
-        if result.get("foodName"):
-            name_variants.append(result["foodName"])
-        if result.get("canonicalFoodId"):
-            # Convert canonical ID to readable format (e.g., "kimchi_jjigae" → "kimchi jjigae")
-            name_variants.append(result["canonicalFoodId"].replace("_", " "))
-        
-        # Try each variant until we get valid nutrition data
-        for name in name_variants:
-            if not name:
+        # Per-ingredient nutrition lookup
+        ingredients = result.get("ingredients", [])
+        for ingredient in ingredients:
+            if not isinstance(ingredient, dict):
                 continue
-            nutrition_data = lookup_nutrition(name, food_origin)
+            
+            ing_name = ingredient.get("name", "")
+            if not ing_name:
+                continue
+            
+            # Lookup nutrition for this ingredient
+            nutrition_data = lookup_nutrition(ing_name, food_origin)
+            
             if nutrition_data and nutrition_data.get("calories") is not None:
-                result["nutrition"] = nutrition_data
-                print(f"Nutrition Data ({nutrition_data.get('dataSource', 'Unknown')}): matched with '{name}'")
-                return result
+                ingredient["nutrition"] = nutrition_data
+                has_any_nutrition = True
+                
+                # Accumulate totals (safe addition with None handling)
+                for key in ["calories", "protein", "carbs", "fat", "fiber", "sodium", "sugar"]:
+                    if nutrition_data.get(key) is not None:
+                        total_nutrition[key] = (total_nutrition.get(key) or 0) + float(nutrition_data[key])
+                
+                sources.add(nutrition_data.get("dataSource", "Unknown"))
+                print(f"  ↳ {ing_name}: {nutrition_data.get('calories')} kcal ({nutrition_data.get('dataSource')})")
+            else:
+                print(f"  ↳ {ing_name}: No nutrition data found")
         
-        print(f"[Internal Log] No nutrition data found for any variant: {name_variants}")
+        # Set total nutrition if any data was found
+        if has_any_nutrition:
+            total_nutrition["dataSource"] = " + ".join(sources) if sources else "Unknown"
+            result["nutrition"] = total_nutrition
+            print(f"Total Nutrition: {total_nutrition['calories']:.1f} kcal from {len(sources)} source(s)")
+        else:
+            # Fallback: try main food name if no ingredient data
+            name_variants = [result.get("foodName_en"), result.get("foodName"), result.get("canonicalFoodId", "").replace("_", " ")]
+            for name in name_variants:
+                if not name:
+                    continue
+                nutrition_data = lookup_nutrition(name, food_origin)
+                if nutrition_data and nutrition_data.get("calories") is not None:
+                    result["nutrition"] = nutrition_data
+                    print(f"Nutrition Data ({nutrition_data.get('dataSource')}): fallback to '{name}'")
+                    break
+        
         return result
 
     def _sanitize_response(self, result: dict) -> dict:
