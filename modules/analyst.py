@@ -408,7 +408,25 @@ class FoodAnalyst:
         
         # Step 0.5: Remove repetition loops (same 20+ char pattern repeated 2+ times)
         text = re.sub(r'(.{20,}?)\1{2,}', r'\1', text)
-        print(f"[PARSE DEBUG] After repetition removal: {len(text)} chars")
+        
+        # Step 0.6: Force truncate translationCard.text before parsing (50 chars max)
+        # This prevents multi-language repetition loops from breaking JSON
+        def truncate_text_field(match):
+            return match.group(1) + match.group(2)[:50] + '"'
+        text = re.sub(r'("text"\s*:\s*")([^"]{0,50})[^"]*"', truncate_text_field, text)
+        
+        # Step 0.7: Fix unterminated strings by finding last valid } and closing
+        # If JSON ends mid-string, try to close it
+        if text.count('"') % 2 == 1:  # Odd number of quotes = unterminated string
+            last_brace = text.rfind('}')
+            if last_brace > 0:
+                # Find the last complete object by looking for pattern }\n  }
+                text = text[:last_brace+1]
+                # Ensure it ends properly
+                if not text.rstrip().endswith('}'):
+                    text = text.rstrip() + '"}'
+        
+        print(f"[PARSE DEBUG] After text truncation: {len(text)} chars")
         
         # Step 1: Remove markdown code block wrappers
         original_text = text
