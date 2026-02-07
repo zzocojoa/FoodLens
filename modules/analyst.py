@@ -203,12 +203,6 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
-
-        # [Strict Mode] Force gemini-1.5-pro-002 for robust JSON Schema support
-        if "flash" in self.model_name or "2.0" in self.model_name:
-            print(f"[Model Override] Upgrading from {self.model_name} to gemini-1.5-pro-002")
-            self.model_name = "gemini-1.5-pro-002"
-
         self.model = GenerativeModel(self.model_name)
 
     def _configure_vertex_ai(self):
