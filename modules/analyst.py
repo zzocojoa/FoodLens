@@ -673,7 +673,7 @@ class FoodAnalyst:
                     import traceback
                     print(f"[Model Fallback] Full traceback:")
                     traceback.print_exc()
-                    print("[Model Fallback] Switching to backup model: gemini-1.5-flash-001")
+                    print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
                     
                     try:
                         backup_model = GenerativeModel("gemini-2.0-flash")
