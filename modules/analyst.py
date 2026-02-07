@@ -553,6 +553,45 @@ class FoodAnalyst:
         normalized_allergens = format_allergens_for_prompt(allergy_info)
         prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
         
+        # Define Schema for Structured Output (Strict Mode)
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "foodName": {"type": "STRING"},
+                "foodName_en": {"type": "STRING"},
+                "foodName_ko": {"type": "STRING"},
+                "canonicalFoodId": {"type": "STRING"},
+                "foodOrigin": {"type": "STRING"},
+                "safetyStatus": {"type": "STRING"},
+                "confidence": {"type": "INTEGER"},
+                "ingredients": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "name": {"type": "STRING"},
+                            "bbox": {
+                                "type": "ARRAY",
+                                "items": {"type": "INTEGER"}
+                            },
+                            "isAllergen": {"type": "BOOLEAN"}
+                        },
+                        "required": ["name", "bbox", "isAllergen"]
+                    }
+                },
+                "translationCard": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "language": {"type": "STRING"},
+                        "text": {"type": "STRING"},
+                        "audio_query": {"type": "STRING"}
+                    }
+                },
+                "raw_result": {"type": "STRING"}
+            },
+            "required": ["foodName", "ingredients", "safetyStatus"]
+        }
+
         # Configure generation and safety
         generation_config = {
             "temperature": 0.2,
@@ -560,6 +599,7 @@ class FoodAnalyst:
             "top_k": 40,
             "max_output_tokens": 4096,
             "response_mime_type": "application/json",
+            "response_schema": response_schema,
         }
 
         # Safety Settings (P2: Balanced approach)
