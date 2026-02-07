@@ -203,7 +203,19 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
-        self.model = GenerativeModel(self.model_name)
+        
+        # [DEBUG] Log model initialization details
+        print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
+        print(f"[Model Debug] Using model: {self.model_name}")
+        
+        try:
+            self.model = GenerativeModel(self.model_name)
+            print(f"[Model Debug] ✓ GenerativeModel created successfully")
+        except Exception as e:
+            print(f"[Model Debug] ✗ GenerativeModel creation FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def _configure_vertex_ai(self):
         """
@@ -640,6 +652,11 @@ class FoodAnalyst:
 
                 print(f"Vertex AI: Sending request (jitter={jitter_ms:.3f}s, concurrent slots={FoodAnalyst._request_semaphore._value}/3)...")
 
+                # [DEBUG] Log generation config details
+                print(f"[API Debug] Model name: {self.model_name}")
+                print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
+                print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
+
                 try:
                     # [Primary Attempt]
                     response = retry_policy(self.model.generate_content)(
@@ -647,10 +664,15 @@ class FoodAnalyst:
                         generation_config=generation_config,
                         safety_settings=safety_settings
                     )
+                    print(f"[API Debug] ✓ Primary model response received")
                 except Exception as e:
                     # [Fallback Logic]
                     # If primary model fails (404, 429, etc.), switch to backup
                     print(f"[Model Fallback] Primary model ({self.model_name}) failed: {e}")
+                    print(f"[Model Fallback] Error type: {type(e).__name__}")
+                    import traceback
+                    print(f"[Model Fallback] Full traceback:")
+                    traceback.print_exc()
                     print("[Model Fallback] Switching to backup model: gemini-1.5-flash-001")
                     
                     try:
