@@ -474,6 +474,9 @@ class NutritionLookup:
                         "dataSource": "Open Food Facts",
                         "description": product.get("product_name", food_name)
                     }
+                except (ValueError, TypeError):
+                    print(f"Open Food Facts API error: invalid energy value {energy}")
+                    return None
             
             return None
             
