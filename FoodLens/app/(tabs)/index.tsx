@@ -35,6 +35,7 @@ import { ServerConfig } from '../../services/ai';
 import { UserProfile } from '../../models/User';
 import ProfileSheet from '../../components/ProfileSheet';
 import { FoodThumbnail } from '../../components/FoodThumbnail'; // NEW
+import { HapticsService } from '../../services/haptics';
 
 
 export default function HomeScreen() {
@@ -161,6 +162,7 @@ export default function HomeScreen() {
 
   const handleStartAnalysis = async () => {
     /* NEW: Network Guard */
+    HapticsService.tickTick();
     if (isConnected === false) {
       Alert.alert(
         "Offline Mode",
