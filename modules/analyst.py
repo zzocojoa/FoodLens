@@ -389,8 +389,7 @@ class FoodAnalyst:
             ],
            "translationCard": {{
              "language": "{iso_current_country}",
-             "text": "Generate a sophisticated and polite safety message in the local language of {iso_current_country}. Logic: (1) If SAFE: Confirm the dish name and reassuredly state it is free of [User Allergens]. (2) If DANGER: Start with a clear WARNING, identify the specific allergen found, and advise against eating. (3) If CAUTION: Politely suggest verifying with the chef due to potential cross-contamination or uncertain ingredients. Tone: Helpful, professional, and culturally appropriate.",
-             "audio_query": "A concise version of the text (max 2 sentences) optimized for Text-to-Speech."
+             "text": "Polite safety warning or confirmation in local language."
            }},
            "raw_result": "Brief 1-sentence summary"
         }}
