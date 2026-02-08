@@ -231,7 +231,7 @@ class FoodAnalyst:
 
     def __init__(self):
         self._configure_vertex_ai()
-        self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
+        self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-pro")
         
         # [DEBUG] Log model initialization details
         print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
