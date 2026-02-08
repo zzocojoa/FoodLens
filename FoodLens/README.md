@@ -48,6 +48,8 @@ npx expo run:ios --configuration Release --device # iOS 7일간 사용가능
 npx expo start # Expo Go 실행
 npx expo start --tunnel
 npx expo start --tunnel --go
+
+npx expo prebuild --clean
 ```
 
 ---

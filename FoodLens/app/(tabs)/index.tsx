@@ -376,32 +376,29 @@ export default function HomeScreen() {
         let photoTimestamp: string | undefined;
         
         // NEW: Prioritize MediaLibrary metadata for reliable timestamps
-        if (asset.assetId) {
-            try {
-                const mediaAsset = await MediaLibrary.getAssetInfoAsync(asset.assetId);
-                if (mediaAsset && mediaAsset.creationTime) {
-                    // MediaLibrary returns timestamps in milliseconds (number) or ISO string?
-                    // creationTime is usually milliseconds since epoch on Android, but on iOS it might be slightly different.
-                    // Expo docs say: creationTime: number (The time the asset was created, in milliseconds)
-                    
-                    // Actually, let's verify runtime behavior or safety. 
-                    // To be safe, we create a Date object.
-                    photoTimestamp = new Date(mediaAsset.creationTime).toISOString();
-                    console.log("[ImagePicker] Fetched timestamp from MediaLibrary:", photoTimestamp);
-                }
-            } catch (e) {
-                console.warn("[ImagePicker] Failed to fetch asset info:", e);
-            }
-        }
 
-        // Fallback to EXIF if MediaLibrary failed or didn't provide a timestamp
-        if (!photoTimestamp && asset.exif) {
+        // 1. Prioritize EXIF data (DateTimeOriginal) as it represents the actual capture time.
+        if (asset.exif) {
           const exif = asset.exif as any;
           
           if (exif.DateTimeOriginal || exif.DateTimeDigitized || exif.DateTime) {
              photoTimestamp = exif.DateTimeOriginal || exif.DateTimeDigitized || exif.DateTime;
              console.log("[ImagePicker] Fetched timestamp from EXIF:", photoTimestamp);
           }
+        }
+
+        // 2. Fallback to MediaLibrary if EXIF didn't provide a timestamp
+        if (!photoTimestamp && asset.assetId) {
+            try {
+                const mediaAsset = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+                if (mediaAsset && mediaAsset.creationTime) {
+                    // creationTime is the file creation time on the device (import time for saved photos)
+                    photoTimestamp = new Date(mediaAsset.creationTime).toISOString();
+                    console.log("[ImagePicker] Fetched timestamp from MediaLibrary (Fallback):", photoTimestamp);
+                }
+            } catch (e) {
+                console.warn("[ImagePicker] Failed to fetch asset info:", e);
+            }
         }
         
         // Coordinates extraction remains from EXIF for now (MediaLibrary also has location but EXIF is usually fine if present)
@@ -705,7 +702,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 12,
     marginTop: 2,
   },
   userInfo: {
