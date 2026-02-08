@@ -190,22 +190,25 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   // Instead, the View container uses pointerEvents to handle interaction state
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 999999, display: isOpen ? 'flex' : 'none' }]} pointerEvents={isOpen ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999999, display: isOpen ? 'flex' : 'none' }]} pointerEvents={isOpen ? 'box-none' : 'none'}>
+        {/* Backdrop Overlay - Sibling */}
         <TouchableOpacity 
             activeOpacity={1} 
-            style={[styles.overlay, { opacity: isOpen ? 1 : 0 }]} 
+            style={[styles.overlay, { opacity: isOpen ? 1 : 0 }, StyleSheet.absoluteFill]} 
             onPress={closeProfile}
-        >
-             <Pressable style={{ flex: 1, justifyContent: 'flex-end' }}>
-                 <RNAnimated.View 
-                    style={[
-                        styles.sheetContainer,
-                        { transform: [{ translateY: panYProfile }] }
-                    ]}
-                 >
-                    <View {...panResponderProfile.panHandlers} style={styles.swipeHandleWrapper}>
-                        <View style={styles.swipeHandle} />
-                    </View>
+        />
+
+        {/* Sheet Content - Sibling */}
+        <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
+             <RNAnimated.View 
+                style={[
+                    styles.sheetContainer,
+                    { transform: [{ translateY: panYProfile }] }
+                ]}
+             >
+                <View {...panResponderProfile.panHandlers} style={styles.swipeHandleWrapper}>
+                    <View style={styles.swipeHandle} />
+                </View>
 
                     {/* Header */}
                     <View {...panResponderProfile.panHandlers} style={[styles.header, { justifyContent: 'center' }]}>
@@ -359,10 +362,9 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                             {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>UPDATE PROFILE</Text>}
                         </TouchableOpacity>
 
-                    </ScrollView>
+                     </ScrollView>
                  </RNAnimated.View>
-             </Pressable>
-        </TouchableOpacity>
+             </View>
     </View>
   );
 }
