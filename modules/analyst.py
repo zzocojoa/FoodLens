@@ -348,6 +348,7 @@ class FoodAnalyst:
             -   You MUST identify the dish. Do not return "Unknown Dish".
             -   Reason through the visual components (protein, starch, sauce, utensils) to infer the most likely specific dish name.
             -   *Example*: If you see broth, noodles, and red spice -> "Spicy Ramen" or "Jjamppong", NOT "Noodle Soup".
+            -   **Multiple Foods Rule**: If multiple dishes are visible, identify ONLY the main entree or the most prominent dish as the `foodName`. Do not list all items (e.g., use "Pizza Set", not "Pizza and Pasta and Salad").
 
         2.  **NAMING CONVENTION**
             -   Use standard, specific proper nouns (e.g., "Pork Belly", "Carbonara").
