@@ -67,6 +67,7 @@ export interface AnalyzedData {
   ingredients: {
     name: string;
     isAllergen: boolean;
+    confidence_score?: number;
     box_2d?: number[];
     bbox?: number[];
     nutrition?: NutritionData;
