@@ -383,6 +383,7 @@ class FoodAnalyst:
                 {{
                   "name": "Ingredient Name",
                   "bbox": [ymin, xmin, ymax, xmax],
+                  "confidence_score": 0.00,
                   "isAllergen": boolean,
                   "riskReason": "Explanation if allergen"
                 }}
