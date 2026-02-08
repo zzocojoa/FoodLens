@@ -12,6 +12,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { UserService } from '../services/userService';
 import { DEFAULT_AVATARS } from '../models/User';
+import { Colors } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ProfileSheetProps {
   isOpen: boolean;
@@ -61,25 +63,109 @@ const useSheetGesture = (onCloseComplete: () => void) => {
     return { panY, panResponder, openSheet, closeSheet };
 };
 
-const MenuItem = ({ icon, title, subtitle, onPress, iconBgColor }: { icon: React.ReactNode, title: string, subtitle: string, onPress?: () => void, iconBgColor: string }) => (
-    <View style={styles.menuContainer}>
+const MenuItem = ({ icon, title, subtitle, onPress, iconBgColor, theme }: { icon: React.ReactNode, title: string, subtitle: string, onPress?: () => void, iconBgColor: string, theme: any }) => (
+    <View style={[styles.menuContainer, {backgroundColor: theme.surface, borderColor: theme.border}]}>
         <HapticTouchableOpacity style={styles.menuItem} onPress={onPress} hapticType="light">
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
                 <View style={[styles.iconBox, {backgroundColor: iconBgColor}]}>
                     {icon}
                 </View>
                 <View>
-                    <Text style={styles.menuTitle}>{title}</Text>
-                    <Text style={styles.menuSub}>{subtitle}</Text>
+                    <Text style={[styles.menuTitle, {color: theme.textPrimary}]}>{title}</Text>
+                    <Text style={[styles.menuSub, {color: theme.textSecondary}]}>{subtitle}</Text>
                 </View>
             </View>
-            <ChevronRight size={18} color="#CBD5E1" />
+            <ChevronRight size={18} color={theme.textSecondary} />
         </HapticTouchableOpacity>
     </View>
 );
 
+const AnimatedThemeToggle = ({ theme, currentTheme, setTheme, colorScheme }: { theme: any, currentTheme: string, setTheme: (t: any) => void, colorScheme: string }) => {
+    const [containerWidth, setContainerWidth] = useState(0);
+    const translateX = React.useRef(new RNAnimated.Value(0)).current;
+    
+    // Options
+    const options = ['light', 'dark', 'system'] as const;
+    const activeIndex = options.indexOf(currentTheme as any);
+
+    useEffect(() => {
+        if (containerWidth > 0) {
+            const tabWidth = (containerWidth - 8) / 3; // 8 is total padding (4*2)
+            RNAnimated.spring(translateX, {
+                toValue: activeIndex * tabWidth,
+                useNativeDriver: true,
+                friction: 7,
+                tension: 50
+            }).start();
+        }
+    }, [activeIndex, containerWidth]);
+
+    return (
+        <View 
+            style={[styles.menuContainer, { 
+                backgroundColor: theme.surface, 
+                borderColor: theme.border, 
+                padding: 4, 
+                height: 56, // Fixed height for consistency
+                justifyContent: 'center'
+            }]}
+            onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+        >
+            {containerWidth > 0 && (
+                <RNAnimated.View 
+                    style={{
+                        position: 'absolute',
+                        left: 4,
+                        top: 4,
+                        bottom: 4,
+                        width: (containerWidth - 8) / 3,
+                        backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'white',
+                        borderRadius: 24,
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 3,
+                        elevation: 2,
+                        transform: [{ translateX }]
+                    }} 
+                />
+            )}
+            
+            <View style={{flexDirection: 'row', flex: 1}}>
+                {options.map((t) => {
+                    const isActive = currentTheme === t;
+                    return (
+                        <TouchableOpacity 
+                            key={t}
+                            onPress={() => setTheme(t)}
+                            style={{
+                                flex: 1, 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                borderRadius: 24,
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={{
+                                fontSize: 14, 
+                                fontWeight: isActive ? '700' : '500', 
+                                color: isActive ? theme.textPrimary : theme.textSecondary,
+                                textTransform: 'capitalize'
+                            }}>
+                                {t}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+        </View>
+    );
+};
+
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
   const router = useRouter();
+  const { theme: currentTheme, setTheme, colorScheme } = useTheme();
+  const theme = Colors[colorScheme];
   const [name, setName] = useState("Traveler Joy");
   const [image, setImage] = useState("https://api.dicebear.com/7.x/avataaars/png?seed=Felix");
   const [language, setLanguage] = useState<string | undefined>(undefined);
@@ -204,7 +290,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
              <RNAnimated.View 
                 style={[
                     styles.sheetContainer,
-                    { transform: [{ translateY: panYProfile }] }
+                    { transform: [{ translateY: panYProfile }], backgroundColor: theme.background }
                 ]}
              >
                 <View {...panResponderProfile.panHandlers} style={styles.swipeHandleWrapper}>
@@ -213,37 +299,36 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
 
                     {/* Header */}
                     <View {...panResponderProfile.panHandlers} style={[styles.header, { justifyContent: 'center' }]}>
-                        <Text style={styles.title}>Profile</Text>
+                        <Text style={[styles.title, {color: theme.textPrimary}]}>Profile</Text>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 40}}>
                         {/* Part 1: Visual Identity */}
                         <View style={styles.section}>
                             <View style={styles.avatarWrapper}>
-                               <View style={styles.avatarFrame}>
+                               <View style={[styles.avatarFrame, {backgroundColor: theme.surface, borderColor: theme.surface}]}>
                                    <Image source={{ uri: image }} style={styles.avatarImage} />
                                </View>
                                <HapticTouchableOpacity 
                                     onPress={() => pickImage(true)}
-                                    style={styles.cameraBtn}
+                                    style={[styles.cameraBtn, {backgroundColor: theme.textPrimary, borderColor: theme.background}]}
                                     hapticType="light"
                                >
-                                   <Camera size={16} color="white" />
+                                   <Camera size={16} color={theme.background} />
                                </HapticTouchableOpacity>
                             </View>
 
-                            {/* Name Edit */}
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>DISPLAY NAME</Text>
                                 <View style={styles.inputWrapper}>
                                     <TextInput
                                         value={name}
                                         onChangeText={setName}
-                                        style={styles.textInput}
+                                        style={[styles.textInput, {backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary}]}
                                         placeholder="Enter your name"
-                                        placeholderTextColor="#94A3B8"
+                                        placeholderTextColor={theme.textSecondary}
                                     />
-                                    <Edit3 size={16} color="#CBD5E1" style={{position: 'absolute', right: 20}} />
+                                    <Edit3 size={16} color={theme.textSecondary} style={{position: 'absolute', right: 20}} />
                                 </View>
                             </View>
 
@@ -257,7 +342,8 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                             onPress={() => setImage(url)}
                                             style={[
                                                 styles.presetItem, 
-                                                image === url && styles.presetActive
+                                                {backgroundColor: theme.surface, borderColor: 'transparent'},
+                                                image === url && {borderColor: theme.primary, backgroundColor: colorScheme === 'dark' ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF'}
                                             ]}
                                             hapticType="selection"
                                         >
@@ -266,11 +352,11 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                     ))}
                                     <HapticTouchableOpacity 
                                         onPress={() => pickImage(false)}
-                                        style={styles.uploadBtn}
+                                        style={[styles.uploadBtn, {backgroundColor: theme.surface, borderColor: theme.border}]}
                                         hapticType="light"
                                     >
                                         <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}>
-                                            <ImageIcon size={18} color="#94A3B8" />
+                                            <ImageIcon size={18} color={theme.textSecondary} />
                                             <Text style={styles.uploadText}>Upload</Text>
                                         </View>
                                     </HapticTouchableOpacity>
@@ -280,25 +366,38 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
 
                         {/* Part 2: Management */}
                         <View style={styles.section}>
+                             <AnimatedThemeToggle 
+                                theme={theme}
+                                currentTheme={currentTheme}
+                                setTheme={setTheme}
+                                colorScheme={colorScheme}
+                             />
+
                              <MenuItem 
                                 icon={<User size={20} color="#2563EB" />}
                                 title="Manage Profile"
                                 subtitle="Account settings & details"
-                                iconBgColor="#EFF6FF"
+                                iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : "#EFF6FF"}
                                 onPress={() => router.push('/profile')}
+                                theme={theme}
                              />
                              <MenuItem 
                                 icon={<Globe size={20} color="#059669" />}
                                 title="Translation Language"
                                 subtitle={language ? (LANGUAGE_OPTIONS.find(o => o.code === language)?.label || "Auto (GPS)") : "Auto (GPS)"}
-                                iconBgColor="#ECFDF5"
+                                iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : "#ECFDF5"}
                                 onPress={() => setLangModalVisible(true)}
+                                theme={theme}
                              />
+
+
+
                              <MenuItem 
                                 icon={<Zap size={20} color="#D97706" fill="#D97706" />}
                                 title="Remove Ads"
                                 subtitle="Premium benefits"
-                                iconBgColor="#FFFBEB"
+                                iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : "#FFFBEB"}
+                                theme={theme}
                              />
                         </View>
 
@@ -319,7 +418,8 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                         styles.sheetContainer, 
                                         { 
                                             height: '55%',
-                                            transform: [{ translateY: panY }]
+                                            transform: [{ translateY: panY }],
+                                            backgroundColor: theme.background
                                         }
                                     ]}
                                 >
@@ -328,7 +428,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                     </View>
 
                                     <View {...panResponder.panHandlers} style={[styles.header, { marginBottom: 20, justifyContent: 'center' }]}>
-                                        <Text style={styles.title}>Select Language</Text>
+                                        <Text style={[styles.title, {color: theme.textPrimary}]}>Select Language</Text>
                                     </View>
                                     <ScrollView showsVerticalScrollIndicator={false}>
                                         {LANGUAGE_OPTIONS.map((opt) => (
@@ -336,7 +436,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                                 key={opt.code}
                                                 style={[
                                                     styles.menuItem, 
-                                                    { marginBottom: 8, backgroundColor: (language === opt.code) || (!language && opt.code === 'GPS') ? '#F0F9FF' : 'white' }
+                                                    { 
+                                                        marginBottom: 8, 
+                                                        backgroundColor: (language === opt.code) || (!language && opt.code === 'GPS') 
+                                                            ? (colorScheme === 'dark' ? 'rgba(59, 130, 246, 0.2)' : '#F0F9FF') 
+                                                            : theme.surface,
+                                                        borderColor: theme.border,
+                                                        borderWidth: 1
+                                                    }
                                                 ]}
                                                 onPress={() => {
                                                     setLanguage(opt.code === 'GPS' ? undefined : opt.code);
@@ -346,7 +453,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                             >
                                                 <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
                                                     <Text style={{fontSize: 24}}>{opt.flag}</Text>
-                                                    <Text style={[styles.menuTitle, {fontSize: 18}]}>{opt.label}</Text>
+                                                    <Text style={[styles.menuTitle, {fontSize: 18, color: theme.textPrimary}]}>{opt.label}</Text>
                                                 </View>
                                                 {((language === opt.code) || (!language && opt.code === 'GPS')) && (
                                                     <View style={{width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B82F6'}} />
@@ -362,10 +469,10 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                         <HapticTouchableOpacity 
                             onPress={handleUpdate}
                             disabled={loading}
-                            style={styles.saveButton}
+                            style={[styles.saveButton, {backgroundColor: theme.textPrimary, shadowColor: theme.shadow}]}
                             hapticType="success"
                         >
-                            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>UPDATE PROFILE</Text>}
+                            {loading ? <ActivityIndicator color={theme.background} /> : <Text style={[styles.saveText, {color: theme.background}]}>UPDATE PROFILE</Text>}
                         </HapticTouchableOpacity>
 
                      </ScrollView>
@@ -382,7 +489,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.3)',
     },
     sheetContainer: {
-        backgroundColor: '#F8FAFC',
+        // backgroundColor: '#F8FAFC', // Dynamic
         borderTopLeftRadius: 44,
         borderTopRightRadius: 44,
         height: '92%',

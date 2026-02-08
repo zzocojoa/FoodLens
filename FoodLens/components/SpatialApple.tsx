@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 
 interface SpatialAppleProps {
     size?: number;
+    emoji?: string;
     onMotionDetect?: () => void;
 }
 
@@ -30,7 +31,28 @@ const clamp = (value: number, min: number, max: number) => {
     return Math.min(Math.max(value, min), max);
 };
 
-export default function SpatialApple({ size = 100, onMotionDetect }: SpatialAppleProps) {
+const GLOW_COLORS: Record<string, string> = {
+    '🍎': '#F43F5E', // Rose-500
+    '🍏': '#84CC16', // Lime-500
+    '🍊': '#F97316', // Orange-500
+    '🍋': '#EAB308', // Yellow-500
+    '🍇': '#8B5CF6', // Violet-500
+    '🍓': '#EF4444', // Red-500
+    '🥝': '#65A30D', // Lime-600
+    '🥑': '#16A34A', // Green-600
+    '🍑': '#F87171', // Red-400
+    '🍒': '#DC2626', // Red-600
+    '🫐': '#4F46E5', // Indigo-600
+    '🍌': '#F59E0B', // Amber-500
+    '🍉': '#FB7185', // Rose-400
+    '🥭': '#F59E0B', // Amber-500
+    '🍐': '#A3E635', // Lime-400
+    '🍈': '#A3E635', // Lime-400
+    '🫒': '#65A30D', // Lime-600
+    '🥥': '#A8A29E', // Stone-400
+};
+
+export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetect }: SpatialAppleProps) {
     // Use GYROSCOPE to get rotational velocity (rad/s) instead of absolute angle
     // This allows us to react to movement but always return to center
     const sensor = useAnimatedSensor(SensorType.GYROSCOPE, { interval: 20 });
@@ -38,6 +60,9 @@ export default function SpatialApple({ size = 100, onMotionDetect }: SpatialAppl
     // Virtual position values
     const offsetX = useSharedValue(0);
     const offsetY = useSharedValue(0);
+    
+    // Determine glow color based on emoji, fallback to Rose-500
+    const glowColor = GLOW_COLORS[emoji] || '#F43F5E';
 
     useDerivedValue(() => {
         // Integrate velocity to get position (approximated)
@@ -83,7 +108,8 @@ export default function SpatialApple({ size = 100, onMotionDetect }: SpatialAppl
                 { translateY: withSpring(-offsetY.value * 1.5, { mass: 3.5, damping: 35, stiffness: 50 }) },
                 { scale: 1.2 }
             ],
-            opacity: 0.6
+            opacity: 0.6,
+            backgroundColor: glowColor // Dynamic Color
         };
     });
 
@@ -103,7 +129,7 @@ export default function SpatialApple({ size = 100, onMotionDetect }: SpatialAppl
             
             {/* Layer 2: Main Apple Shape */}
             <Animated.View style={[styles.appleContainer, animatedStyle]}>
-                 <Text style={[styles.emoji, { fontSize: size * 0.8 }]}>🍎</Text>
+                 <Text style={[styles.emoji, { fontSize: size * 0.8 }]}>{emoji}</Text>
             </Animated.View>
 
             {/* Layer 3: Specular Highlight (Front) */}

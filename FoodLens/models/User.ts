@@ -24,6 +24,7 @@ export interface UserProfile {
     language: string;    // 앱 표시 언어 (예: 'ko')
     targetLanguage?: string; // 여행지 언어 (예: 'th' - 태국어)
     autoPlayAudio: boolean; // 분석 결과 오디오 자동 재생 여부
+    selectedEmoji?: string; // 대시보드 히어로 이모지 (예: '🍎', '🍊')
   };
 
   createdAt: string;     // ISO Date String

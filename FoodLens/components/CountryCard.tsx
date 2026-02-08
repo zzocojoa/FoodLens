@@ -9,6 +9,8 @@ import { CountryData } from '../models/History';
 import { THEME } from '../constants/theme';
 import { dataStore } from '../services/dataStore';
 import { FoodThumbnail } from './FoodThumbnail'; // NEW
+import { Colors } from '../constants/theme';
+import { useColorScheme } from '../hooks/use-color-scheme';
 
 interface CountryCardProps {
     country: CountryData;
@@ -38,6 +40,8 @@ export default function CountryCard({
     onDelete
 }: CountryCardProps) {
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
     const swipeableRefs = useRef<Map<string, any>>(new Map());
 
     // Reset swipe state when entering edit mode
@@ -84,26 +88,26 @@ export default function CountryCard({
     return (
         <BlurView 
             intensity={isExpanded ? 90 : 70} 
-            tint="light" 
-            style={[styles.countryCard, THEME.glass, isExpanded && { borderColor: 'rgba(59, 130, 246, 0.5)', borderWidth: 1.5 }]}
+            tint={colorScheme === 'dark' ? 'dark' : 'light'} 
+            style={[styles.countryCard, {backgroundColor: theme.glass, borderColor: theme.glassBorder}, isExpanded && { borderColor: theme.primary, borderWidth: 1.5 }]}
         >
             <HapticTouchableOpacity 
                 onPress={onToggle}
                 activeOpacity={0.7}
-                style={[styles.countryHeader, isExpanded && { backgroundColor: 'rgba(255,255,255,0.6)' }]}
+                style={[styles.countryHeader, {backgroundColor: theme.glass}]}
                 hapticType="selection"
             >
                 <View pointerEvents="none" style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1}}>
                         <Text style={{fontSize: 32}}>{country.flag}</Text>
                         <View style={{flex: 1}}>
-                            <Text style={styles.countryName} numberOfLines={1} ellipsizeMode="tail">{country.country}</Text>
-                            <Text style={styles.countryCount}>{country.total} SCANS</Text>
+                            <Text style={[styles.countryName, {color: theme.textPrimary}]} numberOfLines={1} ellipsizeMode="tail">{country.country}</Text>
+                            <Text style={[styles.countryCount, {color: theme.textSecondary}]}>{country.total} SCANS</Text>
                         </View>
                     </View>
                     <ChevronDown 
                         size={20} 
-                        color="#94A3B8" 
+                        color={theme.textSecondary} 
                         style={{ 
                             transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] 
                         }} 
@@ -124,7 +128,7 @@ export default function CountryCard({
                         return (
                             <View key={rIdx} style={{marginBottom: 16}}>
                                 {visibleItems.length > 0 && (
-                                    <Text style={styles.regionTitle}>{region.name}</Text>
+                                    <Text style={[styles.regionTitle, {color: theme.primary}]}>{region.name}</Text>
                                 )}
                                 
                                 {visibleItems.map((item, itemIdx) => (
@@ -138,7 +142,7 @@ export default function CountryCard({
                                             enabled={!isEditMode}
                                         >
                                             <HapticTouchableOpacity 
-                                                style={styles.itemRow}
+                                                style={[styles.itemRow, {backgroundColor: theme.surface, borderColor: theme.border}]}
                                                 hapticType="light"
                                                 onPress={() => {
                                                     if (isEditMode) {
@@ -162,7 +166,7 @@ export default function CountryCard({
                                                             )}
                                                         </View>
                                                     )}
-                                                    <View style={styles.emojiBox}>
+                                                    <View style={[styles.emojiBox, {backgroundColor: theme.background, borderColor: theme.border}]}>
                                                         {/* REPLACED: Text based emoji with FoodThumbnail */}
                                                         <FoodThumbnail 
                                                             uri={(item as any).imageUri} // Temporary cast until interface update
@@ -173,8 +177,8 @@ export default function CountryCard({
                                                         />
                                                     </View>
                                                     <View style={{flex: 1}}>
-                                                        <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
-                                                        <Text style={styles.itemDate}>{item.date}</Text>
+                                                        <Text style={[styles.itemName, {color: theme.textPrimary}]} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
+                                                        <Text style={[styles.itemDate, {color: theme.textSecondary}]}>{item.date}</Text>
                                                     </View>
                                                 </View>
                                                     <View 
@@ -208,18 +212,18 @@ export default function CountryCard({
 }
 
 const styles = StyleSheet.create({
-    countryCard: { borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: 'white' },
-    countryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: 'rgba(255,255,255,0.3)' },
-    countryName: { fontSize: 17, fontWeight: '900', color: '#0F172A' },
-    countryCount: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 1, marginTop: 2 },
+    countryCard: { borderRadius: 28, overflow: 'hidden', borderWidth: 1 },
+    countryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+    countryName: { fontSize: 17, fontWeight: '900' },
+    countryCount: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 2 },
     accordionBody: { padding: 8 },
-    regionTitle: { fontSize: 10, fontWeight: '900', color: 'rgba(59, 130, 246, 0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 12, marginTop: 8 },
-    itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.8)', padding: 16, borderRadius: 22, borderWidth: 1, borderColor: 'white' },
+    regionTitle: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 12, marginTop: 8 },
+    itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 22, borderWidth: 1 },
     deleteAction: { backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'flex-end', width: 100, height: '100%', paddingRight: 20, borderRadius: 22, marginLeft: -20 },
     deleteBtnContent: { alignItems: 'center', justifyContent: 'center' },
     deleteText: { color: 'white', fontWeight: '600', fontSize: 12, marginTop: 4 },
-    emojiBox: { width: 44, height: 44, backgroundColor: '#F8FAFC', borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
-    itemName: { fontSize: 14, fontWeight: '700', color: '#0F172A', lineHeight: 18 },
-    itemDate: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
+    emojiBox: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+    itemName: { fontSize: 14, fontWeight: '700', lineHeight: 18 },
+    itemDate: { fontSize: 10, fontWeight: '500', marginTop: 2 },
     statusIconBox: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1 }
 });

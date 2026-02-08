@@ -7,17 +7,9 @@ import { UserService } from '../services/userService';
 import { SEARCHABLE_INGREDIENTS } from '../data/ingredients';
 
 // Modern Color Palette (2026 Trend: Soft Pastels + Deep Accents)
-const COLORS = {
-    background: '#F8F9FA',
-    primary: '#0066FF', // Vibrant Blue
-    danger: '#FF4D4F', // Soft Red
-    success: '#34C759',
-    text: '#1C1C1E',
-    subtext: '#8E8E93',
-    card: '#FFFFFF',
-    border: '#E5E5EA',
-    inputBg: '#F2F2F7'
-};
+import { Colors } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { HapticTouchableOpacity } from '../components/HapticFeedback'; // Assuming this exists, based on context
 
 // ... existing emoji assets ...
 const ALLERGEN_IMAGES = {
@@ -44,6 +36,8 @@ const COMMON_ALLERGENS = [
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { theme: currentTheme, setTheme, colorScheme } = useTheme();
+  const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -147,16 +141,16 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, {backgroundColor: theme.background}]}>
         {/* ... Navbar ... */}
         <View style={styles.navBar}>
             <TouchableOpacity 
                 onPress={() => router.back()} 
                 style={styles.navButton}
             >
-                <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+                <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
             </TouchableOpacity>
-            <Text style={styles.navTitle}>Health Profile</Text>
+            <Text style={[styles.navTitle, {color: theme.textPrimary}]}>Health Profile</Text>
             <View style={{width: 28}} /> 
         </View>
 
@@ -178,14 +172,15 @@ export default function ProfileScreen() {
                 }
             }}
         >
-            
+
+
             <View style={styles.heroSection}>
-                <Text style={styles.heroTitle}>What should we avoid?</Text>
-                <Text style={styles.heroSubtitle}>Select ingredients you are allergic to or cannot eat.</Text>
+                <Text style={[styles.heroTitle, {color: theme.textPrimary}]}>What should we avoid?</Text>
+                <Text style={[styles.heroSubtitle, {color: theme.textSecondary}]}>Select ingredients you are allergic to or cannot eat.</Text>
             </View>
 
             {/* Quick Select Grid */}
-            <Text style={styles.sectionHeader}>Common Allergens</Text>
+            <Text style={[styles.sectionHeader, {color: theme.textPrimary}]}>Common Allergens</Text>
             <View style={styles.grid}>
                 {COMMON_ALLERGENS.map((item) => {
                     const isSelected = allergies.includes(item.id);
@@ -194,7 +189,8 @@ export default function ProfileScreen() {
                             key={item.id} 
                             style={[
                                 styles.card, 
-                                isSelected && styles.cardSelected
+                                { backgroundColor: theme.surface }, // Default bg
+                                isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
                             ]}
                             activeOpacity={0.7}
                             onPress={() => toggleAllergen(item.id)}
@@ -202,10 +198,10 @@ export default function ProfileScreen() {
                             <View style={[styles.iconCircle, isSelected && {backgroundColor: 'rgba(255,255,255,0.2)'}]}>
                                 <Image source={item.image} style={{width: 40, height: 40}} resizeMode="contain" />
                             </View>
-                            <Text style={[styles.cardLabel, isSelected && {color: 'white'}]}>{item.label}</Text>
+                            <Text style={[styles.cardLabel, {color: theme.textPrimary}, isSelected && {color: 'white'}]}>{item.label}</Text>
                             {isSelected && (
                                 <View style={styles.checkBadge}>
-                                    <Ionicons name="checkmark" size={12} color={COLORS.primary} />
+                                    <Ionicons name="checkmark" size={12} color={theme.primary} />
                                 </View>
                             )}
                         </TouchableOpacity>
@@ -214,14 +210,14 @@ export default function ProfileScreen() {
             </View>
 
             {/* Custom Input with Autocomplete */}
-            <Text style={styles.sectionHeader}>Other Restrictions</Text>
+            <Text style={[styles.sectionHeader, {color: theme.textPrimary}]}>Other Restrictions</Text>
             <View style={{zIndex: 10}}>
-                <View style={styles.inputWrapper}>
-                    <Ionicons name="search" size={20} color={COLORS.subtext} style={{marginRight: 10}} />
+                <View style={[styles.inputWrapper, {backgroundColor: theme.surface, shadowColor: theme.shadow}]}>
+                    <Ionicons name="search" size={20} color={theme.textSecondary} style={{marginRight: 10}} />
                     <TextInput 
-                        style={styles.input}
+                        style={[styles.input, {color: theme.textPrimary}]}
                         placeholder="Type (e.g. Peach, Vegan)..."
-                        placeholderTextColor={COLORS.subtext}
+                        placeholderTextColor={theme.textSecondary}
                         value={inputValue}
                         onChangeText={handleInputChange}
                         onSubmitEditing={addOtherRestriction}
@@ -229,7 +225,7 @@ export default function ProfileScreen() {
                     />
                     {inputValue.length > 0 && (
                         <TouchableOpacity onPress={addOtherRestriction}>
-                            <Ionicons name="add-circle" size={28} color={COLORS.primary} />
+                            <Ionicons name="add-circle" size={28} color={theme.primary} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -240,11 +236,11 @@ export default function ProfileScreen() {
                         {suggestions.map((item, index) => (
                             <TouchableOpacity 
                                 key={index} 
-                                style={styles.suggestionItem}
+                                style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
                                 onPress={() => selectSuggestion(item)}
                             >
-                                <Ionicons name="add" size={16} color={COLORS.primary} style={{marginRight: 8}} />
-                                <Text style={styles.suggestionText}>{item}</Text>
+                                <Ionicons name="add" size={16} color={theme.primary} style={{marginRight: 8}} />
+                                <Text style={[styles.suggestionText, {color: theme.textPrimary}]}>{item}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
@@ -254,10 +250,10 @@ export default function ProfileScreen() {
             {/* Tags Cloud */}
             <View style={styles.tagContainer}>
                 {otherRestrictions.map((item, index) => (
-                    <View key={index} style={styles.tag}>
-                         <Text style={styles.tagText}>{item}</Text>
+                    <View key={index} style={[styles.tag, {backgroundColor: theme.surface, borderColor: theme.border }]}>
+                         <Text style={[styles.tagText, {color: theme.primary}]}>{item}</Text>
                          <TouchableOpacity onPress={() => removeRestriction(item)} hitSlop={{top:10, bottom:10, left:10, right:10}}>
-                             <Ionicons name="close" size={16} color={COLORS.primary} style={{marginLeft: 6}} />
+                             <Ionicons name="close" size={16} color={theme.primary} style={{marginLeft: 6}} />
                          </TouchableOpacity>
                     </View>
                 ))}
@@ -267,16 +263,16 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
 
         {/* Floating Save Button */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, {backgroundColor: theme.background, borderTopColor: theme.border}]}>
             <TouchableOpacity 
-                style={styles.saveButton} 
+                style={[styles.saveButton, {backgroundColor: theme.textPrimary, shadowColor: theme.shadow}]} 
                 onPress={saveProfile}
                 disabled={loading}
             >
                 {loading ? (
-                    <ActivityIndicator color="white" /> 
+                    <ActivityIndicator color={theme.background} /> 
                 ) : (
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                    <Text style={[styles.saveButtonText, {color: theme.background}]}>Save Changes</Text>
                 )}
             </TouchableOpacity>
         </View>
@@ -287,7 +283,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safeArea: {
       flex: 1,
-      backgroundColor: COLORS.background,
+      // backgroundColor: COLORS.background, // Handled inline
   },
   navBar: {
       flexDirection: 'row',
@@ -302,7 +298,7 @@ const styles = StyleSheet.create({
   navTitle: {
       fontSize: 17,
       fontWeight: '600',
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
   },
   container: {
       flex: 1,
@@ -315,18 +311,18 @@ const styles = StyleSheet.create({
   heroTitle: {
       fontSize: 28,
       fontWeight: 'bold',
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
       marginBottom: 8,
   },
   heroSubtitle: {
       fontSize: 16,
-      color: COLORS.subtext,
+      // color: COLORS.subtext, // Handled inline
       lineHeight: 22,
   },
   sectionHeader: {
       fontSize: 18,
       fontWeight: '700',
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
       marginBottom: 15,
       marginTop: 10,
   },
@@ -338,7 +334,7 @@ const styles = StyleSheet.create({
   },
   card: {
       width: '48%', // 2 columns
-      backgroundColor: COLORS.card,
+      // backgroundColor: COLORS.card, // Handled inline
       borderRadius: 20,
       padding: 16,
       flexDirection: 'row',
@@ -354,8 +350,8 @@ const styles = StyleSheet.create({
       borderColor: 'transparent',
   },
   cardSelected: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
+      // backgroundColor: COLORS.primary, // Handled inline
+      // borderColor: COLORS.primary, // Handled inline
   },
   iconCircle: {
       width: 40,
@@ -369,7 +365,7 @@ const styles = StyleSheet.create({
   cardLabel: {
       fontSize: 16,
       fontWeight: '600',
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
   },
   checkBadge: {
       position: 'absolute',
@@ -385,7 +381,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: COLORS.card,
+      // backgroundColor: COLORS.card, // Handled inline
       borderRadius: 16,
       paddingHorizontal: 15,
       paddingVertical: 14,
@@ -399,7 +395,7 @@ const styles = StyleSheet.create({
   input: {
       flex: 1,
       fontSize: 16,
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
   },
   tagContainer: {
       flexDirection: 'row',
@@ -414,30 +410,30 @@ const styles = StyleSheet.create({
       flexDirection: 'row',
       alignItems: 'center',
       borderWidth: 1,
-      borderColor: '#B3D7FF',
+      // borderColor: '#B3D7FF', // Handled inline
   },
   tagText: {
-      color: COLORS.primary,
+      // color: COLORS.primary, // Handled inline
       fontWeight: '600',
       fontSize: 14,
   },
   emptyState: {
-      color: COLORS.subtext,
+      // color: COLORS.subtext, // Handled inline
       fontStyle: 'italic',
   },
   footer: {
-      backgroundColor: COLORS.background, // or transparent with blur
+      // backgroundColor: COLORS.background, // Handled inline
       padding: 20,
       paddingBottom: Platform.OS === 'ios' ? 30 : 20,
       borderTopWidth: 1,
-      borderTopColor: COLORS.border,
+      // borderTopColor: COLORS.border, // Handled inline
   },
   saveButton: {
-      backgroundColor: COLORS.text, // Black button (Modern) or Primary Blue
+      // backgroundColor: COLORS.text, // Handled inline
       borderRadius: 24,
       paddingVertical: 18,
       alignItems: 'center',
-      shadowColor: COLORS.primary,
+      // shadowColor: COLORS.primary, // Handled inline
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
       shadowRadius: 10,
@@ -460,7 +456,7 @@ const styles = StyleSheet.create({
       shadowRadius: 12,
       elevation: 5,
       borderWidth: 1,
-      borderColor: COLORS.border,
+      // borderColor: COLORS.border, // Handled inline
       marginBottom: 20, // Space before tags
   },
   suggestionItem: {
@@ -469,10 +465,12 @@ const styles = StyleSheet.create({
       paddingVertical: 12,
       paddingHorizontal: 16,
       borderBottomWidth: 0.5,
-      borderBottomColor: COLORS.inputBg,
+      // borderBottomColor: COLORS.inputBg, // Handled inline
   },
   suggestionText: {
       fontSize: 16,
-      color: COLORS.text,
+      // color: COLORS.text, // Handled inline
   },
+
+
 });

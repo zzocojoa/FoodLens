@@ -22,7 +22,9 @@ const { width } = Dimensions.get('window');
 
 // 2026 Design Tokens
 // 2026 Design Tokens
-import { THEME } from '../../constants/theme';
+// 2026 Design Tokens
+import { THEME, Colors } from '../../constants/theme';
+import { useColorScheme } from '../../hooks/use-color-scheme';
 import { getEmoji, formatDate, validateCoordinates, getLocationData, decimalToDMS } from '../../services/utils';
 import { SecureImage } from '../../components/SecureImage';
 import SpatialApple from '../../components/SpatialApple';
@@ -49,6 +51,8 @@ const isSameDay = (d1: Date, d2: Date) => {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
   
   // Ref for triggering emoji animation
   const floatingEmojisRef = React.useRef<FloatingEmojisHandle>(null);
@@ -437,8 +441,8 @@ export default function HomeScreen() {
       <View style={styles.backgroundContainer}>
       </View>
 
-      <SafeAreaView style={{flex: 1}}>
-        <StatusBar style="light" />
+      <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
         {/* NEW: Offline Banner */}
         {isConnected === false && (
@@ -465,9 +469,27 @@ export default function HomeScreen() {
                     />
                 </View>
                 <View pointerEvents="none">
-                    <Text style={styles.welcomeText}>Welcome back,</Text>
-                    <Text style={styles.userName}>{userProfile?.name || "Traveler Joy"} ✈️</Text>
+                    <Text style={[styles.welcomeText, {color: theme.textSecondary}]}>Welcome back,</Text>
+                    <Text style={[styles.userName, {color: theme.textPrimary}]}>{userProfile?.name || "Traveler Joy"} ✈️</Text>
                 </View>
+                </View>
+            </Pressable>
+            
+            {/* Emoji Picker Button */}
+            <Pressable 
+                onPress={() => {
+                    HapticsService.light();
+                    router.push('/emoji-picker');
+                }} 
+                style={({ pressed }) => [styles.emojiPickerButton, { opacity: pressed ? 0.6 : 1 }]}
+                hitSlop={10}
+            >
+                <View pointerEvents="none">
+                    <Image 
+                        source={require('../../assets/images/emoji-picker-icon.png')} 
+                        style={{ width: 28, height: 28, tintColor: theme.textPrimary }} 
+                        resizeMode="contain"
+                    />
                 </View>
             </Pressable>
         </View>
@@ -479,13 +501,21 @@ export default function HomeScreen() {
           
           {/* ... existing Hero and Stats ... */}
           {/* Hero Section */}
-           <View style={[styles.heroCard, THEME.glass]}>
+           <View style={[
+               styles.heroCard, 
+               THEME.glass,
+               { 
+                   backgroundColor: theme.glass, 
+                   borderColor: theme.glassBorder,
+                   shadowColor: theme.shadow 
+               }
+           ]}>
               <View style={styles.heroGlow} />
               <View style={styles.heroEmoji}>
-                  <SpatialApple size={100} onMotionDetect={handleAppleMotion} />
+                  <SpatialApple size={100} emoji={userProfile?.settings?.selectedEmoji || '🍎'} onMotionDetect={handleAppleMotion} />
               </View>
-              <Text style={styles.heroTitle}>Food Lens</Text>
-              <Text style={styles.heroSubtitle}>Travel Safe, Eat Smart</Text>
+              <Text style={[styles.heroTitle, {color: theme.textPrimary}]}>Food Lens</Text>
+              <Text style={[styles.heroSubtitle, {color: theme.textSecondary}]}>Travel Safe, Eat Smart</Text>
            </View>
 
           {/* Bento Grid Stats */}
@@ -496,12 +526,12 @@ export default function HomeScreen() {
                 hapticType="light"
                 onPress={() => router.push('/trip-stats')}
             >
-                <BlurView intensity={80} tint="light" style={styles.statCard} pointerEvents="none">
+                <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={[styles.statCard, {backgroundColor: theme.glass}]} pointerEvents="none">
                     <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
                         <ShieldCheck size={22} color="#166534" />
                     </View>
-                    <Text style={styles.statLabel}>Safe Items</Text>
-                    <Text style={styles.statValue}>{safeCount}</Text>
+                    <Text style={[styles.statLabel, {color: theme.textSecondary}]}>Safe Items</Text>
+                    <Text style={[styles.statValue, {color: theme.textPrimary}]}>{safeCount}</Text>
                 </BlurView>
             </HapticTouchableOpacity>
             
@@ -510,12 +540,12 @@ export default function HomeScreen() {
                 hapticType="light"
                 onPress={() => router.push('/allergies')}
             >
-                <BlurView intensity={80} tint="light" style={styles.statCard} pointerEvents="none">
+                <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={[styles.statCard, {backgroundColor: theme.glass}]} pointerEvents="none">
                     <View style={[styles.statIconBox, { backgroundColor: '#FFE4E6' }]}>
                         <Heart size={22} color="#E11D48" />
                     </View>
-                    <Text style={styles.statLabel}>Allergies</Text>
-                    <Text style={styles.statValue}>{allergyCount}</Text>
+                    <Text style={[styles.statLabel, {color: theme.textSecondary}]}>Allergies</Text>
+                    <Text style={[styles.statValue, {color: theme.textPrimary}]}>{allergyCount}</Text>
                 </BlurView>
             </HapticTouchableOpacity>
           </View>
@@ -531,12 +561,12 @@ export default function HomeScreen() {
 
           {/* Filtered Scans List */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
+            <Text style={[styles.sectionTitle, {color: theme.textPrimary}]}>
                 {isSameDay(selectedDate, new Date()) ? 'Recent Scans' : `Scans on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(selectedDate)}`}
             </Text>
              <HapticTouchableOpacity onPress={() => router.push('/history')} hapticType="selection">
                 <View pointerEvents="none">
-                  <Text style={styles.seeAllText}>See All</Text>
+                  <Text style={[styles.seeAllText, {color: theme.primary}]}>See All</Text>
                 </View>
              </HapticTouchableOpacity>
           </View>
@@ -551,7 +581,14 @@ export default function HomeScreen() {
                         }
                     >
                     <HapticTouchableOpacity
-                        style={[styles.scanItem, { marginBottom: 0 }]} // Remove marginBottom from item to let View handle it
+                        style={[
+                            styles.scanItem, 
+                            { marginBottom: 0 }, 
+                            { 
+                                backgroundColor: theme.glass, 
+                                borderColor: theme.glassBorder 
+                            }
+                        ]} 
                         activeOpacity={0.7}
                         hapticType="light"
                         onPress={() => {
@@ -560,7 +597,7 @@ export default function HomeScreen() {
                         }}
                     >
                         <View style={styles.scanInfo}>
-                            <View style={styles.scanEmojiBox}>
+                            <View style={[styles.scanEmojiBox, {backgroundColor: theme.surface}]}>
                             <FoodThumbnail 
                                 uri={item.imageUri}
                                 emoji={getEmoji(item.foodName)}
@@ -570,8 +607,8 @@ export default function HomeScreen() {
                             />
                             </View>
                             <View>
-                            <Text style={styles.scanName}>{item.foodName}</Text>
-                            <Text style={styles.scanDate}>{formatDate(item.timestamp)}</Text>
+                            <Text style={[styles.scanName, {color: theme.textPrimary}]}>{item.foodName}</Text>
+                            <Text style={[styles.scanDate, {color: theme.textSecondary}]}>{formatDate(item.timestamp)}</Text>
                             </View>
                         </View>
                         
@@ -595,8 +632,8 @@ export default function HomeScreen() {
                 ))
             ) : (
                 <View style={{paddingVertical: 32, alignItems: 'center', opacity: 0.5}}>
-                    <Text style={{textAlign: 'center', color: '#94A3B8', fontSize: 16, fontWeight: '500'}}>No records for this day</Text>
-                    <Text style={{textAlign: 'center', color: '#CBD5E1', fontSize: 12, marginTop: 4}}>Try analyzing a new meal!</Text>
+                    <Text style={{textAlign: 'center', color: theme.textSecondary, fontSize: 16, fontWeight: '500'}}>No records for this day</Text>
+                    <Text style={{textAlign: 'center', color: theme.textSecondary, fontSize: 12, marginTop: 4}}>Try analyzing a new meal!</Text>
                 </View>
             )}
           </View>
@@ -709,6 +746,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  emojiPickerButton: {
+    // padding: 8, // Removed padding
+    // borderRadius: 12, // Removed radius
+    // backgroundColor: 'rgba(59, 130, 246, 0.1)', // Removed background
+    padding: 4, // Minimal padding for touch target
   },
   avatarContainer: {
     width: 48,

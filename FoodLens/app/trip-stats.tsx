@@ -9,24 +9,14 @@ import { UserService } from '../services/userService';
 import { AnalysisService } from '../services/analysisService';
 import * as Location from 'expo-location';
 
-const THEME = {
-    glass: {
-        backgroundColor: 'rgba(255, 255, 255, 0.7)',
-        borderColor: 'rgba(255, 255, 255, 0.4)',
-        borderWidth: 1,
-        shadowColor: '#3B82F6',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
-        shadowRadius: 20,
-        elevation: 10,
-    },
-    textMain: '#0F172A',
-    textSub: '#64748B',
-};
+import { Colors } from '../constants/theme';
+import { useColorScheme } from '../hooks/use-color-scheme';
 
 export default function TripStatisticsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
     
     const [loading, setLoading] = useState(true);
     const [safeCount, setSafeCount] = useState(0);
@@ -163,7 +153,7 @@ export default function TripStatisticsScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, {backgroundColor: theme.background}]}>
             <View style={styles.backgroundContainer} />
             
             <SafeAreaView style={{flex: 1}}>
@@ -175,52 +165,52 @@ export default function TripStatisticsScreen() {
                     <View style={styles.header}>
                         <TouchableOpacity 
                             onPress={() => router.back()}
-                            style={styles.backButton}
+                            style={[styles.backButton, {backgroundColor: theme.glass, borderColor: theme.border}]}
                         >
                             <View pointerEvents="none">
-                                <ChevronLeft size={24} color="#1E293B" />
+                                <ChevronLeft size={24} color={theme.textPrimary} />
                             </View>
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>Trip Statistics</Text>
+                        <Text style={[styles.headerTitle, {color: theme.textPrimary}]}>Trip Statistics</Text>
                         <View style={{width: 40}} /> 
                     </View>
 
                     {/* Main Stats Card */}
-                    <BlurView intensity={80} tint="light" style={[styles.mainCard, THEME.glass]}>
-                        <View style={styles.shieldIconContainer}>
-                            <ShieldCheck size={40} color="#166534" />
+                    <BlurView intensity={80} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={[styles.mainCard, {backgroundColor: theme.glass, borderColor: theme.glassBorder, shadowColor: theme.shadow}, THEME_STYLES.glass]}>
+                        <View style={[styles.shieldIconContainer, {backgroundColor: colorScheme === 'dark' ? 'rgba(22, 101, 52, 0.3)' : '#DCFCE7'}]}>
+                            <ShieldCheck size={40} color={colorScheme === 'dark' ? '#4ADE80' : '#166534'} />
                         </View>
-                        <ActivityIndicator animating={loading} style={{ position: 'absolute', top: 20 }} />
-                        <Text style={styles.bigCount}>{safeCount}</Text>
-                        <Text style={styles.statDescription}>
+                        <ActivityIndicator animating={loading} style={{ position: 'absolute', top: 20 }} color={theme.textSecondary} />
+                        <Text style={[styles.bigCount, {color: theme.textPrimary}]}>{safeCount}</Text>
+                        <Text style={[styles.statDescription, {color: theme.textSecondary}]}>
                             Confirmed safe during{'\n'}
                             {tripStartDate ? 'current trip' : 'all-time record'}
                         </Text>
 
                         {/* Global Record Link */}
                         <TouchableOpacity 
-                            style={styles.globalLink}
+                            style={[styles.globalLink, {borderTopColor: theme.border}]}
                             onPress={() => router.push('/history')}
                         >
                              <View pointerEvents="none" style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
-                                <Text style={styles.globalLinkText}>Global Record</Text>
+                                <Text style={[styles.globalLinkText, {color: theme.textSecondary}]}>Global Record</Text>
                                 <View style={styles.globalLinkRight}>
-                                    <Text style={styles.globalCountText}>Total {totalCount} Items</Text>
-                                    <ArrowRight size={16} color="#94A3B8" />
+                                    <Text style={[styles.globalCountText, {color: theme.textPrimary}]}>Total {totalCount} Items</Text>
+                                    <ArrowRight size={16} color={theme.textSecondary} />
                                 </View>
                             </View>
                         </TouchableOpacity>
                     </BlurView>
 
                     {/* Trip Management Card */}
-                    <BlurView intensity={70} tint="light" style={[styles.tripCard, THEME.glass]}>
+                    <BlurView intensity={70} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={[styles.tripCard, {backgroundColor: theme.glass, borderColor: theme.glassBorder}, THEME_STYLES.glass]}>
                         <View style={styles.tripHeader}>
-                            <View style={styles.mapIconBox}>
+                            <View style={[styles.mapIconBox, {backgroundColor: theme.surface}]}>
                                 <MapPin size={24} color="#3B82F6" />
                             </View>
                             <View>
-                                <Text style={styles.tripTitle}>Current Trip</Text>
-                                <Text style={styles.tripLocation}>
+                                <Text style={[styles.tripTitle, {color: theme.textPrimary}]}>Current Trip</Text>
+                                <Text style={[styles.tripLocation, {color: theme.textSecondary}]}>
                                     {currentLocation || "Location not set"}
                                 </Text>
                             </View>
@@ -250,7 +240,7 @@ export default function TripStatisticsScreen() {
                              </View>
                         </TouchableOpacity>
 
-                        <Text style={styles.disclaimer}>
+                        <Text style={[styles.disclaimer, {color: theme.textSecondary}]}>
                             * New trip requires location access. Starting a new trip will reset the current counter for this session.
                         </Text>
                     </BlurView>
@@ -266,13 +256,13 @@ export default function TripStatisticsScreen() {
                                 }
                             ]}
                         >
-                            <BlurView intensity={90} tint="dark" style={styles.toastContent}>
+                            <BlurView intensity={90} tint={colorScheme === 'dark' ? 'light' : 'dark'} style={[styles.toastContent, {backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.9)' : 'rgba(15, 23, 42, 0.9)'}]}>
                                 <View style={styles.activeIconCircleSmall}>
                                     <ShieldCheck size={16} color="white" />
                                 </View>
                                 <View>
-                                    <Text style={styles.toastTitle}>Trip Started!</Text>
-                                    <Text style={styles.toastMessage}>Now exploring {currentLocation}</Text>
+                                    <Text style={[styles.toastTitle, {color: colorScheme === 'dark' ? '#0F172A' : 'white'}]}>Trip Started!</Text>
+                                    <Text style={[styles.toastMessage, {color: colorScheme === 'dark' ? '#64748B' : '#94A3B8'}]}>Now exploring {currentLocation}</Text>
                                 </View>
                             </BlurView>
                         </Animated.View>
@@ -283,10 +273,21 @@ export default function TripStatisticsScreen() {
     );
 }
 
+// Shared styles for shadow/glass that can't be inline
+const THEME_STYLES = StyleSheet.create({
+    glass: {
+        borderWidth: 1,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.1,
+        shadowRadius: 20,
+        elevation: 10,
+    }
+});
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F0F4F8',
+        // backgroundColor set dynamically
     },
     backgroundContainer: {
         ...StyleSheet.absoluteFillObject,
@@ -306,7 +307,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.8)',
+        borderWidth: 1, // Added for consistent look
         alignItems: 'center',
         justifyContent: 'center',
     },

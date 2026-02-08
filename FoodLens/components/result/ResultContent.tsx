@@ -10,6 +10,8 @@ import {
 } from 'lucide-react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
 import { getEmoji } from '../../services/utils';
+import { Colors } from '../../constants/theme';
+import { useColorScheme } from '../../hooks/use-color-scheme';
 
 // Helper for pure rendering of ingredients to avoid clutter
 const IngredientItem = ({ item }: { item: any }) => (
@@ -50,12 +52,14 @@ interface ResultContentProps {
 
 export function ResultContent({ result, locationData, timestamp, onOpenBreakdown, onDatePress }: ResultContentProps) {
   const hasAllergens = result.ingredients.some((i: any) => i.isAllergen);
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   return (
-    <View style={styles.sheetContainer}>
+    <View style={[styles.sheetContainer, {backgroundColor: theme.background}]}>
         {/* Handle */}
         <View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, {backgroundColor: theme.border}]} />
         </View>
 
         <View style={styles.contentPadding}>
@@ -63,14 +67,14 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
             <View style={styles.headerSection}>
                 <View style={styles.subHeaderRow}>
                     <MapPin size={12} color="#60A5FA" />
-                    <Text style={styles.subHeaderText}>VISUAL RECOGNITION</Text>
+                    <Text style={[styles.subHeaderText, {color: theme.textSecondary}]}>VISUAL RECOGNITION</Text>
                 </View>
-                <Text style={styles.titleText}>{result.foodName}</Text>
+                <Text style={[styles.titleText, {color: theme.textPrimary}]}>{result.foodName}</Text>
                 
                 {/* Location Info */}
                 <View style={styles.locationRow}>
-                    <MapPin size={12} color="#94A3B8" />
-                    <Text style={styles.locationText}>
+                    <MapPin size={12} color={theme.textSecondary} />
+                    <Text style={[styles.locationText, {color: theme.textSecondary}]}>
                         {locationData && (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', ')) 
                             ? (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', '))
                             : "No Location Info"}
@@ -81,8 +85,8 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
                 {timestamp && (
                     <TouchableOpacity onPress={onDatePress} activeOpacity={0.7}>
                         <View style={styles.locationRow}>
-                            <Calendar size={12} color="#94A3B8" />
-                            <Text style={styles.locationText}>
+                            <Calendar size={12} color={theme.textSecondary} />
+                            <Text style={[styles.locationText, {color: theme.textSecondary}]}>
                                 {new Date(timestamp).toLocaleDateString()} {new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                             </Text>
                             <View style={{marginLeft: 6, backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2}}>
@@ -111,13 +115,16 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
 
             {/* Allergy Warning Card */}
             {hasAllergens && (
-                <View style={styles.allergyCard}>
+                <View style={[
+                    styles.allergyCard, 
+                    colorScheme === 'dark' && { backgroundColor: 'rgba(225, 29, 72, 0.15)', borderColor: 'rgba(225, 29, 72, 0.3)' }
+                ]}>
                      <View style={styles.allergyIconBox}>
                          <AlertCircle size={28} color="white" />
                      </View>
                      <View style={{ flex: 1 }}>
-                         <Text style={styles.allergyTitle}>Allergy Alert</Text>
-                         <Text style={styles.allergyDesc}>
+                         <Text style={[styles.allergyTitle, colorScheme === 'dark' && { color: '#FDA4AF' }]}>Allergy Alert</Text>
+                         <Text style={[styles.allergyDesc, colorScheme === 'dark' && { color: '#FECDD3' }]}>
                             Contains ingredients that match your allergy profile. Please exercise caution.
                          </Text>
                      </View>
@@ -127,24 +134,56 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
             {/* Ingredients List */}
             <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionTitle}>Ingredients</Text>
+                    <Text style={[styles.sectionTitle, {color: theme.textPrimary}]}>Ingredients</Text>
                 </View>
 
                 <View style={styles.ingredientsList}>
                     {result.ingredients.map((item: any, index: number) => (
-                        <IngredientItem key={index} item={item} />
+                        <View key={index} style={[
+                            styles.ingredientItem, 
+                            {backgroundColor: theme.surface, borderColor: theme.border},
+                            item.isAllergen && styles.ingredientItemDanger
+                        ]}>
+                            <View style={styles.ingredientLeft}>
+                                <View style={[
+                                    styles.ingredientIcon, 
+                                    {backgroundColor: theme.background, borderColor: theme.border},
+                                    item.isAllergen && styles.iconBgDanger
+                                ]}>
+                                    <Leaf size={20} color={item.isAllergen ? '#E11D48' : theme.textSecondary} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.ingredientName, {color: theme.textPrimary}, item.isAllergen && { color: '#881337' }]}>
+                                        {item.name}
+                                    </Text>
+                                    <Text style={[styles.ingredientMeta, {color: theme.textSecondary}]}>
+                                        {item.isAllergen ? 'Allergen detected' : 'Healthy component'}
+                                    </Text>
+                                </View>
+                            </View>
+                            
+                            {item.isAllergen ? (
+                                <View style={styles.statusIconDanger}>
+                                    <AlertCircle size={14} color="white" />
+                                </View>
+                            ) : (
+                                <View style={styles.statusIconSafe}>
+                                    <ShieldCheck size={14} color="#10B981" />
+                                </View>
+                            )}
+                        </View>
                     ))}
                 </View>
             </View>
 
             {/* AI Summary */}
-            <View style={styles.aiSummaryCard}>
+            <View style={[styles.aiSummaryCard, {backgroundColor: colorScheme === 'dark' ? theme.surface : '#F0F9FF', borderColor: colorScheme === 'dark' ? theme.border : '#E0F2FE'}]}>
                 <View style={styles.aiGlow} />
                 <View style={styles.aiHeader}>
                     <Sparkles size={18} color="#60A5FA" fill="#60A5FA" />
                     <Text style={styles.aiTitle}>AI Health Coach</Text>
                 </View>
-                <Text style={styles.aiText}>
+                <Text style={[styles.aiText, {color: theme.textPrimary}]}>
                     {result.raw_result || "This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet."}
                 </Text>
             </View>
@@ -166,7 +205,7 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
             left: 0,
             right: 0,
             height: 2000,
-            backgroundColor: 'white'
+            backgroundColor: theme.background
         }} />
     </View>
   );
@@ -177,7 +216,7 @@ const { height } = Dimensions.get('window');
 const styles = StyleSheet.create({
   // Sheet
   sheetContainer: {
-    backgroundColor: 'white',
+    // backgroundColor: 'white', // Handled via theme
     borderTopLeftRadius: 44,
     borderTopRightRadius: 44,
     shadowColor: '#000',
@@ -259,7 +298,7 @@ const styles = StyleSheet.create({
 
   // Allergy Card
   allergyCard: {
-    backgroundColor: '#FFF1F2', // rose-50
+    backgroundColor: '#FFF1F2', // rose-50 (Default/Light) - Override in component for dark
     borderWidth: 1,
     borderColor: '#FFE4E6',
     borderRadius: 36,
@@ -316,7 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: 'white',
+    // backgroundColor: 'white', // Handled via theme
     borderRadius: 32,
     borderWidth: 1,
     borderColor: '#F1F5F9',

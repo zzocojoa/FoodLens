@@ -6,6 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FilterType } from '../hooks/useHistoryFilter';
 import { CountryData } from '../models/History';
 import CountryCard from './CountryCard';
+import { Colors } from '../constants/theme';
+import { useColorScheme } from '../hooks/use-color-scheme';
 
 interface HistoryListProps {
     data: CountryData[];
@@ -43,6 +45,8 @@ export default function HistoryList({
     onBulkDelete
 }: HistoryListProps) {
     const scrollViewRef = useRef<ScrollView>(null);
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
 
     return (
         <View style={{flex: 1}}>
@@ -53,7 +57,10 @@ export default function HistoryList({
                 showsVerticalScrollIndicator={false}
             >
                 {/* Filter Chips */}
-                <View style={styles.filterContainer}>
+                <View style={[
+                    styles.filterContainer,
+                    {backgroundColor: colorScheme === 'dark' ? theme.glass : 'rgba(226, 232, 240, 0.4)', borderColor: theme.border}
+                ]}>
                     {(['all', 'ok', 'avoid', 'ask'] as const).map(f => (
                         <HapticTouchableOpacity 
                             key={f}
@@ -63,14 +70,15 @@ export default function HistoryList({
                             }}
                             style={[
                                 styles.filterChip,
-                                filter === f && styles.filterChipActive
+                                filter === f && [styles.filterChipActive, {backgroundColor: theme.surface, shadowColor: theme.shadow}]
                             ]}
                             hapticType="selection"
                         >
                             <View pointerEvents="none">
                                 <Text style={[
                                     styles.filterText,
-                                    filter === f && styles.filterTextActive
+                                    {color: theme.textSecondary},
+                                    filter === f && [styles.filterTextActive, {color: theme.primary}]
                                 ]}>{f === 'ask' ? 'ASK' : f.toUpperCase()}</Text>
                             </View>
                         </HapticTouchableOpacity>
@@ -81,13 +89,13 @@ export default function HistoryList({
                 <View style={{gap: 16}}>
                      {loading ? (
                         <View style={{alignItems: 'center', marginTop: 40}}>
-                            <ActivityIndicator color="#0F172A" />
-                            <Text style={{marginTop: 16, color: '#64748B'}}>Loading Passport...</Text>
+                            <ActivityIndicator color={theme.textPrimary} />
+                            <Text style={{marginTop: 16, color: theme.textSecondary}}>Loading Passport...</Text>
                         </View>
                      ) : data.length === 0 ? (
                         <View style={{alignItems: 'center', marginTop: 40, opacity: 0.5}}>
-                            <List size={48} color="#94A3B8" />
-                            <Text style={{marginTop: 16, fontSize: 16, fontWeight: '600', color: '#64748B'}}>No records found</Text>
+                            <List size={48} color={theme.textSecondary} />
+                            <Text style={{marginTop: 16, fontSize: 16, fontWeight: '600', color: theme.textSecondary}}>No records found</Text>
                         </View>
                     ) : data.map((country, countryIdx) => {
                         const isExpanded = expandedCountries.has(`${country.country}-${countryIdx}`);
@@ -136,11 +144,11 @@ export default function HistoryList({
 }
 
 const styles = StyleSheet.create({
-    filterContainer: { flexDirection: 'row', backgroundColor: 'rgba(226, 232, 240, 0.4)', padding: 6, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(226, 232, 240, 0.5)', marginBottom: 24, gap: 8 },
+    filterContainer: { flexDirection: 'row', padding: 6, borderRadius: 22, borderWidth: 1, marginBottom: 24, gap: 8 },
     filterChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 17 },
-    filterChipActive: { backgroundColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-    filterText: { fontSize: 11, fontWeight: '800', color: '#64748B' },
-    filterTextActive: { color: '#2563EB' },
+    filterChipActive: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    filterText: { fontSize: 11, fontWeight: '800' },
+    filterTextActive: { },
     floatingBarContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 40, zIndex: 200 },
     floatingDeleteButton: { backgroundColor: '#EF4444', borderRadius: 30, paddingHorizontal: 24, paddingVertical: 14, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
     floatingDeleteContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },

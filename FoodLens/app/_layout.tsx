@@ -6,7 +6,8 @@ import 'react-native-reanimated';
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
+import { useColorScheme } from '@/hooks/use-color-scheme'; // Keep for now, although we might change it
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
@@ -33,8 +34,8 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function LayoutContent() {
+  const { colorScheme } = useTheme();
 
   useEffect(() => {
     initializeDeviceId();
@@ -44,16 +45,25 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ErrorBoundary>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="profile" options={{ headerShown: false }} />
-            <Stack.Screen name="history" options={{ headerShown: false }} />
-            <Stack.Screen name="trip-stats" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="profile" />
+            <Stack.Screen name="history" />
+            <Stack.Screen name="trip-stats" />
+            <Stack.Screen name="emoji-picker" />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', headerShown: true }} />
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <CustomThemeProvider>
+      <LayoutContent />
+    </CustomThemeProvider>
   );
 }
