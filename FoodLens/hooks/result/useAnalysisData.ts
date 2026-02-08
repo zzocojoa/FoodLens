@@ -53,12 +53,33 @@ export function useAnalysisData() {
     loadData();
   }, [isRestoring, fromStore, data, location]);
 
+  // Reactive timestamp state
+  const [timestamp, setTimestamp] = useState<string | undefined>(
+    isRestoring || fromStore === 'true' ? dataStore.getData().timestamp || undefined : undefined
+  );
+
+  // Sync with dataStore if we are in store mode
+  useEffect(() => {
+    if (loaded && (isRestoring || fromStore === 'true')) {
+        const stored = dataStore.getData();
+        setTimestamp(stored.timestamp || undefined);
+    }
+  }, [loaded, isRestoring, fromStore]);
+
+  const updateTimestamp = (newDate: Date) => {
+      const isoString = newDate.toISOString();
+      setTimestamp(isoString);
+      dataStore.updateTimestamp(isoString);
+  };
+
   return {
     isRestoring,
     loaded,
     result,
     locationData,
     imageSource,
-    rawImageUri: imageSource?.uri
+    rawImageUri: imageSource?.uri,
+    timestamp,
+    updateTimestamp
   };
 }

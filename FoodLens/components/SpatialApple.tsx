@@ -7,12 +7,15 @@ import Animated, {
     interpolate,
     SensorType,
     useAnimatedSensor,
-    useDerivedValue
+    useDerivedValue,
+    useAnimatedReaction,
+    runOnJS
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 
 interface SpatialAppleProps {
     size?: number;
+    onMotionDetect?: () => void;
 }
 
 /**
@@ -27,7 +30,7 @@ const clamp = (value: number, min: number, max: number) => {
     return Math.min(Math.max(value, min), max);
 };
 
-export default function SpatialApple({ size = 100 }: SpatialAppleProps) {
+export default function SpatialApple({ size = 100, onMotionDetect }: SpatialAppleProps) {
     // Use GYROSCOPE to get rotational velocity (rad/s) instead of absolute angle
     // This allows us to react to movement but always return to center
     const sensor = useAnimatedSensor(SensorType.GYROSCOPE, { interval: 20 });
@@ -49,6 +52,17 @@ export default function SpatialApple({ size = 100 }: SpatialAppleProps) {
         
         return offsetX.value;
     });
+
+    useAnimatedReaction(
+        () => Math.abs(offsetX.value) + Math.abs(offsetY.value),
+        (magnitude) => {
+            // Threshold for "significant motion"
+            if (magnitude > 5 && onMotionDetect) {
+                runOnJS(onMotionDetect)();
+            }
+        },
+        [onMotionDetect] // Dependency
+    );
 
     const animatedStyle = useAnimatedStyle(() => {
         return {
@@ -123,6 +137,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#F43F5E', // Rose-500
         borderRadius: 100,
         zIndex: 1,
+        // @ts-ignore
         filter: 'blur(20px)', // Web compatibility
     },
     highlight: {

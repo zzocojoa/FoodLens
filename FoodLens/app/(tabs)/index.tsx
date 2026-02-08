@@ -35,14 +35,35 @@ import { ServerConfig } from '../../services/ai';
 import { UserProfile } from '../../models/User';
 import ProfileSheet from '../../components/ProfileSheet';
 import { FoodThumbnail } from '../../components/FoodThumbnail'; // NEW
+import { WeeklyStatsStrip, WeeklyData } from '../../components/WeeklyStatsStrip';
 import { HapticsService } from '../../services/haptics';
+import { HapticTouchableOpacity } from '../../components/HapticFeedback';
+import { FloatingEmojis, FloatingEmojisHandle } from '../../components/FloatingEmojis';
 
+// Utility for safe date comparison
+const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+           d1.getMonth() === d2.getMonth() &&
+           d1.getDate() === d2.getDate();
+};
 
 export default function HomeScreen() {
   const router = useRouter();
+  
+  // Ref for triggering emoji animation
+  const floatingEmojisRef = React.useRef<FloatingEmojisHandle>(null);
+
+  const handleAppleMotion = React.useCallback(() => {
+      floatingEmojisRef.current?.trigger();
+  }, []);
   const params = useLocalSearchParams();
   const [isPressed, setIsPressed] = useState(false);
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
+  const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]); // New: Filtered list
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());     // New: Selected Date
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyData[]>([]);       // New: Weekly Data
+  const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]); // New: Cache all history for filtering
+
   const [allergyCount, setAllergyCount] = useState(0);
   const [safeCount, setSafeCount] = useState(0); 
   // Unified Modal State
@@ -66,6 +87,18 @@ export default function HomeScreen() {
         tension: 40
     }).start();
   }, [activeModal]);
+  
+  // Effect to filter scans when selectedDate or cache changes
+  React.useEffect(() => {
+    if (allHistoryCache.length > 0) {
+        const filtered = allHistoryCache.filter(item => isSameDay(item.timestamp, selectedDate));
+        // Sort by time descending (newest first)
+        filtered.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        setFilteredScans(filtered);
+    } else {
+        setFilteredScans([]);
+    }
+  }, [selectedDate, allHistoryCache]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -88,6 +121,53 @@ export default function HomeScreen() {
         console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
         
         setRecentScans(recentData);
+        setAllHistoryCache(allHistory); // Cache for filtering
+
+        // --- Weekly Stats Logic ---
+        // 1. Generate dates for the current week (or last 7 days)
+        // Let's do last 7 days + today for context? Or just current week (Sun-Sat)?
+        // Calendar view usually expects a stable week view or sliding window.
+        // Let's do a sliding window: Today - 6 days to Today (7 days total)
+        // Or better: Sun to Sat containing Today.
+        
+        // Generate extended range:
+        // Current week is Base. 
+        // Start: Base Sunday - 20 days
+        // End: Base Saturday + 20 days
+        
+        const today = new Date();
+        const currentDay = today.getDay(); // 0 (Sun) - 6 (Sat)
+        
+        const baseSunday = new Date(today);
+        baseSunday.setDate(today.getDate() - currentDay); // Go back to Sunday (Start of current week)
+        
+        const weekDates: Date[] = [];
+        const PREVIOUS_DAYS = 20;
+        const NEXT_DAYS = 20;
+        const CURRENT_WEEK_DAYS = 7;
+        
+        // Loop from -20 to (6 + 20)
+        for (let i = -PREVIOUS_DAYS; i < CURRENT_WEEK_DAYS + NEXT_DAYS; i++) {
+            const d = new Date(baseSunday);
+            d.setDate(baseSunday.getDate() + i);
+            weekDates.push(d);
+        }
+
+        // 2. Aggregate Status for each day
+        const stats: WeeklyData[] = weekDates.map(date => {
+            const dayItems = allHistory.filter(item => isSameDay(item.timestamp, date));
+            
+            return {
+                date,
+                hasSafe: dayItems.some(i => i.safetyStatus === 'SAFE'),
+                hasDanger: dayItems.some(i => i.safetyStatus === 'DANGER'),
+                hasWarning: dayItems.some(i => i.safetyStatus === 'CAUTION'), // 'CAUTION' is the string in DB
+                hasData: dayItems.length > 0
+            };
+        });
+        
+        setWeeklyStats(stats);
+        // --------------------------
 
         const safeItems = allHistory.filter(item => item.safetyStatus === 'SAFE').length;
         setSafeCount(safeItems);
@@ -293,19 +373,48 @@ export default function HomeScreen() {
         const asset = result.assets[0];
         let photoLatitude: number | undefined;
         let photoLongitude: number | undefined;
+        let photoTimestamp: string | undefined;
         
-        if (asset.exif) {
-          const exif = asset.exif as any;
-          // Robust check: Validate coordinates range and existence
-          // Some devices use 'Latitude', others 'GPSLatitude'
-          const latCandidate = exif.GPSLatitude ?? exif.Latitude;
-          const lngCandidate = exif.GPSLongitude ?? exif.Longitude;
+        // NEW: Prioritize MediaLibrary metadata for reliable timestamps
+        if (asset.assetId) {
+            try {
+                const mediaAsset = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+                if (mediaAsset && mediaAsset.creationTime) {
+                    // MediaLibrary returns timestamps in milliseconds (number) or ISO string?
+                    // creationTime is usually milliseconds since epoch on Android, but on iOS it might be slightly different.
+                    // Expo docs say: creationTime: number (The time the asset was created, in milliseconds)
+                    
+                    // Actually, let's verify runtime behavior or safety. 
+                    // To be safe, we create a Date object.
+                    photoTimestamp = new Date(mediaAsset.creationTime).toISOString();
+                    console.log("[ImagePicker] Fetched timestamp from MediaLibrary:", photoTimestamp);
+                }
+            } catch (e) {
+                console.warn("[ImagePicker] Failed to fetch asset info:", e);
+            }
+        }
 
-          const valid = validateCoordinates(latCandidate, lngCandidate);
-          if (valid) {
-            photoLatitude = valid.latitude;
-            photoLongitude = valid.longitude;
+        // Fallback to EXIF if MediaLibrary failed or didn't provide a timestamp
+        if (!photoTimestamp && asset.exif) {
+          const exif = asset.exif as any;
+          
+          if (exif.DateTimeOriginal || exif.DateTimeDigitized || exif.DateTime) {
+             photoTimestamp = exif.DateTimeOriginal || exif.DateTimeDigitized || exif.DateTime;
+             console.log("[ImagePicker] Fetched timestamp from EXIF:", photoTimestamp);
           }
+        }
+        
+        // Coordinates extraction remains from EXIF for now (MediaLibrary also has location but EXIF is usually fine if present)
+        if (asset.exif) {
+             const exif = asset.exif as any;
+             const latCandidate = exif.GPSLatitude ?? exif.Latitude;
+             const lngCandidate = exif.GPSLongitude ?? exif.Longitude;
+   
+             const valid = validateCoordinates(latCandidate, lngCandidate);
+             if (valid) {
+               photoLatitude = valid.latitude;
+               photoLongitude = valid.longitude;
+             }
         }
 
         router.push({
@@ -314,6 +423,7 @@ export default function HomeScreen() {
             imageUri: asset.uri,
             photoLat: photoLatitude?.toString(),
             photoLng: photoLongitude?.toString(),
+            photoTimestamp: photoTimestamp, // Pass the timestamp
             sourceType: type
           }
         });
@@ -339,12 +449,8 @@ export default function HomeScreen() {
             <Text style={styles.offlineText}>Offline Mode: Using cached data</Text>
           </View>
         )}
-        <ScrollView 
-          contentContainerStyle={{paddingBottom: 150, paddingHorizontal: 24}} 
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
+        {/* Header - Fixed at Top */}
+        <View style={[styles.header, { paddingHorizontal: 24 }]}>
             <Pressable 
                 onPress={() => {
                     HapticsService.medium();
@@ -367,14 +473,19 @@ export default function HomeScreen() {
                 </View>
                 </View>
             </Pressable>
-          </View>
+        </View>
+
+        <ScrollView 
+          contentContainerStyle={{paddingBottom: 150, paddingHorizontal: 24}} 
+          showsVerticalScrollIndicator={false}
+        >
           
           {/* ... existing Hero and Stats ... */}
           {/* Hero Section */}
            <View style={[styles.heroCard, THEME.glass]}>
               <View style={styles.heroGlow} />
               <View style={styles.heroEmoji}>
-                  <SpatialApple size={100} />
+                  <SpatialApple size={100} onMotionDetect={handleAppleMotion} />
               </View>
               <Text style={styles.heroTitle}>Food Lens</Text>
               <Text style={styles.heroSubtitle}>Travel Safe, Eat Smart</Text>
@@ -382,9 +493,10 @@ export default function HomeScreen() {
 
           {/* Bento Grid Stats */}
           <View style={styles.statsGrid}>
-            <TouchableOpacity 
+            <HapticTouchableOpacity 
                 activeOpacity={0.8}
                 style={{flex: 1}}
+                hapticType="light"
                 onPress={() => router.push('/trip-stats')}
             >
                 <BlurView intensity={80} tint="light" style={styles.statCard} pointerEvents="none">
@@ -394,75 +506,101 @@ export default function HomeScreen() {
                     <Text style={styles.statLabel}>Safe Items</Text>
                     <Text style={styles.statValue}>{safeCount}</Text>
                 </BlurView>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
             
-            <BlurView intensity={80} tint="light" style={styles.statCard}>
-              <View style={[styles.statIconBox, { backgroundColor: '#FFE4E6' }]}>
-                <Heart size={22} color="#E11D48" />
-              </View>
-              <Text style={styles.statLabel}>Allergies</Text>
-              <Text style={styles.statValue}>{allergyCount}</Text>
-            </BlurView>
+            <HapticTouchableOpacity 
+                style={{flex: 1}} 
+                hapticType="light"
+                onPress={() => router.push('/allergies')}
+            >
+                <BlurView intensity={80} tint="light" style={styles.statCard} pointerEvents="none">
+                    <View style={[styles.statIconBox, { backgroundColor: '#FFE4E6' }]}>
+                        <Heart size={22} color="#E11D48" />
+                    </View>
+                    <Text style={styles.statLabel}>Allergies</Text>
+                    <Text style={styles.statValue}>{allergyCount}</Text>
+                </BlurView>
+            </HapticTouchableOpacity>
           </View>
 
-          {/* Recent Scans */}
+          {/* Weekly Safety Calendar */}
+          <View style={{marginBottom: 8}}>
+            <WeeklyStatsStrip 
+                weeklyData={weeklyStats} 
+                selectedDate={selectedDate} 
+                onSelectDate={setSelectedDate}
+            />
+          </View>
+
+          {/* Filtered Scans List */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Scans</Text>
-            <TouchableOpacity onPress={() => router.push('/history')}>
-               <View pointerEvents="none">
-                 <Text style={styles.seeAllText}>See All</Text>
-               </View>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>
+                {isSameDay(selectedDate, new Date()) ? 'Recent Scans' : `Scans on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(selectedDate)}`}
+            </Text>
+             <HapticTouchableOpacity onPress={() => router.push('/history')} hapticType="selection">
+                <View pointerEvents="none">
+                  <Text style={styles.seeAllText}>See All</Text>
+                </View>
+             </HapticTouchableOpacity>
           </View>
 
           <View style={styles.scanList}>
-            {recentScans.map((item, index) => (
-              <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>
-                <Swipeable
-                    renderRightActions={(progress, dragX) => 
-                        renderRightActions(progress, dragX, () => handleDeleteItem(item.id))
-                    }
-                >
-                  <TouchableOpacity
-                      style={[styles.scanItem, { marginBottom: 0 }]} // Remove marginBottom from item to let View handle it
-                      activeOpacity={0.7}
-                      onPress={() => {
-                          dataStore.setData(item, item.location, item.imageUri || "");
-                          router.push({ pathname: '/result', params: { fromStore: 'true' } });
-                      }}
-                  >
-                     <View style={styles.scanInfo}>
-                        <View style={styles.scanEmojiBox}>
-                          <FoodThumbnail 
-                              uri={item.imageUri}
-                              emoji={getEmoji(item.foodName)}
-                              style={{width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent'}}
-                              imageStyle={{borderRadius: 12}}
-                              fallbackFontSize={24}
-                          />
-                        </View>
-                        <View>
-                          <Text style={styles.scanName}>{item.foodName}</Text>
-                          <Text style={styles.scanDate}>{formatDate(item.timestamp)}</Text>
-                        </View>
-                     </View>
-                     
-                     {(() => {
-                        const badgeStyle = getBadgeStyle(item.safetyStatus);
-                        return (
-                            <View style={[styles.badge, badgeStyle.container]}>
-                                <Text style={[styles.badgeText, badgeStyle.text]}>
-                                    {item.safetyStatus}
-                                </Text>
+            {filteredScans.length > 0 ? (
+                filteredScans.map((item, index) => (
+                <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>
+                    <Swipeable
+                        renderRightActions={(progress, dragX) => 
+                            renderRightActions(progress, dragX, () => handleDeleteItem(item.id))
+                        }
+                    >
+                    <HapticTouchableOpacity
+                        style={[styles.scanItem, { marginBottom: 0 }]} // Remove marginBottom from item to let View handle it
+                        activeOpacity={0.7}
+                        hapticType="light"
+                        onPress={() => {
+                            dataStore.setData(item, item.location, item.imageUri || "");
+                            router.push({ pathname: '/result', params: { fromStore: 'true' } });
+                        }}
+                    >
+                        <View style={styles.scanInfo}>
+                            <View style={styles.scanEmojiBox}>
+                            <FoodThumbnail 
+                                uri={item.imageUri}
+                                emoji={getEmoji(item.foodName)}
+                                style={{width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent'}}
+                                imageStyle={{borderRadius: 12}}
+                                fallbackFontSize={24}
+                            />
                             </View>
-                        );
-                     })()}
-                  </TouchableOpacity>
-                </Swipeable>
-              </View>
-            ))}
-            {recentScans.length === 0 && (
-                <Text style={{textAlign: 'center', color: '#94A3B8', marginTop: 10}}>No recent scans yet.</Text>
+                            <View>
+                            <Text style={styles.scanName}>{item.foodName}</Text>
+                            <Text style={styles.scanDate}>{formatDate(item.timestamp)}</Text>
+                            </View>
+                        </View>
+                        
+                        {(() => {
+                            const badgeStyle = getBadgeStyle(item.safetyStatus);
+                            let displayStatus = 'ASK'; // Default/Caution
+                            if (item.safetyStatus === 'SAFE') displayStatus = 'OK';
+                            if (item.safetyStatus === 'DANGER') displayStatus = 'AVOID';
+                            
+                            return (
+                                <View style={[styles.badge, badgeStyle.container]}>
+                                    <Text style={[styles.badgeText, badgeStyle.text]}>
+                                        {displayStatus}
+                                    </Text>
+                                </View>
+                            );
+                        })()}
+                    </HapticTouchableOpacity>
+                    </Swipeable>
+                </View>
+                ))
+            ) : (
+                <View style={{paddingVertical: 32, alignItems: 'center', opacity: 0.5}}>
+                    <Text style={{textAlign: 'center', color: '#94A3B8', fontSize: 16, fontWeight: '500'}}>No records for this day</Text>
+                    <Text style={{textAlign: 'center', color: '#CBD5E1', fontSize: 12, marginTop: 4}}>Try analyzing a new meal!</Text>
+                </View>
             )}
           </View>
 
@@ -478,6 +616,10 @@ export default function HomeScreen() {
 
       </SafeAreaView>
 
+
+
+
+
       {/* Camera Action Button */}
       <Animated.View 
         style={[
@@ -489,6 +631,11 @@ export default function HomeScreen() {
         ]}
         pointerEvents={activeModal === 'PROFILE' ? 'none' : 'box-none'}
       >
+         {/* Floating Emojis Background - Centered */}
+         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]} pointerEvents="none">
+            <FloatingEmojis ref={floatingEmojisRef} />
+         </View>
+
          <TouchableOpacity 
             onPress={handleStartAnalysis}
             activeOpacity={0.8}
@@ -558,8 +705,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 32,
-    marginTop: 16,
+    marginBottom: 6,
+    marginTop: 2,
   },
   userInfo: {
     flexDirection: 'row',
@@ -646,7 +793,7 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     gap: 16,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   statCard: {
     flex: 1,

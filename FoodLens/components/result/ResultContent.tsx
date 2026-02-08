@@ -5,7 +5,8 @@ import {
   ShieldCheck, 
   Sparkles,
   MapPin,
-  Leaf
+  Leaf,
+  Calendar
 } from 'lucide-react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
 import { getEmoji } from '../../services/utils';
@@ -42,10 +43,12 @@ const IngredientItem = ({ item }: { item: any }) => (
 interface ResultContentProps {
   result: any;
   locationData: any;
+  timestamp?: string | null;
   onOpenBreakdown: () => void;
+  onDatePress?: () => void;
 }
 
-export function ResultContent({ result, locationData, onOpenBreakdown }: ResultContentProps) {
+export function ResultContent({ result, locationData, timestamp, onOpenBreakdown, onDatePress }: ResultContentProps) {
   const hasAllergens = result.ingredients.some((i: any) => i.isAllergen);
 
   return (
@@ -73,6 +76,21 @@ export function ResultContent({ result, locationData, onOpenBreakdown }: ResultC
                             : "No Location Info"}
                     </Text>
                 </View>
+
+                {/* Date Info */}
+                {timestamp && (
+                    <TouchableOpacity onPress={onDatePress} activeOpacity={0.7}>
+                        <View style={styles.locationRow}>
+                            <Calendar size={12} color="#94A3B8" />
+                            <Text style={styles.locationText}>
+                                {new Date(timestamp).toLocaleDateString()} {new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </Text>
+                            <View style={{marginLeft: 6, backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2}}>
+                                <Text style={{fontSize: 9, color: '#64748B', fontWeight: 'bold'}}>EDIT</Text>
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                )}
                 
                 <View style={styles.statsRow}>
                     <View style={[styles.statBadge, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
@@ -131,6 +149,7 @@ export function ResultContent({ result, locationData, onOpenBreakdown }: ResultC
                 </Text>
             </View>
             
+
             <View style={{ marginTop: 24 }}>
                 <TravelerAllergyCard 
                     countryCode={locationData?.isoCountryCode} 
@@ -139,6 +158,16 @@ export function ResultContent({ result, locationData, onOpenBreakdown }: ResultC
             </View>
 
         </View>
+        
+        {/* Infinite Bottom White Background for Overscroll */}
+        <View style={{
+            position: 'absolute',
+            bottom: -2000,
+            left: 0,
+            right: 0,
+            height: 2000,
+            backgroundColor: 'white'
+        }} />
     </View>
   );
 }

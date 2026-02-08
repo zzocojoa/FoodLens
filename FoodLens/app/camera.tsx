@@ -6,7 +6,7 @@ import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import { analyzeImage } from '../services/ai';
 import { dataStore } from '../services/dataStore';
-import { getLocationData, getEmoji, validateCoordinates } from '../services/utils';
+import { getLocationData, getEmoji, validateCoordinates, normalizeTimestamp } from '../services/utils';
 import { UserService } from '../services/userService';
 import AnalysisLoadingScreen from '../components/AnalysisLoadingScreen';
 
@@ -36,10 +36,11 @@ export default function CameraScreen() {
   const isCancelled = useRef(false);
   const hasLaunched = useRef(false);
   const cachedLocation = useRef<any>(undefined);
-  const { imageUri: externalImageUri, photoLat, photoLng, sourceType } = useLocalSearchParams<{  
+  const { imageUri: externalImageUri, photoLat, photoLng, photoTimestamp, sourceType } = useLocalSearchParams<{  
     imageUri?: string;
     photoLat?: string;
     photoLng?: string;
+    photoTimestamp?: string;
     sourceType?: 'camera' | 'library';
   }>();
 
@@ -317,8 +318,12 @@ export default function CameraScreen() {
           "Location Unavailable (Using Preference)"
       );
 
+      // Prepare timestamp
+      // Normalize whatever we get (EXIF string, ISO string, or undefined) to a valid ISO string
+      const finalTimestamp = normalizeTimestamp(photoTimestamp);
+
       // Use DataStore to prevent URL parameter overflow
-      dataStore.setData(analysisResult, locationContext, uri);
+      dataStore.setData(analysisResult, locationContext, uri, finalTimestamp);
 
       router.replace({
         pathname: '/result',

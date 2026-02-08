@@ -22,6 +22,10 @@ import { SecureImage } from '../components/SecureImage';
 import TravelerAllergyCard from '../components/TravelerAllergyCard';
 import { HapticsService } from '../services/haptics';
 import { useLocalSearchParams } from 'expo-router';
+import { HapticTouchableOpacity } from '../components/HapticFeedback';
+
+import { DateEditSheet } from '../components/DateEditSheet';
+import { AnalysisService } from '../services/analysisService';
 
 const { height } = Dimensions.get('window');
 const HEADER_HEIGHT = height * 0.6;
@@ -36,11 +40,33 @@ export default function ResultScreen() {
     result, 
     locationData, 
     imageSource, 
-    rawImageUri 
+    rawImageUri,
+    timestamp,
+    updateTimestamp 
   } = useAnalysisData();
 
+  // Track the saved record ID to allow updates
+  const [savedRecordId, setSavedRecordId] = React.useState<string | null>(null);
+
   // 2. Logic Layer (Auto-save)
-  useAutoSave(result, locationData, rawImageUri);
+  useAutoSave(result, locationData, rawImageUri, timestamp, (savedRecord) => {
+      setSavedRecordId(savedRecord.id);
+  });
+
+  // Date Edit State
+  const [isDateEditOpen, setIsDateEditOpen] = React.useState(false);
+
+  const handleDateUpdate = async (newDate: Date) => {
+      // 1. Update UI / Local Store immediately
+      updateTimestamp(newDate);
+
+      // 2. Update DB if record exists
+      if (savedRecordId) {
+          await AnalysisService.updateAnalysisTimestamp("test-user-v1", savedRecordId, newDate);
+          HapticsService.success();
+      }
+      setIsDateEditOpen(false);
+  };
 
   // 3. Algorithm Layer (Pins)
   const { pins, layoutStyle } = usePinLayout(result?.ingredients, rawImageUri);
@@ -156,8 +182,9 @@ export default function ResultScreen() {
                     </View>
                 )}
                 
-                <TouchableOpacity 
+                <HapticTouchableOpacity 
                     style={styles.retryButton} 
+                    hapticType="medium"
                     onPress={() => {
                         if (rawImageUri) {
                             router.replace({
@@ -174,14 +201,15 @@ export default function ResultScreen() {
                 >
                     <Ionicons name="refresh" size={18} color="white" style={{marginRight: 8}} />
                     <Text style={styles.retryText}>다시 시도</Text>
-                </TouchableOpacity>
+                </HapticTouchableOpacity>
                 
-                <TouchableOpacity 
+                <HapticTouchableOpacity 
                     style={styles.homeButton} 
+                    hapticType="light"
                     onPress={() => router.replace('/')}
                 >
                     <Text style={styles.homeText}>홈으로 돌아가기</Text>
-                </TouchableOpacity>
+                </HapticTouchableOpacity>
             </View>
         </View>
       );
@@ -217,16 +245,16 @@ export default function ResultScreen() {
       {/* 2. Nav Bar */}
       <SafeAreaView style={styles.navSafeArea} edges={['top']}>
         <View style={styles.navBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.navButton}>
+          <HapticTouchableOpacity onPress={() => router.back()} style={styles.navButton} hapticType="light">
               <View pointerEvents="none">
                 <Ionicons name="chevron-back" size={28} color="#1C1C1E" />
               </View>
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
           <View style={{flex: 1}} />
           {/* Share button omitted or needs impl */}
-          <TouchableOpacity style={styles.navButton}>
+          <HapticTouchableOpacity style={styles.navButton} hapticType="light">
                <Ionicons name="share-outline" size={22} color="#1C1C1E" />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
         </View>
       </SafeAreaView>
 
@@ -234,15 +262,32 @@ export default function ResultScreen() {
       <Animated.ScrollView 
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 160, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 160 }}
         showsVerticalScrollIndicator={false}
       >
         <ResultContent 
             result={result} 
-            locationData={locationData} 
+            locationData={locationData}
+            timestamp={timestamp}
             onOpenBreakdown={() => setIsBreakdownOpen(true)}
+            onDatePress={() => setIsDateEditOpen(true)}
         />
       </Animated.ScrollView>
+
+      {/* Date Edit Sheet */}
+      <DateEditSheet 
+        isVisible={isDateEditOpen}
+        initialDate={timestamp ? new Date(timestamp) : new Date()}
+        onClose={() => setIsDateEditOpen(false)}
+        onConfirm={handleDateUpdate}
+      />
+      
+      {/* Breakdown Overlay */}
+      <BreakdownOverlay 
+        isOpen={isBreakdownOpen} 
+        onClose={() => setIsBreakdownOpen(false)}
+        resultData={result}
+      />
 
       {/* 4. Floating Actions */}
       <ActionButtons />

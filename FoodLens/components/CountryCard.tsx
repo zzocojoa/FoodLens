@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Alert, Animated } from 'react-native'; // Animated imported
+import { HapticTouchableOpacity } from './HapticFeedback';
 import { BlurView } from 'expo-blur';
 import { ChevronDown, List, ShieldCheck, AlertCircle, AlertTriangle, Trash2, Circle, CheckCircle } from 'lucide-react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -68,7 +69,7 @@ export default function CountryCard({
             extrapolate: 'clamp',
         });
         return (
-            <TouchableOpacity onPress={onClick} style={styles.deleteAction}>
+            <HapticTouchableOpacity onPress={onClick} style={styles.deleteAction} hapticType="warning">
                 <Animated.View 
                     style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}
                     pointerEvents="none"
@@ -76,7 +77,7 @@ export default function CountryCard({
                     <Trash2 size={24} color="white" />
                     <Text style={styles.deleteText}>Delete</Text>
                 </Animated.View>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
         );
     };
 
@@ -86,10 +87,11 @@ export default function CountryCard({
             tint="light" 
             style={[styles.countryCard, THEME.glass, isExpanded && { borderColor: 'rgba(59, 130, 246, 0.5)', borderWidth: 1.5 }]}
         >
-            <TouchableOpacity 
+            <HapticTouchableOpacity 
                 onPress={onToggle}
                 activeOpacity={0.7}
                 style={[styles.countryHeader, isExpanded && { backgroundColor: 'rgba(255,255,255,0.6)' }]}
+                hapticType="selection"
             >
                 <View pointerEvents="none" style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1}}>
@@ -107,7 +109,7 @@ export default function CountryCard({
                         }} 
                     />
                 </View>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
 
             {isExpanded && (
                 <View style={styles.accordionBody}>
@@ -135,8 +137,9 @@ export default function CountryCard({
                                             renderRightActions={(p, d) => renderRightActions(p, d, () => onDelete(item.id))}
                                             enabled={!isEditMode}
                                         >
-                                            <TouchableOpacity 
+                                            <HapticTouchableOpacity 
                                                 style={styles.itemRow}
+                                                hapticType="light"
                                                 onPress={() => {
                                                     if (isEditMode) {
                                                         onToggleItem(item.id);
@@ -191,7 +194,7 @@ export default function CountryCard({
                                                             <AlertTriangle size={16} color="#CA8A04" />
                                                         )}
                                                 </View>
-                                            </TouchableOpacity>
+                                            </HapticTouchableOpacity>
                                         </Swipeable>
                                     </View>
                                 ))}

@@ -116,8 +116,10 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
               <Text style={styles.headerTitle}>Molecular Breakdown</Text>
               <Text style={styles.headerSubtitle}>SWIPE DOWN TO CLOSE</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={20} color="#94A3B8" />
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <View pointerEvents="none">
+                  <X size={20} color="#94A3B8" />
+              </View>
             </TouchableOpacity>
           </View>
 

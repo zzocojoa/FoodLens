@@ -1,17 +1,17 @@
-import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ArrowUpCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { HapticTouchableOpacity } from '../HapticFeedback';
 
 export function ActionButtons() {
   const router = useRouter();
   
   return (
     <View style={styles.bottomFloat}>
-        <TouchableOpacity style={styles.saveButton} onPress={() => router.replace('/')}>
+        <HapticTouchableOpacity style={styles.saveButton} onPress={() => router.replace('/')} hapticType="success">
             <ArrowUpCircle size={22} color="white" />
             <Text style={styles.saveButtonText}>Save to Journal</Text>
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
     </View>
   );
 }

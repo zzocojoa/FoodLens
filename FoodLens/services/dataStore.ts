@@ -8,6 +8,7 @@ class AnalysisDataStore {
   private currentResult: AnalyzedData | null = null;
   private currentLocation: any | null = null;
   private currentImageUri: string | null = null;
+  private currentTimestamp: string | null = null;
 
   private constructor() {}
 
@@ -18,10 +19,11 @@ class AnalysisDataStore {
     return AnalysisDataStore.instance;
   }
 
-  public setData(result: AnalyzedData, location: any, imageUri: string) {
+  public setData(result: AnalyzedData, location: any, imageUri: string, timestamp?: string) {
     this.currentResult = result;
     this.currentLocation = location;
     this.currentImageUri = imageUri;
+    this.currentTimestamp = timestamp || new Date().toISOString();
     
     // Fire-and-forget backup
     this.saveBackup().catch(e => console.warn("Failed to backup analysis data", e));
@@ -31,7 +33,8 @@ class AnalysisDataStore {
     return {
       result: this.currentResult,
       location: this.currentLocation,
-      imageUri: this.currentImageUri
+      imageUri: this.currentImageUri,
+      timestamp: this.currentTimestamp
     };
   }
 
@@ -41,7 +44,8 @@ class AnalysisDataStore {
           result: this.currentResult,
           location: this.currentLocation,
           imageUri: this.currentImageUri,
-          timestamp: Date.now()
+          timestamp: Date.now(), // Backup timestamp
+          originalTimestamp: this.currentTimestamp // Photo timestamp
       });
   }
 
@@ -54,6 +58,7 @@ class AnalysisDataStore {
               this.currentResult = backup.result;
               this.currentLocation = backup.location;
               this.currentImageUri = backup.imageUri;
+              this.currentTimestamp = backup.originalTimestamp || new Date().toISOString();
               return true;
           }
       } catch (e) {
@@ -62,10 +67,17 @@ class AnalysisDataStore {
       return false;
   }
 
+  public updateTimestamp(newTimestamp: string) {
+      this.currentTimestamp = newTimestamp;
+      // Update backup asynchronously
+      this.saveBackup().catch(e => console.warn("Failed to update backup timestamp", e));
+  }
+
   public async clear() {
     this.currentResult = null;
     this.currentLocation = null;
     this.currentImageUri = null;
+    this.currentTimestamp = null;
     await SafeStorage.remove(DATA_STORE_BACKUP_KEY);
   }
 }

@@ -154,3 +154,37 @@ export const decimalToDMS = (coordinate: number): [[number, number], [number, nu
 
   return [[degrees, 1], [minutes, 1], [seconds, 100]];
 };
+
+/**
+ * Normalizes various date string formats (especially EXIF) to ISO 8601
+ * 
+ * EXIF: "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+ * ISO: "YYYY-MM-DDTHH:MM:SS.sssZ" -> Returns as is
+ * empty/null -> Returns current time ISO
+ */
+export const normalizeTimestamp = (dateString?: string | null): string => {
+    if (!dateString) return new Date().toISOString();
+    
+    // Trim
+    let cleanTs = dateString.trim();
+    
+    // 1. Check for EXIF format: "YYYY:MM:DD HH:MM:SS"
+    // Regex: ^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$
+    const exifRegex = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+    const match = cleanTs.match(exifRegex);
+
+    if (match) {
+        // Reconstruct as ISO string
+        return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
+    }
+    
+    // 2. Check if it's already a valid date
+    const parsed = new Date(cleanTs);
+    if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+    }
+    
+    // Fallback
+    console.warn("normalizeTimestamp: failed to parse", dateString);
+    return new Date().toISOString();
+};

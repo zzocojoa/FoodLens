@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, LayoutAnimation, ActivityIndicator } from 'react-native';
+import { HapticTouchableOpacity } from './HapticFeedback';
 import { List, Trash2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FilterType } from '../hooks/useHistoryFilter';
@@ -54,7 +55,7 @@ export default function HistoryList({
                 {/* Filter Chips */}
                 <View style={styles.filterContainer}>
                     {(['all', 'ok', 'avoid', 'ask'] as const).map(f => (
-                        <TouchableOpacity 
+                        <HapticTouchableOpacity 
                             key={f}
                             onPress={() => {
                                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -64,6 +65,7 @@ export default function HistoryList({
                                 styles.filterChip,
                                 filter === f && styles.filterChipActive
                             ]}
+                            hapticType="selection"
                         >
                             <View pointerEvents="none">
                                 <Text style={[
@@ -71,7 +73,7 @@ export default function HistoryList({
                                     filter === f && styles.filterTextActive
                                 ]}>{f === 'ask' ? 'ASK' : f.toUpperCase()}</Text>
                             </View>
-                        </TouchableOpacity>
+                        </HapticTouchableOpacity>
                     ))}
                 </View>
 
@@ -116,16 +118,17 @@ export default function HistoryList({
                     style={styles.floatingBarContainer}
                     pointerEvents="box-none"
                 >
-                    <TouchableOpacity 
+                    <HapticTouchableOpacity 
                         onPress={onBulkDelete}
                         style={styles.floatingDeleteButton}
                         activeOpacity={0.9}
+                        hapticType="warning"
                     >
                         <View style={styles.floatingDeleteContent}>
                             <Trash2 size={24} color="white" />
                             <Text style={styles.floatingDeleteText}>Delete ({selectedItems.size})</Text>
                         </View>
-                    </TouchableOpacity>
+                    </HapticTouchableOpacity>
                 </LinearGradient>
             )}
         </View>

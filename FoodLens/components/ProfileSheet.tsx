@@ -4,6 +4,7 @@ import {
   Modal, ScrollView, Alert, Platform, ActivityIndicator, PanResponder, Animated as RNAnimated,
   Pressable
 } from 'react-native';
+import { HapticTouchableOpacity } from './HapticFeedback';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { X, Camera, Image as ImageIcon, User, Zap, ChevronRight, Edit3, Globe } from 'lucide-react-native';
@@ -62,7 +63,7 @@ const useSheetGesture = (onCloseComplete: () => void) => {
 
 const MenuItem = ({ icon, title, subtitle, onPress, iconBgColor }: { icon: React.ReactNode, title: string, subtitle: string, onPress?: () => void, iconBgColor: string }) => (
     <View style={styles.menuContainer}>
-        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+        <HapticTouchableOpacity style={styles.menuItem} onPress={onPress} hapticType="light">
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
                 <View style={[styles.iconBox, {backgroundColor: iconBgColor}]}>
                     {icon}
@@ -73,7 +74,7 @@ const MenuItem = ({ icon, title, subtitle, onPress, iconBgColor }: { icon: React
                 </View>
             </View>
             <ChevronRight size={18} color="#CBD5E1" />
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
     </View>
 );
 
@@ -222,12 +223,13 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                <View style={styles.avatarFrame}>
                                    <Image source={{ uri: image }} style={styles.avatarImage} />
                                </View>
-                               <TouchableOpacity 
+                               <HapticTouchableOpacity 
                                     onPress={() => pickImage(true)}
                                     style={styles.cameraBtn}
+                                    hapticType="light"
                                >
                                    <Camera size={16} color="white" />
-                               </TouchableOpacity>
+                               </HapticTouchableOpacity>
                             </View>
 
                             {/* Name Edit */}
@@ -250,26 +252,28 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                 <Text style={[styles.label, {marginBottom: 12}]}>PRESETS</Text>
                                 <View style={styles.presetGrid}>
                                     {DEFAULT_AVATARS.map((url, idx) => (
-                                        <TouchableOpacity 
+                                        <HapticTouchableOpacity 
                                             key={idx}
                                             onPress={() => setImage(url)}
                                             style={[
                                                 styles.presetItem, 
                                                 image === url && styles.presetActive
                                             ]}
+                                            hapticType="selection"
                                         >
                                             <Image source={{ uri: url }} style={styles.presetImage} />
-                                        </TouchableOpacity>
+                                        </HapticTouchableOpacity>
                                     ))}
-                                    <TouchableOpacity 
+                                    <HapticTouchableOpacity 
                                         onPress={() => pickImage(false)}
                                         style={styles.uploadBtn}
+                                        hapticType="light"
                                     >
                                         <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}>
                                             <ImageIcon size={18} color="#94A3B8" />
                                             <Text style={styles.uploadText}>Upload</Text>
                                         </View>
-                                    </TouchableOpacity>
+                                    </HapticTouchableOpacity>
                                 </View>
                             </View>
                         </View>
@@ -328,7 +332,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                     </View>
                                     <ScrollView showsVerticalScrollIndicator={false}>
                                         {LANGUAGE_OPTIONS.map((opt) => (
-                                            <TouchableOpacity 
+                                            <HapticTouchableOpacity 
                                                 key={opt.code}
                                                 style={[
                                                     styles.menuItem, 
@@ -338,6 +342,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                                     setLanguage(opt.code === 'GPS' ? undefined : opt.code);
                                                     closeLangModal();
                                                 }}
+                                                hapticType="selection"
                                             >
                                                 <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
                                                     <Text style={{fontSize: 24}}>{opt.flag}</Text>
@@ -346,7 +351,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                                                 {((language === opt.code) || (!language && opt.code === 'GPS')) && (
                                                     <View style={{width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B82F6'}} />
                                                 )}
-                                            </TouchableOpacity>
+                                            </HapticTouchableOpacity>
                                         ))}
                                     </ScrollView>
                                 </RNAnimated.View>
@@ -354,13 +359,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                         </Modal>
 
                         {/* Submit */}
-                        <TouchableOpacity 
+                        <HapticTouchableOpacity 
                             onPress={handleUpdate}
                             disabled={loading}
                             style={styles.saveButton}
+                            hapticType="success"
                         >
                             {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>UPDATE PROFILE</Text>}
-                        </TouchableOpacity>
+                        </HapticTouchableOpacity>
 
                      </ScrollView>
                  </RNAnimated.View>
