@@ -292,12 +292,7 @@ export default function ResultScreen() {
       {/* 4. Floating Actions */}
       <ActionButtons />
 
-      {/* 5. Breakdown Modal */}
-      <BreakdownOverlay 
-        isOpen={isBreakdownOpen}
-        onClose={() => setIsBreakdownOpen(false)}
-        resultData={result}
-      />
+
     </View>
   );
 }
