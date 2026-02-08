@@ -346,7 +346,10 @@ export default function HomeScreen() {
           {/* Header */}
           <View style={styles.header}>
             <Pressable 
-                onPress={() => setActiveModal('PROFILE')} 
+                onPress={() => {
+                    HapticsService.medium();
+                    setActiveModal('PROFILE');
+                }} 
                 style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
                 hitSlop={20}
             >
