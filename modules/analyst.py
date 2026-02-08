@@ -298,23 +298,25 @@ class FoodAnalyst:
     def _build_analysis_prompt(self, allergy_info: str, iso_current_country: str) -> str:
         """Constructs the analysis prompt based on user context."""
         return f"""
-        # [System Prompt: Food Lens Expert Engine v3.4 - Precision & Completeness Edition]
+        # [System Prompt: Food Lens Expert Engine v3.1 - Anti-Hallucination Edition]
 
         ## 1. Role & Identity
         You are an expert nutritionist, food safety AI, and the core analysis engine for the iOS app 'Food Lens'. You will analyze the uploaded image through a 3-stage reasoning logic (Dish Identification -> Contextual Probability -> Texture Verification) and output the result as a single-layer JSON (Flat JSON).
 
         ## 2. Mandatory Analysis Logic
-        1. **Dish Identification**: Determine the cuisine origin (korean, western, etc.) and specific name based on table setting, utensils, and visible ingredients.
-        2. **Main Ingredient First**: ALWAYS start by identifying the main protein (meat, seafood, egg) or dominant vegetable/carb.
-        3. **Logic Flow**: "I see [Visual Features], so this is likely [Dish Name]. I will verify if [Ingredients] are visible."
+        1. **Dish Identification**: Determine the cuisine origin (korean, western, etc.) and specific name based on table setting and utensils.
+        2. **Contextual Probability**: Adjust the probability of visual ingredients based on the standard recipe of the identified dish.
+        3. **Texture Verification**: Verify detailed textures such as muscle fibers (meat), leaf veins (vegetables), and gloss (processed foods).
 
         ## 3. Constraints & Input Data
         - **Input Variables**: User allergy info `{allergy_info}`, Current ISO country code `{iso_current_country}`.
         
-        - **Visual Verification Rule (NO HALLUCINATION)**:
-          - ⚠️ ONLY identify ingredients that are CLEARLY VISIBLE in the image.
-          - ❌ DO NOT guess ingredients based on recipe assumptions.
-          - ✅ If you see a fried topping, identify it based on texture (e.g., "Fried Shallots" vs "Fried Noodle").
+        - **Visual Verification Rule (CRITICAL - NO HALLUCINATION)**:
+          - ⚠️ ONLY identify ingredients that are CLEARLY VISIBLE in the image
+          - ❌ DO NOT guess or hallucinate ingredients based on common recipes
+          - ❌ DO NOT assume ingredients exist because they are "typically" in a dish
+          - ✅ If you cannot visually confirm an ingredient, DO NOT include it
+          - Example: If you see yellow puree, identify as "Squash Puree" or "Unknown Puree", NOT "Peach"
         
         - **Allergen Detection Rule (CONSERVATIVE)**:
           - isAllergen: true ONLY if BOTH conditions are met:
@@ -323,11 +325,11 @@ class FoodAnalyst:
           - ❌ NEVER mark isAllergen: true for guessed/uncertain ingredients
           - If uncertain, mark isAllergen: false (err on the side of caution for false positives)
         
-        - **Naming Rule (CRITICAL - NO 'UNKNOWN')**: 
-          - ❌ NEVER use "Unknown", "Unknown Dish", "Amuse-bouche", "Appetizer", "Dish".
-          - ✅ You MUST name the dish based on the most prominent visible ingredient.
-          - Example: If you see Pork Belly, name it "Pork Belly". If you see Mushrooms, name it "Mushroom Plate".
-          - If uncertain, describe what you see: "Grilled Meat with Vegetables", "White Sauce Pasta".
+        - **Naming Rule (엄격 준수)**: 
+          - Use ONLY standard proper nouns. NO modifiers or descriptions allowed.
+          - ❌ FORBIDDEN generic terms: "Amuse-bouche", "Appetizer", "Main Dish", "Entree", "Platter"
+          - ❌ FORBIDDEN descriptive names: "Gnocchi with Chicken Wings", "Spicy Ramen"
+          - ✅ REQUIRED: Specific dish name based on the MAIN protein/ingredient (e.g., "Pork Belly", "Bibimbap")
         
         - **safetyStatus Rule (MANDATORY ENUM)**:
           - Must be EXACTLY one of: "SAFE", "CAUTION", "DANGER"
@@ -338,34 +340,25 @@ class FoodAnalyst:
         - **Coordinate Rule**: All Bounding Boxes must use normalized coordinates [ymin, xmin, ymax, xmax] (0-1000 scale).
         - **MANDATORY**: `bbox` field is REQUIRED for every ingredient. If invisible, use [0,0,0,0]. DO NOT OMIT THIS FIELD.
         - **Translation**: Generate a polite allergy warning in the language of `{iso_current_country}`.
-        - **Response Cleanliness Rule**:
-          - `translationCard.text`: Max 50 chars. NO repetition. NO emojis.
-          - `bbox`: [ymin, xmin, ymax, xmax] (0-1000). REQUIRED for all ingredients.
 
-        ## 4. Output Format (All Fields Required)
-        Return a VALID JSON object. Do NOT omit any field.
+        ## 4. Output Format (Flat JSON Only)
+        All fields must be at the root level (no nested objects, except for lists).
+        
+        Return ONLY a valid JSON object with this EXACT structure:
         {{
-           "foodName": "Specific Dish Name (e.g., 'Pork Belly')",
-           "foodName_en": "English Name",
-           "foodName_ko": "Korean Name",
-           "canonicalFoodId": "lowercase_underscore_id",
-           "foodOrigin": "korean|western|japanese|chinese|etc",
-           "confidence": 85,
-           "safetyStatus": "SAFE|CAUTION|DANGER",
-           "translationCard": {{
-               "language": "ko",
-               "text": "Allergy safe (max 50 chars)",
-               "audio_query": "TTS version"
-           }},
+           "foodName": "Specific Dish Name (e.g., Pork Belly, Bibimbap)",
+           ...
            "ingredients": [
                 {{
                   "name": "Ingredient Name",
-                  "bbox": [100, 200, 300, 400],
-                  "isAllergen": false,
+                  "bbox": [100, 200, 300, 400],  <-- MANDATORY: [ymin, xmin, ymax, xmax]
+                  "isAllergen": false,  <-- true ONLY if visually confirmed AND matches user allergy
                   "riskReason": "Visible ingredient"
                 }}
-            ]
+            ],
+           ...
         }}
+        Example of bbox: [150, 200, 450, 600] (Normalized 0-1000)
         """
 
     def _prepare_vertex_image(self, pil_image: Image.Image) -> VertexImage:
@@ -393,33 +386,6 @@ class FoodAnalyst:
         
         text = response_text.strip()
         
-        # Step 0: Normalize excessive newlines (prevent JSON parsing failures)
-        import re
-        text = re.sub(r'\n{3,}', '\n', text)  # 3+ consecutive newlines -> 1
-        text = re.sub(r'\\n{3,}', '\\n', text)  # Escaped \n spam -> single \n
-        
-        # Step 0.5: Remove repetition loops (same 20+ char pattern repeated 2+ times)
-        text = re.sub(r'(.{20,}?)\1{2,}', r'\1', text)
-        
-        # Step 0.6: Force truncate translationCard.text before parsing (50 chars max)
-        # This prevents multi-language repetition loops from breaking JSON
-        def truncate_text_field(match):
-            return match.group(1) + match.group(2)[:50] + '"'
-        text = re.sub(r'("text"\s*:\s*")([^"]{0,50})[^"]*"', truncate_text_field, text)
-        
-        # Step 0.7: Fix unterminated strings by finding last valid } and closing
-        # If JSON ends mid-string, try to close it
-        if text.count('"') % 2 == 1:  # Odd number of quotes = unterminated string
-            last_brace = text.rfind('}')
-            if last_brace > 0:
-                # Find the last complete object by looking for pattern }\n  }
-                text = text[:last_brace+1]
-                # Ensure it ends properly
-                if not text.rstrip().endswith('}'):
-                    text = text.rstrip() + '"}'
-        
-        print(f"[PARSE DEBUG] After text truncation: {len(text)} chars")
-        
         # Step 1: Remove markdown code block wrappers
         original_text = text
         if text.startswith("```json"):
@@ -440,13 +406,6 @@ class FoodAnalyst:
         try:
             result = json.loads(text)
             print(f"[PARSE DEBUG] ✓ Standard JSON parse SUCCESS")
-            # Truncate translationCard.text if too long
-            if 'translationCard' in result and isinstance(result['translationCard'], dict):
-                if 'text' in result['translationCard'] and result['translationCard']['text']:
-                    original_len = len(result['translationCard']['text'])
-                    result['translationCard']['text'] = result['translationCard']['text'][:100]
-                    if original_len > 100:
-                        print(f"[PARSE DEBUG] Truncated translationCard.text from {original_len} to 100 chars")
             return result
         except json.JSONDecodeError as e:
             print(f"[PARSE DEBUG] ✗ Standard JSON parse FAILED: {e}")
@@ -758,13 +717,34 @@ class FoodAnalyst:
                 print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
                 print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
 
-                # [Primary Attempt]
-                response = retry_policy(self.model.generate_content)(
-                    [prompt, vertex_image],
-                    generation_config=generation_config,
-                    safety_settings=safety_settings
-                )
-                print(f"[API Debug] ✓ Primary model response received")
+                try:
+                    # [Primary Attempt]
+                    response = retry_policy(self.model.generate_content)(
+                        [prompt, vertex_image],
+                        generation_config=generation_config,
+                        safety_settings=safety_settings
+                    )
+                    print(f"[API Debug] ✓ Primary model response received")
+                except Exception as e:
+                    # [Fallback Logic]
+                    # If primary model fails (404, 429, etc.), switch to backup
+                    print(f"[Model Fallback] Primary model ({self.model_name}) failed: {e}")
+                    print(f"[Model Fallback] Error type: {type(e).__name__}")
+                    print(f"[Model Fallback] Full traceback:")
+                    traceback.print_exc()
+                    print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
+                    
+                    try:
+                        backup_model = GenerativeModel("gemini-2.0-flash")
+                        # Reuse same config/safety settings
+                        response = retry_policy(backup_model.generate_content)(
+                            [prompt, vertex_image],
+                            generation_config=generation_config,
+                            safety_settings=safety_settings
+                        )
+                    except Exception as fallback_error:
+                        print(f"[Model Fallback] Backup model also failed: {fallback_error}")
+                        raise fallback_error  # Re-raise if both fail
             
 
             print(f"[Internal Log] Finish Reason: {response.candidates[0].finish_reason}")
