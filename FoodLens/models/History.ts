@@ -5,7 +5,7 @@ export interface RegionData {
     items: {
         id: string; 
         name: string;
-        type: 'safe' | 'danger' | 'caution';
+        type: 'ok' | 'avoid' | 'ask';
         date: string;
         emoji: string;
         originalRecord: AnalysisRecord;

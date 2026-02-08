@@ -1,21 +1,21 @@
 import { useState, useCallback } from 'react';
 import { CountryData, RegionData } from '../models/History';
 
-export type FilterType = 'all' | 'safe' | 'danger' | 'caution';
+export type FilterType = 'all' | 'ok' | 'avoid' | 'ask';
 
 export const useHistoryFilter = () => {
     const [archiveFilter, setArchiveFilter] = useState<FilterType>('all');
 
     const matchesFilter = useCallback((type: string | undefined) => {
         if (archiveFilter === 'all') return true;
-        if (archiveFilter === 'safe') return type === 'safe';
-        if (archiveFilter === 'danger') return type === 'danger';
-        if (archiveFilter === 'caution') return type === 'caution';
+        if (archiveFilter === 'ok') return type === 'ok';
+        if (archiveFilter === 'avoid') return type === 'avoid';
+        if (archiveFilter === 'ask') return type === 'ask';
         return false;
     }, [archiveFilter]);
 
     const isAllowedItemType = useCallback((type: string | undefined) => {
-        return type === 'safe' || type === 'danger' || type === 'caution';
+        return type === 'ok' || type === 'avoid' || type === 'ask';
     }, []);
 
     const getFilteredItemsCount = useCallback((country: CountryData) => {

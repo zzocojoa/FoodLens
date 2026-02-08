@@ -44,8 +44,8 @@ export const useHistoryData = (userId: string) => {
                 const cityName = hasLocation ? (record.location!.city || record.location!.formattedAddress || "Unknown City") : "No Location Info";
                 
                 const statusUpper = record.safetyStatus?.toUpperCase() || '';
-                const safetyType = statusUpper === 'SAFE' ? 'safe' : 
-                                  (statusUpper === 'DANGER' || statusUpper === 'WARNING') ? 'danger' : 'caution';
+                const safetyType = statusUpper === 'SAFE' ? 'ok' : 
+                                  (statusUpper === 'DANGER' || statusUpper === 'WARNING') ? 'avoid' : 'ask';
                 
                 const getFlag = (code?: string) => {
                     if (!code) return "📁";
@@ -55,7 +55,7 @@ export const useHistoryData = (userId: string) => {
                 const itemData = {
                     id: record.id,
                     name: record.foodName,
-                    type: safetyType as 'safe' | 'danger' | 'caution',
+                    type: safetyType as 'ok' | 'avoid' | 'ask',
                     date: record.timestamp.toLocaleDateString(),
                     emoji: getEmoji(record.foodName),
                     imageUri: record.imageUri, // Pass image URI

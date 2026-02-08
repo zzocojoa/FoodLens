@@ -53,7 +53,7 @@ export default function HistoryList({
             >
                 {/* Filter Chips */}
                 <View style={styles.filterContainer}>
-                    {(['all', 'safe', 'danger', 'caution'] as const).map(f => (
+                    {(['all', 'ok', 'avoid', 'ask'] as const).map(f => (
                         <TouchableOpacity 
                             key={f}
                             onPress={() => {
@@ -69,7 +69,7 @@ export default function HistoryList({
                                 <Text style={[
                                     styles.filterText,
                                     filter === f && styles.filterTextActive
-                                ]}>{f === 'caution' ? 'AI' : f.toUpperCase()}</Text>
+                                ]}>{f === 'ask' ? 'ASK' : f.toUpperCase()}</Text>
                             </View>
                         </TouchableOpacity>
                     ))}

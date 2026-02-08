@@ -174,22 +174,22 @@ export default function CountryCard({
                                                         <Text style={styles.itemDate}>{item.date}</Text>
                                                     </View>
                                                 </View>
-                                                <View 
-                                                    style={[
-                                                        styles.statusIconBox,
-                                                        item.type === 'safe' ? {backgroundColor: '#DCFCE7', borderColor: '#BBF7D0'} : 
-                                                        item.type === 'danger' ? {backgroundColor: '#FFE4E6', borderColor: '#FECDD3'} :
-                                                        {backgroundColor: '#FEF9C3', borderColor: '#FDE047'}
-                                                    ]}
-                                                    pointerEvents="none"
-                                                >
-                                                    {item.type === 'safe' ? (
-                                                        <ShieldCheck size={16} color="#22C55E" />
-                                                    ) : item.type === 'danger' ? (
-                                                        <AlertCircle size={16} color="#F43F5E" />
-                                                    ) : (
-                                                        <AlertTriangle size={16} color="#CA8A04" />
-                                                    )}
+                                                    <View 
+                                                        style={[
+                                                            styles.statusIconBox,
+                                                            item.type === 'ok' ? {backgroundColor: '#DCFCE7', borderColor: '#BBF7D0'} : 
+                                                            item.type === 'avoid' ? {backgroundColor: '#FFE4E6', borderColor: '#FECDD3'} :
+                                                            {backgroundColor: '#FEF9C3', borderColor: '#FDE047'}
+                                                        ]}
+                                                        pointerEvents="none"
+                                                    >
+                                                        {item.type === 'ok' ? (
+                                                            <ShieldCheck size={16} color="#22C55E" />
+                                                        ) : item.type === 'avoid' ? (
+                                                            <AlertCircle size={16} color="#F43F5E" />
+                                                        ) : (
+                                                            <AlertTriangle size={16} color="#CA8A04" />
+                                                        )}
                                                 </View>
                                             </TouchableOpacity>
                                         </Swipeable>
