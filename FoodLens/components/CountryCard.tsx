@@ -1,12 +1,11 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Alert, Animated } from 'react-native'; // Animated imported
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { HapticTouchableOpacity } from './HapticFeedback';
 import { BlurView } from 'expo-blur';
-import { ChevronDown, List, ShieldCheck, AlertCircle, AlertTriangle, Trash2, Circle, CheckCircle } from 'lucide-react-native';
+import { ChevronDown, ShieldCheck, AlertCircle, AlertTriangle, Trash2, Circle, CheckCircle } from 'lucide-react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { CountryData } from '../models/History';
-import { THEME } from '../constants/theme';
 import { dataStore } from '../services/dataStore';
 import { FoodThumbnail } from './FoodThumbnail'; // NEW
 import { Colors } from '../constants/theme';
@@ -64,6 +63,36 @@ export default function CountryCard({
              }
         });
         return count;
+    };
+
+    const getStatusMeta = (type: string | undefined) => {
+        if (type === 'ok') {
+            return {
+                containerStyle: { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' },
+                icon: <ShieldCheck size={16} color="#22C55E" />
+            };
+        }
+
+        if (type === 'avoid') {
+            return {
+                containerStyle: { backgroundColor: '#FFE4E6', borderColor: '#FECDD3' },
+                icon: <AlertCircle size={16} color="#F43F5E" />
+            };
+        }
+
+        return {
+            containerStyle: { backgroundColor: '#FEF9C3', borderColor: '#FDE047' },
+            icon: <AlertTriangle size={16} color="#CA8A04" />
+        };
+    };
+
+    const handleItemPress = (item: any) => {
+        if (isEditMode) {
+            onToggleItem(item.id);
+            return;
+        }
+        dataStore.setData(item.originalRecord, item.originalRecord.location, item.originalRecord.imageUri || "");
+        router.push({ pathname: '/result', params: { fromStore: 'true' } });
     };
 
     const renderRightActions = (progress: any, dragX: any, onClick: () => void) => {
@@ -131,7 +160,9 @@ export default function CountryCard({
                                     <Text style={[styles.regionTitle, {color: theme.primary}]}>{region.name}</Text>
                                 )}
                                 
-                                {visibleItems.map((item, itemIdx) => (
+                                {visibleItems.map((item, itemIdx) => {
+                                    const statusMeta = getStatusMeta(item.type);
+                                    return (
                                     <View style={{marginBottom: 10}} key={`${country.country}-${region.name ?? rIdx}-${item.id}-${itemIdx}`}>
                                         <Swipeable
                                             ref={(ref) => {
@@ -144,17 +175,10 @@ export default function CountryCard({
                                             <HapticTouchableOpacity 
                                                 style={[styles.itemRow, {backgroundColor: theme.surface, borderColor: theme.border}]}
                                                 hapticType="light"
-                                                onPress={() => {
-                                                    if (isEditMode) {
-                                                        onToggleItem(item.id);
-                                                    } else {
-                                                        dataStore.setData(item.originalRecord, item.originalRecord.location, item.originalRecord.imageUri || "");
-                                                        router.push({ pathname: '/result', params: { fromStore: 'true' } });
-                                                    }
-                                                }}
+                                                onPress={() => handleItemPress(item)}
                                             >
                                                 <View 
-                                                    style={{flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1}}
+                                                    style={styles.itemMainContent}
                                                     pointerEvents="none"
                                                 >
                                                     {isEditMode && (
@@ -184,24 +208,17 @@ export default function CountryCard({
                                                     <View 
                                                         style={[
                                                             styles.statusIconBox,
-                                                            item.type === 'ok' ? {backgroundColor: '#DCFCE7', borderColor: '#BBF7D0'} : 
-                                                            item.type === 'avoid' ? {backgroundColor: '#FFE4E6', borderColor: '#FECDD3'} :
-                                                            {backgroundColor: '#FEF9C3', borderColor: '#FDE047'}
+                                                            statusMeta.containerStyle
                                                         ]}
                                                         pointerEvents="none"
                                                     >
-                                                        {item.type === 'ok' ? (
-                                                            <ShieldCheck size={16} color="#22C55E" />
-                                                        ) : item.type === 'avoid' ? (
-                                                            <AlertCircle size={16} color="#F43F5E" />
-                                                        ) : (
-                                                            <AlertTriangle size={16} color="#CA8A04" />
-                                                        )}
+                                                        {statusMeta.icon}
                                                 </View>
                                             </HapticTouchableOpacity>
                                         </Swipeable>
                                     </View>
-                                ))}
+                                    );
+                                })}
                             </View>
                         );
                     })}
@@ -219,6 +236,7 @@ const styles = StyleSheet.create({
     accordionBody: { padding: 8 },
     regionTitle: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 12, marginTop: 8 },
     itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 22, borderWidth: 1 },
+    itemMainContent: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
     deleteAction: { backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'flex-end', width: 100, height: '100%', paddingRight: 20, borderRadius: 22, marginLeft: -20 },
     deleteBtnContent: { alignItems: 'center', justifyContent: 'center' },
     deleteText: { color: 'white', fontWeight: '600', fontSize: 12, marginTop: 4 },

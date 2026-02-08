@@ -24,6 +24,10 @@ const INITIAL_REGION: Region = {
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const TOTAL_COUNTRIES = 195;
+
+const parseCoordinateValue = (value: number | string | undefined) =>
+    typeof value === 'string' ? Number(value) : value;
 
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
     const mapRef = useRef<MapView>(null);
@@ -47,8 +51,8 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                     const latRaw = loc?.latitude;
                     const lngRaw = loc?.longitude;
 
-                    const lat = typeof latRaw === 'string' ? Number(latRaw) : latRaw;
-                    const lng = typeof lngRaw === 'string' ? Number(lngRaw) : lngRaw;
+                    const lat = parseCoordinateValue(latRaw);
+                    const lng = parseCoordinateValue(lngRaw);
 
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
                     if (lat === 0 && lng === 0) return;
@@ -136,6 +140,12 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         onRegionChange?.(r);
     };
 
+    const isPermissionError = errorType === 'permission';
+    const errorTitle = isPermissionError ? '위치 권한이 필요합니다' : 'Map Unavailable';
+    const errorDescription = isPermissionError
+        ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
+        : '네트워크 연결을 확인해주세요.';
+
     // Custom cluster rendering
     const renderCluster = (cluster: any) => {
         const { id, geometry, onPress, properties } = cluster;
@@ -179,24 +189,22 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         <View style={styles.mapContainer}>
             {/* Error State */}
             {isMapError && (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', zIndex: 20 }]}>
-                    <View style={{ alignItems: 'center', opacity: 0.7, paddingHorizontal: 40 }}>
+                <View style={[StyleSheet.absoluteFill, styles.errorOverlay]}>
+                    <View style={styles.errorContent}>
                         <Globe size={48} color="#94A3B8" />
-                        <Text style={{ marginTop: 12, color: '#64748B', fontWeight: '600', textAlign: 'center' }}>
-                            {errorType === 'permission' ? '위치 권한이 필요합니다' : 'Map Unavailable'}
+                        <Text style={styles.errorTitle}>
+                            {errorTitle}
                         </Text>
-                        <Text style={{ marginTop: 8, color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
-                            {errorType === 'permission'
-                                ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
-                                : '네트워크 연결을 확인해주세요.'}
+                        <Text style={styles.errorDescription}>
+                            {errorDescription}
                         </Text>
-                        {errorType === 'permission' ? (
-                            <TouchableOpacity onPress={handleOpenSettings} style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#2563EB', borderRadius: 20 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>설정으로 이동</Text>
+                        {isPermissionError ? (
+                            <TouchableOpacity onPress={handleOpenSettings} style={[styles.errorButton, styles.settingsButton]}>
+                                <Text style={styles.settingsButtonText}>설정으로 이동</Text>
                             </TouchableOpacity>
                         ) : (
-                            <TouchableOpacity onPress={handleRetry} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#E2E8F0', borderRadius: 20 }}>
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>RETRY</Text>
+                            <TouchableOpacity onPress={handleRetry} style={[styles.errorButton, styles.retryButton]}>
+                                <Text style={styles.retryButtonText}>RETRY</Text>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -205,9 +213,9 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 
             {/* Loading State */}
             {!isMapReady && !isMapError && (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', zIndex: 10 }]}>
-                    <Text style={{ fontSize: 24, marginBottom: 12 }}>🗺️</Text>
-                    <Text style={{ color: '#64748B', fontSize: 12, fontWeight: '600' }}>Loading Map...</Text>
+                <View style={[StyleSheet.absoluteFill, styles.loadingOverlay]}>
+                    <Text style={styles.loadingEmoji}>🗺️</Text>
+                    <Text style={styles.loadingText}>Loading Map...</Text>
                 </View>
             )}
 
@@ -263,10 +271,10 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                                     {marker.imageUri ? (
                                         <Image
                                             source={{ uri: marker.imageUri }}
-                                            style={{ width: '100%', height: '100%', borderRadius: 16 }}
+                                            style={styles.mapPinImage}
                                         />
                                     ) : (
-                                        <Text style={{ fontSize: 16 }}>{marker.emoji}</Text>
+                                        <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
                                     )}
                                 </View>
                             </View>
@@ -277,7 +285,6 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 
             {/* Overlay Card */}
             {isMapReady && data.length > 0 && (() => {
-                const TOTAL_COUNTRIES = 195;
                 const visitedCount = data.length;
                 const percentage = Math.min((visitedCount / TOTAL_COUNTRIES) * 100, 100);
 
@@ -320,10 +327,24 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 const styles = StyleSheet.create({
     mapContainer: { flex: 1, overflow: 'hidden', marginHorizontal: 20, marginBottom: 20, borderRadius: 32, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F1F5F9' },
     map: { width: '100%', height: '100%' },
+    errorOverlay: { backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
+    errorContent: { alignItems: 'center', opacity: 0.7, paddingHorizontal: 40 },
+    errorTitle: { marginTop: 12, color: '#64748B', fontWeight: '600', textAlign: 'center' },
+    errorDescription: { marginTop: 8, color: '#94A3B8', fontSize: 12, textAlign: 'center' },
+    errorButton: { marginTop: 16, borderRadius: 20 },
+    settingsButton: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#2563EB' },
+    settingsButtonText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+    retryButton: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#E2E8F0' },
+    retryButtonText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+    loadingOverlay: { backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+    loadingEmoji: { fontSize: 24, marginBottom: 12 },
+    loadingText: { color: '#64748B', fontSize: 12, fontWeight: '600' },
     mapPinContainer: { alignItems: 'center' },
     mapLabel: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', marginBottom: 4 },
     mapLabelText: { fontSize: 10, fontWeight: '700', color: '#1E293B', maxWidth: 100 },
     mapPinCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
+    mapPinImage: { width: '100%', height: '100%', borderRadius: 16 },
+    mapPinEmoji: { fontSize: 16 },
 
     clusterContainer: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
     clusterImage: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#FFFFFF' },

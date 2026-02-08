@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
 
 interface Props {
@@ -37,9 +37,12 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+    const { hasError, error } = this.state;
+    const { fallback, children } = this.props;
+
+    if (hasError) {
+      if (fallback) {
+        return fallback;
       }
 
       return (
@@ -53,10 +56,10 @@ export class ErrorBoundary extends Component<Props, State> {
               We encountered an unexpected error. Usually this is temporary.
             </Text>
             
-            {this.state.error && (
+            {error && (
                 <View style={styles.errorBox}>
                     <Text style={styles.errorText} numberOfLines={3}>
-                        {this.state.error.toString()}
+                        {error.toString()}
                     </Text>
                 </View>
             )}
@@ -74,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return children;
   }
 }
 

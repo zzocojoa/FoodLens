@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../constants/theme';
@@ -19,6 +18,16 @@ interface WeeklyStatsStripProps {
     selectedDate: Date;
     onSelectDate: (date: Date) => void;
 }
+const DAY_ITEM_WIDTH = 60;
+const DAY_ITEM_GAP = 8;
+const SNAP_INTERVAL = DAY_ITEM_WIDTH + DAY_ITEM_GAP;
+const DAY_ITEM_HALF_WIDTH = DAY_ITEM_WIDTH / 2;
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
+const STATUS_DOT_COLORS = {
+    safe: '#22C55E',
+    danger: '#EF4444',
+    warning: '#EAB308',
+} as const;
 
 // Utility to check if two dates are the same day
 const isSameDay = (d1: Date, d2: Date) => {
@@ -40,14 +49,17 @@ export function WeeklyStatsStrip({ weeklyData, selectedDate, onSelectDate }: Wee
             // Item Width approx 60 + margin 8 = 68
             // Simple approach: scroll to index * 68
             setTimeout(() => {
-                 scrollViewRef.current?.scrollTo({ x: index * 68 - (Dimensions.get('window').width / 2) + 34, animated: true });
+                 scrollViewRef.current?.scrollTo({
+                    x: index * SNAP_INTERVAL - (Dimensions.get('window').width / 2) + DAY_ITEM_HALF_WIDTH,
+                    animated: true
+                });
             }, 100);
         }
     }, [selectedDate, weeklyData]);
 
     const formatDateDay = (date: Date) => {
         // "Sun", "Mon" etc.
-        return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date);
+        return WEEKDAY_FORMATTER.format(date);
     };
 
     const formatDateNumber = (date: Date) => {
@@ -62,7 +74,7 @@ export function WeeklyStatsStrip({ weeklyData, selectedDate, onSelectDate }: Wee
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
                 decelerationRate="fast"
-                snapToInterval={68} // item width + gap
+                snapToInterval={SNAP_INTERVAL} // item width + gap
             >
                 {weeklyData.map((day, index) => {
                     const isSelected = isSameDay(day.date, selectedDate);
@@ -102,9 +114,9 @@ export function WeeklyStatsStrip({ weeklyData, selectedDate, onSelectDate }: Wee
                                 {day.hasData ? (
                                     <>
                                         {/* Order: Green -> Red -> Yellow */}
-                                        {day.hasSafe && <View style={[styles.statusDot, { backgroundColor: '#22C55E' }]} />}
-                                        {day.hasDanger && <View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} />}
-                                        {day.hasWarning && <View style={[styles.statusDot, { backgroundColor: '#EAB308' }]} />}
+                                        {day.hasSafe && <View style={[styles.statusDot, { backgroundColor: STATUS_DOT_COLORS.safe }]} />}
+                                        {day.hasDanger && <View style={[styles.statusDot, { backgroundColor: STATUS_DOT_COLORS.danger }]} />}
+                                        {day.hasWarning && <View style={[styles.statusDot, { backgroundColor: STATUS_DOT_COLORS.warning }]} />}
                                     </>
                                 ) : (
                                     // Placeholder for layout stability

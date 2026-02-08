@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { 
+import {
   AlertCircle, 
   ShieldCheck, 
   Sparkles,
@@ -9,22 +9,46 @@ import {
   Calendar
 } from 'lucide-react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
-import { getEmoji } from '../../services/utils';
 import { Colors } from '../../constants/theme';
 import { useColorScheme } from '../../hooks/use-color-scheme';
 
+const formatTimestamp = (timestamp: string) => {
+  const date = new Date(timestamp);
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+const getLocationText = (locationData: any) =>
+  locationData?.formattedAddress || [locationData?.city, locationData?.country].filter(Boolean).join(', ') || 'No Location Info';
+
+interface IngredientItemProps {
+  item: any;
+  theme: any;
+}
+
 // Helper for pure rendering of ingredients to avoid clutter
-const IngredientItem = ({ item }: { item: any }) => (
-    <View style={[styles.ingredientItem, item.isAllergen && styles.ingredientItemDanger]}>
+const IngredientItem = ({ item, theme }: IngredientItemProps) => (
+    <View
+      style={[
+        styles.ingredientItem,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        item.isAllergen && styles.ingredientItemDanger,
+      ]}
+    >
         <View style={styles.ingredientLeft}>
-            <View style={[styles.ingredientIcon, item.isAllergen ? styles.iconBgDanger : styles.iconBgSafe]}>
-                <Leaf size={20} color={item.isAllergen ? '#E11D48' : '#64748B'} />
+            <View
+              style={[
+                styles.ingredientIcon,
+                { backgroundColor: theme.background, borderColor: theme.border },
+                item.isAllergen && styles.iconBgDanger,
+              ]}
+            >
+                <Leaf size={20} color={item.isAllergen ? '#E11D48' : theme.textSecondary} />
             </View>
             <View>
-                <Text style={[styles.ingredientName, item.isAllergen && { color: '#881337' }]}>
+                <Text style={[styles.ingredientName, { color: theme.textPrimary }, item.isAllergen && { color: '#881337' }]}>
                     {item.name}
                 </Text>
-                <Text style={styles.ingredientMeta}>
+                <Text style={[styles.ingredientMeta, { color: theme.textSecondary }]}>
                     {item.isAllergen ? 'Allergen detected' : 'Healthy component'}
                 </Text>
             </View>
@@ -54,6 +78,8 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
   const hasAllergens = result.ingredients.some((i: any) => i.isAllergen);
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const locationText = getLocationText(locationData);
+  const formattedTimestamp = timestamp ? formatTimestamp(timestamp) : null;
 
   return (
     <View style={[styles.sheetContainer, {backgroundColor: theme.background}]}>
@@ -74,11 +100,7 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
                 {/* Location Info */}
                 <View style={styles.locationRow}>
                     <MapPin size={12} color={theme.textSecondary} />
-                    <Text style={[styles.locationText, {color: theme.textSecondary}]}>
-                        {locationData && (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', ')) 
-                            ? (locationData.formattedAddress || [locationData.city, locationData.country].filter(Boolean).join(', '))
-                            : "No Location Info"}
-                    </Text>
+                    <Text style={[styles.locationText, {color: theme.textSecondary}]}>{locationText}</Text>
                 </View>
 
                 {/* Date Info */}
@@ -87,7 +109,7 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
                         <View style={styles.locationRow}>
                             <Calendar size={12} color={theme.textSecondary} />
                             <Text style={[styles.locationText, {color: theme.textSecondary}]}>
-                                {new Date(timestamp).toLocaleDateString()} {new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                {formattedTimestamp}
                             </Text>
                             <View style={{marginLeft: 6, backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2}}>
                                 <Text style={{fontSize: 9, color: '#64748B', fontWeight: 'bold'}}>EDIT</Text>
@@ -139,39 +161,7 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
 
                 <View style={styles.ingredientsList}>
                     {result.ingredients.map((item: any, index: number) => (
-                        <View key={index} style={[
-                            styles.ingredientItem, 
-                            {backgroundColor: theme.surface, borderColor: theme.border},
-                            item.isAllergen && styles.ingredientItemDanger
-                        ]}>
-                            <View style={styles.ingredientLeft}>
-                                <View style={[
-                                    styles.ingredientIcon, 
-                                    {backgroundColor: theme.background, borderColor: theme.border},
-                                    item.isAllergen && styles.iconBgDanger
-                                ]}>
-                                    <Leaf size={20} color={item.isAllergen ? '#E11D48' : theme.textSecondary} />
-                                </View>
-                                <View>
-                                    <Text style={[styles.ingredientName, {color: theme.textPrimary}, item.isAllergen && { color: '#881337' }]}>
-                                        {item.name}
-                                    </Text>
-                                    <Text style={[styles.ingredientMeta, {color: theme.textSecondary}]}>
-                                        {item.isAllergen ? 'Allergen detected' : 'Healthy component'}
-                                    </Text>
-                                </View>
-                            </View>
-                            
-                            {item.isAllergen ? (
-                                <View style={styles.statusIconDanger}>
-                                    <AlertCircle size={14} color="white" />
-                                </View>
-                            ) : (
-                                <View style={styles.statusIconSafe}>
-                                    <ShieldCheck size={14} color="#10B981" />
-                                </View>
-                            )}
-                        </View>
+                        <IngredientItem key={index} item={item} theme={theme} />
                     ))}
                 </View>
             </View>
@@ -382,9 +372,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-  },
-  iconBgSafe: {
-    backgroundColor: '#F8FAFC',
   },
   iconBgDanger: {
     backgroundColor: '#FFE4E6',

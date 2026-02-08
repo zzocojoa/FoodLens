@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withRepeat, 
   withTiming, 
   withSequence,
-  Easing,
-  interpolate,
-  Extrapolation
+  Easing
 } from 'react-native-reanimated';
-import { Sparkles, X, AlertTriangle } from 'lucide-react-native';
+import { Sparkles, AlertTriangle } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 
-const { width, height } = Dimensions.get('window');
+const STEPS = ["Image Ready", "Uploading", "AI Analyzing", "Syncing Results"];
+const DEFAULT_IMAGE_URI = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1000&auto=format&fit=crop";
+const LONG_WAIT_THRESHOLD_MS = 8000;
+
+const getMainMessage = (isError: boolean, isLongWait: boolean, currentStep: number) => {
+  if (isError) return "ANALYSIS FAILED";
+  if (isLongWait && currentStep === 2) return "SERVER WARMING UP...";
+  return STEPS[currentStep];
+};
 
 interface AnalysisLoadingScreenProps {
   onCancel: () => void;
@@ -31,7 +37,6 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
   manualProgress
 }) => {
   const [step, setStep] = useState(0);
-  const steps = ["Image Ready", "Uploading", "AI Analyzing", "Syncing Results"];
   
   // Animation Values
   const rotation = useSharedValue(0);
@@ -42,6 +47,9 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
   const isManual = typeof manualStep === 'number';
 
   useEffect(() => {
+    const pulseTimingConfig = { duration: 1000, easing: Easing.inOut(Easing.ease) };
+    const rippleTimingConfig = { duration: 3000, easing: Easing.out(Easing.ease) };
+
     // 1. Orbit Rotation
     rotation.value = withRepeat(
       withTiming(360, { duration: 8000, easing: Easing.linear }),
@@ -52,8 +60,8 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
     // 2. Pulse Effect
     pulseScale.value = withRepeat(
       withSequence(
-        withTiming(1.1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+        withTiming(1.1, pulseTimingConfig),
+        withTiming(1, pulseTimingConfig)
       ),
       -1,
       true
@@ -61,12 +69,12 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
 
     // 3. Ripple Effect
     rippleScale.value = withRepeat(
-      withTiming(4, { duration: 3000, easing: Easing.out(Easing.ease) }),
+      withTiming(4, rippleTimingConfig),
       -1,
       false
     );
     rippleOpacity.value = withRepeat(
-      withTiming(0, { duration: 3000, easing: Easing.out(Easing.ease) }),
+      withTiming(0, rippleTimingConfig),
       -1,
       false
     );
@@ -74,7 +82,7 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
     // 4. Step Progression Logic (Only if not manual)
     if (!isManual) {
         const interval = setInterval(() => {
-            setStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
+            setStep(prev => (prev < STEPS.length - 1 ? prev + 1 : prev));
         }, 1500);
         return () => clearInterval(interval);
     }
@@ -98,8 +106,6 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
     opacity: rippleOpacity.value
   }));
 
-  const themeColor = isError ? '#EF4444' : '#3B82F6'; // Red for Error, Blue for Normal
-
   // Determine what to show
   const currentStep = isManual && manualStep !== undefined ? manualStep : step;
   
@@ -116,7 +122,7 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
   // Progress Calculation Helper
   const getProgressWidth = () => {
       if (!isManual || manualProgress === undefined) {
-          return isError ? '100%' : `${((currentStep + 1) / steps.length) * 100}%`;
+          return isError ? '100%' : `${((currentStep + 1) / STEPS.length) * 100}%`;
       }
       
       if (currentStep === 1) { // Uploading (10% -> 60% range concept)
@@ -146,18 +152,19 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
       if (currentStep === 2) { // AI Analyzing Phase
           timer = setTimeout(() => {
               setIsLongWait(true);
-          }, 8000); // 8 seconds threshold
+          }, LONG_WAIT_THRESHOLD_MS); // 8 seconds threshold
       }
       
       return () => clearTimeout(timer);
   }, [currentStep]);
+  const mainMessage = getMainMessage(isError, isLongWait, currentStep);
 
   return (
     <View style={styles.container}>
       {/* Ambient Background */}
       <View style={styles.backgroundLayer}>
         <Image 
-          source={{ uri: imageUri || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1000&auto=format&fit=crop" }} 
+          source={{ uri: imageUri || DEFAULT_IMAGE_URI }} 
           style={styles.backgroundImage} 
           blurRadius={90}
         />
@@ -198,7 +205,7 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
         {/* Status Message */}
         <View style={styles.messageArea}>
             <Text style={styles.mainMessage}>
-                {isError ? "ANALYSIS FAILED" : (isLongWait && currentStep === 2 ? "SERVER WARMING UP..." : steps[currentStep])}
+                {mainMessage}
             </Text>
             
             {!isError && (

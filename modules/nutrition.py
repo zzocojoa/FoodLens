@@ -125,7 +125,7 @@ class NutritionLookup:
         
         for query in name_variants:
             result = self._search_food_single(query, food_origin)
-            if result and result.get("calories") is not None:
+            if self._has_calories(result):
                 return result
         
         return self._get_fallback_nutrition(food_name)
@@ -136,45 +136,35 @@ class NutritionLookup:
         
         # 1. 한국 음식 → 식약처 먼저
         if food_origin == "korean":
-            result = self._search_korean_fda(food_name)
-            if result and result.get("calories") is not None:
-                return result
-            # Fallback chain for Korean: FatSecret -> Open Food Facts
-            result = self._search_fatsecret(food_name)
-            if result and result.get("calories") is not None:
-                return result
-            result = self._search_open_food_facts(food_name)
-            if result and result.get("calories") is not None:
+            # Fallback chain for Korean: 식약처 -> FatSecret -> Open Food Facts
+            result, found = self._try_search_chain(
+                food_name,
+                [self._search_korean_fda, self._search_fatsecret, self._search_open_food_facts]
+            )
+            if found:
                 return result
         
         # 2. 단일 재료 또는 서양 음식 → USDA
         if food_origin in ["single_ingredient", "western", "unknown"]:
             result = self._search_usda(food_name)
-            if result and result.get("calories") is not None:
+            if self._has_calories(result):
                 return result
         
         # 3. 기타 아시아 음식: FatSecret이 아시아 음식 데이터가 꽤 좋음
         if food_origin in ["asian", "other"]:
-            result = self._search_fatsecret(food_name)
-            if result and result.get("calories") is not None:
-                return result
-            result = self._search_open_food_facts(food_name)
-            if result and result.get("calories") is not None:
-                return result
-            result = self._search_usda(food_name)
-            if result and result.get("calories") is not None:
+            result, found = self._try_search_chain(
+                food_name,
+                [self._search_fatsecret, self._search_open_food_facts, self._search_usda]
+            )
+            if found:
                 return result
         
         # 4. 최종 fallback chain
-        if not result or result.get("calories") is None:
-            # USDA
-            result = self._search_usda(food_name)
-            if not result or result.get("calories") is None:
-                # FatSecret
-                result = self._search_fatsecret(food_name)
-                if not result or result.get("calories") is None:
-                    # Open Food Facts
-                    result = self._search_open_food_facts(food_name)
+        if not self._has_calories(result):
+            result, _ = self._try_search_chain(
+                food_name,
+                [self._search_usda, self._search_fatsecret, self._search_open_food_facts]
+            )
         
         return result  # Let caller handle fallback
     
@@ -361,7 +351,7 @@ class NutritionLookup:
         
         for query in search_queries:
             result = self._search_usda_query(query)
-            if result and result.get("calories") is not None:
+            if self._has_calories(result):
                 return result
         
         return None
@@ -485,6 +475,17 @@ class NutritionLookup:
             return None
     
     # ==================== Helpers ====================
+    def _has_calories(self, result: Optional[Dict[str, Any]]) -> bool:
+        return bool(result and result.get("calories") is not None)
+
+    def _try_search_chain(self, food_name: str, searchers) -> tuple[Optional[Dict[str, Any]], bool]:
+        last_result = None
+        for searcher in searchers:
+            last_result = searcher(food_name)
+            if self._has_calories(last_result):
+                return last_result, True
+        return last_result, False
+
     def _safe_float(self, value) -> Optional[float]:
         """Safely convert value to float."""
         if value is None or value == "" or value == "-":

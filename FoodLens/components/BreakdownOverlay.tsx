@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { X, Target, Activity, Zap, AlertTriangle } from 'lucide-react-native';
+import { X, Zap, AlertTriangle } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnalyzedData } from '../services/ai';
@@ -19,6 +19,7 @@ import Svg, { Circle } from 'react-native-svg';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
 const DISMISS_THRESHOLD = 150;
+const INGREDIENT_MACRO_KEYS = ['protein', 'carbs', 'fat'] as const;
 
 interface BreakdownOverlayProps {
   isOpen: boolean;
@@ -87,6 +88,12 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
   const strokeDashoffset = circumference * (1 - (proteinPercent / 100));
 
   const hasAllergens = resultData.ingredients.some(i => i.isAllergen);
+  const macroRows = [
+    { name: 'PROTEIN', color: '#3B82F6', value: protein.toFixed(1), percent: proteinPercent },
+    { name: 'CARBS', color: '#F97316', value: carbs.toFixed(1), percent: carbsPercent },
+    { name: 'FAT', color: '#10B981', value: fat.toFixed(1), percent: fatPercent },
+  ];
+  const ingredientMacroLabels = { protein: 'P', carbs: 'C', fat: 'F' } as const;
 
   return (
     <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
@@ -170,27 +177,15 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
                 </View>
 
                 <View style={styles.macroList}>
-                  <View style={styles.macroRow}>
-                    <View style={styles.macroLabel}>
-                      <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
-                      <Text style={styles.macroName}>PROTEIN</Text>
+                  {macroRows.map((macro) => (
+                    <View key={macro.name} style={styles.macroRow}>
+                      <View style={styles.macroLabel}>
+                        <View style={[styles.macroDot, { backgroundColor: macro.color }]} />
+                        <Text style={styles.macroName}>{macro.name}</Text>
+                      </View>
+                      <Text style={styles.macroValue}>{macro.value}g ({macro.percent}%)</Text>
                     </View>
-                    <Text style={styles.macroValue}>{protein.toFixed(1)}g ({proteinPercent}%)</Text>
-                  </View>
-                  <View style={styles.macroRow}>
-                    <View style={styles.macroLabel}>
-                      <View style={[styles.macroDot, { backgroundColor: '#F97316' }]} />
-                      <Text style={styles.macroName}>CARBS</Text>
-                    </View>
-                    <Text style={styles.macroValue}>{carbs.toFixed(1)}g ({carbsPercent}%)</Text>
-                  </View>
-                  <View style={styles.macroRow}>
-                    <View style={styles.macroLabel}>
-                      <View style={[styles.macroDot, { backgroundColor: '#10B981' }]} />
-                      <Text style={styles.macroName}>FAT</Text>
-                    </View>
-                    <Text style={styles.macroValue}>{fat.toFixed(1)}g ({fatPercent}%)</Text>
-                  </View>
+                  ))}
                 </View>
               </View>
             ) : (
@@ -223,30 +218,26 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
                   <View key={index} style={styles.ingredientRow}>
                     <View style={styles.ingredientInfo}>
                       <Text style={styles.ingredientName}>{item.name}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={styles.ingredientMetaRow}>
                         {item.isAllergen && (
                           <View style={styles.allergenTag}>
                             <Text style={styles.allergenTagText}>ALLERGEN</Text>
                           </View>
                         )}
                         {ingCal !== null && (
-                          <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>
+                          <Text style={styles.ingredientCalories}>
                             {Math.round(ingCal)} kcal
                           </Text>
                         )}
                       </View>
                     </View>
                     {ingNutrition && (
-                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                          P: {ingNutrition.protein?.toFixed(1) ?? '-'}g
-                        </Text>
-                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                          C: {ingNutrition.carbs?.toFixed(1) ?? '-'}g
-                        </Text>
-                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                          F: {ingNutrition.fat?.toFixed(1) ?? '-'}g
-                        </Text>
+                      <View style={styles.ingredientMacroRow}>
+                        {INGREDIENT_MACRO_KEYS.map((macroKey) => (
+                          <Text key={macroKey} style={styles.ingredientMacroText}>
+                            {ingredientMacroLabels[macroKey]}: {ingNutrition[macroKey]?.toFixed(1) ?? '-'}g
+                          </Text>
+                        ))}
                       </View>
                     )}
                   </View>
@@ -463,6 +454,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#334155',
+  },
+  ingredientMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ingredientCalories: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  ingredientMacroRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  ingredientMacroText: {
+    fontSize: 10,
+    color: '#94A3B8',
   },
   allergenTag: {
     backgroundColor: '#FFF1F2',

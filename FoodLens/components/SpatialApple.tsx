@@ -1,17 +1,15 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import Animated, { 
     useSharedValue, 
     useAnimatedStyle, 
     withSpring, 
-    interpolate,
     SensorType,
     useAnimatedSensor,
     useDerivedValue,
     useAnimatedReaction,
     runOnJS
 } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
 
 interface SpatialAppleProps {
     size?: number;
@@ -51,6 +49,12 @@ const GLOW_COLORS: Record<string, string> = {
     '🫒': '#65A30D', // Lime-600
     '🥥': '#A8A29E', // Stone-400
 };
+const SENSOR_SENSITIVITY = 1.5;
+const OFFSET_DECAY = 0.9;
+const OFFSET_LIMIT = 20;
+const MOTION_THRESHOLD = 5;
+const APPLE_SPRING_CONFIG = { mass: 4.0, damping: 30, stiffness: 30 };
+const GLOW_SPRING_CONFIG = { mass: 3.5, damping: 35, stiffness: 50 };
 
 export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetect }: SpatialAppleProps) {
     // Use GYROSCOPE to get rotational velocity (rad/s) instead of absolute angle
@@ -67,13 +71,13 @@ export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetec
     useDerivedValue(() => {
         // Integrate velocity to get position (approximated)
         // Tune sensitivity: Lower value = Heavier object (slower response)
-        const velocityX = sensor.sensor.value.y * 1.5; 
-        const velocityY = sensor.sensor.value.x * 1.5;
+        const velocityX = sensor.sensor.value.y * SENSOR_SENSITIVITY; 
+        const velocityY = sensor.sensor.value.x * SENSOR_SENSITIVITY;
 
         // Cumulative calculation with decay
         // Decay 0.97: Very low friction, slides for a long time (slow return)
-        offsetX.value = clamp((offsetX.value + velocityX) * 0.9, -20, 20);
-        offsetY.value = clamp((offsetY.value + velocityY) * 0.9, -20, 20);
+        offsetX.value = clamp((offsetX.value + velocityX) * OFFSET_DECAY, -OFFSET_LIMIT, OFFSET_LIMIT);
+        offsetY.value = clamp((offsetY.value + velocityY) * OFFSET_DECAY, -OFFSET_LIMIT, OFFSET_LIMIT);
         
         return offsetX.value;
     });
@@ -82,7 +86,7 @@ export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetec
         () => Math.abs(offsetX.value) + Math.abs(offsetY.value),
         (magnitude) => {
             // Threshold for "significant motion"
-            if (magnitude > 5 && onMotionDetect) {
+            if (magnitude > MOTION_THRESHOLD && onMotionDetect) {
                 runOnJS(onMotionDetect)();
             }
         },
@@ -93,8 +97,8 @@ export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetec
         return {
             transform: [
                 // High mass = Heavier object = Slower movement
-                { translateX: withSpring(offsetX.value, { mass: 4.0, damping: 30, stiffness: 30 }) },
-                { translateY: withSpring(offsetY.value, { mass: 4.0, damping: 30, stiffness: 30 }) }
+                { translateX: withSpring(offsetX.value, APPLE_SPRING_CONFIG) },
+                { translateY: withSpring(offsetY.value, APPLE_SPRING_CONFIG) }
             ]
         };
     });
@@ -104,8 +108,8 @@ export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetec
             transform: [
                 // Background moves slower/heavier than foreground for depth
                 // mass: 3.5, stiffness: 50
-                { translateX: withSpring(-offsetX.value * 1.5, { mass: 3.5, damping: 35, stiffness: 50 }) },
-                { translateY: withSpring(-offsetY.value * 1.5, { mass: 3.5, damping: 35, stiffness: 50 }) },
+                { translateX: withSpring(-offsetX.value * SENSOR_SENSITIVITY, GLOW_SPRING_CONFIG) },
+                { translateY: withSpring(-offsetY.value * SENSOR_SENSITIVITY, GLOW_SPRING_CONFIG) },
                 { scale: 1.2 }
             ],
             opacity: 0.6,

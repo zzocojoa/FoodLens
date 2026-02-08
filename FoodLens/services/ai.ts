@@ -6,6 +6,38 @@ import { UserService } from './userService';
 // Default fallback URL
 const DEFAULT_SERVER_URL = 'https://foodlens-2-w1xu.onrender.com';
 const STORAGE_KEY = 'foodlens_custom_server_url';
+const TEST_UID = "test-user-v1";
+
+const clampConfidence = (confidence: unknown) =>
+    typeof confidence === 'number' ? Math.max(0, Math.min(100, confidence)) : undefined;
+
+const mapAnalyzedData = (data: any): AnalyzedData => ({
+    foodName: data.foodName || "Analyzed Food",
+    safetyStatus: data.safetyStatus || "CAUTION",
+    confidence: clampConfidence(data.confidence),
+    ingredients: data.ingredients || [],
+    nutrition: data.nutrition || undefined,
+    translationCard: data.translationCard,
+    raw_result: data.raw_result
+});
+
+const getAllergyString = async (): Promise<string> => {
+    let allergyString = "None";
+
+    try {
+        const user = await UserService.getUserProfile(TEST_UID);
+        if (user) {
+            const items = [...user.safetyProfile.allergies, ...user.safetyProfile.dietaryRestrictions];
+            if (items.length > 0) {
+                allergyString = items.join(", ");
+            }
+        }
+    } catch (e) {
+        console.warn("Could not load user profile for analysis:", e);
+    }
+
+    return allergyString;
+};
 
 export const ServerConfig = {
     /**
@@ -169,20 +201,7 @@ export const analyzeImage = async (
     console.log('Uploading to Python Server:', activeServerUrl);
     
     // 1. Get User Profile for Allergies
-    const TEST_UID = "test-user-v1";
-    let allergyString = "None";
-    
-    try {
-        const user = await UserService.getUserProfile(TEST_UID);
-        if (user) {
-            const items = [...user.safetyProfile.allergies, ...user.safetyProfile.dietaryRestrictions];
-            if (items.length > 0) {
-                allergyString = items.join(", ");
-            }
-        }
-    } catch (e) {
-        console.warn("Could not load user profile for analysis:", e);
-    }
+    const allergyString = await getAllergyString();
     
     console.log("Analyzing with allergies:", allergyString);
 
@@ -204,16 +223,7 @@ export const analyzeImage = async (
         );
 
         const data = JSON.parse(uploadResult.body);
-        
-        return {
-            foodName: data.foodName || "Analyzed Food",
-            safetyStatus: data.safetyStatus || "CAUTION",
-            confidence: typeof data.confidence === 'number' ? Math.max(0, Math.min(100, data.confidence)) : undefined,
-            ingredients: data.ingredients || [],
-            nutrition: data.nutrition || undefined,
-            translationCard: data.translationCard,
-            raw_result: data.raw_result
-        };
+        return mapAnalyzedData(data);
     } catch (error: any) {
         if (error.message?.includes('timed out')) {
             throw new Error(`Analysis timed out (${ANALYSIS_TIMEOUT_MS / 1000}s). The server might be "Cold Starting" on Render free tier.`);
