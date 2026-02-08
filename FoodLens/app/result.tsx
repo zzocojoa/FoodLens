@@ -20,6 +20,8 @@ import { ActionButtons } from '../components/result/ActionButtons';
 import BreakdownOverlay from '../components/BreakdownOverlay';
 import { SecureImage } from '../components/SecureImage';
 import TravelerAllergyCard from '../components/TravelerAllergyCard';
+import { HapticsService } from '../services/haptics';
+import { useLocalSearchParams } from 'expo-router';
 
 const { height } = Dimensions.get('window');
 const HEADER_HEIGHT = height * 0.6;
@@ -52,6 +54,18 @@ export default function ResultScreen() {
     isBreakdownOpen, 
     setIsBreakdownOpen 
   } = useResultUI();
+
+  // 5. Haptic Feedback (New Analysis)
+  const params = useLocalSearchParams();
+  React.useEffect(() => {
+    if (result && params.isNew === 'true') {
+        // Debounce slightly to ensure transition is done
+        const timer = setTimeout(() => {
+            HapticsService.success();
+        }, 300);
+        return () => clearTimeout(timer);
+    }
+  }, [result, params.isNew]);
 
   // --- Render Handling ---
 
