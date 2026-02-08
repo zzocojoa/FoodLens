@@ -24,6 +24,12 @@ analyst = FoodAnalyst()
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
 
+@app.get("/debug/models")
+async def debug_models():
+    """Trigger model listing debug."""
+    await analyst.debug_list_models()
+    return {"status": "triggered", "message": "Check server logs for model list"}
+
 @app.post("/analyze")
 async def analyze_food(
     file: UploadFile = File(...), 

@@ -201,6 +201,34 @@ class FoodAnalyst:
     # Retry tracking for operational monitoring
     _retry_stats = {"total_retries": 0, "last_429_time": None}
 
+    async def debug_list_models(self):
+        """Debug method to list available models in the project."""
+        try:
+            from google.cloud import aiplatform
+            print("\n[DEBUG] Listing available Vertex AI models...")
+            models = aiplatform.Model.list()
+            print(f"[DEBUG] Found {len(models)} custom models.")
+            for m in models:
+                print(f" - {m.display_name} ({m.resource_name})")
+            
+            # List foundation models
+            print("[DEBUG] Listing Foundation Models:")
+            from vertexai.preview.generative_models import GenerativeModel
+            # Note: SDK doesn't have a direct 'list_foundation_models', 
+            # so we try to instantiate common ones to check availability
+            common_models = ["gemini-1.5-pro-002", "gemini-1.5-flash-002", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]
+            for m_name in common_models:
+                try:
+                    GenerativeModel(m_name)
+                    print(f" - {m_name}: AVAILABLE")
+                except Exception as e:
+                    print(f" - {m_name}: UNAVAILABLE ({str(e)})")
+                    
+        except Exception as e:
+            print(f"[DEBUG] Error listing models: {e}")
+            import traceback
+            traceback.print_exc()
+
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
