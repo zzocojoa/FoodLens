@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import uvicorn
 from modules.analyst import FoodAnalyst
+from modules.barcode.service import BarcodeService # Import Barcode Service
 from PIL import Image
 import io
 import json
@@ -19,6 +20,7 @@ app = FastAPI()
 # Initialize Analyst
 # This uses the same logic as app.py (Vertex AI or Gemini API)
 analyst = FoodAnalyst()
+barcode_service = BarcodeService() # Initialize Service
 
 @app.get("/")
 def health_check():
@@ -53,6 +55,28 @@ async def analyze_food(
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/lookup/barcode")
+async def lookup_barcode(barcode: str = Form(...)):
+    """
+    Lookup product by barcode.
+    Full SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)
+    """
+    try:
+        print(f"[Server] Lookup request for barcode: {barcode}")
+        result = await barcode_service.get_product_info(barcode)
+        
+        if not result:
+            # Return 404 or just found:False? 
+            # Client expects JSON, so let's return clean structure
+            return {"found": False, "message": "Product not found in any database"}
+            
+        return {"found": True, "data": result}
+        
+    except Exception as e:
+        print(f"[Server] Barcode Lookup Error: {e}")
+        # Don't crash client, just return error
+        return {"found": False, "error": str(e)}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

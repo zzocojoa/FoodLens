@@ -17,6 +17,11 @@ export default {
         : "com.hoihou.foodlens",
       // Dynamically load the correct plist
       googleServicesFile: IS_DEV ? "./Dev.plist" : "./Prod.plist",
+      infoPlist: {
+        NSAppTransportSecurity: {
+          NSAllowsArbitraryLoads: true,
+        },
+      },
     },
     android: {
       package: IS_DEV ? "com.hoihou.foodlens.dev" : "com.hoihou.foodlens",
