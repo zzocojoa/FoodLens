@@ -244,36 +244,20 @@ export default function HomeScreen() {
   // Removed handleSaveServer function
   // Removed openServerSettings function
 
-  const handleStartAnalysis = async () => {
-    /* NEW: Network Guard */
+  const handleStartAnalysis = () => {
     HapticsService.tickTick();
-    if (isConnected === false) {
-      Alert.alert(
-        "Offline Mode",
-        "Internet connection is required to analyze new food items. Please check your connection."
-      );
-      return;
-    }
-
-    Alert.alert(
-      "Analyze Food",
-      "Choose a photo to analyze",
-      [
-        {
-          text: "Take Photo",
-          onPress: () => performImageSelection('camera')
-        },
-        {
-          text: "Choose from Library",
-          onPress: () => performImageSelection('library')
-        },
-        {
-          text: "Cancel",
-          style: "cancel"
-        }
-      ]
-    );
+    router.push('/scan/camera');
   };
+
+  // Legacy Image Selection Logic (Moved to app/scan/camera.tsx)
+  /* 
+  const { checkAndRequest } = usePermissionGuard();
+  const { isConnected } = useNetworkStatus();
+
+  const performImageSelection = async (type: 'camera' | 'library') => {
+      // ... logic moved to Camera Screen ...
+  };
+  */
 
   /* 
    * NEW: Integrated Permission Guard 

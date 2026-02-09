@@ -67,3 +67,96 @@ class DatagoClient:
         except Exception as e:
             print(f"[Datago] Request Failed: {e}")
             return None
+
+    async def get_product_by_report_no(self, report_no: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetches product info by Report Number from I2790 service.
+        URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/PRDLST_REPORT_NO={report_no}
+        """
+        if not report_no:
+            return None
+            
+        # Try specific I2790 keys first (KOREAN_FDA_API_KEY or DATAGO_I2790_API_KEY), fallback to general key
+        api_key = os.getenv("KOREAN_FDA_API_KEY") or os.getenv("DATAGO_I2790_API_KEY") or self.api_key
+        
+        if not api_key:
+            print("[Datago] Error: No API Key found for I2790 service.")
+            return None
+            
+        service_id = "I2790" # Food Item Report Service
+        clean_report_no = report_no.strip()
+        
+        url = f"{self.BASE_URL}/{api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
+        
+        # Debug Log
+        safe_url = url.replace(api_key, "API_KEY_MASKED") if api_key else url
+        print(f"[Datago] Requesting I2790: {safe_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        print(f"[Datago] I2790 Error: Status {response.status}")
+                        return None
+                    
+                    data = await response.json()
+                    
+                    if service_id not in data:
+                        return None
+                        
+                    result_code = data[service_id]['RESULT']['CODE']
+                    if result_code != 'INFO-000':
+                        return None
+                        
+                    rows = data[service_id].get('row', [])
+                    if not rows:
+                        return None
+                        
+                    return rows[0]
+                    
+        except Exception as e:
+            print(f"[Datago] I2790 Request Failed: {e}")
+            return None
+
+    async def get_food_item_raw_materials(self, report_no: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetches raw material info by Report Number from C002 service.
+        URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/PRDLST_REPORT_NO={report_no}
+        """
+        if not self.api_key or not report_no:
+            return None
+            
+        service_id = "C002" # Food Item Report (Raw Materials)
+        clean_report_no = report_no.strip()
+        
+        url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
+        
+        # Debug Log
+        safe_url = url.replace(self.api_key, "API_KEY_MASKED") if self.api_key else url
+        print(f"[Datago] Requesting C002: {safe_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        print(f"[Datago] C002 Error: Status {response.status}")
+                        return None
+                    
+                    data = await response.json()
+                    
+                    if service_id not in data:
+                        return None
+                        
+                    result_code = data[service_id]['RESULT']['CODE']
+                    if result_code != 'INFO-000':
+                        return None
+                        
+                    rows = data[service_id].get('row', [])
+                    if not rows:
+                        return None
+                        
+                    return rows[0]
+                    
+        except Exception as e:
+            print(f"[Datago] C002 Request Failed: {e}")
+            return None

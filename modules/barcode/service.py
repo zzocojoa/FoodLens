@@ -1,6 +1,7 @@
 
 from .clients.datago_client import DatagoClient
 from .clients.openfoodfacts_client import OpenFoodFactsClient
+from .clients.public_data_client import PublicDataClient
 from typing import Dict, Any, Optional
 
 class BarcodeService:
@@ -12,6 +13,7 @@ class BarcodeService:
     def __init__(self):
         self.datago_client = DatagoClient()
         self.off_client = OpenFoodFactsClient()
+        self.public_data_client = PublicDataClient()
 
     async def get_product_info(self, barcode: str) -> Optional[Dict[str, Any]]:
         """
@@ -26,7 +28,52 @@ class BarcodeService:
         korean_data = await self.datago_client.get_product_by_barcode(barcode)
         
         if korean_data:
-            print(f"[BarcodeService] Found in Data.go.kr")
+            print(f"[BarcodeService] Found in Data.go.kr (C005)")
+            
+            # Enrich with C002 (Ingredients) if available
+            report_no = korean_data.get('PRDLST_REPORT_NO')
+            if report_no:
+                # 1.1. Enrich Ingredients (C002)
+                print(f"[BarcodeService] Enriching with C002 (Report No: {report_no})...")
+                raw_materials = await self.datago_client.get_food_item_raw_materials(report_no)
+                if raw_materials:
+                     raw_names = raw_materials.get('RAWMTRL_NM', '')
+                     if raw_names:
+                         print(f"[BarcodeService] C002 Ingredients Found!")
+                         korean_data['RAWMTRL_NM'] = raw_names
+                
+                # 1.2. Enrich Nutrition (I2790) if needed
+                # C005 often has 0.0 or None for nutrition. If so, try I2790.
+                if self._is_nutrition_missing(korean_data):
+                    print(f"[BarcodeService] Nutrition missing in C005. Trying I2790...")
+                    nutrition_data = await self.datago_client.get_product_by_report_no(report_no)
+                    if nutrition_data:
+                        print(f"[BarcodeService] I2790 Nutrition Found! Patching data...")
+                        # Map I2790 fields back to korean_data so _normalize_datago picks them up
+                        # Usually I2790 and C005 use similar NUTR_CONT1 style but nested differently?
+                        # I2790 fields: NUTR_CONT1 (Cal), NUTR_CONT2 (Carb), NUTR_CONT3 (Prot), NUTR_CONT4 (Fat)
+                        for key in ['NUTR_CONT1', 'NUTR_CONT2', 'NUTR_CONT3', 'NUTR_CONT4']:
+                            if nutrition_data.get(key):
+                                korean_data[key] = nutrition_data[key]
+                        korean_data['enrichment_nutr'] = "I2790"
+
+                # 1.3. Fallback to Public Data Portal (Name-based) if still missing
+                if self._is_nutrition_missing(korean_data):
+                    food_name = korean_data.get('PRDLST_NM')
+                    print(f"[BarcodeService] Nutrition still missing (Cal: {korean_data.get('NUTR_CONT1')}).")
+                    if food_name:
+                        print(f"[BarcodeService] Trying Public Data Portal (Name: {food_name})...")
+                        pd_nutrition = await self.public_data_client.get_nutrition_by_name(food_name)
+                        if pd_nutrition:
+                            print(f"[BarcodeService] Public Data Nutrition Found! Patching...")
+                            # Map PD fields to korean_data
+                            norm_pd = self.public_data_client.normalize_response(pd_nutrition)
+                            korean_data['NUTR_CONT1'] = norm_pd['calories']
+                            korean_data['NUTR_CONT2'] = norm_pd['carbs']
+                            korean_data['NUTR_CONT3'] = norm_pd['protein']
+                            korean_data['NUTR_CONT4'] = norm_pd['fat']
+                            korean_data['enrichment_nutr'] = "PublicData"
+
             return self._normalize_datago(korean_data)
             
         # 2. Try Open Food Facts
@@ -39,6 +86,13 @@ class BarcodeService:
             
         print(f"[BarcodeService] Barcode {barcode} not found in any DB.")
         return None
+
+    def _is_nutrition_missing(self, data: Dict[str, Any]) -> bool:
+        """Checks if C005 data has placeholder/zero nutrition info."""
+        cal = self._parse_float(data.get("NUTR_CONT1"))
+        # If calories is 0 or all main macros are 0, we consider it missing/placeholder
+        # (Very few processed foods have exactly 0 calories, usually placeholders)
+        return cal <= 0.0
 
     def _normalize_datago(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
