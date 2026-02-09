@@ -11,16 +11,53 @@ import os
 
 # Load Env
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(dotenv_path)
-print(f"DEBUG: Loaded .env from {dotenv_path}")
-print(f"DEBUG: MAX_OUTPUT_TOKENS check -> {os.getenv('GEMINI_MODEL_NAME')}")
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+    print(f"[Startup] Loaded .env from {dotenv_path}")
+else:
+    print(f"[Startup] Warning: .env not found at {dotenv_path}. Using environment variables.")
+
+# Detailed Environment Logging
+print("--- [Server Debug Environment] ---")
+print(f"PORT: {os.getenv('PORT', '8000')}")
+print(f"GEMINI_MODEL_NAME: {os.getenv('GEMINI_MODEL_NAME', 'Not set')}")
+print(f"KOREAN_FDA_API_KEY: {'[SET]' if os.getenv('KOREAN_FDA_API_KEY') else '[MISSING]'}")
+
+# Check Service Account JSON (A frequent source of errors on Render)
+sa_json = os.getenv('GCP_SERVICE_ACCOUNT_JSON', '')
+print(f"GCP_SERVICE_ACCOUNT_JSON Raw Length: {len(sa_json)}")
+if sa_json:
+    try:
+        # Check if it looks like JSON
+        if sa_json.strip().startswith('{') and sa_json.strip().endswith('}'):
+            parsed_sa = json.loads(sa_json)
+            print(f"[Startup] ✓ GCP_SERVICE_ACCOUNT_JSON parsed successfully. Project: {parsed_sa.get('project_id')}")
+        else:
+            print("[Startup] ⚠️ WARNING: GCP_SERVICE_ACCOUNT_JSON is incomplete or improperly formatted.")
+            print(f"[Startup] Text starts with: {repr(sa_json[:30])}")
+            print(f"[Startup] Text ends with: {repr(sa_json[-30:])}")
+            if sa_json.strip().startswith('{') and not sa_json.strip().endswith('}'):
+                print("[Startup] 🛑 ERROR: JSON is truncated! This usually happens if .env has multiple lines for one variable.")
+                print("[Startup] FIX: Wrap the entire JSON in single quotes in your Environment Variables or .env file.")
+    except Exception as e:
+        print(f"[Startup] ✗ Error parsing GCP_SERVICE_ACCOUNT_JSON: {e}")
+        # Log more context for debugging
+        print(f"[Startup] Raw content sample: {repr(sa_json[:100])}...")
 
 app = FastAPI()
 
 # Initialize Analyst
 # This uses the same logic as app.py (Vertex AI or Gemini API)
-analyst = FoodAnalyst()
-barcode_service = BarcodeService() # Initialize Service
+try:
+    print("[Startup] Initializing FoodAnalyst...")
+    analyst = FoodAnalyst()
+    print("[Startup] ✓ FoodAnalyst initialized.")
+    barcode_service = BarcodeService() # Initialize Service
+    print("[Startup] ✓ BarcodeService initialized.")
+except Exception as e:
+    print(f"[Startup] ✗ FAILED to initialize services: {e}")
+    traceback.print_exc()
+    # On Render, the build will fail if this fails during startup check
 
 @app.get("/")
 def health_check():
