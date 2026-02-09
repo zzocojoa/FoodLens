@@ -100,7 +100,16 @@ def normalize_food_name(food_name: str) -> list[str]:
 class NutritionLookup:
     def __init__(self):
         self.usda_api_key = os.getenv("USDA_API_KEY")
-        self.korean_fda_api_key = os.getenv("KOREAN_FDA_API_KEY")
+        self.usda_api_key = os.getenv("USDA_API_KEY")
+        raw_fda_key = os.getenv("KOREAN_FDA_API_KEY")
+        
+        # data.go.kr keys are often pre-encoded (%2B). Unquote so httpx can re-encode correctly.
+        import urllib.parse
+        if raw_fda_key and '%' in raw_fda_key:
+            self.korean_fda_api_key = urllib.parse.unquote(raw_fda_key)
+        else:
+            self.korean_fda_api_key = raw_fda_key
+
         self.fatsecret_id = os.getenv("FATSECRET_CLIENT_ID")
         self.fatsecret_secret = os.getenv("FATSECRET_CLIENT_SECRET")
         self.fatsecret_token = None

@@ -76,11 +76,13 @@ class DatagoClient:
         if not report_no:
             return None
             
-        # Try specific I2790 keys first (KOREAN_FDA_API_KEY or DATAGO_I2790_API_KEY), fallback to general key
-        api_key = os.getenv("KOREAN_FDA_API_KEY") or os.getenv("DATAGO_I2790_API_KEY") or self.api_key
+        # CRITICAL: Do NOT use KOREAN_FDA_API_KEY here. 
+        # foodsafetykorea.go.kr (I2790) requires a specific Food Safety Korea key (usually short).
+        # apis.data.go.kr (Public Data Portal) keys (usually long) will NOT work here.
+        api_key = os.getenv("DATAGO_I2790_API_KEY") or self.api_key
         
         if not api_key:
-            print("[Datago] Error: No API Key found for I2790 service.")
+            print("[Datago] Error: No FoodSafetyKorea API Key found for I2790 service.")
             return None
             
         service_id = "I2790" # Food Item Report Service
