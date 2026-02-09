@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
-import { analyzeImage, AnalyzedData, NutritionData } from '../../services/ai';
+import { analyzeImage, analyzeLabel, lookupBarcode, AnalyzedData, NutritionData } from '../../services/ai';
 import { dataStore } from '../../services/dataStore';
 import { getLocationData, validateCoordinates, normalizeTimestamp } from '../../services/utils';
 import { UserService } from '../../services/userService';
@@ -133,85 +133,43 @@ export default function CameraScreen() {
       setIsAnalyzing(true);
       setActiveStep(0); // Scanning...
       
-      // Network Check
       if (!isConnectedRef.current) {
           Alert.alert("오프라인", "인터넷 연결을 확인해주세요.");
           resetState();
           return;
       }
 
-      console.log("Looking up barcode:", barcode);
-
-      // Call Server
-      const formData = new FormData();
-      formData.append('barcode', barcode);
-      
-      // Use Env Var (Local or Prod)
-      const API_URL = process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL || "https://foodlens-2-w1xu.onrender.com"; 
-      console.log("Using API_URL:", API_URL); 
-      
-      const response = await fetch(`${API_URL}/lookup/barcode`, {
-          method: 'POST',
-          body: formData,
-      });
-
-      if (!response.ok) {
-          throw new Error(`Server status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      console.log("Looking up barcode via service:", barcode);
+      const result = await lookupBarcode(barcode);
       
       if (result.found && result.data) {
-          // Success!
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           
           const product = result.data;
           
-          // Map Ingredients (String[] -> Object[])
-          const ingredientsList = (product.ingredients || []).map((ing: string) => ({
-              name: ing,
-              isAllergen: false, // Default, logic to check user allergens could happen here if detailed enough
-          }));
+          // Map Ingredients (String[] -> Object[]) if they are strings
+          if (product.ingredients && product.ingredients.length > 0 && typeof product.ingredients[0] === 'string') {
+              product.ingredients = (product.ingredients as any).map((ing: string) => ({
+                  name: ing,
+                  isAllergen: false,
+              }));
+          }
 
-          // Map Nutrition
-          const nutrition: NutritionData = {
-              calories: product.calories || 0,
-              protein: product.protein || 0,
-              carbs: product.carbs || 0,
-              fat: product.fat || 0,
-              fiber: 0, 
-              sodium: 0,
-              sugar: 0,
-              servingSize: "1회 제공량",
-              dataSource: product.source || "BARCODE",
-          };
-
-          // Construct AnalysisResult format matching AnalyzedData interface
-          const analysisResult: AnalyzedData = {
-              foodName: product.food_name,
-              safetyStatus: 'SAFE', // Default for barcode products
-              confidence: 1.0, 
-              ingredients: ingredientsList,
-              nutrition: nutrition,
-              raw_result: JSON.stringify(product)
-          };
-
-          // Location Context
+          // Location & Timestamp
           const locationData = cachedLocation.current || createFallbackLocation(0,0,"US");
           const finalTimestamp = new Date().toISOString();
 
           // Save & Navigate
-           dataStore.setData(analysisResult, locationData, product.image_url || null, finalTimestamp); 
+          dataStore.setData(product, locationData, (product.raw_data as any)?.image_url || null, finalTimestamp); 
 
-           router.replace({
-                pathname: '/result',
-                params: { fromStore: 'true', isNew: 'true' }
-           });
-           
-           resetState();
+          router.replace({
+               pathname: '/result',
+               params: { fromStore: 'true', isNew: 'true' }
+          });
+          
+          resetState();
 
       } else {
-          // Fallback Strategy
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           setIsAnalyzing(false); 
           
@@ -223,7 +181,7 @@ export default function CameraScreen() {
                   { 
                       text: '촬영하기', 
                       onPress: () => {
-                          setMode('FOOD');
+                          setMode('LABEL'); // Switched to LABEL for OCR
                           setScanned(false);
                       }
                   }
@@ -319,6 +277,54 @@ export default function CameraScreen() {
   }, [router, handleError, resetState]);
 
 
+  // --- CORE: Process Label (OCR) ---
+  const processLabel = useCallback(async (uri: string) => {
+    try {
+      isCancelled.current = false;
+      setIsAnalyzing(true);
+      setCapturedImage(uri);
+      setActiveStep(0); // Image Ready
+
+      if (!isConnectedRef.current) {
+          Alert.alert("오프라인", "인터넷 연결을 확인해주세요.");
+          resetState();
+          return;
+      }
+
+      // Context
+      let locationData = cachedLocation.current || await getLocationData().catch(() => null);
+      let isoCode = locationData?.isoCountryCode || "US";
+
+      setActiveStep(1); // Uploading
+      setUploadProgress(0);
+
+      const analysisResult = await analyzeLabel(uri, isoCode, (progress) => {
+          if (!isCancelled.current) {
+              setUploadProgress(progress);
+              if (progress >= 1) setActiveStep(2); // Analyzing
+          }
+      });
+
+      if (isCancelled.current) return;
+
+      // Sync & Navigate
+      setActiveStep(3);
+      dataStore.setData(analysisResult, locationData || createFallbackLocation(0,0,isoCode), uri, new Date().toISOString());
+
+      router.replace({
+        pathname: '/result',
+        params: { fromStore: 'true', isNew: 'true' }
+      });
+      
+      resetState();
+
+    } catch (error: any) {
+      if (isCancelled.current) return;
+      handleError(error);
+    }
+  }, [router, handleError, resetState]);
+
+
   // --- Actions ---
   const handleCapture = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -333,16 +339,10 @@ export default function CameraScreen() {
             
             if (photo && photo.uri) {
                 if (mode === 'BARCODE') {
-                    // Manual Scan Fallback if needed or prompt
-                     Alert.alert("알림", "바코드를 카메라에 비춰주세요.");
+                      Alert.alert("알림", "바코드를 카메라에 비춰주세요.");
                 } else if (mode === 'LABEL') {
-                    // Label Analysis Logic (Future)
-                     Alert.alert("알림", "라벨 분석 모드는 준비중입니다. (Food로 분석할까요?)", [
-                        { text: '네', onPress: () => processImage(photo.uri) },
-                        { text: '아니오', style: 'cancel' }
-                     ]);
+                    processLabel(photo.uri);
                 } else {
-                    // FOOD MODE
                     processImage(photo.uri, 'camera');
                 }
             }
@@ -364,8 +364,12 @@ export default function CameraScreen() {
         });
 
         if (!result.canceled && result.assets[0].uri) {
-             // For now, route directly to FOOD analysis as Smart Import is Phase 3
-             processImage(result.assets[0].uri, 'library');
+             const uri = result.assets[0].uri;
+             if (mode === 'LABEL') {
+                 processLabel(uri);
+             } else {
+                 processImage(uri, 'library');
+             }
         }
     } catch (e) {
         Alert.alert("Error", "갤러리를 열 수 없습니다.");

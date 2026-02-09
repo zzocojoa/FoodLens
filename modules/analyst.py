@@ -651,6 +651,139 @@ class FoodAnalyst:
         
         return result
 
+    def _build_label_prompt(self, allergy_info: str) -> str:
+        """Constructs the nutrition label OCR prompt."""
+        return f"""
+        # [System Prompt: Food Lens OCR Engine v1.0]
+
+        **ROLE**
+        You are a highly precise OCR and Nutrition Analyst. Your task is to extract structured data from a nutrition facts label and ingredient list image.
+
+        **TASK**
+        1.  **Extract Nutrition Facts**: Find Calories, Carbohydrates, Protein, Fat, Sugar, Sodium, and Fiber.
+        2.  **Extract Ingredients**: List all ingredients found in the 'Ingredients' section.
+        3.  **Cross-Check Allergens**: Check the extracted ingredients against the user's allergy profile: `{allergy_info}`.
+        4.  **Identify Product**: Inferred product name from the label if visible.
+
+        **CRITICAL RULES**
+        -   **Accuracy First**: Do not hallucinate numbers. If a value is missing, use null or 0.
+        -   **Unit Normalization**: Extract values as numbers (e.g., "15g" -> 15).
+        -   **Allergen Detection**: Be extremely strict with `{allergy_info}`. 
+        -   **JSON Format**: Return only raw JSON.
+
+        **OUTPUT FORMAT**
+        {{
+           "foodName": "Product Name from Label",
+           "foodName_en": "English Name",
+           "foodName_ko": "Korean Name",
+           "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
+           "confidence": 0-100,
+           "nutrition": {{
+              "calories": number,
+              "carbs": number,
+              "protein": number,
+              "fat": number,
+              "sugar": number,
+              "sodium": number,
+              "fiber": number,
+              "servingSize": "string (e.g. 100g, 1 pack)",
+              "dataSource": "OCR_Label"
+           }},
+           "ingredients": [
+                {{
+                  "name": "Ingredient Name",
+                  "isAllergen": boolean,
+                  "riskReason": "Statement if allergen"
+                }}
+            ],
+            "raw_result": "Brief summary of extracted label data"
+        }}
+        """
+
+    def analyze_label_json(self, label_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
+        """
+        Analyzes a nutrition label image using OCR and extracts nutritional info.
+        """
+        normalized_allergens = format_allergens_for_prompt(allergy_info)
+        prompt = self._build_label_prompt(normalized_allergens)
+        
+        # Schema for OCR (similar to food but focused on nutrition)
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "foodName": {"type": "STRING"},
+                "foodName_en": {"type": "STRING"},
+                "foodName_ko": {"type": "STRING"},
+                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
+                "confidence": {"type": "INTEGER"},
+                "nutrition": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "calories": {"type": "NUMBER"},
+                        "carbs": {"type": "NUMBER"},
+                        "protein": {"type": "NUMBER"},
+                        "fat": {"type": "NUMBER"},
+                        "sugar": {"type": "NUMBER"},
+                        "sodium": {"type": "NUMBER"},
+                        "fiber": {"type": "NUMBER"},
+                        "servingSize": {"type": "STRING"},
+                        "dataSource": {"type": "STRING"}
+                    }
+                },
+                "ingredients": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "name": {"type": "STRING"},
+                            "isAllergen": {"type": "BOOLEAN"},
+                            "riskReason": {"type": "STRING"}
+                        },
+                        "required": ["name", "isAllergen"]
+                    }
+                },
+                "raw_result": {"type": "STRING"}
+            },
+            "required": ["foodName", "nutrition", "ingredients", "safetyStatus"]
+        }
+
+        generation_config = {
+            "temperature": 0.1, # Low temperature for OCR precision
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        }
+
+        try:
+            with FoodAnalyst._request_semaphore:
+                vertex_image = self._prepare_vertex_image(label_image)
+                
+                # Using 2.0 Flash for speed and OCR capability
+                model = GenerativeModel("gemini-2.0-flash")
+                
+                response = model.generate_content(
+                    [prompt, vertex_image],
+                    generation_config=generation_config,
+                    safety_settings=safety_settings
+                )
+            
+            result = self._parse_ai_response(response.text)
+            result = self._sanitize_response(result)
+            result["used_model"] = "gemini-2.0-flash-ocr"
+            
+            return result
+            
+        except Exception as e:
+            print(f"[Label OCR Error] {e}")
+            traceback.print_exc()
+            return self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
+
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
         """
         Analyzes the food image and returns a JSON object with safety status,

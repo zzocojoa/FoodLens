@@ -107,6 +107,7 @@ export interface AnalyzedData {
   nutrition?: NutritionData;
   translationCard?: TranslationCard;
   raw_result?: string;
+  raw_data?: any;
   used_model?: string;
 }
 
@@ -229,5 +230,64 @@ export const analyzeImage = async (
             throw new Error(`Analysis timed out (${ANALYSIS_TIMEOUT_MS / 1000}s). The server might be "Cold Starting" on Render free tier.`);
         }
         throw error;
+    }
+};
+export const analyzeLabel = async (
+    imageUri: string, 
+    isoCountryCode: string = "US",
+    onProgress?: (progress: number) => void
+): Promise<AnalyzedData> => {
+    const activeServerUrl = await ServerConfig.getServerUrl();
+    const allergyString = await getAllergyString();
+    
+    console.log("[AI] Starting label analysis...");
+
+    try {
+        const uploadResult = await uploadWithRetry(
+            `${activeServerUrl}/analyze/label`, 
+            imageUri, 
+            {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                fieldName: 'file',
+                parameters: {
+                    'allergy_info': allergyString,
+                    'iso_country_code': isoCountryCode
+                }
+            },
+            3,
+            onProgress
+        );
+
+        const data = JSON.parse(uploadResult.body);
+        return mapAnalyzedData(data);
+    } catch (error: any) {
+        if (error.message?.includes('timed out')) {
+            throw new Error(`Label analysis timed out. The server might be "Cold Starting".`);
+        }
+        throw error;
+    }
+};
+
+export const lookupBarcode = async (barcode: string): Promise<{found: boolean, data?: AnalyzedData, error?: string}> => {
+    const activeServerUrl = await ServerConfig.getServerUrl();
+    
+    try {
+        const formData = new FormData();
+        formData.append('barcode', barcode);
+
+        const response = await fetch(`${activeServerUrl}/lookup/barcode`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+        }
+
+        return await response.json();
+    } catch (error: any) {
+        console.error("[AI] Barcode Lookup Failed:", error);
+        return { found: false, error: error.message };
     }
 };

@@ -56,6 +56,31 @@ async def analyze_food(
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyze/label")
+async def analyze_label(
+    file: UploadFile = File(...),
+    allergy_info: str = Form("None"),
+    iso_country_code: str = Form("US")
+):
+    """
+    Perform OCR nutrition analysis on a label image.
+    """
+    try:
+        print(f"[Server] Label analysis request received.")
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+        
+        data = analyst.analyze_label_json(
+            label_image=image,
+            allergy_info=allergy_info,
+            iso_current_country=iso_country_code
+        )
+        return data
+        
+    except Exception as e:
+        print(f"[Server] Label Analysis Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/lookup/barcode")
 async def lookup_barcode(barcode: str = Form(...)):
     """
