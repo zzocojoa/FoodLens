@@ -601,13 +601,24 @@ class FoodAnalyst:
         """
         App-level content sanitization (P2: Second layer defense).
         
-        Defense-in-depth measures alongside Vertex AI's built-in safety filters:
-        1. Length limits (prevent injection/overflow)
-        2. URL/script pattern blocking
-        3. Minimal profanity blocklist (platform filter handles most cases)
+        4. Deduplication of ingredients list
         """
         import re
         
+        # 1. Deduplicate Ingredients (Universal)
+        if "ingredients" in result and isinstance(result["ingredients"], list):
+            unique_ingredients = []
+            seen_names = set()
+            for ing in result["ingredients"]:
+                if not isinstance(ing, dict): continue
+                name = ing.get("name", "").strip()
+                if not name: continue
+                normalized = name.lower()
+                if normalized not in seen_names:
+                    seen_names.add(normalized)
+                    unique_ingredients.append(ing)
+            result["ingredients"] = unique_ingredients
+
         # Configuration
         MAX_TEXT_LENGTH = 500  # Max chars for user-facing text fields
         MAX_FOOD_NAME_LENGTH = 100
@@ -1061,6 +1072,22 @@ class FoodAnalyst:
                 )
             
             result = self._parse_ai_response(response.text)
+            
+            # 8. Deduplication (Case-insensitive)
+            # Gemini might occasionally hallucinate or return redundant entries
+            raw_ingredients = result.get("ingredients", [])
+            unique_ingredients = []
+            seen_names = set()
+            for ing in raw_ingredients:
+                if not isinstance(ing, dict): continue
+                name = ing.get("name", "").strip()
+                if not name: continue
+                normalized = name.lower()
+                if normalized not in seen_names:
+                    seen_names.add(normalized)
+                    unique_ingredients.append(ing)
+            result["ingredients"] = unique_ingredients
+
             print(f"[Allergen Analysis] Result: safetyStatus={result.get('safetyStatus')}")
             
             # Log flagged allergens
@@ -1076,11 +1103,20 @@ class FoodAnalyst:
             print(f"[Allergen Analysis] Error: {e}")
             traceback.print_exc()
             # Fail-safe: return CAUTION if analysis fails (don't risk saying SAFE)
+            # Apply deduplication to input ingredients as well
+            unique_input = []
+            seen_input_names = set()
+            for ing in ingredients:
+                normalized = ing.strip().lower()
+                if normalized and normalized not in seen_input_names:
+                    seen_input_names.add(normalized)
+                    unique_input.append(ing.strip())
+
             return {
                 "safetyStatus": "CAUTION",
                 "coachMessage": "알러지 분석 중 오류가 발생했습니다. 성분표를 직접 확인해주세요.",
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
-                    for ing in ingredients
+                    for ing in unique_input
                 ]
             }
