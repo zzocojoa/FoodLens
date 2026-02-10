@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
 
 import { analyzeImage, analyzeLabel, lookupBarcode, AnalyzedData, NutritionData } from '../../services/ai';
 import { dataStore } from '../../services/dataStore';
@@ -364,6 +365,11 @@ export default function CameraScreen() {
     }
   };
 
+
+
+// ... (imports)
+
+// Inside component
   const handleGallery = async () => {
     Haptics.selectionAsync();
     
@@ -378,16 +384,40 @@ export default function CameraScreen() {
         if (!result.canceled && result.assets[0].uri) {
              const asset = result.assets[0];
              const uri = asset.uri;
-             // Extract EXIF Timestamp from asset
-             const exifDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
+             
+             console.log("[Gallery] Asset selected:", asset.uri);
+             console.log("[Gallery] EXIF Data:", JSON.stringify(asset.exif, null, 2));
+
+             // 1. Try EXIF Timestamp
+             let finalDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
+             console.log("[Gallery] EXIF Date:", finalDate);
+
+             // 2. Fallback to MediaLibrary (System Metadata) if EXIF is missing
+             if (!finalDate && asset.assetId) {
+                 console.log("[Gallery] EXIF missing, trying MediaLibrary for assetId:", asset.assetId);
+                 try {
+                     const permission = await MediaLibrary.requestPermissionsAsync();
+                     if (permission.granted) {
+                         const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+                         if (info && info.creationTime) {
+                             // creationTime is usually milliseconds or timestamp
+                             finalDate = new Date(info.creationTime).toISOString();
+                             console.log("[Gallery] MediaLibrary CreationTime:", finalDate);
+                         }
+                     }
+                 } catch (e) {
+                     console.warn("[Gallery] MediaLibrary lookup failed:", e);
+                 }
+             }
 
              if (mode === 'LABEL') {
-                 processLabel(uri, exifDate);
+                 processLabel(uri, finalDate);
              } else {
-                 processImage(uri, 'library', exifDate);
+                 processImage(uri, 'library', finalDate);
              }
         }
     } catch (e) {
+        console.error(e);
         Alert.alert("Error", "갤러리를 열 수 없습니다.");
     }
   };

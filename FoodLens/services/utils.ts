@@ -168,23 +168,44 @@ export const normalizeTimestamp = (dateString?: string | null): string => {
     // Trim
     let cleanTs = dateString.trim();
     
-    // 1. Check for EXIF format: "YYYY:MM:DD HH:MM:SS"
-    // Regex: ^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$
-    const exifRegex = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
-    const match = cleanTs.match(exifRegex);
+    // 0. Check if already ISO-like or valid date
+    // (Contains Hyphens and usually T, or just valid string)
+    // But be careful: "2023:01:01" is invalid for Date() in some engines if not replaced
+    if (cleanTs.includes('-') && cleanTs.includes('T')) {
+         const parsed = new Date(cleanTs);
+         if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
 
-    if (match) {
-        // Reconstruct as ISO string
-        return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
+    // 1. Try generic digit extraction for EXIF-like patterns
+    // Matches YYYY:MM:DD HH:MM:SS or YYYY/MM/DD or YYYY-MM-DD
+    // We look for 6 groups of digits
+    const digits = cleanTs.match(/(\d{4})[:\/\-](\d{2})[:\/\-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+    
+    if (digits && digits.length >= 7) {
+        const year = digits[1];
+        const month = digits[2];
+        const day = digits[3];
+        const hour = digits[4];
+        const minute = digits[5];
+        const second = digits[6];
+        
+        // Reconstruct as ISO compatible string (Local time interpretation)
+        // new Date("YYYY-MM-DDTHH:MM:SS")
+        const isoLike = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+        const parsed = new Date(isoLike);
+        
+        if (!isNaN(parsed.getTime())) {
+            return parsed.toISOString();
+        }
     }
     
-    // 2. Check if it's already a valid date
-    const parsed = new Date(cleanTs);
-    if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString();
+    // 2. Fallback: Try straight parsing
+    const fallbackParse = new Date(cleanTs);
+    if (!isNaN(fallbackParse.getTime())) {
+        return fallbackParse.toISOString();
     }
     
-    // Fallback
+    // 3. Last Resort
     console.warn("normalizeTimestamp: failed to parse", dateString);
     return new Date().toISOString();
 };

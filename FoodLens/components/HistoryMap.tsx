@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Linking } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import MapViewClustering from 'react-native-map-clustering';
@@ -146,16 +146,17 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
         : '네트워크 연결을 확인해주세요.';
 
-    // Custom cluster rendering
-    const renderCluster = (cluster: any) => {
+    // Custom cluster rendering - Memoized to prevent crash
+    const renderCluster = useCallback((cluster: any) => {
         const { id, geometry, onPress, properties } = cluster;
         const points = properties.point_count;
 
         // Get first marker's image from the cluster
+        // Using markers.find is okay here as long as renderCluster ref is stable
         const firstMarker = markers.find((m: any) => {
             const clusterCoord = geometry.coordinates;
-            return Math.abs(m.coordinate.latitude - clusterCoord[1]) < 0.0001 &&
-                   Math.abs(m.coordinate.longitude - clusterCoord[0]) < 0.0001;
+             return Math.abs(m.coordinate.latitude - clusterCoord[1]) < 0.0001 &&
+                    Math.abs(m.coordinate.longitude - clusterCoord[0]) < 0.0001;
         });
 
         return (
@@ -183,7 +184,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 </View>
             </Marker>
         );
-    };
+    }, [markers]);
 
     return (
         <View style={styles.mapContainer}>
