@@ -37,6 +37,7 @@ import { ServerConfig } from '../../services/ai';
 import { UserProfile } from '../../models/User';
 import ProfileSheet from '../../components/ProfileSheet';
 import { FoodThumbnail } from '../../components/FoodThumbnail'; // NEW
+import { resolveImageUri } from '../../services/imageStorage';
 import { WeeklyStatsStrip, WeeklyData } from '../../components/WeeklyStatsStrip';
 import { HapticsService } from '../../services/haptics';
 import { HapticTouchableOpacity } from '../../components/HapticFeedback';
@@ -583,7 +584,7 @@ export default function HomeScreen() {
                         <View style={styles.scanInfo}>
                             <View style={[styles.scanEmojiBox, {backgroundColor: theme.surface}]}>
                             <FoodThumbnail 
-                                uri={item.imageUri}
+                                uri={resolveImageUri(item.imageUri) || undefined}
                                 emoji={getEmoji(item.foodName)}
                                 style={{width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent'}}
                                 imageStyle={{borderRadius: 12}}

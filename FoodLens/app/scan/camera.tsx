@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 
 import { analyzeImage, analyzeLabel, lookupBarcode, AnalyzedData, NutritionData } from '../../services/ai';
+import { saveImagePermanently } from '../../services/imageStorage';
 import { dataStore } from '../../services/dataStore';
 import { 
     getEmoji, 
@@ -312,7 +313,10 @@ export default function CameraScreen() {
       const locationContext = locationData || createFallbackLocation(0, 0, isoCode, "Location Unavailable");
       const finalTimestamp = normalizeTimestamp(customTimestamp); // Use EXIF if available, else Now
 
-      dataStore.setData(analysisResult, locationContext, uri, finalTimestamp);
+      // Save image to permanent storage (filename only)
+      const savedFilename = await saveImagePermanently(uri);
+
+      dataStore.setData(analysisResult, locationContext, savedFilename, finalTimestamp);
 
       // Navigate
       router.replace({
@@ -362,7 +366,9 @@ export default function CameraScreen() {
       // Sync & Navigate
       setActiveStep(3);
       const finalTimestamp = normalizeTimestamp(customTimestamp);
-      dataStore.setData(analysisResult, locationData || createFallbackLocation(0,0,isoCode), uri, finalTimestamp);
+      // Save image to permanent storage (filename only)
+      const savedFilename = await saveImagePermanently(uri);
+      dataStore.setData(analysisResult, locationData || createFallbackLocation(0,0,isoCode), savedFilename, finalTimestamp);
 
       router.replace({
         pathname: '/result',

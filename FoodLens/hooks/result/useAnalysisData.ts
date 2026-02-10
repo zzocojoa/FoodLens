@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { dataStore } from '../../services/dataStore';
+import { resolveImageUri } from '../../services/imageStorage';
 
 export function useAnalysisData() {
   const { data, location, imageUri, fromStore } = useLocalSearchParams();
@@ -31,7 +32,7 @@ export function useAnalysisData() {
             const stored = dataStore.getData();
             setResult(stored.result);
             setLocationData(stored.location);
-            setImageSource(stored.imageUri ? { uri: stored.imageUri } : null);
+            setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
           }
       } else {
         // Normal Load
@@ -39,7 +40,7 @@ export function useAnalysisData() {
             const stored = dataStore.getData();
             setResult(stored.result);
             setLocationData(stored.location);
-            setImageSource(stored.imageUri ? { uri: stored.imageUri } : null);
+            setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
         } else {
             setResult(typeof data === 'string' ? JSON.parse(data) : null);
             setLocationData(typeof location === 'string' ? JSON.parse(location) : null);

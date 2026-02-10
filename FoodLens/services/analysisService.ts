@@ -1,5 +1,6 @@
 import { SafeStorage } from './storage';
 import { AnalyzedData } from './ai';
+import { deleteImage } from './imageStorage';
 
 const ANALYSES_STORAGE_KEY = '@foodlens_analyses';
 
@@ -134,6 +135,12 @@ export const AnalysisService = {
             const analyses = await getStoredAnalyses();
             const idsToDelete = new Set(analysisIds);
             const filtered = analyses.filter(a => !idsToDelete.has(a.id));
+            
+            // Clean up associated image files
+            const deleted = analyses.filter(a => idsToDelete.has(a.id));
+            for (const record of deleted) {
+                await deleteImage(record.imageUri).catch(() => {});
+            }
             
             if (filtered.length !== analyses.length) {
                 await saveAnalyses(filtered);

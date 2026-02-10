@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AnalysisService } from '../services/analysisService';
 import { getEmoji } from '../services/utils';
+import { resolveImageUri } from '../services/imageStorage';
 import { CountryData } from '../models/History';
 
 export const useHistoryData = (userId: string) => {
@@ -58,7 +59,7 @@ export const useHistoryData = (userId: string) => {
                     type: safetyType as 'ok' | 'avoid' | 'ask',
                     date: record.timestamp.toLocaleDateString(),
                     emoji: getEmoji(record.foodName),
-                    imageUri: record.imageUri, // Pass image URI
+                    imageUri: resolveImageUri(record.imageUri) || undefined, // Resolve filename to full path
                     originalRecord: record
                 };
 

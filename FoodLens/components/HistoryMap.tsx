@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { resolveImageUri } from '../services/imageStorage';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Linking } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import MapViewClustering from 'react-native-map-clustering';
@@ -63,7 +64,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                         countryId: `${country.country}-${countryIdx}`,
                         emoji: item.emoji,
                         name: item.name,
-                        imageUri: item?.originalRecord?.imageUri,
+                        imageUri: resolveImageUri(item?.originalRecord?.imageUri) || undefined,
                     });
                 });
             });
