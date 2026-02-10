@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import uvicorn
+# Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 from modules.analyst import FoodAnalyst
 from modules.barcode.service import BarcodeService # Import Barcode Service
 from PIL import Image
