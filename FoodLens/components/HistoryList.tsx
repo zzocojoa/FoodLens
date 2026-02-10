@@ -53,7 +53,10 @@ export default function HistoryList({
             <ScrollView 
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 ref={scrollViewRef}
-                contentContainerStyle={{paddingHorizontal: 24, paddingBottom: 40}}
+                contentContainerStyle={{
+                    paddingHorizontal: 24, 
+                    paddingBottom: isEditMode && selectedItems.size > 0 ? 140 : 40 
+                }}
                 showsVerticalScrollIndicator={false}
             >
                 {/* Filter Chips */}

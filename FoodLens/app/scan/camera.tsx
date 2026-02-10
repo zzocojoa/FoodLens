@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal, Image as RNImage, Dimensions, Linking } from 'react-native';
 import { CameraView, CameraType, FlashMode, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import { Info, X, Image as ImageIcon, ScanBarcode, Zap, ZapOff, ZoomIn, Search } from 'lucide-react-native';
+import { Info, X, Image as ImageIcon, ScanBarcode, Zap, ZapOff, ZoomIn, Search, RotateCcw } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -16,6 +16,7 @@ import { dataStore } from '../../services/dataStore';
 import { getLocationData, validateCoordinates, normalizeTimestamp } from '../../services/utils';
 import { UserService } from '../../services/userService';
 import AnalysisLoadingScreen from '../../components/AnalysisLoadingScreen';
+import { InfoBottomSheet } from '../../components/InfoBottomSheet';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 
 // --- Constants & Types ---
@@ -59,6 +60,7 @@ export default function CameraScreen() {
   const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
   const [activeStep, setActiveStep] = useState<number | undefined>(undefined);
   const [scanned, setScanned] = useState(false); // Barcode lock
+  const [showInfoSheet, setShowInfoSheet] = useState(false);
 
   const isCancelled = useRef(false);
   const cachedLocation = useRef<any>(undefined);
@@ -88,6 +90,11 @@ export default function CameraScreen() {
 
   const toggleZoom = () => {
     setZoom(current => current === 0 ? 0.05 : 0); // Toggle roughly 1x / 2x
+    Haptics.selectionAsync();
+  };
+
+  const toggleCameraFacing = () => {
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
     Haptics.selectionAsync();
   };
 
@@ -205,7 +212,7 @@ export default function CameraScreen() {
 
 
   // --- CORE: Process Image (Analysis) ---
-  const processImage = useCallback(async (uri: string, customSourceType: 'camera' | 'library' = 'camera') => {
+  const processImage = useCallback(async (uri: string, customSourceType: 'camera' | 'library' = 'camera', customTimestamp?: string | null) => {
     try {
       isCancelled.current = false;
       setIsAnalyzing(true);
@@ -258,7 +265,7 @@ export default function CameraScreen() {
 
       // Prepare context
       const locationContext = locationData || createFallbackLocation(0, 0, isoCode, "Location Unavailable");
-      const finalTimestamp = new Date().toISOString(); // Or use EXIF if available
+      const finalTimestamp = normalizeTimestamp(customTimestamp); // Use EXIF if available, else Now
 
       dataStore.setData(analysisResult, locationContext, uri, finalTimestamp);
 
@@ -278,7 +285,7 @@ export default function CameraScreen() {
 
 
   // --- CORE: Process Label (OCR) ---
-  const processLabel = useCallback(async (uri: string) => {
+  const processLabel = useCallback(async (uri: string, customTimestamp?: string | null) => {
     try {
       isCancelled.current = false;
       setIsAnalyzing(true);
@@ -309,7 +316,8 @@ export default function CameraScreen() {
 
       // Sync & Navigate
       setActiveStep(3);
-      dataStore.setData(analysisResult, locationData || createFallbackLocation(0,0,isoCode), uri, new Date().toISOString());
+      const finalTimestamp = normalizeTimestamp(customTimestamp);
+      dataStore.setData(analysisResult, locationData || createFallbackLocation(0,0,isoCode), uri, finalTimestamp);
 
       router.replace({
         pathname: '/result',
@@ -338,12 +346,15 @@ export default function CameraScreen() {
             });
             
             if (photo && photo.uri) {
+                // Extract EXIF Timestamp
+                const exifDate = photo.exif?.DateTimeOriginal || photo.exif?.DateTime || null;
+
                 if (mode === 'BARCODE') {
                       Alert.alert("알림", "바코드를 카메라에 비춰주세요.");
                 } else if (mode === 'LABEL') {
-                    processLabel(photo.uri);
+                    processLabel(photo.uri, exifDate);
                 } else {
-                    processImage(photo.uri, 'camera');
+                    processImage(photo.uri, 'camera', exifDate);
                 }
             }
         } catch (e) {
@@ -359,16 +370,21 @@ export default function CameraScreen() {
     try {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: 'images',
-            allowsEditing: true, // Maybe false for smart import? User prefers "detect", cropping might hide key features?
+            allowsEditing: true, 
             quality: 0.8,
+            exif: true, // Request EXIF data
         });
 
         if (!result.canceled && result.assets[0].uri) {
-             const uri = result.assets[0].uri;
+             const asset = result.assets[0];
+             const uri = asset.uri;
+             // Extract EXIF Timestamp from asset
+             const exifDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
+
              if (mode === 'LABEL') {
-                 processLabel(uri);
+                 processLabel(uri, exifDate);
              } else {
-                 processImage(uri, 'library');
+                 processImage(uri, 'library', exifDate);
              }
         }
     } catch (e) {
@@ -396,6 +412,10 @@ export default function CameraScreen() {
   // --- Render ---
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <InfoBottomSheet 
+        isOpen={showInfoSheet} 
+        onClose={() => setShowInfoSheet(false)} 
+      />
       {/* 0. Loading Overlay */}
       {isAnalyzing && (
          <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
@@ -441,7 +461,10 @@ export default function CameraScreen() {
 
       {/* 3. Top Controls */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => Alert.alert("가이드", "음식: 일반 음식 사진\n라벨: 영양성분표\n바코드: 포장지 바코드")} style={styles.iconButton}>
+        <TouchableOpacity 
+          style={styles.iconButton}
+          onPress={() => setShowInfoSheet(true)}
+        >
             <Info size={24} color="white" />
         </TouchableOpacity>
         
@@ -479,7 +502,9 @@ export default function CameraScreen() {
                 <View style={[styles.shutterInner, mode === 'BARCODE' && styles.shutterInnerBarcode]} />
             </TouchableOpacity>
 
-            <View style={styles.galleryButton} /> 
+            <TouchableOpacity onPress={toggleCameraFacing} style={styles.galleryButton}>
+                <RotateCcw size={24} color="white" />
+            </TouchableOpacity> 
         </View>
 
         <View style={styles.modeSelector}>
