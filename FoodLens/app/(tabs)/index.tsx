@@ -425,7 +425,7 @@ export default function HomeScreen() {
       <View style={styles.backgroundContainer}>
       </View>
 
-      <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
+      <SafeAreaView style={{flex: 1, backgroundColor: theme.background}} edges={['top']}>
         <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
         {/* NEW: Offline Banner */}
@@ -436,28 +436,28 @@ export default function HomeScreen() {
         )}
         {/* Header - Fixed at Top */}
         <View style={[styles.header, { paddingHorizontal: 24 }]}>
-            <Pressable 
-                onPress={() => {
-                    HapticsService.medium();
-                    setActiveModal('PROFILE');
-                }} 
-                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-                hitSlop={20}
-            >
                 <View style={styles.userInfo}>
-                <View style={styles.avatarContainer} pointerEvents="none">
-                    <SecureImage 
-                        source={{ uri: userProfile?.profileImage || "https://api.dicebear.com/7.x/avataaars/png?seed=Felix" }} 
-                        style={styles.avatar}
-                        fallbackIconSize={20}
-                    />
-                </View>
-                <View pointerEvents="none">
+                <Pressable 
+                    onPress={() => {
+                        HapticsService.medium();
+                        setActiveModal('PROFILE');
+                    }} 
+                    style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+                    hitSlop={20}
+                >
+                    <View style={styles.avatarContainer} pointerEvents="none">
+                        <SecureImage 
+                            source={{ uri: userProfile?.profileImage || "https://api.dicebear.com/7.x/avataaars/png?seed=Felix" }} 
+                            style={styles.avatar}
+                            fallbackIconSize={20}
+                        />
+                    </View>
+                </Pressable>
+                <View>
                     <Text style={[styles.welcomeText, {color: theme.textSecondary}]}>Welcome back,</Text>
                     <Text style={[styles.userName, {color: theme.textPrimary}]}>{userProfile?.name || "Traveler Joy"} ✈️</Text>
                 </View>
                 </View>
-            </Pressable>
             
             {/* Emoji Picker Button */}
             <Pressable 
@@ -479,7 +479,7 @@ export default function HomeScreen() {
         </View>
 
         <ScrollView 
-          contentContainerStyle={{paddingBottom: 150, paddingHorizontal: 24}} 
+          contentContainerStyle={{paddingBottom: 120, paddingHorizontal: 24}} 
           showsVerticalScrollIndicator={false}
         >
           
