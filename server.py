@@ -143,6 +143,7 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
             
             # Merge allergen analysis into result
             result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
+            result["coachMessage"] = allergen_result.get("coachMessage", "")
             
             # Replace simple string list with enriched ingredient objects
             result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])

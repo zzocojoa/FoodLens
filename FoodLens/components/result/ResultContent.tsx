@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import {
   AlertCircle, 
@@ -6,7 +6,9 @@ import {
   Sparkles,
   MapPin,
   Leaf,
-  Calendar
+  Calendar,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
 import { Colors } from '../../constants/theme';
@@ -65,6 +67,41 @@ const IngredientItem = ({ item, theme }: IngredientItemProps) => (
         )}
     </View>
 );
+
+const INGREDIENTS_INITIAL_LIMIT = 5;
+
+const IngredientsListWithExpand = ({ ingredients, theme }: { ingredients: any[], theme: any }) => {
+    const [expanded, setExpanded] = useState(false);
+    
+    // Sort: allergens first so they're always visible
+    const sorted = [...ingredients].sort((a, b) => (b.isAllergen ? 1 : 0) - (a.isAllergen ? 1 : 0));
+    const shouldCollapse = sorted.length > INGREDIENTS_INITIAL_LIMIT;
+    const visible = expanded || !shouldCollapse ? sorted : sorted.slice(0, INGREDIENTS_INITIAL_LIMIT);
+    const hiddenCount = sorted.length - INGREDIENTS_INITIAL_LIMIT;
+
+    return (
+        <View style={styles.ingredientsList}>
+            {visible.map((item: any, index: number) => (
+                <IngredientItem key={index} item={item} theme={theme} />
+            ))}
+            {shouldCollapse && (
+                <TouchableOpacity
+                    onPress={() => setExpanded(!expanded)}
+                    style={[styles.expandButton, { borderColor: theme.border }]}
+                >
+                    {expanded ? (
+                        <ChevronUp size={16} color={theme.textSecondary} />
+                    ) : (
+                        <ChevronDown size={16} color={theme.textSecondary} />
+                    )}
+                    <Text style={{ color: theme.textSecondary, fontSize: 13, marginLeft: 6 }}>
+                        {expanded ? '접기' : `더 보기 (+${hiddenCount})`}
+                    </Text>
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+};
 
 interface ResultContentProps {
   result: any;
@@ -157,13 +194,12 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
             <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                     <Text style={[styles.sectionTitle, {color: theme.textPrimary}]}>Ingredients</Text>
+                    {result.ingredients.length > 0 && (
+                        <Text style={{color: theme.textSecondary, fontSize: 12}}>{result.ingredients.length}개</Text>
+                    )}
                 </View>
 
-                <View style={styles.ingredientsList}>
-                    {result.ingredients.map((item: any, index: number) => (
-                        <IngredientItem key={index} item={item} theme={theme} />
-                    ))}
-                </View>
+                <IngredientsListWithExpand ingredients={result.ingredients} theme={theme} />
             </View>
 
             {/* AI Summary */}
@@ -339,6 +375,15 @@ const styles = StyleSheet.create({
   },
   ingredientsList: {
     gap: 16,
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    borderStyle: 'dashed',
   },
   ingredientItem: {
     flexDirection: 'row',

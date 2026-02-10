@@ -982,6 +982,7 @@ class FoodAnalyst:
         if normalized_allergens == "None" or not ingredients:
             return {
                 "safetyStatus": "SAFE",
+                "coachMessage": "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요.",
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in ingredients
@@ -1007,6 +1008,10 @@ class FoodAnalyst:
            - "DANGER" if any ingredient clearly matches an allergen.
            - "CAUTION" if any ingredient is ambiguous but could contain an allergen.
            - "SAFE" if no allergens detected.
+        7. coachMessage: Write a concise Korean health coaching message (1-2 sentences).
+           - If allergens detected: explain which specific ingredients are concerning and why.
+             Example: "이 제품에는 밀가루(소맥분)가 포함되어 있어 글루텐 알러지가 있으신 분은 주의가 필요합니다."
+           - If SAFE: "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요."
 
         Return JSON only.
         """
@@ -1015,6 +1020,7 @@ class FoodAnalyst:
             "type": "OBJECT",
             "properties": {
                 "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
+                "coachMessage": {"type": "STRING"},
                 "ingredients": {
                     "type": "ARRAY",
                     "items": {
@@ -1028,7 +1034,7 @@ class FoodAnalyst:
                     }
                 }
             },
-            "required": ["safetyStatus", "ingredients"]
+            "required": ["safetyStatus", "ingredients", "coachMessage"]
         }
 
         generation_config = {
@@ -1072,6 +1078,7 @@ class FoodAnalyst:
             # Fail-safe: return CAUTION if analysis fails (don't risk saying SAFE)
             return {
                 "safetyStatus": "CAUTION",
+                "coachMessage": "알러지 분석 중 오류가 발생했습니다. 성분표를 직접 확인해주세요.",
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in ingredients

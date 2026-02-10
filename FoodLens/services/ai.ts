@@ -306,11 +306,11 @@ const mapBarcodeToAnalyzedData = (data: any): AnalyzedData => {
 
     return {
         foodName: data.food_name || "Unknown Product",
-        safetyStatus: data.safetyStatus || 'SAFE', // Use server-provided status from allergen analysis
-        confidence: 100, // It's a direct lookup
+        safetyStatus: data.safetyStatus || 'SAFE',
+        confidence: 100,
         ingredients: ingredients,
         nutrition: nutrition,
-        raw_result: JSON.stringify(data),
+        raw_result: data.coachMessage || "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요.",
         raw_data: data
     };
 };
