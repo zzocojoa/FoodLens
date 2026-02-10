@@ -24,34 +24,32 @@ class BarcodeService:
         """
         
         # 1. Try Data.go.kr
-        print(f"[BarcodeService] Improving lookup for {barcode} via Data.go.kr...")
+        print(f"\n[BarcodeTrace] >>> Starting lookup for: {barcode}")
+        print(f"[BarcodeTrace] Step 1: Querying Data.go.kr (C005)...")
         korean_data = await self.datago_client.get_product_by_barcode(barcode)
         
         if korean_data:
-            print(f"[BarcodeService] Found in Data.go.kr (C005)")
+            print(f"[BarcodeTrace] ✓ Found in Data.go.kr (C005)")
+            print(f"[BarcodeTrace] Product Name: {korean_data.get('PRDLST_NM')}")
             
             # Enrich with C002 (Ingredients) if available
             report_no = korean_data.get('PRDLST_REPORT_NO')
             if report_no:
                 # 1.1. Enrich Ingredients (C002)
-                print(f"[BarcodeService] Enriching with C002 (Report No: {report_no})...")
+                print(f"[BarcodeTrace] Step 1.1: Enriching with C002 (Report No: {report_no})...")
                 raw_materials = await self.datago_client.get_food_item_raw_materials(report_no)
                 if raw_materials:
                      raw_names = raw_materials.get('RAWMTRL_NM', '')
                      if raw_names:
-                         print(f"[BarcodeService] C002 Ingredients Found!")
+                         print(f"[BarcodeTrace] ✓ C002 Ingredients Found!")
                          korean_data['RAWMTRL_NM'] = raw_names
                 
                 # 1.2. Enrich Nutrition (I2790) if needed
-                # C005 often has 0.0 or None for nutrition. If so, try I2790.
                 if self._is_nutrition_missing(korean_data):
-                    print(f"[BarcodeService] Nutrition missing in C005. Trying I2790...")
+                    print(f"[BarcodeTrace] Step 1.2: Nutrition missing in C005. Trying I2790...")
                     nutrition_data = await self.datago_client.get_product_by_report_no(report_no)
                     if nutrition_data:
-                        print(f"[BarcodeService] I2790 Nutrition Found! Patching data...")
-                        # Map I2790 fields back to korean_data so _normalize_datago picks them up
-                        # Usually I2790 and C005 use similar NUTR_CONT1 style but nested differently?
-                        # I2790 fields: NUTR_CONT1 (Cal), NUTR_CONT2 (Carb), NUTR_CONT3 (Prot), NUTR_CONT4 (Fat)
+                        print(f"[BarcodeTrace] ✓ I2790 Nutrition Found! Patching data...")
                         for key in ['NUTR_CONT1', 'NUTR_CONT2', 'NUTR_CONT3', 'NUTR_CONT4']:
                             if nutrition_data.get(key):
                                 korean_data[key] = nutrition_data[key]
@@ -60,13 +58,11 @@ class BarcodeService:
                 # 1.3. Fallback to Public Data Portal (Name-based) if still missing
                 if self._is_nutrition_missing(korean_data):
                     food_name = korean_data.get('PRDLST_NM')
-                    print(f"[BarcodeService] Nutrition still missing (Cal: {korean_data.get('NUTR_CONT1')}).")
+                    print(f"[BarcodeTrace] Step 1.3: Nutrition still missing. Trying Public Data Portal (Name: {food_name})...")
                     if food_name:
-                        print(f"[BarcodeService] Trying Public Data Portal (Name: {food_name})...")
                         pd_nutrition = await self.public_data_client.get_nutrition_by_name(food_name)
                         if pd_nutrition:
-                            print(f"[BarcodeService] Public Data Nutrition Found! Patching...")
-                            # Map PD fields to korean_data
+                            print(f"[BarcodeTrace] ✓ Public Data Nutrition Found! Patching...")
                             norm_pd = self.public_data_client.normalize_response(pd_nutrition)
                             korean_data['NUTR_CONT1'] = norm_pd['calories']
                             korean_data['NUTR_CONT2'] = norm_pd['carbs']
@@ -74,17 +70,21 @@ class BarcodeService:
                             korean_data['NUTR_CONT4'] = norm_pd['fat']
                             korean_data['enrichment_nutr'] = "PublicData"
 
-            return self._normalize_datago(korean_data)
+            normalized = self._normalize_datago(korean_data)
+            print(f"[BarcodeTrace] Final Result (KR): {normalized.get('food_name')} ({normalized.get('calories')} kcal)")
+            return normalized
             
         # 2. Try Open Food Facts
-        print(f"[BarcodeService] Not found in KR DB. Trying OpenFoodFacts...")
+        print(f"[BarcodeTrace] Step 2: Not found in KR DB. Trying OpenFoodFacts...")
         off_data = await self.off_client.get_product_by_barcode(barcode)
         
         if off_data:
-            print(f"[BarcodeService] Found in OpenFoodFacts")
-            return self._normalize_off(off_data)
+            print(f"[BarcodeTrace] ✓ Found in OpenFoodFacts")
+            normalized = self._normalize_off(off_data)
+            print(f"[BarcodeTrace] Final Result (OFF): {normalized.get('food_name')} ({normalized.get('calories')} kcal)")
+            return normalized
             
-        print(f"[BarcodeService] Barcode {barcode} not found in any DB.")
+        print(f"[BarcodeTrace] ✗ Barcode {barcode} not found in any DB.")
         return None
 
     def _is_nutrition_missing(self, data: Dict[str, Any]) -> bool:

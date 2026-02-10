@@ -53,8 +53,10 @@ class PublicDataClient:
                     body = data.get('body', {})
                     items = body.get('items', [])
                     if not items:
+                        print(f"[PublicData] No items found for: {clean_name}")
                         return None
                     
+                    print(f"[PublicData] ✓ Found {len(items)} items. Picking top result: {items[0].get('FOOD_NM_KR')}")
                     return items[0]
 
         except Exception as e:

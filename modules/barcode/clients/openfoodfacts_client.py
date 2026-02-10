@@ -31,6 +31,7 @@ class OpenFoodFactsClient:
                     if data.get('status') == 1:
                         return data.get('product')
                     else:
+                        print(f"[OFF] Product {barcode} not found (status {data.get('status')})")
                         return None
                         
         except Exception as e:

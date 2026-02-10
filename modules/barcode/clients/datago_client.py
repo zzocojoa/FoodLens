@@ -47,22 +47,28 @@ class DatagoClient:
                     
                     data = await response.json()
                     
-                    # Parse Response
-                    # Standard Format: { "C005": { "total_count": "1", "row": [ ... ], "RESULT": { "MSG": "...", "CODE": "INFO-000" } } }
-                    
                     if service_id not in data:
+                        # Some error formats omit the service_id key but have a 'RESULT' key at top level
+                        if 'RESULT' in data:
+                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
+                        else:
+                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
                         return None
                         
-                    result_code = data[service_id]['RESULT']['CODE']
+                    result = data[service_id].get('RESULT', {})
+                    result_code = result.get('CODE')
+                    result_msg = result.get('MSG')
+                    
                     if result_code != 'INFO-000':
-                        # INFO-200 means no data found usually
+                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
                         return None
                         
                     rows = data[service_id].get('row', [])
                     if not rows:
+                        print(f"[Datago] {service_id} Success but 0 rows returned.")
                         return None
                         
-                    return rows[0] # Return the first match
+                    return rows[0]
                     
         except Exception as e:
             print(f"[Datago] Request Failed: {e}")
@@ -104,14 +110,23 @@ class DatagoClient:
                     data = await response.json()
                     
                     if service_id not in data:
+                        if 'RESULT' in data:
+                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
+                        else:
+                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
                         return None
                         
-                    result_code = data[service_id]['RESULT']['CODE']
+                    result = data[service_id].get('RESULT', {})
+                    result_code = result.get('CODE')
+                    result_msg = result.get('MSG')
+                    
                     if result_code != 'INFO-000':
+                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
                         return None
                         
                     rows = data[service_id].get('row', [])
                     if not rows:
+                        print(f"[Datago] {service_id} Success but 0 rows returned.")
                         return None
                         
                     return rows[0]
@@ -147,14 +162,23 @@ class DatagoClient:
                     data = await response.json()
                     
                     if service_id not in data:
+                        if 'RESULT' in data:
+                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
+                        else:
+                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
                         return None
                         
-                    result_code = data[service_id]['RESULT']['CODE']
+                    result = data[service_id].get('RESULT', {})
+                    result_code = result.get('CODE')
+                    result_msg = result.get('MSG')
+                    
                     if result_code != 'INFO-000':
+                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
                         return None
                         
                     rows = data[service_id].get('row', [])
                     if not rows:
+                        print(f"[Datago] {service_id} Success but 0 rows returned.")
                         return None
                         
                     return rows[0]
