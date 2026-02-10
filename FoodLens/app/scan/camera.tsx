@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal, Image as RNImage, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal, Image as RNImage, Dimensions, Linking, Animated, Easing } from 'react-native';
 import { CameraView, CameraType, FlashMode, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { Info, X, Image as ImageIcon, ScanBarcode, Zap, ZapOff, ZoomIn, Search, RotateCcw } from 'lucide-react-native';
@@ -14,7 +14,13 @@ import * as MediaLibrary from 'expo-media-library';
 
 import { analyzeImage, analyzeLabel, lookupBarcode, AnalyzedData, NutritionData } from '../../services/ai';
 import { dataStore } from '../../services/dataStore';
-import { getLocationData, validateCoordinates, normalizeTimestamp } from '../../services/utils';
+import { 
+    getEmoji, 
+    normalizeTimestamp, 
+    getLocationData,
+    validateCoordinates,
+    extractLocationFromExif 
+} from '../../services/utils';
 import { UserService } from '../../services/userService';
 import AnalysisLoadingScreen from '../../components/AnalysisLoadingScreen';
 import { InfoBottomSheet } from '../../components/InfoBottomSheet';
@@ -64,6 +70,7 @@ export default function CameraScreen() {
   const [showInfoSheet, setShowInfoSheet] = useState(false);
 
   const isCancelled = useRef(false);
+  const isProcessingRef = useRef(false); // Lock for barcode scanning
   const cachedLocation = useRef<any>(undefined);
 
   // Network Guard
@@ -74,9 +81,40 @@ export default function CameraScreen() {
     isConnectedRef.current = isConnected;
   }, [isConnected]);
 
-  // Update Reset on Mode Change
   useEffect(() => {
       setScanned(false);
+      isProcessingRef.current = false; // Reset lock when mode changes
+  }, [mode]);
+
+  // --- Animation for Barcode Laser ---
+  const laserAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (mode === 'BARCODE') {
+        const startAnimation = () => {
+            laserAnim.setValue(0);
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(laserAnim, {
+                        toValue: 1,
+                        duration: 1500, // Reduced slightly for better pacing
+                        easing: Easing.inOut(Easing.ease), // Slow start/end, fast middle
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(laserAnim, {
+                        toValue: 0,
+                        duration: 1500,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                    })
+                ])
+            ).start();
+        };
+        startAnimation();
+    } else {
+        laserAnim.stopAnimation();
+        laserAnim.setValue(0);
+    }
   }, [mode]);
 
   // --- Helpers ---
@@ -113,6 +151,7 @@ export default function CameraScreen() {
     setUploadProgress(undefined);
     setActiveStep(undefined);
     setScanned(false); 
+    isProcessingRef.current = false; // Unlock
   }, []);
 
   const handleCancelAnalysis = useCallback(() => {
@@ -185,12 +224,13 @@ export default function CameraScreen() {
               "제품 정보 없음",
               "등록되지 않은 바코드입니다.\n사진으로 성분표를 분석하시겠습니까?",
               [
-                  { text: '취소', style: 'cancel', onPress: () => setScanned(false) }, 
+                  { text: '취소', style: 'cancel', onPress: () => { setScanned(false); isProcessingRef.current = false; } }, 
                   { 
                       text: '촬영하기', 
                       onPress: () => {
                           setMode('LABEL'); // Switched to LABEL for OCR
                           setScanned(false);
+                          isProcessingRef.current = false;
                       }
                   }
               ]
@@ -205,15 +245,17 @@ export default function CameraScreen() {
   }, [isConnectedRef, resetState, router]);
 
   const handleBarcodeScanned = useCallback((scanningResult: BarcodeScanningResult) => {
-      if (mode !== 'BARCODE' || scanned || isAnalyzing) return;
+      // Check lock (isProcessingRef) immediately
+      if (mode !== 'BARCODE' || scanned || isAnalyzing || isProcessingRef.current) return;
       
+      isProcessingRef.current = true; // Lock immediately
       setScanned(true);
       processBarcode(scanningResult.data);
   }, [mode, scanned, isAnalyzing, processBarcode]);
 
 
   // --- CORE: Process Image (Analysis) ---
-  const processImage = useCallback(async (uri: string, customSourceType: 'camera' | 'library' = 'camera', customTimestamp?: string | null) => {
+  const processImage = useCallback(async (uri: string, customSourceType: 'camera' | 'library' = 'camera', customTimestamp?: string | null, customLocation?: any) => {
     try {
       isCancelled.current = false;
       setIsAnalyzing(true);
@@ -221,7 +263,9 @@ export default function CameraScreen() {
       setActiveStep(0); // Image Ready
 
       // 1. Get Location Context
-      let locationData = cachedLocation.current;
+      // Priority: Custom (EXIF) -> Cached -> Current
+      let locationData = customLocation || cachedLocation.current;
+      
       if (!locationData) {
           try {
              locationData = await getLocationData(); // Try fetch
@@ -391,6 +435,19 @@ export default function CameraScreen() {
              // 1. Try EXIF Timestamp
              let finalDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
              console.log("[Gallery] EXIF Date:", finalDate);
+             
+             // 2. Try EXIF Location
+             let exifLocation = null;
+             try {
+                exifLocation = await extractLocationFromExif(asset.exif);
+                if (exifLocation) {
+                    console.log("[Gallery] EXIF Location found:", exifLocation.formattedAddress);
+                } else {
+                    console.log("[Gallery] No EXIF GPS data found.");
+                }
+             } catch (e) {
+                console.warn("[Gallery] Failed to parse EXIF location:", e);
+             }
 
              // 2. Fallback to MediaLibrary (System Metadata) if EXIF is missing
              if (!finalDate && asset.assetId) {
@@ -404,6 +461,24 @@ export default function CameraScreen() {
                              finalDate = new Date(info.creationTime).toISOString();
                              console.log("[Gallery] MediaLibrary CreationTime:", finalDate);
                          }
+                         
+                         // Double check location from MediaLibrary if not found in EXIF
+                         if (!exifLocation && info.location) {
+                            // Note: MediaLibrary location format might differ, keeping it simple for now
+                            // Usually has latitude/longitude
+                             if (info.location.latitude && info.location.longitude) {
+                                 // Re-use logic or manual construct
+                                 // For now, let's stick to the main EXIF path as it's more robust with reverse geocode
+                                 // But we can try to reverse geocode this too if needed.
+                                 // For now, MVP:
+                                 const valid = validateCoordinates(info.location.latitude, info.location.longitude);
+                                 if (valid) {
+                                     // Quick reverse geocode call if we really want to support this path
+                                     // For now, leaving as null to fall back to current location is safer than bad data
+                                     // or implement fully later.
+                                 }
+                             }
+                         }
                      }
                  } catch (e) {
                      console.warn("[Gallery] MediaLibrary lookup failed:", e);
@@ -413,7 +488,7 @@ export default function CameraScreen() {
              if (mode === 'LABEL') {
                  processLabel(uri, finalDate);
              } else {
-                 processImage(uri, 'library', finalDate);
+                 processImage(uri, 'library', finalDate, exifLocation);
              }
         }
     } catch (e) {
@@ -480,6 +555,38 @@ export default function CameraScreen() {
             <View style={[styles.corner, styles.tr]} />
             <View style={[styles.corner, styles.bl]} />
             <View style={[styles.corner, styles.br]} />
+            
+            {/* Barcode Laser Line */}
+            {mode === 'BARCODE' && (
+                <Animated.View 
+                    style={[
+                        styles.laserContainer, 
+                        {
+                            transform: [{
+                                translateY: laserAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, 240]
+                                })
+                            }]
+                        }
+                    ]} 
+                >
+                    <LinearGradient
+                        colors={[
+                            'rgba(255, 59, 48, 0)',   // Transparent Start
+                            'rgba(255, 59, 48, 0.8)', // Red
+                            'rgba(255, 255, 255, 1)', // White Hot Core
+                            'rgba(255, 59, 48, 0.8)', // Red
+                            'rgba(255, 59, 48, 0)'    // Transparent End
+                        ]}
+                        start={{ x: 0, y: 0.5 }} 
+                        end={{ x: 1, y: 0.5 }}
+                        locations={[0, 0.2, 0.5, 0.8, 1]}
+                        style={styles.premiumLaser}
+                    />
+                </Animated.View>
+            )}
+
             {/* Guide Text based on Mode */}
             <Text style={styles.guideText}>
                 {mode === 'FOOD' ? '음식을 중앙에 맞춰주세요' : 
@@ -635,6 +742,25 @@ const styles = StyleSheet.create({
   tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 20 },
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 20 },
   br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 20 },
+
+  laserContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 40, // Container for shadow
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  premiumLaser: {
+      width: '100%',
+      height: 3, // Core thickness
+      shadowColor: '#FF3B30', // System Red (Bright)
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 8, // Strong glow
+      elevation: 5, // Android glow
+  },
 
   // Darken areas (Not implemented fully for complexity, just simple overlay usually)
   // For now, let's keep it simple with just frame

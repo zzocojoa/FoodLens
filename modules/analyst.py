@@ -536,16 +536,26 @@ class FoodAnalyst:
         sources = set()
         has_any_nutrition = False
         
-        # Per-ingredient nutrition lookup
+        # Per-ingredient nutrition lookup & Deduplication
         ingredients = result.get("ingredients", [])
+        unique_ingredients = []
+        seen_names = set()
+
         for ingredient in ingredients:
             if not isinstance(ingredient, dict):
                 continue
             
-            ing_name = ingredient.get("name", "")
+            ing_name = ingredient.get("name", "").strip()
             if not ing_name:
                 continue
             
+            # Deduplication Check (Case-insensitive)
+            # This prevents AI hallucinations (e.g. listing "Egg" twice) from reaching the user
+            normalized_name = ing_name.lower()
+            if normalized_name in seen_names:
+                continue
+            seen_names.add(normalized_name)
+
             # Lookup nutrition for this ingredient
             nutrition_data = lookup_nutrition(ing_name, food_origin)
             
@@ -562,6 +572,11 @@ class FoodAnalyst:
                 print(f"  ↳ {ing_name}: {nutrition_data.get('calories')} kcal ({nutrition_data.get('dataSource')})")
             else:
                 print(f"  ↳ {ing_name}: No nutrition data found")
+            
+            unique_ingredients.append(ingredient)
+        
+        # Replace the original list with the deduplicated list
+        result["ingredients"] = unique_ingredients
         
         # Set total nutrition if any data was found
         if has_any_nutrition:
@@ -946,3 +961,119 @@ class FoodAnalyst:
             
             # Return unified fallback schema (reuse existing method)
             return self._get_safe_fallback_response(user_msg)
+
+    def analyze_barcode_ingredients(self, ingredients: list, allergy_info: str = "None") -> dict:
+        """
+        Analyzes a list of ingredient names (from barcode API) against the user's
+        allergy profile using Gemini. Text-only call (no image).
+        
+        Returns:
+            {
+                "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
+                "ingredients": [
+                    {"name": "밀가루", "isAllergen": true, "riskReason": "Contains wheat/gluten"},
+                    {"name": "설탕", "isAllergen": false, "riskReason": ""}
+                ]
+            }
+        """
+        normalized_allergens = format_allergens_for_prompt(allergy_info)
+        
+        # If no allergies or no ingredients, skip API call entirely
+        if normalized_allergens == "None" or not ingredients:
+            return {
+                "safetyStatus": "SAFE",
+                "ingredients": [
+                    {"name": ing, "isAllergen": False, "riskReason": ""} 
+                    for ing in ingredients
+                ]
+            }
+        
+        ingredients_str = ", ".join(f'"{ing}"' for ing in ingredients)
+        
+        prompt = f"""
+        You are a food allergen analyst. Analyze the following ingredient list from a packaged food product
+        and determine if any ingredient matches or contains the user's allergens.
+
+        **User Allergy Profile**: {normalized_allergens}
+        **Ingredient List**: [{ingredients_str}]
+
+        **Rules**:
+        1. For each ingredient, determine if it IS or CONTAINS any of the user's allergens.
+        2. Be thorough: "밀가루" (wheat flour) matches "Wheat/Gluten". "아몬드슬라이스" matches "Tree Nut (Almond)".
+        3. Korean ingredient names are common. You must understand Korean food terminology.
+        4. "기타 수산물가공품" (other seafood products) should trigger CAUTION for Shellfish/Fish allergies.
+        5. Categories like "복합조미식품", "곡류가공품" are vague - mark as CAUTION if they could relate to an allergen.
+        6. Set overall safetyStatus:
+           - "DANGER" if any ingredient clearly matches an allergen.
+           - "CAUTION" if any ingredient is ambiguous but could contain an allergen.
+           - "SAFE" if no allergens detected.
+
+        Return JSON only.
+        """
+
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
+                "ingredients": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "name": {"type": "STRING"},
+                            "isAllergen": {"type": "BOOLEAN"},
+                            "riskReason": {"type": "STRING"}
+                        },
+                        "required": ["name", "isAllergen"]
+                    }
+                }
+            },
+            "required": ["safetyStatus", "ingredients"]
+        }
+
+        generation_config = {
+            "temperature": 0.1,  # Low temperature for precise allergen matching
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        }
+
+        try:
+            print(f"\n[Allergen Analysis] Analyzing {len(ingredients)} ingredients against: {normalized_allergens}")
+            
+            with FoodAnalyst._request_semaphore:
+                response = self.model.generate_content(
+                    [prompt],  # Text-only, no image
+                    generation_config=generation_config,
+                    safety_settings=safety_settings
+                )
+            
+            result = self._parse_ai_response(response.text)
+            print(f"[Allergen Analysis] Result: safetyStatus={result.get('safetyStatus')}")
+            
+            # Log flagged allergens
+            flagged = [i for i in result.get("ingredients", []) if i.get("isAllergen")]
+            if flagged:
+                print(f"[Allergen Analysis] ⚠️  Flagged: {[f['name'] for f in flagged]}")
+            else:
+                print(f"[Allergen Analysis] ✓ No allergens detected.")
+            
+            return result
+            
+        except Exception as e:
+            print(f"[Allergen Analysis] Error: {e}")
+            traceback.print_exc()
+            # Fail-safe: return CAUTION if analysis fails (don't risk saying SAFE)
+            return {
+                "safetyStatus": "CAUTION",
+                "ingredients": [
+                    {"name": ing, "isAllergen": False, "riskReason": ""} 
+                    for ing in ingredients
+                ]
+            }

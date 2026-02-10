@@ -269,12 +269,63 @@ export const analyzeLabel = async (
     }
 };
 
+const mapBarcodeToAnalyzedData = (data: any): AnalyzedData => {
+    // Map nutrition data
+    const nutrition: NutritionData | undefined = {
+        calories: data.calories || null, // Note: server returns float or null
+        protein: data.protein || null,
+        carbs: data.carbs || null,
+        fat: data.fat || null,
+        fiber: data.fiber || null,
+        sodium: data.sodium || null,
+        sugar: data.sugar || null,
+        servingSize: data.servingSize || "100g",
+        dataSource: data.source || "Barcode",
+        description: data.food_name // snake_case from server
+    };
+
+    // Map ingredients
+    // Ingredients may come as string[] (no allergen analysis) or object[] (with allergen analysis)
+    const ingredients = Array.isArray(data.ingredients) 
+        ? data.ingredients.map((ing: any) => {
+            // If already an object with isAllergen (from Gemini analysis), use it
+            if (typeof ing === 'object' && ing !== null) {
+                return {
+                    name: ing.name || 'Unknown',
+                    isAllergen: ing.isAllergen || false,
+                    riskReason: ing.riskReason || '',
+                };
+            }
+            // Fallback: plain string (no allergen analysis performed)
+            return {
+                name: ing,
+                isAllergen: false,
+            };
+          })
+        : [];
+
+    return {
+        foodName: data.food_name || "Unknown Product",
+        safetyStatus: data.safetyStatus || 'SAFE', // Use server-provided status from allergen analysis
+        confidence: 100, // It's a direct lookup
+        ingredients: ingredients,
+        nutrition: nutrition,
+        raw_result: JSON.stringify(data),
+        raw_data: data
+    };
+};
+
 export const lookupBarcode = async (barcode: string): Promise<{found: boolean, data?: AnalyzedData, error?: string}> => {
     const activeServerUrl = await ServerConfig.getServerUrl();
     
     try {
+        // Get user's allergy profile for allergen analysis
+        const allergyString = await getAllergyString();
+        console.log("[AI] Barcode lookup with allergies:", allergyString);
+
         const formData = new FormData();
         formData.append('barcode', barcode);
+        formData.append('allergy_info', allergyString);
 
         const response = await fetch(`${activeServerUrl}/lookup/barcode`, {
             method: 'POST',
@@ -285,7 +336,14 @@ export const lookupBarcode = async (barcode: string): Promise<{found: boolean, d
             throw new Error(`Server returned ${response.status}`);
         }
 
-        return await response.json();
+        const result = await response.json();
+        
+        if (result.found && result.data) {
+            // Map the raw server response (snake_case) to our App Domain Model (camelCase)
+            result.data = mapBarcodeToAnalyzedData(result.data);
+        }
+
+        return result;
     } catch (error: any) {
         console.error("[AI] Barcode Lookup Failed:", error);
         return { found: false, error: error.message };

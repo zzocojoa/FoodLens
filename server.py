@@ -120,25 +120,37 @@ async def analyze_label(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/lookup/barcode")
-async def lookup_barcode(barcode: str = Form(...)):
+async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("None")):
     """
     Lookup product by barcode.
     Full SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)
+    If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
     try:
-        print(f"[Server] Lookup request for barcode: {barcode}")
+        print(f"[Server] Lookup request for barcode: {barcode}, allergy_info: {allergy_info}")
         result = await barcode_service.get_product_info(barcode)
         
         if not result:
-            # Return 404 or just found:False? 
-            # Client expects JSON, so let's return clean structure
             return {"found": False, "message": "Product not found in any database"}
+        
+        # Run allergen analysis if ingredients exist and user has allergies
+        if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
+            print(f"[Server] Running allergen analysis on {len(result['ingredients'])} ingredients...")
+            allergen_result = analyst.analyze_barcode_ingredients(
+                ingredients=result["ingredients"],
+                allergy_info=allergy_info
+            )
             
+            # Merge allergen analysis into result
+            result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
+            
+            # Replace simple string list with enriched ingredient objects
+            result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
+        
         return {"found": True, "data": result}
         
     except Exception as e:
         print(f"[Server] Barcode Lookup Error: {e}")
-        # Don't crash client, just return error
         return {"found": False, "error": str(e)}
 
 if __name__ == "__main__":
