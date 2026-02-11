@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Linking } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import MapViewClustering from 'react-native-map-clustering';
-import { BlurView } from 'expo-blur';
 import { Globe } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 import { CountryData } from '../models/History';
@@ -39,6 +38,12 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [didFitOnce, setDidFitOnce] = useState(false);
+    
+    // === DIAGNOSTIC: Render counter ===
+    const renderCountRef = useRef(0);
+    const regionChangeCountRef = useRef(0);
+    renderCountRef.current += 1;
+    console.log(`[MAP_DEBUG] ===== Render #${renderCountRef.current} =====`);
 
     // Flatten data to markers (lightweight — no image URIs to reduce memory)
     const markers = useMemo(() => {
@@ -67,6 +72,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 });
             });
         });
+        console.log(`[MAP_DEBUG] Markers computed: ${_markers.length} total`);
         return _markers;
     }, [data]);
 
@@ -141,9 +147,11 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         }
     }, [toastMessage]);
 
-    const handleRegionChangeComplete = (r: Region) => {
+    const handleRegionChangeComplete = useCallback((r: Region) => {
+        regionChangeCountRef.current += 1;
+        console.log(`[MAP_DEBUG] onRegionChangeComplete #${regionChangeCountRef.current} | lat=${r.latitude.toFixed(4)} lng=${r.longitude.toFixed(4)} delta=${r.latitudeDelta.toFixed(4)}`);
         onRegionChange?.(r);
-    };
+    }, [onRegionChange]);
 
     const isPermissionError = errorType === 'permission';
     const errorTitle = isPermissionError ? '위치 권한이 필요합니다' : 'Map Unavailable';
@@ -151,32 +159,44 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
         : '네트워크 연결을 확인해주세요.';
 
-    // Custom cluster rendering — lightweight, no Image/BlurView, stable callback
+    // Custom cluster rendering — lightweight, stable callback
     const renderCluster = useCallback((cluster: any) => {
-        const { id, geometry, onPress, properties } = cluster;
-        const points = properties.point_count;
+        try {
+            const { id, geometry, onPress, properties } = cluster;
+            const points = properties?.point_count ?? 0;
+            
+            console.log(`[MAP_DEBUG] renderCluster id=${id} points=${points} coords=[${geometry?.coordinates?.[1]?.toFixed(4)}, ${geometry?.coordinates?.[0]?.toFixed(4)}]`);
 
-        return (
-            <Marker
-                key={`cluster-${id}`}
-                coordinate={{
-                    latitude: geometry.coordinates[1],
-                    longitude: geometry.coordinates[0],
-                }}
-                onPress={onPress}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-            >
-                <View style={styles.clusterContainer}>
-                    <View style={styles.clusterCircle}>
-                        <Text style={styles.clusterEmoji}>📍</Text>
+            if (!geometry?.coordinates || geometry.coordinates.length < 2) {
+                console.warn(`[MAP_DEBUG] ⚠️ Invalid cluster geometry for id=${id}`);
+                return null;
+            }
+
+            return (
+                <Marker
+                    key={`cluster-${id}`}
+                    coordinate={{
+                        latitude: geometry.coordinates[1],
+                        longitude: geometry.coordinates[0],
+                    }}
+                    onPress={onPress}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges={false}
+                >
+                    <View style={styles.clusterContainer}>
+                        <View style={styles.clusterCircle}>
+                            <Text style={styles.clusterEmoji}>📍</Text>
+                        </View>
+                        <View style={styles.clusterBadge}>
+                            <Text style={styles.clusterCountText}>{points}</Text>
+                        </View>
                     </View>
-                    <View style={styles.clusterBadge}>
-                        <Text style={styles.clusterCountText}>{points}</Text>
-                    </View>
-                </View>
-            </Marker>
-        );
+                </Marker>
+            );
+        } catch (error) {
+            console.error(`[MAP_DEBUG] ❌ renderCluster CRASH:`, error);
+            return null;
+        }
     }, []);
 
     return (
@@ -216,10 +236,10 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
             {/* Empty State */}
             {isMapReady && markers.length === 0 && (
                 <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: 5, pointerEvents: 'none' }]}>
-                    <BlurView intensity={40} tint="light" style={{ padding: 20, borderRadius: 20, overflow: 'hidden', alignItems: 'center' }}>
+                    <View style={{ padding: 20, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center' }}>
                         <Text style={{ fontSize: 32 }}>🌏</Text>
                         <Text style={{ marginTop: 8, color: '#475569', fontWeight: '600' }}>No trips yet</Text>
-                    </BlurView>
+                    </View>
                 </View>
             )}
 
@@ -230,6 +250,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 provider={PROVIDER_DEFAULT}
                 initialRegion={initialRegion || INITIAL_REGION}
                 onMapReady={() => {
+                    console.log(`[MAP_DEBUG] 🗺️ onMapReady fired`);
                     setIsMapReady(true);
                     onReady?.();
                 }}
@@ -277,7 +298,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 
                 return (
                     <View style={[styles.mapOverlay, THEME.shadow]}>
-                        <BlurView intensity={90} tint="light" style={[styles.insightCard, THEME.glass]}>
+                        <View style={[styles.insightCard, styles.insightCardBg]}>
                             <View style={styles.insightHeader}>
                                 <View style={styles.insightIconBox}>
                                     <Globe size={16} color="#2563EB" />
@@ -294,7 +315,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                                 <View style={[styles.progressBarFill, { width: `${percentage}%` }]} />
                             </View>
                             <Text style={styles.insightHint}>Visited {visitedCount} of {TOTAL_COUNTRIES} countries</Text>
-                        </BlurView>
+                        </View>
                     </View>
                 );
             })()}
@@ -302,9 +323,9 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
             {/* Toast Message */}
             {toastMessage && (
                 <View style={styles.toastContainer}>
-                    <BlurView intensity={80} tint="dark" style={styles.toast}>
+                    <View style={[styles.toast, styles.toastBg]}>
                         <Text style={styles.toastText}>{toastMessage}</Text>
-                    </BlurView>
+                    </View>
                 </View>
             )}
         </View>
@@ -340,6 +361,7 @@ const styles = StyleSheet.create({
 
     mapOverlay: { position: 'absolute', bottom: 20, left: 20, right: 20, borderRadius: 32 },
     insightCard: { padding: 20, borderRadius: 32, overflow: 'hidden' },
+    insightCardBg: { backgroundColor: 'rgba(255,255,255,0.92)' },
     insightHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
     insightIconBox: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
     insightTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
@@ -352,5 +374,6 @@ const styles = StyleSheet.create({
 
     toastContainer: { position: 'absolute', top: 20, left: 0, right: 0, alignItems: 'center', zIndex: 100 },
     toast: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, overflow: 'hidden' },
+    toastBg: { backgroundColor: 'rgba(0,0,0,0.75)' },
     toastText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' }
 });
