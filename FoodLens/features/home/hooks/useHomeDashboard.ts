@@ -1,0 +1,110 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, InteractionManager } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from '@react-navigation/native';
+import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
+import { UserService } from '../../../services/userService';
+import { UserProfile } from '../../../models/User';
+import { WeeklyData } from '../../../components/WeeklyStatsStrip';
+import { HomeModalType } from '../types/home.types';
+import { buildWeeklyStats, filterScansByDate } from '../utils/homeDashboard';
+
+const TEST_UID = 'test-user-v1';
+
+type UseHomeDashboardReturn = {
+  activeModal: HomeModalType;
+  allergyCount: number;
+  filteredScans: AnalysisRecord[];
+  safeCount: number;
+  selectedDate: Date;
+  userProfile: UserProfile | null;
+  weeklyStats: WeeklyData[];
+  setActiveModal: (modal: HomeModalType) => void;
+  setSelectedDate: (date: Date) => void;
+  loadDashboardData: () => Promise<void>;
+  handleDeleteItem: (itemId: string) => Promise<void>;
+};
+
+export const useHomeDashboard = (): UseHomeDashboardReturn => {
+  const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
+  const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]);
+  const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyData[]>([]);
+  const [allergyCount, setAllergyCount] = useState(0);
+  const [safeCount, setSafeCount] = useState(0);
+  const [activeModal, setActiveModal] = useState<HomeModalType>('NONE');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
+  }, [allHistoryCache, selectedDate]);
+
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const [recentData, allHistory, profile] = await Promise.all([
+        AnalysisService.getRecentAnalyses(TEST_UID, 3),
+        AnalysisService.getAllAnalyses(TEST_UID),
+        UserService.getUserProfile(TEST_UID),
+      ]);
+
+      console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
+
+      setRecentScans(recentData);
+      setAllHistoryCache(allHistory);
+      setWeeklyStats(buildWeeklyStats(allHistory));
+      setSafeCount(allHistory.filter((item) => item.safetyStatus === 'SAFE').length);
+
+      if (profile) {
+        setUserProfile(profile);
+        const count =
+          (profile.safetyProfile.allergies?.length || 0) +
+          (profile.safetyProfile.dietaryRestrictions?.length || 0);
+        setAllergyCount(count);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadDashboardData();
+      });
+      return () => task.cancel();
+    }, [loadDashboardData]),
+  );
+
+  const handleDeleteItem = useCallback(
+    async (itemId: string) => {
+      const previousScans = [...recentScans];
+
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setRecentScans((prev) => prev.filter((item) => item.id !== itemId));
+        await AnalysisService.deleteAnalysis(TEST_UID, itemId);
+        loadDashboardData();
+      } catch (error) {
+        console.error('Home delete failed:', error);
+        setRecentScans(previousScans);
+        Alert.alert('Error', 'Failed to delete item. Restoring data.');
+      }
+    },
+    [loadDashboardData, recentScans],
+  );
+
+  return {
+    activeModal,
+    allergyCount,
+    filteredScans,
+    safeCount,
+    selectedDate,
+    userProfile,
+    weeklyStats,
+    setActiveModal,
+    setSelectedDate,
+    loadDashboardData,
+    handleDeleteItem,
+  };
+};
