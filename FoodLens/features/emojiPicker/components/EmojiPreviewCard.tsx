@@ -1,0 +1,27 @@
+import React from 'react';
+import { View, Text } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { EmojiPickerTheme } from '../types/emojiPicker.types';
+import { emojiPickerStyles as styles } from '../styles/emojiPickerStyles';
+
+type EmojiPreviewCardProps = {
+    selectedEmoji: string;
+    colorScheme: 'light' | 'dark';
+    theme: EmojiPickerTheme;
+};
+
+export default function EmojiPreviewCard({ selectedEmoji, colorScheme, theme }: EmojiPreviewCardProps) {
+    return (
+        <View style={styles.previewContainer}>
+            <BlurView
+                intensity={80}
+                tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                style={[styles.previewCard, { backgroundColor: theme.glass }]}
+            >
+                <Text style={styles.previewEmoji}>{selectedEmoji}</Text>
+                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>미리보기</Text>
+            </BlurView>
+        </View>
+    );
+}
+
