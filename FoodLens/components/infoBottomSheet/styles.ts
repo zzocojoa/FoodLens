@@ -1,0 +1,108 @@
+import { StyleSheet } from 'react-native';
+
+export const infoBottomSheetStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    sheetContainer: {
+        backgroundColor: 'white',
+        borderTopLeftRadius: 40,
+        borderTopRightRadius: 40,
+        padding: 32,
+        paddingBottom: 48,
+        width: '100%',
+        alignItems: 'center',
+    },
+    handleBar: {
+        width: 48,
+        height: 6,
+        backgroundColor: '#E4E4E7',
+        borderRadius: 999,
+        marginBottom: 32,
+    },
+    contentContainer: {
+        width: '100%',
+        alignItems: 'center',
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 16,
+        color: 'black',
+    },
+    description: {
+        color: '#71717A',
+        fontSize: 14,
+        lineHeight: 24,
+        marginBottom: 40,
+        textAlign: 'center',
+    },
+    gridContainer: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 40,
+        width: '100%',
+        maxWidth: 400,
+        justifyContent: 'center',
+    },
+    exampleItem: {
+        flex: 1,
+        alignItems: 'center',
+        maxWidth: 160,
+    },
+    imageWrapper: {
+        position: 'relative',
+        width: '100%',
+        aspectRatio: 1,
+        marginBottom: 12,
+    },
+    imageContainer: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 24,
+        overflow: 'hidden',
+        backgroundColor: '#F4F4F5',
+        borderWidth: 1,
+        borderColor: '#E4E4E7',
+    },
+    exampleImage: {
+        width: '100%',
+        height: '100%',
+    },
+    badgeContainer: {
+        position: 'absolute',
+        bottom: -10,
+        left: '50%',
+        transform: [{ translateX: -16 }],
+        backgroundColor: 'white',
+        borderRadius: 999,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    label: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#52525B',
+        marginTop: 8,
+    },
+    button: {
+        width: '100%',
+        maxWidth: 380,
+        backgroundColor: '#18181B',
+        paddingVertical: 16,
+        borderRadius: 16,
+        alignItems: 'center',
+    },
+    buttonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+});
