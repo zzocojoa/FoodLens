@@ -10,11 +10,27 @@ import json
 import io
 import base64
 import tempfile
-from modules.nutrition import lookup_nutrition
 from modules.analyst_core.allergen_utils import (
     format_allergens_for_prompt,
     get_language_for_country,
     normalize_allergens,
+)
+from modules.analyst_core.postprocess import enrich_with_nutrition
+from modules.analyst_core.prompts import (
+    build_analysis_prompt,
+    build_barcode_ingredients_prompt,
+    build_label_prompt,
+)
+from modules.analyst_core.response_utils import (
+    get_safe_fallback_response,
+    parse_ai_response,
+    sanitize_response,
+    strip_box2d,
+)
+from modules.analyst_core.schemas import (
+    build_barcode_allergen_schema,
+    build_food_response_schema,
+    build_label_response_schema,
 )
 from google.api_core import retry
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
@@ -155,77 +171,7 @@ class FoodAnalyst:
 
     def _build_analysis_prompt(self, allergy_info: str, iso_current_country: str) -> str:
         """Constructs the analysis prompt based on user context."""
-        return f"""
-        # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]
-
-        **ROLE**
-        You are an elite Food Nutritionist and Safety Analyst for the 'Food Lens' app. Your expertise lies in identifying global cuisines from visual cues and assessing allergen risks with high precision.
-
-        **TASK**
-        Analyze the provided food image to:
-        1.  Identify the specific Dish Name and Cuisine.
-        2.  Detect visible ingredients with bounding boxes.
-        3.  Assess Safety verification against user allergies.
-        4.  Provide a structured JSON output.
-
-        **CONTEXT DATA**
-        - **User Allergy Profile**: `{allergy_info}`
-        - **User Location (ISO)**: `{iso_current_country}`
-
-        **CRITICAL RULES (MUST FOLLOW)**
-        
-        1.  **DISH IDENTIFICATION (NO "UNKNOWN")**
-            -   You MUST identify the dish. Do not return "Unknown Dish".
-            -   Reason through the visual components (protein, starch, sauce, utensils) to infer the most likely specific dish name.
-            -   *Example*: If you see broth, noodles, and red spice -> "Spicy Ramen" or "Jjamppong", NOT "Noodle Soup".
-            -   **Multiple Foods Rule**: If multiple dishes are visible, identify ONLY the main entree or the most prominent dish as the `foodName`. Do not list all items (e.g., use "Pizza Set", not "Pizza and Pasta and Salad").
-
-        2.  **NAMING CONVENTION**
-            -   Use standard, specific proper nouns (e.g., "Pork Belly", "Carbonara").
-            -   Avoid generic terms like "Lunch", "Plate", "Appetizer".
-            -   Do NOT include descriptive adjectives in the `foodName` field (e.g., "Delicious Pizza" -> "Pizza").
-
-        3.  **VISUAL VERIFICATION (ANTI-HALLUCINATION)**
-            -   Only list ingredients clearly visible in the image.
-            -   Do NOT infer hidden ingredients (e.g., do not list "Sugar" or "Salt" unless visible).
-            -   If an ingredient looks like a puree/paste but you are unsure, label it generically (e.g., "Yellow Sauce", "Red Paste") rather than guessing a specific fruit/veg that causes allergen false positives.
-
-        4.  **SAFETY STATUS & ALLERGENS**
-            -   **`isAllergen`**: Set to `true` ONLY if the ingredient is visually confirmed AND matches `{allergy_info}`.
-            -   **`safetyStatus` Enum**:
-                -   `"SAFE"`: No allergens detected.
-                -   `"CAUTION"`: Ambiguous ingredients or potential cross-contamination risk.
-                -   `"DANGER"`: Confirmed presence of `{allergy_info}`.
-            -   If unsure, prefer `"CAUTION"` over `"DANGER"`.
-
-        5.  **COORDINATES**
-            -   `bbox` is MANDATORY for all ingredients: `[ymin, xmin, ymax, xmax]` (0-1000 scale).
-
-        **OUTPUT FORMAT (JSON ONLY)**
-        Return raw JSON with no markdown formatting.
-        {{
-           "foodName": "Specific Dish Name",
-           "foodName_en": "English Name",
-           "foodName_ko": "Korean Name",
-           "foodOrigin": "Cuisine Origin (e.g., Korean, Italian)",
-           "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
-           "confidence": 0-100,
-           "ingredients": [
-                {{
-                  "name": "Ingredient Name",
-                  "bbox": [ymin, xmin, ymax, xmax],
-                  "confidence_score": 0.00,
-                  "isAllergen": boolean,
-                  "riskReason": "Explanation if allergen"
-                }}
-            ],
-           "translationCard": {{
-             "language": "{iso_current_country}",
-             "text": "Polite safety warning or confirmation in local language."
-           }},
-           "raw_result": "Brief 1-sentence summary"
-        }}
-        """
+        return build_analysis_prompt(allergy_info, iso_current_country)
 
     def _prepare_vertex_image(self, pil_image: Image.Image) -> VertexImage:
         """Converts PIL image to Vertex AI format."""
@@ -234,327 +180,23 @@ class FoodAnalyst:
         return VertexImage.from_bytes(img_byte_arr.getvalue())
 
     def _parse_ai_response(self, response_text: str) -> dict:
-        """
-        Cleans and parses the AI JSON response with robust recovery logic.
-        
-        Recovery Strategy:
-        1. Strip markdown code block wrappers (```json ... ```)
-        2. If standard parsing fails, extract from first '{' to last '}'
-        3. On complete failure, return safe fallback and log internally
-        """
-        # === DIAGNOSTIC LOGGING START ===
-        print(f"\n{'='*60}")
-        print(f"[PARSE DEBUG] Raw response length: {len(response_text)} chars")
-        print(f"[PARSE DEBUG] First 200 chars: {repr(response_text[:200])}")
-        print(f"[PARSE DEBUG] Last 100 chars: {repr(response_text[-100:] if len(response_text) > 100 else response_text)}")
-        print(f"{'='*60}")
-        # === DIAGNOSTIC LOGGING END ===
-        
-        text = response_text.strip()
-        
-        # Step 1: Remove markdown code block wrappers
-        original_text = text
-        if text.startswith("```json"):
-            text = text[7:]
-            print(f"[PARSE DEBUG] Stripped ```json prefix")
-        if text.startswith("```"):
-            text = text[3:]
-            print(f"[PARSE DEBUG] Stripped ``` prefix")
-        if text.endswith("```"):
-            text = text[:-3]
-            print(f"[PARSE DEBUG] Stripped ``` suffix")
-        text = text.strip()
-        
-        if text != original_text:
-            print(f"[PARSE DEBUG] After markdown cleanup: {repr(text[:200])}")
-        
-        # Step 2: Try standard JSON parsing
-        try:
-            result = json.loads(text)
-            print(f"[PARSE DEBUG] ✓ Standard JSON parse SUCCESS")
-            return result
-        except json.JSONDecodeError as e:
-            print(f"[PARSE DEBUG] ✗ Standard JSON parse FAILED: {e}")
-            print(f"[PARSE DEBUG] Error at position {e.pos}: {repr(text[max(0,e.pos-20):e.pos+20])}")
-        
-        # Step 3: Recovery - extract from first { to last }
-        try:
-            first_brace = text.find('{')
-            last_brace = text.rfind('}')
-            print(f"[PARSE DEBUG] Brace positions: first={first_brace}, last={last_brace}")
-            
-            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-                extracted = text[first_brace:last_brace + 1]
-                print(f"[PARSE DEBUG] Extracted content length: {len(extracted)}")
-                print(f"[PARSE DEBUG] Extracted first 200: {repr(extracted[:200])}")
-                
-                result = json.loads(extracted)
-                print(f"[PARSE DEBUG] ✓ Brace extraction recovery SUCCESS")
-                return result
-        except json.JSONDecodeError as e:
-            print(f"[PARSE DEBUG] ✗ Brace extraction recovery FAILED: {e}")
-            print(f"[PARSE DEBUG] Error at position {e.pos}: {repr(extracted[max(0,e.pos-30):e.pos+30])}")
-        
-        # Step 4: Complete failure - return safe fallback
-        print(f"[PARSE DEBUG] ✗✗ ALL PARSING ATTEMPTS FAILED")
-        print(f"[PARSE DEBUG] Full raw response:\n{response_text}")
-        print(f"{'='*60}\n")
-        return self._get_safe_fallback_response("AI 응답을 처리할 수 없습니다. 다시 시도해주세요.")
+        return parse_ai_response(response_text)
 
     def _get_safe_fallback_response(self, user_message: str) -> dict:
-        """
-        Returns a safe, user-friendly fallback JSON when parsing fails.
-        Internal errors are logged but NOT exposed to the user.
-        
-        This response matches the normal schema structure to prevent
-        frontend parsing issues.
-        """
-        return {
-            "foodName": "분석 오류",
-            "foodName_en": "Analysis Error",
-            "foodName_ko": "분석 오류",
-            "canonicalFoodId": "error",
-            "foodOrigin": "unknown",
-            "safetyStatus": "CAUTION",
-            "confidence": 0,
-            "ingredients": [],
-            "translationCard": {
-                "language": "Korean",
-                "text": None,
-                "audio_query": None
-            },
-            "raw_result": user_message
-        }
+        return get_safe_fallback_response(user_message)
 
     def _strip_box2d(self, result: dict) -> dict:
-        """
-        Removes box_2d fields from ingredients.
-        
-        LMM-generated bounding boxes are often unreliable for production use.
-        If precise bbox detection is needed, use a dedicated Vision API model.
-        """
-        if "ingredients" in result and isinstance(result["ingredients"], list):
-            for ingredient in result["ingredients"]:
-                if isinstance(ingredient, dict) and "box_2d" in ingredient:
-                    del ingredient["box_2d"]
-        return result
+        return strip_box2d(result)
 
     def _enrich_with_nutrition(self, result: dict) -> dict:
-        """
-        Enriches the analysis result with nutrition data for each ingredient.
-        Also calculates total nutrition across all ingredients.
-        """
-        food_origin = result.get("foodOrigin", "unknown")
-        
-        # Skip for error states
-        error_names = ["Error Analyzing Food", "Not Food", "분석 오류"]
-        if result.get("foodName", "") in error_names:
-            return result
-        
-        # Initialize total nutrition accumulator
-        total_nutrition = {
-            "calories": 0,
-            "protein": 0,
-            "carbs": 0,
-            "fat": 0,
-            "fiber": 0,
-            "sodium": 0,
-            "sugar": 0,
-            "servingSize": "100g (total)",
-            "dataSource": "Multiple Sources"
-        }
-        sources = set()
-        has_any_nutrition = False
-        
-        # Per-ingredient nutrition lookup & Deduplication
-        ingredients = result.get("ingredients", [])
-        unique_ingredients = []
-        seen_names = set()
-
-        for ingredient in ingredients:
-            if not isinstance(ingredient, dict):
-                continue
-            
-            ing_name = ingredient.get("name", "").strip()
-            if not ing_name:
-                continue
-            
-            # Deduplication Check (Case-insensitive)
-            # This prevents AI hallucinations (e.g. listing "Egg" twice) from reaching the user
-            normalized_name = ing_name.lower()
-            if normalized_name in seen_names:
-                continue
-            seen_names.add(normalized_name)
-
-            # Lookup nutrition for this ingredient
-            nutrition_data = lookup_nutrition(ing_name, food_origin)
-            
-            if nutrition_data and nutrition_data.get("calories") is not None:
-                ingredient["nutrition"] = nutrition_data
-                has_any_nutrition = True
-                
-                # Accumulate totals (safe addition with None handling)
-                for key in ["calories", "protein", "carbs", "fat", "fiber", "sodium", "sugar"]:
-                    if nutrition_data.get(key) is not None:
-                        total_nutrition[key] = (total_nutrition.get(key) or 0) + float(nutrition_data[key])
-                
-                sources.add(nutrition_data.get("dataSource", "Unknown"))
-                print(f"  ↳ {ing_name}: {nutrition_data.get('calories')} kcal ({nutrition_data.get('dataSource')})")
-            else:
-                print(f"  ↳ {ing_name}: No nutrition data found")
-            
-            unique_ingredients.append(ingredient)
-        
-        # Replace the original list with the deduplicated list
-        result["ingredients"] = unique_ingredients
-        
-        # Set total nutrition if any data was found
-        if has_any_nutrition:
-            total_nutrition["dataSource"] = " + ".join(sources) if sources else "Unknown"
-            result["nutrition"] = total_nutrition
-            print(f"Total Nutrition: {total_nutrition['calories']:.1f} kcal from {len(sources)} source(s)")
-        else:
-            # Fallback: try main food name if no ingredient data
-            name_variants = [result.get("foodName_en"), result.get("foodName"), result.get("canonicalFoodId", "").replace("_", " ")]
-            for name in name_variants:
-                if not name:
-                    continue
-                nutrition_data = lookup_nutrition(name, food_origin)
-                if nutrition_data and nutrition_data.get("calories") is not None:
-                    result["nutrition"] = nutrition_data
-                    print(f"Nutrition Data ({nutrition_data.get('dataSource')}): fallback to '{name}'")
-                    break
-        
-        return result
+        return enrich_with_nutrition(result)
 
     def _sanitize_response(self, result: dict) -> dict:
-        """
-        App-level content sanitization (P2: Second layer defense).
-        
-        4. Deduplication of ingredients list
-        """
-        import re
-        
-        # 1. Deduplicate Ingredients (Universal)
-        if "ingredients" in result and isinstance(result["ingredients"], list):
-            unique_ingredients = []
-            seen_names = set()
-            for ing in result["ingredients"]:
-                if not isinstance(ing, dict): continue
-                name = ing.get("name", "").strip()
-                if not name: continue
-                normalized = name.lower()
-                if normalized not in seen_names:
-                    seen_names.add(normalized)
-                    unique_ingredients.append(ing)
-            result["ingredients"] = unique_ingredients
-
-        # Configuration
-        MAX_TEXT_LENGTH = 500  # Max chars for user-facing text fields
-        MAX_FOOD_NAME_LENGTH = 100
-        
-        # Dangerous patterns (injection prevention)
-        DANGEROUS_PATTERNS = [
-            r'https?://\S+',  # URLs
-            r'<script.*?>.*?</script>',  # Script tags
-            r'javascript:',  # JS protocol
-            r'data:text/html',  # Data URIs
-            r'on\w+\s*=',  # Event handlers (onclick, onerror, etc.)
-        ]
-        
-        # Minimal profanity blocklist (rely on platform filter for comprehensive coverage)
-        BLOCKLIST_PATTERNS = [
-            r'\b(fuck|shit|bitch|asshole)\b',
-            r'\b(nigger|faggot)\b',
-        ]
-        
-        dangerous_regex = re.compile('|'.join(DANGEROUS_PATTERNS), re.IGNORECASE | re.DOTALL)
-        blocklist_regex = re.compile('|'.join(BLOCKLIST_PATTERNS), re.IGNORECASE)
-        
-        def sanitize_text(text: str, max_length: int = MAX_TEXT_LENGTH) -> str:
-            if not text or not isinstance(text, str):
-                return text
-            
-            # Length limit
-            if len(text) > max_length:
-                text = text[:max_length] + "..."
-                print(f"[Internal Log] Text truncated to {max_length} chars.")
-            
-            # Block dangerous patterns (URLs, scripts)
-            if dangerous_regex.search(text):
-                print(f"[Internal Log] Dangerous pattern detected, sanitizing.")
-                text = dangerous_regex.sub("[링크 제거됨]", text)
-            
-            # Minimal profanity filter
-            if blocklist_regex.search(text):
-                print(f"[Internal Log] Blocklist pattern detected, sanitizing.")
-                return "[내용 필터링됨]"
-            
-            return text
-        
-        # Sanitize user-facing text fields
-        if "foodName" in result:
-            result["foodName"] = sanitize_text(result["foodName"], MAX_FOOD_NAME_LENGTH)
-        if "foodName_en" in result:
-            result["foodName_en"] = sanitize_text(result["foodName_en"], MAX_FOOD_NAME_LENGTH)
-        if "foodName_ko" in result:
-            result["foodName_ko"] = sanitize_text(result["foodName_ko"], MAX_FOOD_NAME_LENGTH)
-        if "raw_result" in result:
-            result["raw_result"] = sanitize_text(result["raw_result"])
-        if "translationCard" in result and result["translationCard"]:
-            if "text" in result["translationCard"]:
-                result["translationCard"]["text"] = sanitize_text(result["translationCard"]["text"])
-        
-        return result
+        return sanitize_response(result)
 
     def _build_label_prompt(self, allergy_info: str) -> str:
         """Constructs the nutrition label OCR prompt."""
-        return f"""
-        # [System Prompt: Food Lens OCR Engine v1.0]
-
-        **ROLE**
-        You are a highly precise OCR and Nutrition Analyst. Your task is to extract structured data from a nutrition facts label and ingredient list image.
-
-        **TASK**
-        1.  **Extract Nutrition Facts**: Find Calories, Carbohydrates, Protein, Fat, Sugar, Sodium, and Fiber.
-        2.  **Extract Ingredients**: List all ingredients found in the 'Ingredients' section.
-        3.  **Cross-Check Allergens**: Check the extracted ingredients against the user's allergy profile: `{allergy_info}`.
-        4.  **Identify Product**: Inferred product name from the label if visible.
-
-        **CRITICAL RULES**
-        -   **Accuracy First**: Do not hallucinate numbers. If a value is missing, use null or 0.
-        -   **Unit Normalization**: Extract values as numbers (e.g., "15g" -> 15).
-        -   **Allergen Detection**: Be extremely strict with `{allergy_info}`. 
-        -   **JSON Format**: Return only raw JSON.
-
-        **OUTPUT FORMAT**
-        {{
-           "foodName": "Product Name from Label",
-           "foodName_en": "English Name",
-           "foodName_ko": "Korean Name",
-           "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
-           "confidence": 0-100,
-           "nutrition": {{
-              "calories": number,
-              "carbs": number,
-              "protein": number,
-              "fat": number,
-              "sugar": number,
-              "sodium": number,
-              "fiber": number,
-              "servingSize": "string (e.g. 100g, 1 pack)",
-              "dataSource": "OCR_Label"
-           }},
-           "ingredients": [
-                {{
-                  "name": "Ingredient Name",
-                  "isAllergen": boolean,
-                  "riskReason": "Statement if allergen"
-                }}
-            ],
-            "raw_result": "Brief summary of extracted label data"
-        }}
-        """
+        return build_label_prompt(allergy_info)
 
     def analyze_label_json(self, label_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
         """
@@ -564,44 +206,7 @@ class FoodAnalyst:
         prompt = self._build_label_prompt(normalized_allergens)
         
         # Schema for OCR (similar to food but focused on nutrition)
-        response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "foodName": {"type": "STRING"},
-                "foodName_en": {"type": "STRING"},
-                "foodName_ko": {"type": "STRING"},
-                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
-                "confidence": {"type": "INTEGER"},
-                "nutrition": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "calories": {"type": "NUMBER"},
-                        "carbs": {"type": "NUMBER"},
-                        "protein": {"type": "NUMBER"},
-                        "fat": {"type": "NUMBER"},
-                        "sugar": {"type": "NUMBER"},
-                        "sodium": {"type": "NUMBER"},
-                        "fiber": {"type": "NUMBER"},
-                        "servingSize": {"type": "STRING"},
-                        "dataSource": {"type": "STRING"}
-                    }
-                },
-                "ingredients": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "name": {"type": "STRING"},
-                            "isAllergen": {"type": "BOOLEAN"},
-                            "riskReason": {"type": "STRING"}
-                        },
-                        "required": ["name", "isAllergen"]
-                    }
-                },
-                "raw_result": {"type": "STRING"}
-            },
-            "required": ["foodName", "nutrition", "ingredients", "safetyStatus"]
-        }
+        response_schema = build_label_response_schema()
 
         generation_config = {
             "temperature": 0.1, # Low temperature for OCR precision
@@ -651,43 +256,7 @@ class FoodAnalyst:
         prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
         
         # Define Schema for Structured Output (Strict Mode)
-        response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "foodName": {"type": "STRING"},
-                "foodName_en": {"type": "STRING"},
-                "foodName_ko": {"type": "STRING"},
-                "canonicalFoodId": {"type": "STRING"},
-                "foodOrigin": {"type": "STRING"},
-                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
-                "confidence": {"type": "INTEGER"},
-                "ingredients": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "name": {"type": "STRING"},
-                            "bbox": {
-                                "type": "ARRAY",
-                                "items": {"type": "INTEGER"}
-                            },
-                            "isAllergen": {"type": "BOOLEAN"}
-                        },
-                        "required": ["name", "bbox", "isAllergen"]
-                    }
-                },
-                "translationCard": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "language": {"type": "STRING"},
-                        "text": {"type": "STRING"},
-                        "audio_query": {"type": "STRING"}
-                    }
-                },
-                "raw_result": {"type": "STRING"}
-            },
-            "required": ["foodName", "ingredients", "safetyStatus"]
-        }
+        response_schema = build_food_response_schema()
 
         # Configure generation and safety
         generation_config = {
@@ -830,53 +399,9 @@ class FoodAnalyst:
                 ]
             }
         
-        ingredients_str = ", ".join(f'"{ing}"' for ing in ingredients)
-        
-        prompt = f"""
-        You are a food allergen analyst. Analyze the following ingredient list from a packaged food product
-        and determine if any ingredient matches or contains the user's allergens.
+        prompt = build_barcode_ingredients_prompt(normalized_allergens, ingredients)
 
-        **User Allergy Profile**: {normalized_allergens}
-        **Ingredient List**: [{ingredients_str}]
-
-        **Rules**:
-        1. For each ingredient, determine if it IS or CONTAINS any of the user's allergens.
-        2. Be thorough: "밀가루" (wheat flour) matches "Wheat/Gluten". "아몬드슬라이스" matches "Tree Nut (Almond)".
-        3. Korean ingredient names are common. You must understand Korean food terminology.
-        4. "기타 수산물가공품" (other seafood products) should trigger CAUTION for Shellfish/Fish allergies.
-        5. Categories like "복합조미식품", "곡류가공품" are vague - mark as CAUTION if they could relate to an allergen.
-        6. Set overall safetyStatus:
-           - "DANGER" if any ingredient clearly matches an allergen.
-           - "CAUTION" if any ingredient is ambiguous but could contain an allergen.
-           - "SAFE" if no allergens detected.
-        7. coachMessage: Write a concise Korean health coaching message (1-2 sentences).
-           - If allergens detected: explain which specific ingredients are concerning and why.
-             Example: "이 제품에는 밀가루(소맥분)가 포함되어 있어 글루텐 알러지가 있으신 분은 주의가 필요합니다."
-           - If SAFE: "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요."
-
-        Return JSON only.
-        """
-
-        response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "safetyStatus": {"type": "STRING", "enum": ["SAFE", "CAUTION", "DANGER"]},
-                "coachMessage": {"type": "STRING"},
-                "ingredients": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "name": {"type": "STRING"},
-                            "isAllergen": {"type": "BOOLEAN"},
-                            "riskReason": {"type": "STRING"}
-                        },
-                        "required": ["name", "isAllergen"]
-                    }
-                }
-            },
-            "required": ["safetyStatus", "ingredients", "coachMessage"]
-        }
+        response_schema = build_barcode_allergen_schema()
 
         generation_config = {
             "temperature": 0.1,  # Low temperature for precise allergen matching
