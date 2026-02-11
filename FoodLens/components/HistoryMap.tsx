@@ -4,6 +4,8 @@ import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import { Globe } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 import { CountryData } from '../models/History';
+import { FoodThumbnail } from './FoodThumbnail';
+import { resolveImageUri } from '../services/imageStorage';
 import * as Location from 'expo-location';
 import Supercluster from 'supercluster';
 
@@ -45,6 +47,7 @@ type MapMarker = {
     countryId: string;
     emoji: string;
     name: string;
+    imageUri?: string;
 };
 
 type PointFeature = {
@@ -159,6 +162,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                         countryId: `${country.country}-${countryIdx}`,
                         emoji: item.emoji,
                         name: item.name,
+                        imageUri: item.imageUri ? (resolveImageUri(item.imageUri) || undefined) : undefined,
                     });
                 });
             });
@@ -492,7 +496,13 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                                               </Text>
                                           </View>
                                           <View style={styles.mapPinCircle}>
-                                              <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
+                                              <FoodThumbnail
+                                                  uri={marker.imageUri}
+                                                  emoji={marker.emoji}
+                                                  style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
+                                                  imageStyle={{ borderRadius: 14 }}
+                                                  fallbackFontSize={16}
+                                              />
                                           </View>
                                       </View>
                                   </View>
@@ -515,7 +525,13 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                                           </Text>
                                       </View>
                                       <View style={styles.mapPinCircle}>
-                                          <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
+                                          <FoodThumbnail
+                                              uri={marker.imageUri}
+                                              emoji={marker.emoji}
+                                              style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
+                                              imageStyle={{ borderRadius: 14 }}
+                                              fallbackFontSize={16}
+                                          />
                                       </View>
                                   </View>
                               </View>
