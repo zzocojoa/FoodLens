@@ -50,8 +50,12 @@ export function useAnalysisData() {
         } else {
             setResult(typeof data === 'string' ? JSON.parse(data) : null);
             setLocationData(typeof location === 'string' ? JSON.parse(location) : null);
-            // imageUri from params (if any)
-            // Note: In non-store mode, imageUri might be passed as param or not used
+            // New analysis from camera: dataStore already has imageUri (filename) set by camera.tsx
+            const storedData = dataStore.getData();
+            if (storedData.imageUri) {
+                setStoredImageRef(storedData.imageUri);
+                setImageSource({ uri: resolveImageUri(storedData.imageUri) });
+            }
         }
       }
       setLoaded(true);
