@@ -1,11 +1,35 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
-import MapViewClustering from 'react-native-map-clustering';
 import { Globe } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 import { CountryData } from '../models/History';
 import * as Location from 'expo-location';
+import Supercluster from 'supercluster';
+
+const ENABLE_MAP_DEBUG_LOGS = false;
+const ENABLE_MAP_CLUSTERING = false;
+const ENABLE_QA_MAP_METRICS = false;
+const IOS_REGION_UPDATE_DEBOUNCE_MS = 350;
+const ANDROID_REGION_UPDATE_DEBOUNCE_MS = 250;
+const MAX_RENDER_MARKERS = 500;
+const CLUSTER_RADIUS = 60;
+const CLUSTER_MAX_ZOOM = 20;
+const CLUSTER_MIN_ZOOM = 1;
+const REGION_UPDATE_DEBOUNCE_MS =
+    Platform.OS === 'ios' ? IOS_REGION_UPDATE_DEBOUNCE_MS : ANDROID_REGION_UPDATE_DEBOUNCE_MS;
+
+const debugLog = (...args: any[]) => {
+    if (ENABLE_MAP_DEBUG_LOGS) {
+        console.log(...args);
+    }
+};
+
+const metricsLog = (...args: any[]) => {
+    if (ENABLE_QA_MAP_METRICS && __DEV__) {
+        console.log(...args);
+    }
+};
 
 interface HistoryMapProps {
     data: CountryData[];
@@ -15,6 +39,44 @@ interface HistoryMapProps {
     onRegionChange?: (region: Region) => void;
 }
 
+type MapMarker = {
+    id: string;
+    coordinate: { latitude: number; longitude: number };
+    countryId: string;
+    emoji: string;
+    name: string;
+};
+
+type PointFeature = {
+    type: 'Feature';
+    geometry: {
+        type: 'Point';
+        coordinates: [number, number];
+    };
+    properties: {
+        markerIndex: number;
+    };
+};
+
+type ClusterFeature = {
+    type: 'Feature';
+    geometry: {
+        type: 'Point';
+        coordinates: [number, number];
+    };
+    properties: {
+        cluster: true;
+        cluster_id: number;
+        point_count: number;
+        point_count_abbreviated: string | number;
+    };
+};
+
+type ClusterOrPoint = ClusterFeature | PointFeature;
+
+const isClusterFeature = (item: ClusterOrPoint): item is ClusterFeature =>
+    (item as ClusterFeature).properties.cluster === true;
+
 const INITIAL_REGION: Region = {
     latitude: 20,
     longitude: 0,
@@ -22,14 +84,40 @@ const INITIAL_REGION: Region = {
     longitudeDelta: 50,
 };
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TOTAL_COUNTRIES = 195;
 
 const parseCoordinateValue = (value: number | string | undefined) =>
     typeof value === 'string' ? Number(value) : value;
 
+const isValidLatitude = (value: number) => Number.isFinite(value) && value >= -90 && value <= 90;
+const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -180 && value <= 180;
+const isValidDelta = (value: number) => Number.isFinite(value) && value > 0 && value <= 360;
+
+const buildRegionKey = (region: Region) =>
+    `${region.latitude.toFixed(3)}:${region.longitude.toFixed(3)}:${region.latitudeDelta.toFixed(3)}:${region.longitudeDelta.toFixed(3)}`;
+
+const toBoundingBox = (region: Region): [number, number, number, number] => {
+    const lngDelta = region.longitudeDelta < 0 ? region.longitudeDelta + 360 : region.longitudeDelta;
+    return [
+        region.longitude - lngDelta,
+        region.latitude - region.latitudeDelta,
+        region.longitude + lngDelta,
+        region.latitude + region.latitudeDelta,
+    ];
+};
+
+const toApproxZoom = (region: Region): number => {
+    if (!Number.isFinite(region.longitudeDelta) || region.longitudeDelta <= 0) return CLUSTER_MIN_ZOOM;
+    const zoom = Math.log2(360 / region.longitudeDelta);
+    return Math.max(CLUSTER_MIN_ZOOM, Math.min(CLUSTER_MAX_ZOOM, Math.floor(zoom)));
+};
+
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
     const mapRef = useRef<MapView>(null);
+    const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastRegionKeyRef = useRef<string | null>(null);
+    const metricsWindowStartRef = useRef<number>(Date.now());
+    const metricsRegionEventCountRef = useRef<number>(0);
 
     const [isMapReady, setIsMapReady] = useState(false);
     const [isMapError, setIsMapError] = useState(false);
@@ -38,16 +126,16 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
 
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [didFitOnce, setDidFitOnce] = useState(false);
+    const [activeRegion, setActiveRegion] = useState<Region>(initialRegion || INITIAL_REGION);
     
-    // === DIAGNOSTIC: Render counter ===
     const renderCountRef = useRef(0);
     const regionChangeCountRef = useRef(0);
     renderCountRef.current += 1;
-    console.log(`[MAP_DEBUG] ===== Render #${renderCountRef.current} =====`);
+    debugLog(`[MAP_DEBUG] ===== Render #${renderCountRef.current} =====`);
 
     // Flatten data to markers (lightweight — no image URIs to reduce memory)
     const markers = useMemo(() => {
-        const _markers: any[] = [];
+        const _markers: MapMarker[] = [];
         data.forEach((country: any, countryIdx: number) => {
             (country?.regions || []).forEach((r: any) => {
                 (r?.items || []).forEach((item: any) => {
@@ -59,12 +147,15 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                     const lat = parseCoordinateValue(latRaw);
                     const lng = parseCoordinateValue(lngRaw);
 
-                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-                    if (lat === 0 && lng === 0) return;
+                    if (!isValidLatitude(lat as number) || !isValidLongitude(lng as number)) return;
+                    const latitude = Number(lat);
+                    const longitude = Number(lng);
+
+                    if (latitude === 0 && longitude === 0) return;
 
                     _markers.push({
                         id: item.id,
-                        coordinate: { latitude: lat, longitude: lng },
+                        coordinate: { latitude, longitude },
                         countryId: `${country.country}-${countryIdx}`,
                         emoji: item.emoji,
                         name: item.name,
@@ -72,9 +163,51 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 });
             });
         });
-        console.log(`[MAP_DEBUG] Markers computed: ${_markers.length} total`);
+        debugLog(`[MAP_DEBUG] Markers computed: ${_markers.length} total`);
         return _markers;
     }, [data]);
+    const visibleMarkers = useMemo(
+        () => (markers.length > MAX_RENDER_MARKERS ? markers.slice(0, MAX_RENDER_MARKERS) : markers),
+        [markers]
+    );
+    const isMarkerCapped = markers.length > visibleMarkers.length;
+    const markerFeatures = useMemo<PointFeature[]>(
+        () =>
+            markers.map((marker, markerIndex) => ({
+                type: 'Feature',
+                properties: { markerIndex },
+                geometry: {
+                    type: 'Point',
+                    coordinates: [marker.coordinate.longitude, marker.coordinate.latitude],
+                },
+            })),
+        [markers]
+    );
+    const supercluster = useMemo(() => {
+        if (!ENABLE_MAP_CLUSTERING) return null;
+        const index = new Supercluster({
+            radius: CLUSTER_RADIUS,
+            maxZoom: CLUSTER_MAX_ZOOM,
+            minZoom: CLUSTER_MIN_ZOOM,
+        });
+        index.load(markerFeatures);
+        return index;
+    }, [markerFeatures]);
+    const clusteredItems = useMemo<ClusterOrPoint[]>(() => {
+        if (!ENABLE_MAP_CLUSTERING || !supercluster) return [];
+        const bbox = toBoundingBox(activeRegion);
+        const zoom = toApproxZoom(activeRegion);
+        return supercluster.getClusters(bbox, zoom) as unknown as ClusterOrPoint[];
+    }, [activeRegion, supercluster]);
+    const visibleClusteredItems = useMemo(
+        () =>
+            clusteredItems.length > MAX_RENDER_MARKERS
+                ? clusteredItems.slice(0, MAX_RENDER_MARKERS)
+                : clusteredItems,
+        [clusteredItems]
+    );
+    const isClusteredCapped = clusteredItems.length > visibleClusteredItems.length;
+    const renderedItemCount = ENABLE_MAP_CLUSTERING ? visibleClusteredItems.length : visibleMarkers.length;
 
     // Memoize favorite country for overlay card (avoid re-sorting on every render)
     const favoriteCountry = useMemo(() =>
@@ -147,57 +280,113 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         }
     }, [toastMessage]);
 
+    useEffect(() => {
+        if (ENABLE_MAP_CLUSTERING && isClusteredCapped) {
+            setToastMessage(`클러스터 최적화: ${visibleClusteredItems.length}/${clusteredItems.length}`);
+            return;
+        }
+
+        if (!ENABLE_MAP_CLUSTERING && isMarkerCapped) {
+            setToastMessage(`표시 최적화: ${visibleMarkers.length}/${markers.length}`);
+        }
+    }, [
+        clusteredItems.length,
+        isClusteredCapped,
+        isMarkerCapped,
+        markers.length,
+        visibleClusteredItems.length,
+        visibleMarkers.length,
+    ]);
+
+    useEffect(() => {
+        return () => {
+            if (regionDebounceRef.current) {
+                clearTimeout(regionDebounceRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!(ENABLE_QA_MAP_METRICS && __DEV__)) return;
+
+        metricsWindowStartRef.current = Date.now();
+        metricsRegionEventCountRef.current = 0;
+
+        const intervalId = setInterval(() => {
+            const now = Date.now();
+            const elapsedSec = Math.max((now - metricsWindowStartRef.current) / 1000, 1);
+            const eps = metricsRegionEventCountRef.current / elapsedSec;
+
+            metricsLog(
+                `[MAP_METRICS] os=${Platform.OS} eps=${eps.toFixed(2)} rendered=${renderedItemCount} totalMarkers=${markers.length} clustering=${ENABLE_MAP_CLUSTERING}`
+            );
+
+            metricsWindowStartRef.current = now;
+            metricsRegionEventCountRef.current = 0;
+        }, 5000);
+
+        return () => clearInterval(intervalId);
+    }, [renderedItemCount, markers.length]);
+
     const handleRegionChangeComplete = useCallback((r: Region) => {
+        if (ENABLE_QA_MAP_METRICS && __DEV__) {
+            metricsRegionEventCountRef.current += 1;
+        }
+
+        if (
+            !isValidLatitude(r.latitude) ||
+            !isValidLongitude(r.longitude) ||
+            !isValidDelta(r.latitudeDelta) ||
+            !isValidDelta(r.longitudeDelta)
+        ) {
+            return;
+        }
+
+        const regionKey = buildRegionKey(r);
+        if (lastRegionKeyRef.current === regionKey) {
+            return;
+        }
+
+        lastRegionKeyRef.current = regionKey;
         regionChangeCountRef.current += 1;
-        console.log(`[MAP_DEBUG] onRegionChangeComplete #${regionChangeCountRef.current} | lat=${r.latitude.toFixed(4)} lng=${r.longitude.toFixed(4)} delta=${r.latitudeDelta.toFixed(4)}`);
-        onRegionChange?.(r);
+        debugLog(
+            `[MAP_DEBUG] onRegionChangeComplete #${regionChangeCountRef.current} | lat=${r.latitude.toFixed(4)} lng=${r.longitude.toFixed(4)} delta=${r.latitudeDelta.toFixed(4)}`
+        );
+
+        if (regionDebounceRef.current) {
+            clearTimeout(regionDebounceRef.current);
+        }
+
+        regionDebounceRef.current = setTimeout(() => {
+            setActiveRegion(r);
+            onRegionChange?.(r);
+        }, REGION_UPDATE_DEBOUNCE_MS);
     }, [onRegionChange]);
+
+    const handleClusterPress = useCallback(
+        (cluster: ClusterFeature) => {
+            const [lng, lat] = cluster.geometry.coordinates;
+            const nextLatitudeDelta = Math.max(activeRegion.latitudeDelta * 0.5, 0.01);
+            const nextLongitudeDelta = Math.max(activeRegion.longitudeDelta * 0.5, 0.01);
+
+            mapRef.current?.animateToRegion(
+                {
+                    latitude: lat,
+                    longitude: lng,
+                    latitudeDelta: nextLatitudeDelta,
+                    longitudeDelta: nextLongitudeDelta,
+                },
+                250
+            );
+        },
+        [activeRegion.latitudeDelta, activeRegion.longitudeDelta]
+    );
 
     const isPermissionError = errorType === 'permission';
     const errorTitle = isPermissionError ? '위치 권한이 필요합니다' : 'Map Unavailable';
     const errorDescription = isPermissionError
         ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
         : '네트워크 연결을 확인해주세요.';
-
-    // Custom cluster rendering — lightweight, stable callback
-    const renderCluster = useCallback((cluster: any) => {
-        try {
-            const { id, geometry, onPress, properties } = cluster;
-            const points = properties?.point_count ?? 0;
-            
-            console.log(`[MAP_DEBUG] renderCluster id=${id} points=${points} coords=[${geometry?.coordinates?.[1]?.toFixed(4)}, ${geometry?.coordinates?.[0]?.toFixed(4)}]`);
-
-            if (!geometry?.coordinates || geometry.coordinates.length < 2) {
-                console.warn(`[MAP_DEBUG] ⚠️ Invalid cluster geometry for id=${id}`);
-                return null;
-            }
-
-            return (
-                <Marker
-                    key={`cluster-${id}`}
-                    coordinate={{
-                        latitude: geometry.coordinates[1],
-                        longitude: geometry.coordinates[0],
-                    }}
-                    onPress={onPress}
-                    anchor={{ x: 0.5, y: 0.5 }}
-                    tracksViewChanges={false}
-                >
-                    <View style={styles.clusterContainer}>
-                        <View style={styles.clusterCircle}>
-                            <Text style={styles.clusterEmoji}>📍</Text>
-                        </View>
-                        <View style={styles.clusterBadge}>
-                            <Text style={styles.clusterCountText}>{points}</Text>
-                        </View>
-                    </View>
-                </Marker>
-            );
-        } catch (error) {
-            console.error(`[MAP_DEBUG] ❌ renderCluster CRASH:`, error);
-            return null;
-        }
-    }, []);
 
     return (
         <View style={styles.mapContainer}>
@@ -243,54 +432,96 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 </View>
             )}
 
-            <MapViewClustering
+            <MapView
                 key={mapReloadKey}
                 ref={mapRef}
                 style={styles.map}
                 provider={PROVIDER_DEFAULT}
                 initialRegion={initialRegion || INITIAL_REGION}
                 onMapReady={() => {
-                    console.log(`[MAP_DEBUG] 🗺️ onMapReady fired`);
+                    debugLog(`[MAP_DEBUG] 🗺️ onMapReady fired`);
                     setIsMapReady(true);
                     onReady?.();
                 }}
                 onRegionChangeComplete={handleRegionChangeComplete}
-                clusterColor="#2563EB"
-                clusterTextColor="#FFFFFF"
-                clusterFontFamily="System"
-                radius={SCREEN_WIDTH * 0.06}
-                maxZoom={20}
-                minZoom={0}
-                extent={512}
-                nodeSize={64}
-                renderCluster={renderCluster}
-                tracksViewChanges={false}
-                spiralEnabled={false}
-                animationEnabled={false}
+                maxZoomLevel={20}
+                minZoomLevel={1}
             >
-                {markers.map((marker: any) => (
-                    <Marker
-                        key={`pin-${marker.id}`}
-                        coordinate={marker.coordinate}
-                        anchor={{ x: 0.5, y: 1 }}
-                        tracksViewChanges={false}
-                        onPress={() => onMarkerPress(marker.countryId)}
-                    >
-                        <TouchableOpacity activeOpacity={0.9} style={styles.mapPinContainer}>
-                            <View pointerEvents="none">
-                                <View style={styles.mapLabel}>
-                                    <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
-                                        {marker.name}
-                                    </Text>
-                                </View>
-                                <View style={styles.mapPinCircle}>
-                                    <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
-                                </View>
-                            </View>
-                        </TouchableOpacity>
-                    </Marker>
-                ))}
-            </MapViewClustering>
+                {ENABLE_MAP_CLUSTERING
+                    ? visibleClusteredItems.map((item: ClusterOrPoint) => {
+                          if (isClusterFeature(item)) {
+                              return (
+                                  <Marker
+                                      key={`cluster-${item.properties.cluster_id}`}
+                                      coordinate={{
+                                          latitude: item.geometry.coordinates[1],
+                                          longitude: item.geometry.coordinates[0],
+                                      }}
+                                      anchor={{ x: 0.5, y: 0.5 }}
+                                      tracksViewChanges={false}
+                                      onPress={() => handleClusterPress(item)}
+                                  >
+                                      <View style={styles.clusterContainer}>
+                                          <View style={styles.clusterCircle}>
+                                              <Text style={styles.clusterEmoji}>📍</Text>
+                                          </View>
+                                          <View style={styles.clusterBadge}>
+                                              <Text style={styles.clusterCountText}>{item.properties.point_count}</Text>
+                                          </View>
+                                      </View>
+                                  </Marker>
+                              );
+                          }
+
+                          const marker = markers[item.properties.markerIndex];
+                          if (!marker) return null;
+
+                          return (
+                              <Marker
+                                  key={`pin-${marker.id}`}
+                                  coordinate={marker.coordinate}
+                                  anchor={{ x: 0.5, y: 1 }}
+                                  tracksViewChanges={false}
+                                  onPress={() => onMarkerPress(marker.countryId)}
+                              >
+                                  <View style={styles.mapPinContainer}>
+                                      <View pointerEvents="none">
+                                          <View style={styles.mapLabel}>
+                                              <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
+                                                  {marker.name}
+                                              </Text>
+                                          </View>
+                                          <View style={styles.mapPinCircle}>
+                                              <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
+                                          </View>
+                                      </View>
+                                  </View>
+                              </Marker>
+                          );
+                      })
+                    : visibleMarkers.map((marker: MapMarker) => (
+                          <Marker
+                              key={`pin-${marker.id}`}
+                              coordinate={marker.coordinate}
+                              anchor={{ x: 0.5, y: 1 }}
+                              tracksViewChanges={false}
+                              onPress={() => onMarkerPress(marker.countryId)}
+                          >
+                              <View style={styles.mapPinContainer}>
+                                  <View pointerEvents="none">
+                                      <View style={styles.mapLabel}>
+                                          <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
+                                              {marker.name}
+                                          </Text>
+                                      </View>
+                                      <View style={styles.mapPinCircle}>
+                                          <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
+                                      </View>
+                                  </View>
+                              </View>
+                          </Marker>
+                      ))}
+            </MapView>
 
             {/* Overlay Card */}
             {isMapReady && data.length > 0 && (() => {

@@ -30,19 +30,35 @@ class PublicDataClient:
         clean_name = food_name.strip()
         
         # Parameters match FoodNtrCpntDbInfo02
+        # IMPORTANT: 'serviceKey' is double-encoded by many libraries if passed in params.
+        # We manually construct the query string for the key to be safe.
         params = {
-            "serviceKey": self.api_key,
             "FOOD_NM_KR": clean_name,
             "type": "json",
             "numOfRows": 1,
             "pageNo": 1
         }
         
+        # If API Key is already encoded (contains %), we use it as is.
+        # If it is raw, we might need to encode it, but data.go.kr keys are tricky.
+        # Usually, sticking the key directly into the URL is safest.
+        encoded_key = self.api_key 
+        if '%' not in encoded_key:
+             # If it looks like a decoded key, we might need to urlencode it, 
+             # but often 'requests' or 'aiohttp' handles this if we passed it in params.
+             # Since we are doing manual URL construction, we should try to use the key as provided 
+             # if it looks like the user pasted the "Encoding" version from the portal.
+             pass
+
         print(f"[PublicData] Requesting (Unified Service) for: {clean_name}")
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.BASE_URL, params=params) as response:
+                # Manual URL construction to control serviceKey encoding exactly
+                query_string = urllib.parse.urlencode(params)
+                full_url = f"{self.BASE_URL}?serviceKey={encoded_key}&{query_string}"
+                
+                async with session.get(full_url) as response:
                     if response.status != 200:
                         print(f"[PublicData] API Error: Status {response.status}")
                         return None

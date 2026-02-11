@@ -8,6 +8,7 @@ import * as Location from 'expo-location';
  * Maps food names to relevant emojis
  */
 export const getEmoji = (name: string): string => {
+  if (!name) return '🍽️';
   const n = name.toLowerCase();
   if (n.includes('noodle') || n.includes('pad')) return '🍜';
   if (n.includes('rice')) return '🍚';
@@ -23,13 +24,18 @@ export const getEmoji = (name: string): string => {
  * Formats dates into user-friendly strings (e.g., "Just now", "5m ago")
  */
 export const formatDate = (date: Date): string => {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return 'Unknown date';
+  
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const mins = Math.floor(diff / 60000);
+  
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
+  
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
+  
   return date.toLocaleDateString();
 };
 
@@ -208,4 +214,76 @@ export const normalizeTimestamp = (dateString?: string | null): string => {
     // 3. Last Resort
     console.warn("normalizeTimestamp: failed to parse", dateString);
     return new Date().toISOString();
+};
+
+/**
+ * Extracts and normalizes GPS data from EXIF
+ */
+export const extractLocationFromExif = async (exif: any) => {
+    if (!exif) return null;
+
+    let lat = exif.GPSLatitude;
+    let long = exif.GPSLongitude;
+    
+    // Check if valid numbers
+    if (typeof lat !== 'number' || typeof long !== 'number') {
+        // Sometimes EXIF data comes as strings or DMS arrays, 
+        // but Expo usually provides decimal if permission granted.
+        // If undefined, return null.
+        return null;
+    }
+
+    // Handle reference (N/S, E/W) if present
+    const latRef = exif.GPSLatitudeRef;
+    const longRef = exif.GPSLongitudeRef;
+
+    if (latRef === 'S') lat = -lat;
+    if (longRef === 'W') long = -long;
+
+    // Validate
+    const valid = validateCoordinates(lat, long);
+    if (!valid) return null;
+
+    // We need to reverse geocode this to get standard location object
+    try {
+        const reverseGeocode = await Location.reverseGeocodeAsync({ 
+            latitude: valid.latitude, 
+            longitude: valid.longitude 
+        });
+        
+        if (reverseGeocode.length > 0) {
+            const place = reverseGeocode[0];
+            
+            // Reconstruct location object
+            return {
+                latitude: valid.latitude,
+                longitude: valid.longitude,
+                country: place.country || null,
+                city: place.city || place.region || null,
+                district: place.district || place.subregion || "",
+                subregion: place.name || place.street || "",
+                isoCountryCode: place.isoCountryCode || "US",
+                formattedAddress: [
+                    place.name || place.street,
+                    place.district || place.subregion,
+                    place.city || place.region,
+                    place.country
+                ].filter(Boolean).join(', ')
+            };
+        }
+    } catch (e) {
+        console.warn("EXIF Reverse Geocode failed:", e);
+    }
+
+    // Return basic coords if geocode fails
+    return {
+        latitude: valid.latitude,
+        longitude: valid.longitude,
+        country: null,
+        city: null,
+        district: "",
+        subregion: "",
+        isoCountryCode: "US", // Default
+        formattedAddress: `${valid.latitude.toFixed(4)}, ${valid.longitude.toFixed(4)}`
+    };
 };

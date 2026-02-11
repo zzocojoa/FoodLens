@@ -131,22 +131,44 @@ class BarcodeService:
             "raw_data": data
         }
 
+        return [i.strip() for i in raw_str.split(',') if i.strip()]
+
+    def _filter_ingredients(self, ingredients: list) -> list:
+        """Filter out non-ingredient entries (Product Types, Categories)."""
+        # Common categories that appear as ingredients in C002/C005 data
+        BLACKLIST = {
+            "기타가공품", "복합조미식품", "기타 수산물가공품", "기타수산물가공품",
+            "소스류", "소스", "양념장", "복합조미식품류", "즉석조리식품",
+            "가공두부", "두부류", "면류", "유탕면", "숙면", "건면"
+        }
+        
+        filtered = []
+        for ing in ingredients:
+            cleaned = ing.strip()
+            if cleaned and cleaned not in BLACKLIST:
+                filtered.append(cleaned)
+        
+        return filtered
+
     def _parse_ingredients_datago(self, raw_str: Optional[str]) -> list:
         if not raw_str:
             return []
         # Basic split by comma, cleanup needed in real world
-        return [i.strip() for i in raw_str.split(',') if i.strip()]
+        raw_list = [i.strip() for i in raw_str.split(',') if i.strip()]
+        return self._filter_ingredients(raw_list)
 
     def _parse_ingredients_off(self, data: Dict[str, Any]) -> list:
         # Try hierarchy first (e.g., "en:tomatoes")
         tags = data.get("ingredients_original_tags") or data.get("ingredients_hierarchy")
         if tags and isinstance(tags, list):
-            return [t.replace("en:", "").replace("Ko:", "").replace("-", " ") for t in tags]
+            raw_list = [t.replace("en:", "").replace("Ko:", "").replace("-", " ") for t in tags]
+            return self._filter_ingredients(raw_list)
         
         # Fallback to text
         text = data.get("ingredients_text")
         if text:
-            return [i.strip() for i in text.split(',') if i.strip()]
+            raw_list = [i.strip() for i in text.split(',') if i.strip()]
+            return self._filter_ingredients(raw_list)
             
         return []
 
