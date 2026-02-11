@@ -1,0 +1,1 @@
+export const INGREDIENTS_INITIAL_LIMIT = 5;
