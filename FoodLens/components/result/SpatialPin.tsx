@@ -28,6 +28,8 @@ export const SpatialPin = React.memo(({ x, y, label, isAllergen }: SpatialPinPro
   );
 });
 
+SpatialPin.displayName = 'SpatialPin';
+
 const styles = StyleSheet.create({
   pinContainer: {
     alignItems: 'center',
