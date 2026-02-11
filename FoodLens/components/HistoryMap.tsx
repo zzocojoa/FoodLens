@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { resolveImageUri } from '../services/imageStorage';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Linking } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import MapViewClustering from 'react-native-map-clustering';
 import { BlurView } from 'expo-blur';
@@ -41,7 +40,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [didFitOnce, setDidFitOnce] = useState(false);
 
-    // Flatten data to markers
+    // Flatten data to markers (lightweight — no image URIs to reduce memory)
     const markers = useMemo(() => {
         const _markers: any[] = [];
         data.forEach((country: any, countryIdx: number) => {
@@ -64,13 +63,18 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                         countryId: `${country.country}-${countryIdx}`,
                         emoji: item.emoji,
                         name: item.name,
-                        imageUri: resolveImageUri(item?.originalRecord?.imageUri) || undefined,
                     });
                 });
             });
         });
         return _markers;
     }, [data]);
+
+    // Memoize favorite country for overlay card (avoid re-sorting on every render)
+    const favoriteCountry = useMemo(() =>
+        [...data].sort((a: any, b: any) => (b.total ?? 0) - (a.total ?? 0))[0]?.country || '-',
+        [data]
+    );
 
     // Auto-fit to markers on initial load
     useEffect(() => {
@@ -147,18 +151,10 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
         : '네트워크 연결을 확인해주세요.';
 
-    // Custom cluster rendering - Memoized to prevent crash
+    // Custom cluster rendering — lightweight, no Image/BlurView, stable callback
     const renderCluster = useCallback((cluster: any) => {
         const { id, geometry, onPress, properties } = cluster;
         const points = properties.point_count;
-
-        // Get first marker's image from the cluster
-        // Using markers.find is okay here as long as renderCluster ref is stable
-        const firstMarker = markers.find((m: any) => {
-            const clusterCoord = geometry.coordinates;
-             return Math.abs(m.coordinate.latitude - clusterCoord[1]) < 0.0001 &&
-                    Math.abs(m.coordinate.longitude - clusterCoord[0]) < 0.0001;
-        });
 
         return (
             <Marker
@@ -172,20 +168,16 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 tracksViewChanges={false}
             >
                 <View style={styles.clusterContainer}>
-                    {firstMarker?.imageUri ? (
-                        <Image source={{ uri: firstMarker.imageUri }} style={styles.clusterImage} />
-                    ) : (
-                        <View style={[styles.clusterImage, { backgroundColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' }]}>
-                            <Text>📷</Text>
-                        </View>
-                    )}
+                    <View style={styles.clusterCircle}>
+                        <Text style={styles.clusterEmoji}>📍</Text>
+                    </View>
                     <View style={styles.clusterBadge}>
                         <Text style={styles.clusterCountText}>{points}</Text>
                     </View>
                 </View>
             </Marker>
         );
-    }, [markers]);
+    }, []);
 
     return (
         <View style={styles.mapContainer}>
@@ -264,20 +256,13 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                     >
                         <TouchableOpacity activeOpacity={0.9} style={styles.mapPinContainer}>
                             <View pointerEvents="none">
-                                <BlurView intensity={80} tint="light" style={styles.mapLabel}>
+                                <View style={styles.mapLabel}>
                                     <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
                                         {marker.name}
                                     </Text>
-                                </BlurView>
+                                </View>
                                 <View style={styles.mapPinCircle}>
-                                    {marker.imageUri ? (
-                                        <Image
-                                            source={{ uri: marker.imageUri }}
-                                            style={styles.mapPinImage}
-                                        />
-                                    ) : (
-                                        <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
-                                    )}
+                                    <Text style={styles.mapPinEmoji}>{marker.emoji}</Text>
                                 </View>
                             </View>
                         </TouchableOpacity>
@@ -302,7 +287,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                             <View style={styles.insightRow}>
                                 <Text style={styles.insightLabel}>Favorite Destination</Text>
                                 <Text style={styles.insightValue}>
-                                    {[...data].sort((a: any, b: any) => (b.total ?? 0) - (a.total ?? 0))[0]?.country || '-'}
+                                    {favoriteCountry}
                                 </Text>
                             </View>
                             <View style={styles.progressBarBg}>
@@ -342,14 +327,14 @@ const styles = StyleSheet.create({
     loadingEmoji: { fontSize: 24, marginBottom: 12 },
     loadingText: { color: '#64748B', fontSize: 12, fontWeight: '600' },
     mapPinContainer: { alignItems: 'center' },
-    mapLabel: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', marginBottom: 4 },
+    mapLabel: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', marginBottom: 4, backgroundColor: 'rgba(255,255,255,0.85)' },
     mapLabelText: { fontSize: 10, fontWeight: '700', color: '#1E293B', maxWidth: 100 },
     mapPinCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
-    mapPinImage: { width: '100%', height: '100%', borderRadius: 16 },
     mapPinEmoji: { fontSize: 16 },
 
     clusterContainer: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-    clusterImage: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#FFFFFF' },
+    clusterCircle: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#FFFFFF', backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+    clusterEmoji: { fontSize: 18 },
     clusterBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#2563EB', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'white' },
     clusterCountText: { color: 'white', fontSize: 10, fontWeight: '700' },
 
