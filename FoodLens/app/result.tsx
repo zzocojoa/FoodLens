@@ -41,6 +41,7 @@ export default function ResultScreen() {
     locationData, 
     imageSource, 
     rawImageUri,
+    displayImageUri,
     timestamp,
     updateTimestamp 
   } = useAnalysisData();
@@ -69,7 +70,7 @@ export default function ResultScreen() {
   };
 
   // 3. Algorithm Layer (Pins)
-  const { pins, layoutStyle } = usePinLayout(result?.ingredients, rawImageUri);
+  const { pins, layoutStyle } = usePinLayout(result?.ingredients, displayImageUri);
 
   // 4. UI Layer (Animations & State)
   const { 
@@ -190,7 +191,7 @@ export default function ResultScreen() {
                             router.replace({
                                 pathname: '/camera',
                                 params: { 
-                                    imageUri: rawImageUri,
+                                    imageUri: displayImageUri,
                                     sourceType: 'retry'
                                 }
                             });

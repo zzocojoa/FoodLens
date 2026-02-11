@@ -15,6 +15,10 @@ export function useAnalysisData() {
   const [result, setResult] = useState<any>(null);
   const [locationData, setLocationData] = useState<any>(null);
   const [imageSource, setImageSource] = useState<any>(null);
+  
+  // Stored image reference (filename only — for persistence)
+  // This is separate from imageSource.uri which is the resolved absolute path for display
+  const [storedImageRef, setStoredImageRef] = useState<string | undefined>();
 
   // Trigger re-calc
   const [loaded, setLoaded] = useState(false);
@@ -32,6 +36,7 @@ export function useAnalysisData() {
             const stored = dataStore.getData();
             setResult(stored.result);
             setLocationData(stored.location);
+            setStoredImageRef(stored.imageUri || undefined);
             setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
           }
       } else {
@@ -40,6 +45,7 @@ export function useAnalysisData() {
             const stored = dataStore.getData();
             setResult(stored.result);
             setLocationData(stored.location);
+            setStoredImageRef(stored.imageUri || undefined);
             setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
         } else {
             setResult(typeof data === 'string' ? JSON.parse(data) : null);
@@ -79,8 +85,10 @@ export function useAnalysisData() {
     result,
     locationData,
     imageSource,
-    rawImageUri: imageSource?.uri,
+    rawImageUri: storedImageRef,    // Filename only — for AnalysisService persistence
+    displayImageUri: imageSource?.uri, // Resolved absolute path — for Image display/sizing
     timestamp,
     updateTimestamp
   };
 }
+
