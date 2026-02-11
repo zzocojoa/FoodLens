@@ -1,0 +1,100 @@
+import { StyleSheet } from 'react-native';
+
+export const resultStyles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    navSafeArea: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+    },
+    navBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 15,
+        backgroundColor: 'transparent',
+    },
+    navButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E5E5EA',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    errorContainer: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    errorImage: {
+        ...StyleSheet.absoluteFillObject,
+        opacity: 0.3,
+    },
+    errorContent: {
+        padding: 32,
+        alignItems: 'center',
+        width: '100%',
+    },
+    errorIconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(59, 130, 246, 0.3)',
+    },
+    errorTitle: {
+        fontSize: 22,
+        fontWeight: '600',
+        color: '#1E293B',
+        marginBottom: 12,
+    },
+    errorDesc: {
+        fontSize: 15,
+        color: '#64748B',
+        textAlign: 'center',
+        marginBottom: 28,
+        lineHeight: 22,
+    },
+    retryButton: {
+        backgroundColor: '#3B82F6',
+        paddingHorizontal: 28,
+        paddingVertical: 14,
+        borderRadius: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    retryText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    homeButton: {
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+    },
+    homeText: {
+        color: '#64748B',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+});
