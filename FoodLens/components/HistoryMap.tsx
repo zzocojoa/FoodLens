@@ -266,6 +266,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 renderCluster={renderCluster}
                 tracksViewChanges={false}
                 spiralEnabled={false}
+                animationEnabled={false}
             >
                 {markers.map((marker: any) => (
                     <Marker
