@@ -22,6 +22,7 @@ export function useResultScreen() {
         displayImageUri,
         timestamp,
         updateTimestamp,
+        imageDimensions,
     } = useAnalysisData();
 
     const [savedRecordId, setSavedRecordId] = React.useState<string | null>(null);
@@ -44,7 +45,12 @@ export function useResultScreen() {
         [savedRecordId, updateTimestamp]
     );
 
-    const { pins, layoutStyle } = usePinLayout(result?.ingredients, displayImageUri);
+    const { pins, layoutStyle } = usePinLayout(
+        result?.ingredients, 
+        displayImageUri, 
+        !(result?.isBarcode || params.isBarcode === 'true'), // Hide pins if barcode
+        imageDimensions
+    );
 
     const {
         scrollY,

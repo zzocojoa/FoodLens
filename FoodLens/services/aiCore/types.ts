@@ -35,6 +35,7 @@ export interface AnalyzedData {
     raw_result?: string;
     raw_data?: any;
     used_model?: string;
+    isBarcode?: boolean;
 }
 
 export type BarcodeLookupResult = {

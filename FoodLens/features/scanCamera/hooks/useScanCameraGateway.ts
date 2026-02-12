@@ -187,7 +187,7 @@ export const useScanCameraGateway = () => {
 
                     router.replace({
                         pathname: '/result',
-                        params: { fromStore: 'true', isNew: 'true' },
+                        params: { fromStore: 'true', isNew: 'true', isBarcode: 'true' },
                     });
 
                     resetState();

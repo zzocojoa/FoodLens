@@ -5,10 +5,20 @@ import { generatePinLayout } from '../../utils/pinLayoutAlgorithm';
 const { width, height } = Dimensions.get('window');
 const HEADER_HEIGHT = height * 0.6;
 
-export function usePinLayout(ingredients: any[] | undefined, imageUri: string | undefined) {
-  const [imageSize, setImageSize] = useState<{width: number, height: number} | null>(null);
+export function usePinLayout(
+    ingredients: any[] | undefined, 
+    imageUri: string | undefined, 
+    showPins: boolean = true,
+    overrideImageSize?: { width: number, height: number } | null
+) {
+  const [imageSize, setImageSize] = useState<{width: number, height: number} | null>(overrideImageSize || null);
 
   useEffect(() => {
+    if (overrideImageSize) {
+        setImageSize(overrideImageSize);
+        return;
+    }
+
     if (imageUri) {
       Image.getSize(imageUri, (w, h) => {
         setImageSize({ width: w, height: h });
@@ -16,48 +26,32 @@ export function usePinLayout(ingredients: any[] | undefined, imageUri: string | 
         console.warn("[usePinLayout] Failed to load image size", err);
       });
     }
-  }, [imageUri]);
+  }, [imageUri, overrideImageSize]);
+
 
   const pins = useMemo(() => {
     if (!ingredients) return { pins: [], layoutStyle: {} };
-    
-    // 1. Generate core layout
-    let basePins;
 
-    // Check if backend provided real coordinates (bbox: [ymin, xmin, ymax, xmax] on 0-1000 scale)
-    const hasRealCoordinates = ingredients.some(ing => ing.bbox && Array.isArray(ing.bbox) && ing.bbox.length === 4);
-
-    if (hasRealCoordinates) {
-      basePins = ingredients.map(ing => {
-        if (!ing.bbox) return { ...ing, cx: 50, cy: 50 };
-        const [ymin, xmin, ymax, xmax] = ing.bbox;
-        // Convert 0-1000 scale center to 0-100 scale
-        const cx = ((xmin + xmax) / 2) / 10;
-        const cy = ((ymin + ymax) / 2) / 10;
-        return { ...ing, cx, cy };
-      });
-    } else {
-       // Fallback to algorithmic layout
-       basePins = generatePinLayout(ingredients);
-    }
     
-    // Calculate layout style for the image itself to match pin logic
-    let layoutStyle = {};
+    
+    // 44. Calculate layout style for the image itself
+    let layoutStyle = undefined;
     if (imageSize && imageSize.width > 0 && imageSize.height > 0) {
         const imageRatio = imageSize.width / imageSize.height;
         const containerRatio = width / HEADER_HEIGHT;
         
         if (imageRatio > containerRatio) {
-             // Wider (Letterbox) - Top Align
+             // Wider (Letterbox) - Center Vertically
+             const renderedH = width / imageRatio;
              layoutStyle = {
-                 width: width,
-                 height: width / imageRatio,
-                 marginTop: 0, 
+                 width: '100%',
+                 height: renderedH,
+                 marginTop: (HEADER_HEIGHT - renderedH) / 2, 
                  marginLeft: 0
              };
         } else {
              // Taller (Pillarbox) - Center Horizontally
-             const renderedW = HEADER_HEIGHT * imageRatio;
+             const renderedW = Math.min(width, HEADER_HEIGHT * imageRatio);
              layoutStyle = {
                  width: renderedW,
                  height: HEADER_HEIGHT,
@@ -67,14 +61,37 @@ export function usePinLayout(ingredients: any[] | undefined, imageUri: string | 
         }
     }
 
+    if (!showPins) {
+        return { pins: [], layoutStyle: undefined };
+    }
+
+    // 1. Generate base pins only if showing pins
+    let basePins;
+    const hasRealCoordinates = ingredients.some(ing => ing.bbox && Array.isArray(ing.bbox) && ing.bbox.length === 4);
+
+    if (hasRealCoordinates) {
+      basePins = ingredients.map(ing => {
+        if (!ing.bbox) return { ...ing, cx: 50, cy: 50 };
+        const [ymin, xmin, ymax, xmax] = ing.bbox;
+        const cx = ((xmin + xmax) / 2) / 10;
+        const cy = ((ymin + ymax) / 2) / 10;
+        return { ...ing, cx, cy };
+      });
+    } else {
+       basePins = generatePinLayout(ingredients);
+    }
+    
+    // 5. Map pins to image coordinates (existing logic)
     return { 
       pins: basePins.map(pin => {
+      // ... existing mapping logic ...
       let centerX = pin.cx; 
       let centerY = pin.cy;
 
       if (imageSize && imageSize.width > 0 && imageSize.height > 0) {
+         // ... reuse layoutStyle calculation concept or just rely on the if block above
+         // BUT we need specific render details (renderedWidth, offsetX/Y)
           const imageRatio = imageSize.width / imageSize.height;
-          // HEADER_HEIGHT is fixed height, width is screen width
           const containerRatio = width / HEADER_HEIGHT;
           
           let renderedWidth = width;
@@ -83,28 +100,20 @@ export function usePinLayout(ingredients: any[] | undefined, imageUri: string | 
           let offsetY = 0;
 
           if (imageRatio > containerRatio) {
-              // Image is wider relative to container -> Fits width, letterboxed vertically
               renderedWidth = width;
               renderedHeight = width / imageRatio;
-              // offsetY = (HEADER_HEIGHT - renderedHeight) / 2; // Old: Center
-              offsetY = 0; // New: Top Align
+              offsetY = 0; 
           } else {
-              // Image is taller relative to container -> Fits height, pillarboxed horizontally
               renderedHeight = HEADER_HEIGHT;
               renderedWidth = HEADER_HEIGHT * imageRatio;
               offsetX = (width - renderedWidth) / 2;
           }
 
-          // Map image tokens (0-100%) to container container percentage
-          // 1. Convert % to pixel in rendered image
           const pixelX = (centerX / 100) * renderedWidth;
           const pixelY = (centerY / 100) * renderedHeight;
-
-          // 2. Add offset (black bars)
           const finalPixelX = pixelX + offsetX;
           const finalPixelY = pixelY + offsetY;
 
-          // 3. Convert back to % relative to container
           centerX = (finalPixelX / width) * 100;
           centerY = (finalPixelY / HEADER_HEIGHT) * 100;
       }
@@ -114,11 +123,11 @@ export function usePinLayout(ingredients: any[] | undefined, imageUri: string | 
         displayX: centerX,
         displayY: centerY
       };
-    }), layoutStyle };
-  }, [ingredients, imageSize]);
+    }), layoutStyle: layoutStyle ?? undefined };
+  }, [ingredients, imageSize, showPins, overrideImageSize]);
 
   // Return structure: { pins: [...], layoutStyle: {...}, imageSize: {...} }
-  if (!ingredients) return { pins: [], layoutStyle: {}, imageSize };
+  if (!ingredients) return { pins: [], layoutStyle: undefined, imageSize };
   
   return { 
       pins: pins.pins, 

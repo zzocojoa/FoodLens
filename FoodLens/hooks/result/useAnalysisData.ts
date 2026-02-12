@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { dataStore } from '../../services/dataStore';
 import { resolveImageUri } from '../../services/imageStorage';
 
 export function useAnalysisData() {
-  const { data, location, imageUri, fromStore } = useLocalSearchParams();
+  const { data, location, imageUri, fromStore, isBarcode } = useLocalSearchParams();
   
   // State for restoring from backup (Crash Recovery)
   const [isRestoring, setIsRestoring] = useState(
@@ -15,6 +16,7 @@ export function useAnalysisData() {
   const [result, setResult] = useState<any>(null);
   const [locationData, setLocationData] = useState<any>(null);
   const [imageSource, setImageSource] = useState<any>(null);
+  const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
   
   // Stored image reference (filename only — for persistence)
   // This is separate from imageSource.uri which is the resolved absolute path for display
@@ -37,7 +39,17 @@ export function useAnalysisData() {
             setResult(stored.result);
             setLocationData(stored.location);
             setStoredImageRef(stored.imageUri || undefined);
-            setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
+            
+            // Priority: Barcode Background
+            if (stored.result?.isBarcode || isBarcode === 'true') {
+                const barcodeBg = require('@/assets/images/barcode_bg.png');
+                const assetSource = Image.resolveAssetSource(barcodeBg);
+                setImageSource(barcodeBg);
+                setImageDimensions({ width: assetSource.width, height: assetSource.height });
+            } else {
+                setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
+                setImageDimensions(null);
+            }
           }
       } else {
         // Normal Load
@@ -46,15 +58,34 @@ export function useAnalysisData() {
             setResult(stored.result);
             setLocationData(stored.location);
             setStoredImageRef(stored.imageUri || undefined);
-            setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
+            
+            // Priority: Barcode Background
+            if (stored.result?.isBarcode || isBarcode === 'true') {
+                const barcodeBg = require('@/assets/images/barcode_bg.png');
+                const assetSource = Image.resolveAssetSource(barcodeBg);
+                setImageSource(barcodeBg);
+                setImageDimensions({ width: assetSource.width, height: assetSource.height });
+            } else {
+                setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
+                setImageDimensions(null);
+            }
         } else {
-            setResult(typeof data === 'string' ? JSON.parse(data) : null);
+            const parsedResult = typeof data === 'string' ? JSON.parse(data) : null;
+            setResult(parsedResult);
             setLocationData(typeof location === 'string' ? JSON.parse(location) : null);
-            // New analysis from camera: dataStore already has imageUri (filename) set by camera.tsx
+            
             const storedData = dataStore.getData();
-            if (storedData.imageUri) {
-                setStoredImageRef(storedData.imageUri);
+            setStoredImageRef(storedData.imageUri || undefined);
+
+            // Priority: Barcode Background (Override even if imageUri exists from API)
+            if (parsedResult?.isBarcode || isBarcode === 'true') {
+                 const barcodeBg = require('@/assets/images/barcode_bg.png');
+                 const assetSource = Image.resolveAssetSource(barcodeBg);
+                 setImageSource(barcodeBg);
+                 setImageDimensions({ width: assetSource.width, height: assetSource.height });
+            } else if (storedData.imageUri) {
                 setImageSource({ uri: resolveImageUri(storedData.imageUri) });
+                setImageDimensions(null);
             }
         }
       }
@@ -89,8 +120,11 @@ export function useAnalysisData() {
     result,
     locationData,
     imageSource,
+    imageDimensions,
     rawImageUri: storedImageRef,    // Filename only — for AnalysisService persistence
-    displayImageUri: imageSource?.uri, // Resolved absolute path — for Image display/sizing
+    displayImageUri: (typeof imageSource === 'number' && imageSource) 
+        ? Image.resolveAssetSource(imageSource).uri 
+        : imageSource?.uri, // Resolved absolute path — for Image display/sizing
     timestamp,
     updateTimestamp
   };

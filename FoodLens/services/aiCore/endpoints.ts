@@ -144,6 +144,7 @@ export const lookupBarcode = async (barcode: string): Promise<BarcodeLookupResul
 
         if (result.found && result.data) {
             result.data = mapBarcodeToAnalyzedData(result.data);
+            result.data.isBarcode = true;
         }
 
         return result;
