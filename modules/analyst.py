@@ -1,19 +1,14 @@
 import os
 import atexit
-import random
 import threading
-import time
 import vertexai
-from vertexai.generative_models import GenerativeModel, Image as VertexImage, Part, HarmCategory, HarmBlockThreshold
+from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
 import json
 import io
-import base64
 import tempfile
 from modules.analyst_core.allergen_utils import (
     format_allergens_for_prompt,
-    get_language_for_country,
-    normalize_allergens,
 )
 from modules.analyst_core.postprocess import enrich_with_nutrition
 from modules.analyst_core.prompts import (
@@ -32,8 +27,11 @@ from modules.analyst_core.schemas import (
     build_food_response_schema,
     build_label_response_schema,
 )
-from google.api_core import retry
-from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+from modules.analyst_runtime.generation import (
+    generate_with_retry_and_fallback,
+    generate_with_semaphore,
+)
+from modules.analyst_runtime.safety import build_default_safety_settings
 import traceback
 
 class FoodAnalyst:
@@ -214,25 +212,20 @@ class FoodAnalyst:
             "response_schema": response_schema,
         }
 
-        safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        }
+        safety_settings = build_default_safety_settings()
 
         try:
-            with FoodAnalyst._request_semaphore:
-                vertex_image = self._prepare_vertex_image(label_image)
-                
-                # Using 2.0 Flash for speed and OCR capability
-                model = GenerativeModel("gemini-2.0-flash")
-                
-                response = model.generate_content(
-                    [prompt, vertex_image],
-                    generation_config=generation_config,
-                    safety_settings=safety_settings
-                )
+            vertex_image = self._prepare_vertex_image(label_image)
+
+            # Using 2.0 Flash for speed and OCR capability
+            model = GenerativeModel("gemini-2.0-flash")
+            response = generate_with_semaphore(
+                model=model,
+                contents=[prompt, vertex_image],
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+            )
             
             result = self._parse_ai_response(response.text)
             result = self._sanitize_response(result)
@@ -271,74 +264,20 @@ class FoodAnalyst:
         # Safety Settings (P2: Balanced approach)
         # - BLOCK_LOW_AND_ABOVE: Block most inappropriate content
         # - Second layer filtering at app level via _sanitize_response()
-        safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        }
+        safety_settings = build_default_safety_settings()
 
         try:
-            # Concurrency control: acquire semaphore to prevent thundering herd
-            with FoodAnalyst._request_semaphore:
-                vertex_image = self._prepare_vertex_image(food_image)
-                
-                # Add random jitter before request (0-500ms) to spread load
-                jitter_ms = random.uniform(0, 500) / 1000
-                time.sleep(jitter_ms)
-
-                # Define Retry Policy for 429 (Resource Exhausted) with jitter
-                def on_retry_error(exception):
-                    """Callback to track retry attempts for monitoring."""
-                    FoodAnalyst._retry_stats["total_retries"] += 1
-                    if "429" in str(exception) or "ResourceExhausted" in str(type(exception).__name__):
-                        FoodAnalyst._retry_stats["last_429_time"] = time.time()
-                    print(f"[Internal Log] Retry triggered: {type(exception).__name__}")
-                
-                retry_policy = retry.Retry(
-                    predicate=retry.if_exception_type(ResourceExhausted, ServiceUnavailable),
-                    initial=2.0,
-                    maximum=30.0,
-                    multiplier=2.0,
-                    timeout=60.0,
-                    on_error=on_retry_error
-                )
-
-                print(f"Vertex AI: Sending request (jitter={jitter_ms:.3f}s, concurrent slots={FoodAnalyst._request_semaphore._value}/3)...")
-
-                # [DEBUG] Log generation config details
-                print(f"[API Debug] Model name: {self.model_name}")
-                print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
-                print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
-
-                try:
-                    # [Primary Attempt]
-                    response = retry_policy(self.model.generate_content)(
-                        [prompt, vertex_image],
-                        generation_config=generation_config,
-                        safety_settings=safety_settings
-                    )
-                    print(f"[API Debug] ✓ Primary model response received")
-                except Exception as e:
-                    # [Fallback Logic]
-                    # If primary model fails (404, 429, etc.), switch to backup
-                    print(f"[Model Fallback] Primary model ({self.model_name}) failed: {e}")
-                    print(f"[Model Fallback] Error type: {type(e).__name__}")
-                    print(f"[Model Fallback] Full traceback:")
-                    traceback.print_exc()
-                    print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
-                    
-                    try:
-                        backup_model = GenerativeModel("gemini-2.0-flash")
-                        # Reuse same config/safety settings
-                        response = retry_policy(backup_model.generate_content)(
-                            [prompt, vertex_image],
-                            generation_config=generation_config,
-                            safety_settings=safety_settings
-                        )
-                    except Exception as fallback_error:
-                        print(f"[Model Fallback] Backup model also failed: {fallback_error}")
-                        raise fallback_error  # Re-raise if both fail
+            vertex_image = self._prepare_vertex_image(food_image)
+            response = generate_with_retry_and_fallback(
+                primary_model=self.model,
+                primary_model_name=self.model_name,
+                fallback_model_name="gemini-2.0-flash",
+                contents=[prompt, vertex_image],
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+                retry_stats=FoodAnalyst._retry_stats,
+            )
             
 
             print(f"[Internal Log] Finish Reason: {response.candidates[0].finish_reason}")
@@ -409,22 +348,18 @@ class FoodAnalyst:
             "response_schema": response_schema,
         }
 
-        safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        }
+        safety_settings = build_default_safety_settings()
 
         try:
             print(f"\n[Allergen Analysis] Analyzing {len(ingredients)} ingredients against: {normalized_allergens}")
             
-            with FoodAnalyst._request_semaphore:
-                response = self.model.generate_content(
-                    [prompt],  # Text-only, no image
-                    generation_config=generation_config,
-                    safety_settings=safety_settings
-                )
+            response = generate_with_semaphore(
+                model=self.model,
+                contents=[prompt],  # Text-only, no image
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+            )
             
             result = self._parse_ai_response(response.text)
             
