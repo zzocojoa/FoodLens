@@ -47,9 +47,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     useEffect(() => {
         if (isOpen) {
             openProfile();
+        }
+    }, [isOpen, openProfile]);
+
+    useEffect(() => {
+        if (isOpen) {
             void state.loadProfile();
         }
-    }, [isOpen, openProfile, state]);
+    }, [isOpen, userId, state.loadProfile]);
 
     useEffect(() => {
         if (state.langModalVisible) openLangModal();

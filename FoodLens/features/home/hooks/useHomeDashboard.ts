@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
 import { UserService } from '../../../services/userService';
 import { UserProfile } from '../../../models/User';
-import { WeeklyData } from '../../../components/WeeklyStatsStrip';
+import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
 import { HomeModalType } from '../types/home.types';
 import { buildWeeklyStats, filterScansByDate } from '../utils/homeDashboard';
 

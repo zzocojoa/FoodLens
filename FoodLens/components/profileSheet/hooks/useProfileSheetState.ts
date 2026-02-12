@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { DEFAULT_AVATARS } from '@/models/User';
 import { UserService } from '@/services/userService';
+import { saveImagePermanently } from '@/services/imageStorage';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
 
 export const useProfileSheetState = (userId: string) => {
@@ -26,9 +27,23 @@ export const useProfileSheetState = (userId: string) => {
         async (onUpdate: () => void, onClose: () => void) => {
             setLoading(true);
             try {
+                let profileImageToSave = image;
+
+                // If image is a local temp file (starts with file://) and NOT already in our permanent dir
+                if (image.startsWith('file://')) {
+                    const filename = await saveImagePermanently(image);
+                    if (filename) {
+                        profileImageToSave = filename;
+                    } else {
+                        // If save failed, do NOT save the temp URI to the profile.
+                        // It will expire and show broken image.
+                        throw new Error("이미지 저장에 실패했습니다.");
+                    }
+                }
+
                 await UserService.CreateOrUpdateProfile(userId, 'user@example.com', {
                     name,
-                    profileImage: image,
+                    profileImage: profileImageToSave,
                     settings: {
                         targetLanguage: language,
                         language: 'en',
@@ -37,8 +52,9 @@ export const useProfileSheetState = (userId: string) => {
                 });
                 onUpdate();
                 onClose();
-            } catch {
-                Alert.alert('Error', 'Failed to update profile');
+            } catch (error) {
+                console.error("Profile update failed:", error);
+                Alert.alert('오류', '프로필 업데이트에 실패했습니다.');
             } finally {
                 setLoading(false);
             }

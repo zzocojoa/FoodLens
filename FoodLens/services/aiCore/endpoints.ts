@@ -83,6 +83,43 @@ export const analyzeLabel = async (
     }
 };
 
+export const analyzeSmart = async (
+    imageUri: string,
+    isoCountryCode: string = 'US',
+    onProgress?: (progress: number) => void
+): Promise<AnalyzedData> => {
+    const activeServerUrl = await ServerConfig.getServerUrl();
+    const allergyString = await getAllergyString();
+
+    console.log('[AI] Starting smart analysis...');
+
+    try {
+        const uploadResult = await uploadWithRetry(
+            `${activeServerUrl}/analyze/smart`,
+            imageUri,
+            {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                fieldName: 'file',
+                parameters: {
+                    allergy_info: allergyString,
+                    iso_country_code: isoCountryCode,
+                },
+            },
+            3,
+            onProgress
+        );
+
+        const data = JSON.parse(uploadResult.body);
+        return mapAnalyzedData(data);
+    } catch (error: any) {
+        if (error.message?.includes('timed out')) {
+            throw new Error('Smart analysis timed out. The server might be "Cold Starting".');
+        }
+        throw error;
+    }
+};
+
 export const lookupBarcode = async (barcode: string): Promise<BarcodeLookupResult> => {
     const activeServerUrl = await ServerConfig.getServerUrl();
 

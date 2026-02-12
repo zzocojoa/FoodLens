@@ -14,7 +14,11 @@ const IMAGE_DIR = 'foodlens_images/';
  * Get the absolute path of the permanent image directory.
  */
 const getImageDir = (): string => {
-    return `${FileSystem.documentDirectory}${IMAGE_DIR}`;
+    // Ensure documentDirectory ends with a slash
+    const docDir = FileSystem.documentDirectory?.endsWith('/')
+        ? FileSystem.documentDirectory
+        : `${FileSystem.documentDirectory}/`;
+    return `${docDir}${IMAGE_DIR}`;
 };
 
 /**
@@ -33,31 +37,31 @@ const ensureDir = async (): Promise<void> => {
  * Returns the filename only (not the full path).
  * 
  * If the URI is already a permanent path (from a previous save), returns its filename.
+ * Returns null if the operation fails.
  */
-export const saveImagePermanently = async (cacheUri: string): Promise<string> => {
-    if (!cacheUri) return '';
+export const saveImagePermanently = async (cacheUri: string): Promise<string | null> => {
+    if (!cacheUri) return null;
 
     // If already in our permanent directory, just extract the filename
     const permanentDir = getImageDir();
     if (cacheUri.includes(IMAGE_DIR)) {
-        return cacheUri.split('/').pop() || '';
+        return cacheUri.split('/').pop() || null;
     }
 
-    await ensureDir();
-
-    // Generate a unique filename
-    const ext = cacheUri.split('.').pop()?.split('?')[0] || 'jpg';
-    const filename = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
-    const destUri = `${permanentDir}${filename}`;
-
     try {
+        await ensureDir();
+
+        // Generate a unique filename
+        const ext = cacheUri.split('.').pop()?.split('?')[0] || 'jpg';
+        const filename = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+        const destUri = `${permanentDir}${filename}`;
+
         await FileSystem.copyAsync({ from: cacheUri, to: destUri });
         console.log(`[ImageStorage] Saved: ${filename}`);
         return filename;
     } catch (error) {
         console.error('[ImageStorage] Failed to copy image:', error);
-        // Fallback: return original URI so the image at least works in the current session
-        return cacheUri;
+        return null;
     }
 };
 
@@ -77,7 +81,11 @@ export const resolveImageUri = (stored: string | undefined | null): string | nul
     }
 
     // New format: filename → reconstruct full path
-    return `${FileSystem.documentDirectory}${IMAGE_DIR}${stored}`;
+    const docDir = FileSystem.documentDirectory?.endsWith('/')
+        ? FileSystem.documentDirectory
+        : `${FileSystem.documentDirectory}/`;
+        
+    return `${docDir}${IMAGE_DIR}${stored}`;
 };
 
 /**

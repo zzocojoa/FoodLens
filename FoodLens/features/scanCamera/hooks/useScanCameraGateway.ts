@@ -13,7 +13,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 import { useIsFocused } from '@react-navigation/native';
-import { analyzeImage, analyzeLabel, lookupBarcode } from '../../../services/ai';
+import { analyzeImage, analyzeLabel, analyzeSmart, lookupBarcode } from '../../../services/ai';
 import { saveImagePermanently } from '../../../services/imageStorage';
 import { dataStore } from '../../../services/dataStore';
 import {
@@ -290,7 +290,7 @@ export const useScanCameraGateway = () => {
                 const finalTimestamp = normalizeTimestamp(customTimestamp);
                 const savedFilename = await saveImagePermanently(uri);
 
-                dataStore.setData(analysisResult, locationContext, savedFilename, finalTimestamp);
+                dataStore.setData(analysisResult, locationContext, savedFilename || uri, finalTimestamp);
 
                 router.replace({
                     pathname: '/result',
@@ -345,7 +345,7 @@ export const useScanCameraGateway = () => {
                 dataStore.setData(
                     analysisResult,
                     locationData || createFallbackLocation(0, 0, isoCode),
-                    savedFilename,
+                    savedFilename || uri,
                     finalTimestamp
                 );
 
@@ -362,6 +362,79 @@ export const useScanCameraGateway = () => {
         },
         [handleError, resetState, router]
     );
+
+    const processSmart = useCallback(
+        async (
+            uri: string,
+            customTimestamp?: string | null,
+            customLocation?: any
+        ) => {
+            try {
+                isCancelled.current = false;
+                setIsAnalyzing(true);
+                setCapturedImage(uri);
+                setActiveStep(0);
+
+                let locationData = customLocation || cachedLocation.current;
+                if (!locationData) {
+                    try {
+                        locationData = await getLocationData();
+                        if (locationData) cachedLocation.current = locationData;
+                    } catch (e) {
+                        console.warn('Location fetch failed', e);
+                    }
+                }
+
+                if (isCancelled.current) return;
+
+                if (!isConnectedRef.current) {
+                    Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
+                    resetState();
+                    return;
+                }
+
+                const isoCode = locationData?.isoCountryCode || 'US';
+                const fileInfo = await FileSystem.getInfoAsync(uri);
+                if (!fileInfo.exists || (fileInfo as any).size === 0) {
+                    throw new Error('File validation failed: Image is empty or missing.');
+                }
+
+                setActiveStep(1);
+                setUploadProgress(0);
+
+                const analysisResult = await analyzeSmart(uri, isoCode, (progress) => {
+                    if (!isCancelled.current) {
+                        setUploadProgress(progress);
+                        if (progress >= 1) setActiveStep(2);
+                    }
+                });
+
+                if (isCancelled.current) return;
+
+                setActiveStep(3);
+
+                const locationContext =
+                    locationData || createFallbackLocation(0, 0, isoCode, 'Location Unavailable');
+                const finalTimestamp = normalizeTimestamp(customTimestamp);
+                const savedFilename = await saveImagePermanently(uri);
+
+                dataStore.setData(analysisResult, locationContext, savedFilename || uri, finalTimestamp);
+
+                router.replace({
+                    pathname: '/result',
+                    params: { fromStore: 'true', isNew: 'true' },
+                });
+
+                resetState();
+            } catch (error: any) {
+                if (isCancelled.current) return;
+                handleError(error);
+            }
+        },
+        [handleError, resetState, router]
+    );
+
+
 
     const handleCapture = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -437,9 +510,11 @@ export const useScanCameraGateway = () => {
                 }
 
                 if (mode === 'LABEL') {
-                    processLabel(uri, finalDate);
+                    // Legacy manual mode override (optional, but SmartRouter handles label too)
+                    // Let's decide to force Smart Router for Gallery to be "Smart"
+                    processSmart(uri, finalDate, exifLocation);
                 } else {
-                    processImageRef.current(uri, 'library', finalDate, exifLocation);
+                     processSmart(uri, finalDate, exifLocation);
                 }
             }
         } catch (e) {

@@ -1,6 +1,7 @@
 import { UserProfile, DEFAULT_USER_PROFILE, DEFAULT_AVATARS } from '../models/User';
 import { SafeStorage } from './storage'; 
 import * as FileSystem from 'expo-file-system/legacy';
+import { resolveImageUri } from './imageStorage';
 
 const USER_STORAGE_KEY = '@foodlens_user_profile';
 
@@ -13,6 +14,12 @@ export const UserService = {
     const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
 
     if (profile) {
+      // Resolve image URI if it's a filename
+      const resolvedImage = resolveImageUri(profile.profileImage);
+      if (resolvedImage) {
+          profile.profileImage = resolvedImage;
+      }
+
       console.log(`[UserService] Loaded profile:`, { 
         uid: profile.uid, 
         hasImage: !!profile.profileImage, 

@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import uvicorn
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 from modules.analyst import FoodAnalyst
+from modules.smart_router import SmartRouter # Import SmartRouter
 from modules.barcode.service import BarcodeService # Import Barcode Service
 from PIL import Image
 import io
@@ -53,8 +54,11 @@ try:
     print("[Startup] Initializing FoodAnalyst...")
     analyst = FoodAnalyst()
     print("[Startup] ✓ FoodAnalyst initialized.")
+    print("[Startup] ✓ FoodAnalyst initialized.")
     barcode_service = BarcodeService() # Initialize Service
     print("[Startup] ✓ BarcodeService initialized.")
+    smart_router = SmartRouter(analyst) # Initialize SmartRouter with the analyst instance
+    print("[Startup] ✓ SmartRouter initialized.")
 except Exception as e:
     print(f"[Startup] ✗ FAILED to initialize services: {e}")
     traceback.print_exc()
@@ -117,6 +121,33 @@ async def analyze_label(
         
     except Exception as e:
         print(f"[Server] Label Analysis Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze/smart")
+async def analyze_smart(
+    file: UploadFile = File(...),
+    allergy_info: str = Form("None"),
+    iso_country_code: str = Form("US")
+):
+    """
+    Smart routing endpoint for Gallery uploads.
+    Classifies image (Food vs Label) and routes to specific analysis.
+    """
+    try:
+        print(f"[Server] Smart analysis request received.")
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
+        
+        # Delegate to SmartRouter
+        result = await smart_router.route_analysis(
+            image=image,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code
+        )
+        return result
+        
+    except Exception as e:
+        print(f"[Server] Smart Analysis Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/lookup/barcode")
