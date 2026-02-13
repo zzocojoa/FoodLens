@@ -18,7 +18,7 @@ Date: 2026-02-13
 
 ## 작업 상태 (Updated: 2026-02-13)
 - P0: 완료 (`Batch 1~9 완료`)
-- P1: 미완료 (`Batch P1-1~P1-6 미완료`)
+- P1: 일부 완료 (`Batch P1-1 완료`, `Batch P1-2~P1-6 미완료`)
 - P2: 완료 (`Batch P2-1~P2-5 완료`)
 - 전체: 미완료
 
@@ -233,7 +233,7 @@ Date: 2026-02-13
 
 ### P1 Planned Batches (Batch P1-1~P1-6)
 
-### Batch P1-1 (Map / History Composition) - 미완료
+### Batch P1-1 (Map / History Composition) - 완료
 #### Batch P1-1 START
 [FILE] FoodLens/components/HistoryMap.tsx
 [FILE] FoodLens/components/HistoryList.tsx
