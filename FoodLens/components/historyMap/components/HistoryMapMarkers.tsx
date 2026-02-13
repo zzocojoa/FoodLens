@@ -22,6 +22,35 @@ export default function HistoryMapMarkers({
     onMarkerPress,
     onClusterPress,
 }: HistoryMapMarkersProps) {
+    const renderFoodMarker = (marker: MapMarker) => (
+        <Marker
+            key={`pin-${marker.id}`}
+            coordinate={marker.coordinate}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
+            onPress={() => onMarkerPress(marker.countryId)}
+        >
+            <View style={styles.mapPinContainer}>
+                <View pointerEvents="none">
+                    <View style={styles.mapLabel}>
+                        <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
+                            {marker.name}
+                        </Text>
+                    </View>
+                    <View style={styles.mapPinCircle}>
+                        <FoodThumbnail
+                            uri={marker.imageUri}
+                            emoji={marker.emoji}
+                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
+                            imageStyle={{ borderRadius: 14 }}
+                            fallbackFontSize={16}
+                        />
+                    </View>
+                </View>
+            </View>
+        </Marker>
+    );
+
     if (ENABLE_MAP_CLUSTERING) {
         return (
             <>
@@ -53,34 +82,7 @@ export default function HistoryMapMarkers({
                     const marker = markers[item.properties.markerIndex];
                     if (!marker) return null;
 
-                    return (
-                        <Marker
-                            key={`pin-${marker.id}`}
-                            coordinate={marker.coordinate}
-                            anchor={{ x: 0.5, y: 1 }}
-                            tracksViewChanges={false}
-                            onPress={() => onMarkerPress(marker.countryId)}
-                        >
-                            <View style={styles.mapPinContainer}>
-                                <View pointerEvents="none">
-                                    <View style={styles.mapLabel}>
-                                        <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
-                                            {marker.name}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.mapPinCircle}>
-                                        <FoodThumbnail
-                                            uri={marker.imageUri}
-                                            emoji={marker.emoji}
-                                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
-                                            imageStyle={{ borderRadius: 14 }}
-                                            fallbackFontSize={16}
-                                        />
-                                    </View>
-                                </View>
-                            </View>
-                        </Marker>
-                    );
+                    return renderFoodMarker(marker);
                 })}
             </>
         );
@@ -88,34 +90,7 @@ export default function HistoryMapMarkers({
 
     return (
         <>
-            {visibleMarkers.map((marker) => (
-                <Marker
-                    key={`pin-${marker.id}`}
-                    coordinate={marker.coordinate}
-                    anchor={{ x: 0.5, y: 1 }}
-                    tracksViewChanges={false}
-                    onPress={() => onMarkerPress(marker.countryId)}
-                >
-                    <View style={styles.mapPinContainer}>
-                        <View pointerEvents="none">
-                            <View style={styles.mapLabel}>
-                                <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
-                                    {marker.name}
-                                </Text>
-                            </View>
-                            <View style={styles.mapPinCircle}>
-                                <FoodThumbnail
-                                    uri={marker.imageUri}
-                                    emoji={marker.emoji}
-                                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
-                                    imageStyle={{ borderRadius: 14 }}
-                                    fallbackFontSize={16}
-                                />
-                            </View>
-                        </View>
-                    </View>
-                </Marker>
-            ))}
+            {visibleMarkers.map((marker) => renderFoodMarker(marker))}
         </>
     );
 }
