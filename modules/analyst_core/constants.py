@@ -1,7 +1,8 @@
 """Constants used by analyst logic."""
+from typing import Final
 
 # ISO 3166-1 alpha-2 country code -> Primary language mapping
-ISO_COUNTRY_TO_LANGUAGE = {
+ISO_COUNTRY_TO_LANGUAGE: Final[dict[str, str]] = {
     # East Asia
     "KR": "Korean",
     "JP": "Japanese",
@@ -47,7 +48,7 @@ ISO_COUNTRY_TO_LANGUAGE = {
 }
 
 # Standard allergen categories (FDA/EU major allergens + app compatibility aliases)
-STANDARD_ALLERGENS = {
+STANDARD_ALLERGENS: Final[dict[str, str]] = {
     # Peanuts
     "peanut": "Peanut",
     "peanuts": "Peanut",
@@ -105,4 +106,3 @@ STANDARD_ALLERGENS = {
     "sulfites": "Sulfite",
     "아황산염": "Sulfite",
 }
-
