@@ -1,21 +1,11 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import Animated, { SharedValue } from 'react-native-reanimated';
+import { View, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SecureImage } from '../SecureImage';
 import { PinOverlay } from './PinOverlay';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const { height } = Dimensions.get('window');
-const HEADER_HEIGHT = height * 0.6;
-
-interface ResultHeaderProps {
-  imageSource: any;
-  imageAnimatedStyle: any;
-  headerOverlayStyle: any;
-  pins: any[];
-  scrollY: SharedValue<number>;
-  layoutStyle?: any;
-}
+import { resultHeaderStyles as styles } from './styles/resultHeader.styles';
+import { ResultHeaderProps } from './types';
 
 export function ResultHeader({
   imageSource,
@@ -53,30 +43,3 @@ export function ResultHeader({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  headerContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: HEADER_HEIGHT,
-    zIndex: 0,
-  },
-  imageWrapper: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  bottomGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '25%', 
-  },
-});

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { getSpatialPinColor } from './utils/spatialPinTheme';
 
 interface SpatialPinProps {
   x: number; // Percentage 0-100
@@ -10,13 +11,15 @@ interface SpatialPinProps {
 }
 
 export const SpatialPin = React.memo(({ x, y, label, isAllergen }: SpatialPinProps) => {
+  const pinColor = getSpatialPinColor(isAllergen);
+
   return (
     <View style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }}>
       <View style={styles.pinContainer}>
           {/* Pulse Effect */}
-          <View style={[styles.pinPulse, { backgroundColor: isAllergen ? '#F43F5E' : '#3B82F6' }]} />
+          <View style={[styles.pinPulse, { backgroundColor: pinColor }]} />
           {/* Core Dot */}
-          <View style={[styles.pinDot, { backgroundColor: isAllergen ? '#F43F5E' : '#3B82F6' }]} />
+          <View style={[styles.pinDot, { backgroundColor: pinColor }]} />
           {/* Label */}
           <View style={styles.pinLabel}>
               <BlurView intensity={30} tint="dark" style={styles.pinLabelBlur}>

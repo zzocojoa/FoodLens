@@ -9,10 +9,11 @@ import IngredientsListWithExpand from './resultContent/components/IngredientsLis
 import ResultMetaHeader from './resultContent/components/ResultMetaHeader';
 import { resultContentStyles as styles } from './resultContent/styles';
 import { ResultContentProps } from './resultContent/types';
+import { getIngredientCountLabel, hasAllergenIngredients } from './resultContent/utils/contentMeta';
 import { formatTimestamp, getLocationText } from './resultContent/utils/resultContentFormatters';
 
 export function ResultContent({ result, locationData, timestamp, onOpenBreakdown, onDatePress }: ResultContentProps) {
-    const hasAllergens = result.ingredients.some((i) => i.isAllergen);
+    const hasAllergens = hasAllergenIngredients(result.ingredients);
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const locationText = getLocationText(locationData);
@@ -41,7 +42,9 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
                     <View style={styles.sectionHeaderRow}>
                         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Ingredients</Text>
                         {result.ingredients.length > 0 && (
-                            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{result.ingredients.length}개</Text>
+                            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                                {getIngredientCountLabel(result.ingredients)}
+                            </Text>
                         )}
                     </View>
 

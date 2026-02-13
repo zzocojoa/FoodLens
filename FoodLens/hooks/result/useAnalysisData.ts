@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { dataStore } from '../../services/dataStore';
-import { resolveImageUri } from '../../services/imageStorage';
+import {
+  getBarcodeImageSource,
+  getResolvedImageSource,
+  isBarcodeResult,
+  parseSearchParamObject,
+  toDisplayImageUri,
+} from './analysisDataUtils';
 
 export function useAnalysisData() {
-  const { data, location, imageUri, fromStore, isBarcode } = useLocalSearchParams();
+  const { data, location, fromStore, isBarcode } = useLocalSearchParams();
   
   // State for restoring from backup (Crash Recovery)
   const [isRestoring, setIsRestoring] = useState(
@@ -26,6 +31,22 @@ export function useAnalysisData() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    const applyImageSource = (
+      resultData: any,
+      storedImageRef: string | null | undefined,
+      barcodeParam: string | string[] | undefined
+    ) => {
+      if (isBarcodeResult(resultData, barcodeParam)) {
+        const barcode = getBarcodeImageSource();
+        setImageSource(barcode.imageSource);
+        setImageDimensions(barcode.imageDimensions);
+        return;
+      }
+      const resolved = getResolvedImageSource(storedImageRef);
+      setImageSource(resolved.imageSource);
+      setImageDimensions(resolved.imageDimensions);
+    };
+
     async function loadData() {
       if (isRestoring) {
           console.log("[useAnalysisData] Restoring from backup...");
@@ -39,17 +60,7 @@ export function useAnalysisData() {
             setResult(stored.result);
             setLocationData(stored.location);
             setStoredImageRef(stored.imageUri || undefined);
-            
-            // Priority: Barcode Background
-            if (stored.result?.isBarcode || isBarcode === 'true') {
-                const barcodeBg = require('@/assets/images/barcode_bg.png');
-                const assetSource = Image.resolveAssetSource(barcodeBg);
-                setImageSource(barcodeBg);
-                setImageDimensions({ width: assetSource.width, height: assetSource.height });
-            } else {
-                setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
-                setImageDimensions(null);
-            }
+            applyImageSource(stored.result, stored.imageUri, isBarcode);
           }
       } else {
         // Normal Load
@@ -58,42 +69,22 @@ export function useAnalysisData() {
             setResult(stored.result);
             setLocationData(stored.location);
             setStoredImageRef(stored.imageUri || undefined);
-            
-            // Priority: Barcode Background
-            if (stored.result?.isBarcode || isBarcode === 'true') {
-                const barcodeBg = require('@/assets/images/barcode_bg.png');
-                const assetSource = Image.resolveAssetSource(barcodeBg);
-                setImageSource(barcodeBg);
-                setImageDimensions({ width: assetSource.width, height: assetSource.height });
-            } else {
-                setImageSource(stored.imageUri ? { uri: resolveImageUri(stored.imageUri) } : null);
-                setImageDimensions(null);
-            }
+            applyImageSource(stored.result, stored.imageUri, isBarcode);
         } else {
-            const parsedResult = typeof data === 'string' ? JSON.parse(data) : null;
+            const parsedResult = parseSearchParamObject(data);
             setResult(parsedResult);
-            setLocationData(typeof location === 'string' ? JSON.parse(location) : null);
+            setLocationData(parseSearchParamObject(location));
             
             const storedData = dataStore.getData();
             setStoredImageRef(storedData.imageUri || undefined);
-
-            // Priority: Barcode Background (Override even if imageUri exists from API)
-            if (parsedResult?.isBarcode || isBarcode === 'true') {
-                 const barcodeBg = require('@/assets/images/barcode_bg.png');
-                 const assetSource = Image.resolveAssetSource(barcodeBg);
-                 setImageSource(barcodeBg);
-                 setImageDimensions({ width: assetSource.width, height: assetSource.height });
-            } else if (storedData.imageUri) {
-                setImageSource({ uri: resolveImageUri(storedData.imageUri) });
-                setImageDimensions(null);
-            }
+            applyImageSource(parsedResult, storedData.imageUri, isBarcode);
         }
       }
       setLoaded(true);
     }
     
     loadData();
-  }, [isRestoring, fromStore, data, location]);
+  }, [data, fromStore, isBarcode, isRestoring, location]);
 
   // Reactive timestamp state
   const [timestamp, setTimestamp] = useState<string | undefined>(
@@ -122,11 +113,8 @@ export function useAnalysisData() {
     imageSource,
     imageDimensions,
     rawImageUri: storedImageRef,    // Filename only — for AnalysisService persistence
-    displayImageUri: (typeof imageSource === 'number' && imageSource) 
-        ? Image.resolveAssetSource(imageSource).uri 
-        : imageSource?.uri, // Resolved absolute path — for Image display/sizing
+    displayImageUri: toDisplayImageUri(imageSource),
     timestamp,
     updateTimestamp
   };
 }
-

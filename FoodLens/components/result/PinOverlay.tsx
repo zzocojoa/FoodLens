@@ -1,12 +1,8 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, interpolate, Extrapolation, SharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { SpatialPin } from './SpatialPin';
-
-interface PinOverlayProps {
-  pins: any[];
-  scrollY: SharedValue<number>;
-}
+import { PinOverlayProps } from './types';
 
 export function PinOverlay({ pins, scrollY }: PinOverlayProps) {
   const pinOpacityStyle = useAnimatedStyle(() => {
@@ -18,10 +14,10 @@ export function PinOverlay({ pins, scrollY }: PinOverlayProps) {
     <Animated.View style={[StyleSheet.absoluteFill, pinOpacityStyle]}>
       {pins.map((pin, index) => (
           <SpatialPin
-            key={index}
+            key={`${pin.name || 'pin'}-${index}`}
             x={pin.displayX}
             y={pin.displayY}
-            label={pin.name}
+            label={pin.name || ''}
             isAllergen={pin.isAllergen}
           />
       ))}
