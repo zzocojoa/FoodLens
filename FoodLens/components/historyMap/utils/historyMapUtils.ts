@@ -5,13 +5,13 @@ import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM } from '../constants';
 import { ENABLE_MAP_DEBUG_LOGS, ENABLE_QA_MAP_METRICS } from '../constants';
 import { ClusterFeature, ClusterOrPoint, MapMarker, PointFeature } from '../types';
 
-export const debugLog = (...args: any[]) => {
+export const debugLog = (...args: unknown[]) => {
     if (ENABLE_MAP_DEBUG_LOGS) {
         console.log(...args);
     }
 };
 
-export const metricsLog = (...args: any[]) => {
+export const metricsLog = (...args: unknown[]) => {
     if (ENABLE_QA_MAP_METRICS && __DEV__) {
         console.log(...args);
     }

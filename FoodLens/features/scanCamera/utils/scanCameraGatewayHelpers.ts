@@ -1,13 +1,20 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { Href } from 'expo-router';
 
+import { AnalyzedData } from '../../../services/ai';
 import { saveImagePermanently } from '../../../services/imageStorage';
 import { dataStore } from '../../../services/dataStore';
 import { normalizeTimestamp } from '../../../services/utils';
+import { LocationData } from '../../../services/utils/types';
 import { createFallbackLocation } from './scanCameraMappers';
 
 type LocationLike = {
     isoCountryCode?: string;
 } | null;
+
+type RouterLike = {
+    replace: (route: Href) => void;
+};
 
 type BeginParams = {
     uri: string;
@@ -24,7 +31,8 @@ export const beginAnalysis = ({ uri, setIsAnalyzing, setCapturedImage, setActive
 
 export const assertImageFileReady = async (uri: string) => {
     const fileInfo = await FileSystem.getInfoAsync(uri);
-    if (!fileInfo.exists || (fileInfo as any).size === 0) {
+    const fileSize = 'size' in fileInfo ? fileInfo.size : undefined;
+    if (!fileInfo.exists || fileSize === 0) {
         throw new Error('File validation failed: Image is empty or missing.');
     }
 };
@@ -58,13 +66,13 @@ export const persistAndNavigateAnalysisResult = async ({
     fallbackAddress,
     router,
 }: {
-    analysisResult: any;
-    locationData: any;
+    analysisResult: AnalyzedData;
+    locationData: LocationData | null;
     isoCode: string;
     timestamp?: string | null;
     imageUri: string;
     fallbackAddress?: string;
-    router: { replace: (route: any) => void };
+    router: RouterLike;
 }) => {
     const locationContext =
         locationData || createFallbackLocation(0, 0, isoCode, fallbackAddress ?? 'Location Unavailable');
@@ -78,4 +86,3 @@ export const persistAndNavigateAnalysisResult = async ({
         params: { fromStore: 'true', isNew: 'true' },
     });
 };
-

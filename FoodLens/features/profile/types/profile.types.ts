@@ -1,13 +1,14 @@
 import { Colors } from '@/constants/theme';
 import { ScrollView } from 'react-native';
 import { MutableRefObject, RefObject } from 'react';
+import { ImageSourcePropType } from 'react-native';
 
 export type ProfileTheme = typeof Colors.light;
 
 export type AllergenOption = {
     id: string;
     label: string;
-    image: any;
+    image: ImageSourcePropType;
 };
 
 export type ProfileFormState = {

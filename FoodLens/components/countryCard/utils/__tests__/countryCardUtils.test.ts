@@ -1,4 +1,5 @@
 import { getFilteredItemsCount, getStatusMeta } from '../countryCardUtils';
+import { CountryData } from '@/models/History';
 
 describe('countryCardUtils', () => {
     const country = {
@@ -19,7 +20,7 @@ describe('countryCardUtils', () => {
                 items: [{ id: '3', name: 'c', type: 'ask', date: '', emoji: '🐟', originalRecord: {} }],
             },
         ],
-    } as any;
+    } as unknown as CountryData;
 
     it('counts all allowed items for all filter', () => {
         const count = getFilteredItemsCount(country, 'all', () => true, () => true);

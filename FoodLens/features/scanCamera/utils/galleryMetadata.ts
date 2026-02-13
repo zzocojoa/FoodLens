@@ -1,13 +1,15 @@
 import * as MediaLibrary from 'expo-media-library';
+import { ImagePickerAsset } from 'expo-image-picker';
 
 import { extractLocationFromExif } from '../../../services/utils';
+import { LocationData } from '../../../services/utils/types';
 
 type GalleryMetadata = {
     timestamp: string | null;
-    exifLocation: any;
+    exifLocation: LocationData | null;
 };
 
-export const resolveGalleryMetadata = async (asset: any): Promise<GalleryMetadata> => {
+export const resolveGalleryMetadata = async (asset: ImagePickerAsset): Promise<GalleryMetadata> => {
     let finalDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
 
     let exifLocation = null;
@@ -33,4 +35,3 @@ export const resolveGalleryMetadata = async (asset: any): Promise<GalleryMetadat
 
     return { timestamp: finalDate, exifLocation };
 };
-

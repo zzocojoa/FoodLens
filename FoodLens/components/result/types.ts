@@ -1,4 +1,5 @@
 import { SharedValue } from 'react-native-reanimated';
+import { ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
 
 export interface ResultPinItem {
   name?: string;
@@ -13,10 +14,10 @@ export interface PinOverlayProps {
 }
 
 export interface ResultHeaderProps {
-  imageSource: any;
-  imageAnimatedStyle: any;
-  headerOverlayStyle: any;
+  imageSource: ImageSourcePropType | null;
+  imageAnimatedStyle: StyleProp<ViewStyle>;
+  headerOverlayStyle: StyleProp<ViewStyle>;
   pins: ResultPinItem[];
   scrollY: SharedValue<number>;
-  layoutStyle?: any;
+  layoutStyle?: StyleProp<ViewStyle>;
 }

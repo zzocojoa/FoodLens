@@ -9,7 +9,8 @@ import { createFallbackLocation } from './cameraMappers';
 
 export const assertImageFileReady = async (uri: string): Promise<void> => {
     const fileInfo = await FileSystem.getInfoAsync(uri);
-    if (!fileInfo.exists || (fileInfo as any).size === 0) {
+    const fileSize = 'size' in fileInfo ? fileInfo.size : undefined;
+    if (!fileInfo.exists || fileSize === 0) {
         throw new Error('File validation failed: Image is empty or missing.');
     }
 };
@@ -92,4 +93,3 @@ export const resolveInitialLocationContext = async ({
 
     return null;
 };
-

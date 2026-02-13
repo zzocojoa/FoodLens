@@ -1,11 +1,12 @@
+import { DimensionValue } from 'react-native';
 import { generatePinLayout } from '../../utils/pinLayoutAlgorithm';
 
 type Size = { width: number; height: number };
 type IngredientLike = { bbox?: number[]; cx?: number; cy?: number; [key: string]: any };
 
 export type ImageLayoutStyle = {
-  width: string | number;
-  height: string | number;
+  width: DimensionValue;
+  height: DimensionValue;
   marginTop: number;
   marginLeft: number;
 };
