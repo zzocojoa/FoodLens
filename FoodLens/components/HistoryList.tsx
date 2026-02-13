@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
 import { List } from 'lucide-react-native';
 import CountryCard from './CountryCard';
 import { Colors } from '../constants/theme';
@@ -7,6 +7,13 @@ import { useColorScheme } from '../hooks/use-color-scheme';
 import HistoryFilterChips from './historyList/components/HistoryFilterChips';
 import HistoryFloatingDeleteBar from './historyList/components/HistoryFloatingDeleteBar';
 import { HistoryListProps } from './historyList/types';
+
+const BASE_BOTTOM_PADDING = 40;
+const EDIT_MODE_BOTTOM_PADDING = 140;
+const HORIZONTAL_PADDING = 24;
+const COUNTRY_GAP = 16;
+const EMPTY_STATE_TOP_MARGIN = 40;
+const EMPTY_STATE_OPACITY = 0.5;
 
 export default function HistoryList({
     data,
@@ -28,31 +35,37 @@ export default function HistoryList({
     const scrollViewRef = useRef<ScrollView>(null);
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const hasSelection = isEditMode && selectedItems.size > 0;
+
+    const contentContainerStyle = useMemo(
+        () => ({
+            paddingHorizontal: HORIZONTAL_PADDING,
+            paddingBottom: hasSelection ? EDIT_MODE_BOTTOM_PADDING : BASE_BOTTOM_PADDING,
+        }),
+        [hasSelection]
+    );
 
     return (
-        <View style={{flex: 1}}>
+        <View style={styles.container}>
             <ScrollView 
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 ref={scrollViewRef}
-                contentContainerStyle={{
-                    paddingHorizontal: 24, 
-                    paddingBottom: isEditMode && selectedItems.size > 0 ? 140 : 40 
-                }}
+                contentContainerStyle={contentContainerStyle}
                 showsVerticalScrollIndicator={false}
             >
                 <HistoryFilterChips filter={filter} setFilter={setFilter} />
 
                 {/* Countries List */}
-                <View style={{gap: 16}}>
+                <View style={styles.countryList}>
                      {loading ? (
-                        <View style={{alignItems: 'center', marginTop: 40}}>
+                        <View style={styles.loadingContainer}>
                             <ActivityIndicator color={theme.textPrimary} />
-                            <Text style={{marginTop: 16, color: theme.textSecondary}}>Loading Passport...</Text>
+                            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading Passport...</Text>
                         </View>
                      ) : data.length === 0 ? (
-                        <View style={{alignItems: 'center', marginTop: 40, opacity: 0.5}}>
+                        <View style={styles.emptyContainer}>
                             <List size={48} color={theme.textSecondary} />
-                            <Text style={{marginTop: 16, fontSize: 16, fontWeight: '600', color: theme.textSecondary}}>No records found</Text>
+                            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No records found</Text>
                         </View>
                     ) : data.map((country, countryIdx) => {
                         const isExpanded = expandedCountries.has(`${country.country}-${countryIdx}`);
@@ -85,3 +98,12 @@ export default function HistoryList({
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    container: { flex: 1 },
+    countryList: { gap: COUNTRY_GAP },
+    loadingContainer: { alignItems: 'center', marginTop: EMPTY_STATE_TOP_MARGIN },
+    loadingText: { marginTop: 16 },
+    emptyContainer: { alignItems: 'center', marginTop: EMPTY_STATE_TOP_MARGIN, opacity: EMPTY_STATE_OPACITY },
+    emptyText: { marginTop: 16, fontSize: 16, fontWeight: '600' },
+});

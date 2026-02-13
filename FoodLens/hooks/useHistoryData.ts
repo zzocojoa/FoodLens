@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { Region } from 'react-native-maps';
 import { AnalysisService } from '../services/analysisService';
 import { CountryData } from '../models/History';
 import {
@@ -7,10 +8,14 @@ import {
     removeItemsFromArchive,
 } from './historyDataUtils';
 
+const LOAD_ERROR_LOG = '[HistoryData] Failed to load history';
+const DELETE_ERROR_LOG = '[HistoryData] Failed to delete item';
+const BULK_DELETE_ERROR_LOG = '[HistoryData] Failed to delete items';
+
 export const useHistoryData = (userId: string) => {
     const [archiveData, setArchiveData] = useState<CountryData[]>([]);
     const [loading, setLoading] = useState(true);
-    const [initialRegion, setInitialRegion] = useState<any>(null);
+    const [initialRegion, setInitialRegion] = useState<Region | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
 
@@ -35,8 +40,8 @@ export const useHistoryData = (userId: string) => {
                  setExpandedCountries(new Set([`${aggregatedData[0].country}-0`]));
             }
             
-        } catch (e) {
-            console.error("Failed to load history", e);
+        } catch (error) {
+            console.error(LOAD_ERROR_LOG, error);
         } finally {
             setLoading(false);
         }
@@ -54,8 +59,8 @@ export const useHistoryData = (userId: string) => {
         
         try {
             await AnalysisService.deleteAnalysis(userId, itemId);
-        } catch (e) {
-            console.error("Failed to delete item", e);
+        } catch (error) {
+            console.error(DELETE_ERROR_LOG, error);
             loadHistory(true); // Revert
         }
     }, [loadHistory, removeItemsLocally, userId]);
@@ -69,8 +74,8 @@ export const useHistoryData = (userId: string) => {
         try {
             // Use batch deletion to prevent race conditions in concurrent storage writes
             await AnalysisService.deleteAnalyses(userId, Array.from(itemIds));
-        } catch(e) { 
-            console.error("Failed to delete items", e);
+        } catch (error) {
+            console.error(BULK_DELETE_ERROR_LOG, error);
             loadHistory(true);
         }
     }, [loadHistory, removeItemsLocally, userId]);

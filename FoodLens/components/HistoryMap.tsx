@@ -9,6 +9,9 @@ import { historyMapStyles as styles } from './historyMap/styles';
 import { HistoryMapProps } from './historyMap/types';
 import { resolveInitialRegion } from './historyMap/utils/historyMapView';
 
+const MAP_MAX_ZOOM = 20;
+const MAP_MIN_ZOOM = 1;
+
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
     const resolvedInitialRegion = resolveInitialRegion(initialRegion);
 
@@ -49,8 +52,8 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 initialRegion={resolvedInitialRegion}
                 onMapReady={handleMapReady}
                 onRegionChangeComplete={handleRegionChangeComplete}
-                maxZoomLevel={20}
-                minZoomLevel={1}
+                maxZoomLevel={MAP_MAX_ZOOM}
+                minZoomLevel={MAP_MIN_ZOOM}
             >
                 <HistoryMapMarkers
                     markers={markers}

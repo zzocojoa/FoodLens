@@ -3,6 +3,32 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { historyMapStyles as styles } from '../styles';
 
+const GLOBE_COLOR = '#94A3B8';
+const EMPTY_HINT_COLOR = '#475569';
+
+const localStyles = StyleSheet.create({
+    emptyStateContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 5,
+        pointerEvents: 'none',
+    },
+    emptyStateCard: {
+        padding: 20,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.85)',
+        alignItems: 'center',
+    },
+    emptyStateIcon: {
+        fontSize: 32,
+    },
+    emptyStateText: {
+        marginTop: 8,
+        color: EMPTY_HINT_COLOR,
+        fontWeight: '600',
+    },
+});
+
 type HistoryMapStatusLayersProps = {
     isMapError: boolean;
     isMapReady: boolean;
@@ -33,7 +59,7 @@ export default function HistoryMapStatusLayers({
             {isMapError && (
                 <View style={[StyleSheet.absoluteFill, styles.errorOverlay]}>
                     <View style={styles.errorContent}>
-                        <Globe size={48} color="#94A3B8" />
+                        <Globe size={48} color={GLOBE_COLOR} />
                         <Text style={styles.errorTitle}>{errorTitle}</Text>
                         <Text style={styles.errorDescription}>{errorDescription}</Text>
                         {isPermissionError ? (
@@ -60,19 +86,12 @@ export default function HistoryMapStatusLayers({
                 <View
                     style={[
                         StyleSheet.absoluteFill,
-                        { alignItems: 'center', justifyContent: 'center', zIndex: 5, pointerEvents: 'none' },
+                        localStyles.emptyStateContainer,
                     ]}
                 >
-                    <View
-                        style={{
-                            padding: 20,
-                            borderRadius: 20,
-                            backgroundColor: 'rgba(255,255,255,0.85)',
-                            alignItems: 'center',
-                        }}
-                    >
-                        <Text style={{ fontSize: 32 }}>🌏</Text>
-                        <Text style={{ marginTop: 8, color: '#475569', fontWeight: '600' }}>
+                    <View style={localStyles.emptyStateCard}>
+                        <Text style={localStyles.emptyStateIcon}>🌏</Text>
+                        <Text style={localStyles.emptyStateText}>
                             {filterText || 'No trips yet'}
                         </Text>
                     </View>

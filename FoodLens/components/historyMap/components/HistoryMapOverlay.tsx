@@ -6,6 +6,8 @@ import { TOTAL_COUNTRIES } from '../constants';
 import { historyMapStyles as styles } from '../styles';
 import { getVisitedPercentage } from '../utils/historyMapUtils';
 
+const INSIGHT_ICON_COLOR = '#2563EB';
+
 type HistoryMapOverlayProps = {
     isMapReady: boolean;
     countryCount: number;
@@ -38,7 +40,7 @@ export default function HistoryMapOverlay({
                 <View style={[styles.insightCard, styles.insightCardBg]}>
                     <View style={styles.insightHeader}>
                         <View style={styles.insightIconBox}>
-                            <Globe size={16} color="#2563EB" />
+                            <Globe size={16} color={INSIGHT_ICON_COLOR} />
                         </View>
                         <Text style={styles.insightTitle}>Global Insights</Text>
                     </View>

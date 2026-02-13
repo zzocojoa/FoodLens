@@ -28,6 +28,11 @@ import {
     toMarkerFeatures,
 } from '../utils/historyMapUtils';
 
+const MAP_READY_TIMEOUT_MS = 10000;
+const TOAST_HIDE_MS = 2000;
+const QA_METRICS_INTERVAL_MS = 5000;
+const FIT_EDGE_PADDING = { top: 90, right: 60, bottom: 220, left: 60 };
+
 export const useHistoryMapState = ({
     data,
     initialRegion,
@@ -108,7 +113,7 @@ export const useHistoryMapState = ({
         const coords = markers.map((m) => m.coordinate);
 
         mapRef.current.fitToCoordinates(coords, {
-            edgePadding: { top: 90, right: 60, bottom: 220, left: 60 },
+            edgePadding: FIT_EDGE_PADDING,
             animated: true,
         });
 
@@ -133,7 +138,7 @@ export const useHistoryMapState = ({
                         setIsMapError(true);
                         setErrorType('timeout');
                     }
-                }, 10000);
+                }, MAP_READY_TIMEOUT_MS);
             }
         };
 
@@ -146,7 +151,7 @@ export const useHistoryMapState = ({
 
     useEffect(() => {
         if (toastMessage) {
-            const timer = setTimeout(() => setToastMessage(null), 2000);
+            const timer = setTimeout(() => setToastMessage(null), TOAST_HIDE_MS);
             return () => clearTimeout(timer);
         }
         return undefined;
@@ -195,7 +200,7 @@ export const useHistoryMapState = ({
 
             metricsWindowStartRef.current = now;
             metricsRegionEventCountRef.current = 0;
-        }, 5000);
+        }, QA_METRICS_INTERVAL_MS);
 
         return () => clearInterval(intervalId);
     }, [markers.length, renderedItemCount]);

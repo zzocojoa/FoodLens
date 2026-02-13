@@ -7,6 +7,12 @@ import { ClusterFeature, ClusterOrPoint, MapMarker } from '../types';
 import { historyMapStyles as styles } from '../styles';
 import { isClusterFeature } from '../utils/historyMapUtils';
 
+const THUMB_SIZE = 28;
+const THUMB_RADIUS = 14;
+const THUMB_FALLBACK_FONT_SIZE = 16;
+const FOOD_MARKER_ANCHOR = { x: 0.5, y: 1 };
+const CLUSTER_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+
 type HistoryMapMarkersProps = {
     markers: MapMarker[];
     visibleMarkers: MapMarker[];
@@ -26,7 +32,7 @@ export default function HistoryMapMarkers({
         <Marker
             key={`pin-${marker.id}`}
             coordinate={marker.coordinate}
-            anchor={{ x: 0.5, y: 1 }}
+            anchor={FOOD_MARKER_ANCHOR}
             tracksViewChanges={false}
             onPress={() => onMarkerPress(marker.countryId)}
         >
@@ -41,9 +47,14 @@ export default function HistoryMapMarkers({
                         <FoodThumbnail
                             uri={marker.imageUri}
                             emoji={marker.emoji}
-                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'transparent' }}
-                            imageStyle={{ borderRadius: 14 }}
-                            fallbackFontSize={16}
+                            style={{
+                                width: THUMB_SIZE,
+                                height: THUMB_SIZE,
+                                borderRadius: THUMB_RADIUS,
+                                backgroundColor: 'transparent',
+                            }}
+                            imageStyle={{ borderRadius: THUMB_RADIUS }}
+                            fallbackFontSize={THUMB_FALLBACK_FONT_SIZE}
                         />
                     </View>
                 </View>
@@ -63,7 +74,7 @@ export default function HistoryMapMarkers({
                                     latitude: item.geometry.coordinates[1],
                                     longitude: item.geometry.coordinates[0],
                                 }}
-                                anchor={{ x: 0.5, y: 0.5 }}
+                                anchor={CLUSTER_MARKER_ANCHOR}
                                 tracksViewChanges={false}
                                 onPress={() => onClusterPress(item)}
                             >
