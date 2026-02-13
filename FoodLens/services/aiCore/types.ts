@@ -33,7 +33,7 @@ export interface AnalyzedData {
     nutrition?: NutritionData;
     translationCard?: TranslationCard;
     raw_result?: string;
-    raw_data?: any;
+    raw_data?: Record<string, unknown>;
     used_model?: string;
     isBarcode?: boolean;
 }
