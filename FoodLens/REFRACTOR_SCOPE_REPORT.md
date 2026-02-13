@@ -17,7 +17,7 @@ Date: 2026-02-13
 - 관계: `Batch 1~5`는 모두 `P0 Targets`의 부분집합
 
 ## 작업 상태 (Updated: 2026-02-13)
-- P0: 일부 완료 (`Batch 1~7 완료`, `Batch 8~9 미완료`)
+- P0: 일부 완료 (`Batch 1~8 완료`, `Batch 9 미완료`)
 - P1: 미완료 (`Batch P1-1~P1-6 미완료`)
 - P2: 완료 (`Batch P2-1~P2-5 완료`)
 - 전체: 미완료
@@ -218,7 +218,7 @@ Date: 2026-02-13
 [FILE] modules/analyst_core/postprocess.py
 #### Batch 7 END
 
-### Batch 8 (Analyst Core Contracts / Prompt) - 미완료
+### Batch 8 (Analyst Core Contracts / Prompt) - 완료
 #### Batch 8 START
 [FILE] modules/analyst_core/prompts.py
 [FILE] modules/analyst_core/schemas.py
