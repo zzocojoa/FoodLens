@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated, Easing, Image } from 'react-native';
+import { FLOAT_DURATIONS, FLOATING_ITEMS } from './floatingEmojis/constants';
+import { createFloatingLoop, createOpacityTiming } from './floatingEmojis/utils';
 
 export interface FloatingEmojisHandle {
     trigger: () => void;
@@ -18,15 +20,6 @@ export const FloatingEmojis = React.forwardRef<FloatingEmojisHandle, object>((_p
     // State to track if animation/cooldown is active
     const isAnimating = useRef(false);
 
-    const createTiming = (toValue: number, duration: number, easing: (value: number) => number) =>
-        Animated.timing(containerOpacity, {
-            toValue,
-            duration,
-            easing,
-            useNativeDriver: true,
-            isInteraction: false
-        });
-
     // Expose trigger method to parent
     React.useImperativeHandle(ref, () => ({
         trigger: () => {
@@ -37,11 +30,11 @@ export const FloatingEmojis = React.forwardRef<FloatingEmojisHandle, object>((_p
             // Start the sequence: Show -> Wait 3s -> Hide -> Wait 5s (Cooldown)
             Animated.sequence([
                 // 1. Appear
-                createTiming(1, 600, Easing.out(Easing.ease)),
+                createOpacityTiming(containerOpacity, 1, 600, Easing.out(Easing.ease)),
                 // 2. Stay visible for 3s
-                createTiming(1, 3000, Easing.linear),
+                createOpacityTiming(containerOpacity, 1, 3000, Easing.linear),
                 // 3. Disappear
-                createTiming(0, 600, Easing.in(Easing.ease)),
+                createOpacityTiming(containerOpacity, 0, 600, Easing.in(Easing.ease)),
                 // 4. Cooldown 5s (Stay hidden)
                 Animated.delay(5000) 
             ]).start(({ finished }) => {
@@ -53,30 +46,8 @@ export const FloatingEmojis = React.forwardRef<FloatingEmojisHandle, object>((_p
     }));
 
     useEffect(() => {
-        // Continuous gentle floating motion (always running in background for readiness)
-        const createFloat = (anim: Animated.Value, duration: number) => {
-            return Animated.loop(
-                Animated.sequence([
-                    Animated.timing(anim, {
-                        toValue: 1,
-                        duration: duration,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                        isInteraction: false
-                    }),
-                    Animated.timing(anim, {
-                        toValue: 0,
-                        duration: duration,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                        isInteraction: false
-                    })
-                ])
-            );
-        };
-
-        [2000, 2400, 2200].forEach((duration, idx) => {
-            createFloat(floatValues[idx], duration).start();
+        FLOAT_DURATIONS.forEach((duration, idx) => {
+            createFloatingLoop(floatValues[idx], duration).start();
         });
 
         return () => {
@@ -86,21 +57,24 @@ export const FloatingEmojis = React.forwardRef<FloatingEmojisHandle, object>((_p
     }, []);
 
     // Interpolate vertical movement
-    const transY1 = float1.interpolate({ inputRange: [0, 1], outputRange: [0, -15] });
-    const transY2 = float2.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
-    const transY3 = float3.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
-    const floatingItems = [
-        { key: 'egg', positionStyle: styles.pos1, translateY: transY1, source: require('../assets/images/allergens/egg.png') },
-        { key: 'peanut', positionStyle: styles.pos2, translateY: transY2, source: require('../assets/images/allergens/peanut.png') },
-        { key: 'soy', positionStyle: styles.pos3, translateY: transY3, source: require('../assets/images/allergens/soy.png') },
-    ];
+    const floatingItems = FLOATING_ITEMS.map((item, index) => ({
+        ...item,
+        translateY: floatValues[index].interpolate({
+            inputRange: [0, 1],
+            outputRange: item.outputRange,
+        }),
+    }));
 
     return (
         <Animated.View style={[styles.container, { opacity: containerOpacity }]} pointerEvents="none">
             {floatingItems.map((item) => (
                 <Animated.View
                     key={item.key}
-                    style={[styles.emojiContainer, item.positionStyle, { transform: [{ translateY: item.translateY }] }]}
+                    style={[
+                        styles.emojiContainer,
+                        styles[item.positionStyle],
+                        { transform: [{ translateY: item.translateY }] },
+                    ]}
                 >
                     <Image source={item.source} style={styles.emojiImage} resizeMode="contain" />
                 </Animated.View>

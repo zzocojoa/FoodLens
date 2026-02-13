@@ -10,6 +10,16 @@ import Animated, {
     useAnimatedReaction,
     runOnJS
 } from 'react-native-reanimated';
+import {
+    APPLE_SPRING_CONFIG,
+    GLOW_COLORS,
+    GLOW_SPRING_CONFIG,
+    MOTION_THRESHOLD,
+    OFFSET_DECAY,
+    OFFSET_LIMIT,
+    SENSOR_SENSITIVITY,
+} from './spatialApple/constants';
+import { clamp } from './spatialApple/utils';
 
 interface SpatialAppleProps {
     size?: number;
@@ -23,39 +33,6 @@ interface SpatialAppleProps {
  * Uses device gyroscope to create a 3D depth effect (Apple Spatial UI style).
  * Composed of multiple layers moving at different speeds.
  */
-// Helper to clamp values
-const clamp = (value: number, min: number, max: number) => {
-    'worklet';
-    return Math.min(Math.max(value, min), max);
-};
-
-const GLOW_COLORS: Record<string, string> = {
-    '🍎': '#F43F5E', // Rose-500
-    '🍏': '#84CC16', // Lime-500
-    '🍊': '#F97316', // Orange-500
-    '🍋': '#EAB308', // Yellow-500
-    '🍇': '#8B5CF6', // Violet-500
-    '🍓': '#EF4444', // Red-500
-    '🥝': '#65A30D', // Lime-600
-    '🥑': '#16A34A', // Green-600
-    '🍑': '#F87171', // Red-400
-    '🍒': '#DC2626', // Red-600
-    '🫐': '#4F46E5', // Indigo-600
-    '🍌': '#F59E0B', // Amber-500
-    '🍉': '#FB7185', // Rose-400
-    '🥭': '#F59E0B', // Amber-500
-    '🍐': '#A3E635', // Lime-400
-    '🍈': '#A3E635', // Lime-400
-    '🫒': '#65A30D', // Lime-600
-    '🥥': '#A8A29E', // Stone-400
-};
-const SENSOR_SENSITIVITY = 1.5;
-const OFFSET_DECAY = 0.9;
-const OFFSET_LIMIT = 20;
-const MOTION_THRESHOLD = 5;
-const APPLE_SPRING_CONFIG = { mass: 4.0, damping: 30, stiffness: 30 };
-const GLOW_SPRING_CONFIG = { mass: 3.5, damping: 35, stiffness: 50 };
-
 export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetect }: SpatialAppleProps) {
     // Use GYROSCOPE to get rotational velocity (rad/s) instead of absolute angle
     // This allows us to react to movement but always return to center
