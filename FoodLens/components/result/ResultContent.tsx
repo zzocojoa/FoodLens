@@ -1,23 +1,22 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
-import { Colors } from '../../constants/theme';
-import { useColorScheme } from '../../hooks/use-color-scheme';
 import AllergyAlertCard from './resultContent/components/AllergyAlertCard';
 import AiSummaryCard from './resultContent/components/AiSummaryCard';
 import IngredientsListWithExpand from './resultContent/components/IngredientsListWithExpand';
 import ResultMetaHeader from './resultContent/components/ResultMetaHeader';
+import { RESULT_CONTENT_FILLER_HEIGHT } from './resultContent/constants';
+import { useResultContentModel } from './resultContent/hooks/useResultContentModel';
 import { resultContentStyles as styles } from './resultContent/styles';
 import { ResultContentProps } from './resultContent/types';
-import { getIngredientCountLabel, hasAllergenIngredients } from './resultContent/utils/contentMeta';
-import { formatTimestamp, getLocationText } from './resultContent/utils/resultContentFormatters';
+import { getIngredientCountLabel } from './resultContent/utils/contentMeta';
 
 export function ResultContent({ result, locationData, timestamp, onOpenBreakdown, onDatePress }: ResultContentProps) {
-    const hasAllergens = hasAllergenIngredients(result.ingredients);
-    const colorScheme = useColorScheme() ?? 'light';
-    const theme = Colors[colorScheme];
-    const locationText = getLocationText(locationData);
-    const formattedTimestamp = timestamp ? formatTimestamp(timestamp) : null;
+    const { hasAllergens, colorScheme, theme, locationText, formattedTimestamp } = useResultContentModel(
+        result,
+        locationData,
+        timestamp
+    );
 
     return (
         <View style={[styles.sheetContainer, { backgroundColor: theme.background }]}> 
@@ -64,10 +63,10 @@ export function ResultContent({ result, locationData, timestamp, onOpenBreakdown
             <View
                 style={{
                     position: 'absolute',
-                    bottom: -2000,
+                    bottom: -RESULT_CONTENT_FILLER_HEIGHT,
                     left: 0,
                     right: 0,
-                    height: 2000,
+                    height: RESULT_CONTENT_FILLER_HEIGHT,
                     backgroundColor: theme.background,
                 }}
             />

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
     ActivityIndicator,
     ScrollView,
@@ -18,6 +18,7 @@ import LanguageSelectorModal from './profileSheet/components/LanguageSelectorMod
 import ProfileIdentitySection from './profileSheet/components/ProfileIdentitySection';
 import ProfileMenuItem from './profileSheet/components/ProfileMenuItem';
 import { useProfileSheetState } from './profileSheet/hooks/useProfileSheetState';
+import { useProfileSheetEffects } from './profileSheet/hooks/useProfileSheetEffects';
 import { useSheetGesture } from './profileSheet/hooks/useSheetGesture';
 import { profileSheetStyles as styles } from './profileSheet/styles';
 import { ProfileSheetProps } from './profileSheet/types';
@@ -44,21 +45,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
         closeSheet: closeLangModal,
     } = useSheetGesture(() => state.setLangModalVisible(false));
 
-    useEffect(() => {
-        if (isOpen) {
-            openProfile();
-        }
-    }, [isOpen, openProfile]);
-
-    useEffect(() => {
-        if (isOpen) {
-            void state.loadProfile();
-        }
-    }, [isOpen, userId, state.loadProfile]);
-
-    useEffect(() => {
-        if (state.langModalVisible) openLangModal();
-    }, [openLangModal, state.langModalVisible]);
+    useProfileSheetEffects({
+        isOpen,
+        userId,
+        isLanguageModalVisible: state.langModalVisible,
+        openProfile,
+        openLanguageModal: openLangModal,
+        loadProfile: state.loadProfile,
+    });
 
     return (
         <View

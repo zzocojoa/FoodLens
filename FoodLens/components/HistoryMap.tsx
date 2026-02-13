@@ -1,15 +1,17 @@
 import React from 'react';
 import { View } from 'react-native';
 import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
-import { ENABLE_MAP_CLUSTERING, INITIAL_REGION } from './historyMap/constants';
 import HistoryMapMarkers from './historyMap/components/HistoryMapMarkers';
 import HistoryMapOverlay from './historyMap/components/HistoryMapOverlay';
 import HistoryMapStatusLayers from './historyMap/components/HistoryMapStatusLayers';
 import { useHistoryMapState } from './historyMap/hooks/useHistoryMapState';
 import { historyMapStyles as styles } from './historyMap/styles';
 import { HistoryMapProps } from './historyMap/types';
+import { resolveInitialRegion } from './historyMap/utils/historyMapView';
 
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
+    const resolvedInitialRegion = resolveInitialRegion(initialRegion);
+
     const {
         mapRef,
         mapReloadKey,
@@ -44,7 +46,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 ref={mapRef}
                 style={styles.map}
                 provider={PROVIDER_DEFAULT}
-                initialRegion={initialRegion || INITIAL_REGION}
+                initialRegion={resolvedInitialRegion}
                 onMapReady={handleMapReady}
                 onRegionChangeComplete={handleRegionChangeComplete}
                 maxZoomLevel={20}
