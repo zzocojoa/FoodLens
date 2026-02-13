@@ -1,6 +1,5 @@
 import aiohttp
 import os
-import json
 from typing import Optional, Dict, Any
 
 class DatagoClient:
@@ -17,6 +16,50 @@ class DatagoClient:
         self.api_key = os.getenv("DATAGO_API_KEY")
         if not self.api_key:
             print("WARNING: DATAGO_API_KEY not found in environment variables.")
+
+    @staticmethod
+    def _mask_api_key(url: str, api_key: Optional[str]) -> str:
+        if not api_key:
+            return url
+        return url.replace(api_key, "API_KEY_MASKED")
+
+    @staticmethod
+    def _extract_first_row(data: Dict[str, Any], service_id: str) -> Optional[Dict[str, Any]]:
+        if service_id not in data:
+            if "RESULT" in data:
+                print(
+                    f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}"
+                )
+            else:
+                print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
+            return None
+
+        result = data[service_id].get("RESULT", {})
+        result_code = result.get("CODE")
+        result_msg = result.get("MSG")
+
+        if result_code != "INFO-000":
+            print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
+            return None
+
+        rows = data[service_id].get("row", [])
+        if not rows:
+            print(f"[Datago] {service_id} Success but 0 rows returned.")
+            return None
+        return rows[0]
+
+    async def _request_service(self, url: str, service_id: str, log_prefix: str) -> Optional[Dict[str, Any]]:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        print(f"[Datago] {log_prefix}Error: Status {response.status}")
+                        return None
+                    data = await response.json()
+                    return self._extract_first_row(data, service_id)
+        except Exception as error:
+            print(f"[Datago] {log_prefix}Request Failed: {error}")
+            return None
 
     async def get_product_by_barcode(self, barcode: str) -> Optional[Dict[str, Any]]:
         """
@@ -35,44 +78,9 @@ class DatagoClient:
         url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/1/1/BAR_CD={clean_barcode}"
         
         # Debug Log (Masking API Key)
-        safe_url = url.replace(self.api_key, "API_KEY_MASKED") if self.api_key else url
+        safe_url = self._mask_api_key(url, self.api_key)
         print(f"[Datago] Requesting: {safe_url}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        print(f"[Datago] API Error: Status {response.status}")
-                        return None
-                    
-                    data = await response.json()
-                    
-                    if service_id not in data:
-                        # Some error formats omit the service_id key but have a 'RESULT' key at top level
-                        if 'RESULT' in data:
-                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
-                        else:
-                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
-                        return None
-                        
-                    result = data[service_id].get('RESULT', {})
-                    result_code = result.get('CODE')
-                    result_msg = result.get('MSG')
-                    
-                    if result_code != 'INFO-000':
-                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
-                        return None
-                        
-                    rows = data[service_id].get('row', [])
-                    if not rows:
-                        print(f"[Datago] {service_id} Success but 0 rows returned.")
-                        return None
-                        
-                    return rows[0]
-                    
-        except Exception as e:
-            print(f"[Datago] Request Failed: {e}")
-            return None
+        return await self._request_service(url, service_id, log_prefix="")
 
     async def get_product_by_report_no(self, report_no: str) -> Optional[Dict[str, Any]]:
         """
@@ -97,43 +105,9 @@ class DatagoClient:
         url = f"{self.BASE_URL}/{api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
         
         # Debug Log
-        safe_url = url.replace(api_key, "API_KEY_MASKED") if api_key else url
+        safe_url = self._mask_api_key(url, api_key)
         print(f"[Datago] Requesting I2790: {safe_url}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        print(f"[Datago] I2790 Error: Status {response.status}")
-                        return None
-                    
-                    data = await response.json()
-                    
-                    if service_id not in data:
-                        if 'RESULT' in data:
-                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
-                        else:
-                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
-                        return None
-                        
-                    result = data[service_id].get('RESULT', {})
-                    result_code = result.get('CODE')
-                    result_msg = result.get('MSG')
-                    
-                    if result_code != 'INFO-000':
-                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
-                        return None
-                        
-                    rows = data[service_id].get('row', [])
-                    if not rows:
-                        print(f"[Datago] {service_id} Success but 0 rows returned.")
-                        return None
-                        
-                    return rows[0]
-                    
-        except Exception as e:
-            print(f"[Datago] I2790 Request Failed: {e}")
-            return None
+        return await self._request_service(url, service_id, log_prefix="I2790 ")
 
     async def get_food_item_raw_materials(self, report_no: str) -> Optional[Dict[str, Any]]:
         """
@@ -149,40 +123,6 @@ class DatagoClient:
         url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
         
         # Debug Log
-        safe_url = url.replace(self.api_key, "API_KEY_MASKED") if self.api_key else url
+        safe_url = self._mask_api_key(url, self.api_key)
         print(f"[Datago] Requesting C002: {safe_url}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        print(f"[Datago] C002 Error: Status {response.status}")
-                        return None
-                    
-                    data = await response.json()
-                    
-                    if service_id not in data:
-                        if 'RESULT' in data:
-                            print(f"[Datago] {service_id} API Error: {data['RESULT'].get('CODE')} - {data['RESULT'].get('MSG')}")
-                        else:
-                            print(f"[Datago] {service_id} Unexpected Response Format: {list(data.keys())}")
-                        return None
-                        
-                    result = data[service_id].get('RESULT', {})
-                    result_code = result.get('CODE')
-                    result_msg = result.get('MSG')
-                    
-                    if result_code != 'INFO-000':
-                        print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
-                        return None
-                        
-                    rows = data[service_id].get('row', [])
-                    if not rows:
-                        print(f"[Datago] {service_id} Success but 0 rows returned.")
-                        return None
-                        
-                    return rows[0]
-                    
-        except Exception as e:
-            print(f"[Datago] C002 Request Failed: {e}")
-            return None
+        return await self._request_service(url, service_id, log_prefix="C002 ")

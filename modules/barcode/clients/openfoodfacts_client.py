@@ -8,6 +8,14 @@ class OpenFoodFactsClient:
     """
     
     BASE_URL = "https://world.openfoodfacts.org/api/v2/product"
+    USER_AGENT = "FoodLens - Android/iOS - Version 1.0 (contact@foodlens.app)"
+
+    @staticmethod
+    def _extract_product(data: Dict[str, Any], barcode: str) -> Optional[Dict[str, Any]]:
+        if data.get("status") == 1:
+            return data.get("product")
+        print(f"[OFF] Product {barcode} not found (status {data.get('status')})")
+        return None
     
     async def get_product_by_barcode(self, barcode: str) -> Optional[Dict[str, Any]]:
         """
@@ -18,21 +26,14 @@ class OpenFoodFactsClient:
         try:
             async with aiohttp.ClientSession() as session:
                 # User-Agent is required by OFF policy
-                headers = {
-                    "User-Agent": "FoodLens - Android/iOS - Version 1.0 (contact@foodlens.app)"
-                }
+                headers = {"User-Agent": self.USER_AGENT}
                 async with session.get(url, headers=headers) as response:
                     if response.status != 200:
                          print(f"[OFF] API Error: Status {response.status}")
                          return None
                     
                     data = await response.json()
-                    
-                    if data.get('status') == 1:
-                        return data.get('product')
-                    else:
-                        print(f"[OFF] Product {barcode} not found (status {data.get('status')})")
-                        return None
+                    return self._extract_product(data, barcode)
                         
         except Exception as e:
             print(f"[OFF] Request Failed: {e}")

@@ -1,7 +1,7 @@
 import aiohttp
 import os
 import urllib.parse
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 class PublicDataClient:
     """
@@ -13,12 +13,37 @@ class PublicDataClient:
 
     def __init__(self, api_key: Optional[str] = None):
         raw_key = api_key or os.getenv("KOREAN_FDA_API_KEY")
+        self.api_key = self._decode_api_key(raw_key)
+
+    @staticmethod
+    def _decode_api_key(raw_key: Optional[str]) -> Optional[str]:
+        if not raw_key:
+            return raw_key
         # data.go.kr keys in .env are often already encoded (contain %2B).
         # We unquote them because aiohttp/requests will re-encode them.
-        if raw_key and '%' in raw_key:
-            self.api_key = urllib.parse.unquote(raw_key)
-        else:
-            self.api_key = raw_key
+        if "%" in raw_key:
+            return urllib.parse.unquote(raw_key)
+        return raw_key
+
+    def _build_request_url(self, clean_name: str) -> str:
+        params = {
+            "FOOD_NM_KR": clean_name,
+            "type": "json",
+            "numOfRows": 1,
+            "pageNo": 1,
+        }
+        query_string = urllib.parse.urlencode(params)
+        return f"{self.BASE_URL}?serviceKey={self.api_key}&{query_string}"
+
+    @staticmethod
+    def _extract_first_item(data: Dict[str, Any], clean_name: str) -> Optional[Dict[str, Any]]:
+        body = data.get("body", {})
+        items = body.get("items", [])
+        if not items:
+            print(f"[PublicData] No items found for: {clean_name}")
+            return None
+        print(f"[PublicData] ✓ Found {len(items)} items. Picking top result: {items[0].get('FOOD_NM_KR')}")
+        return items[0]
 
     async def get_nutrition_by_name(self, food_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -32,31 +57,12 @@ class PublicDataClient:
         # Parameters match FoodNtrCpntDbInfo02
         # IMPORTANT: 'serviceKey' is double-encoded by many libraries if passed in params.
         # We manually construct the query string for the key to be safe.
-        params = {
-            "FOOD_NM_KR": clean_name,
-            "type": "json",
-            "numOfRows": 1,
-            "pageNo": 1
-        }
-        
-        # If API Key is already encoded (contains %), we use it as is.
-        # If it is raw, we might need to encode it, but data.go.kr keys are tricky.
-        # Usually, sticking the key directly into the URL is safest.
-        encoded_key = self.api_key 
-        if '%' not in encoded_key:
-             # If it looks like a decoded key, we might need to urlencode it, 
-             # but often 'requests' or 'aiohttp' handles this if we passed it in params.
-             # Since we are doing manual URL construction, we should try to use the key as provided 
-             # if it looks like the user pasted the "Encoding" version from the portal.
-             pass
-
         print(f"[PublicData] Requesting (Unified Service) for: {clean_name}")
 
         try:
             async with aiohttp.ClientSession() as session:
                 # Manual URL construction to control serviceKey encoding exactly
-                query_string = urllib.parse.urlencode(params)
-                full_url = f"{self.BASE_URL}?serviceKey={encoded_key}&{query_string}"
+                full_url = self._build_request_url(clean_name)
                 
                 async with session.get(full_url) as response:
                     if response.status != 200:
@@ -66,14 +72,7 @@ class PublicDataClient:
                     data = await response.json(content_type=None)
                     
                     # Unified Service Response Structure: data['body']['items']
-                    body = data.get('body', {})
-                    items = body.get('items', [])
-                    if not items:
-                        print(f"[PublicData] No items found for: {clean_name}")
-                        return None
-                    
-                    print(f"[PublicData] ✓ Found {len(items)} items. Picking top result: {items[0].get('FOOD_NM_KR')}")
-                    return items[0]
+                    return self._extract_first_item(data, clean_name)
 
         except Exception as e:
             print(f"[PublicData] Request Failed: {e}")
@@ -98,7 +97,8 @@ class PublicDataClient:
 
     def _to_float(self, val: Any) -> float:
         try:
-            if val is None or val == "": return 0.0
+            if val is None or val == "":
+                return 0.0
             return float(val)
-        except:
+        except Exception:
             return 0.0
