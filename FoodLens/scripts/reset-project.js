@@ -6,15 +6,22 @@
  * You can remove the `reset-project` script from package.json and safely delete this file after running it.
  */
 
-const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
 
 const root = process.cwd();
-const oldDirs = ["app", "components", "hooks", "constants", "scripts"];
-const exampleDir = "app-example";
-const newAppDir = "app";
+const oldDirs = ['app', 'components', 'hooks', 'constants', 'scripts'];
+const exampleDir = 'app-example';
+const newAppDir = 'app';
 const exampleDirPath = path.join(root, exampleDir);
+const YES_ANSWER = 'y';
+const NO_ANSWER = 'n';
+const DEFAULT_ANSWER = YES_ANSWER;
+const PROMPT = 'Do you want to move existing files to /app-example instead of deleting them? (Y/n): ';
+
+const shouldMove = (value) => value === YES_ANSWER;
+const isValidAnswer = (value) => value === YES_ANSWER || value === NO_ANSWER;
 
 const indexContent = `import { Text, View } from "react-native";
 
@@ -47,7 +54,7 @@ const rl = readline.createInterface({
 
 const moveDirectories = async (userInput) => {
   try {
-    if (userInput === "y") {
+    if (shouldMove(userInput)) {
       // Create the app-example directory
       await fs.promises.mkdir(exampleDirPath, { recursive: true });
       console.log(`📁 /${exampleDir} directory created.`);
@@ -57,7 +64,7 @@ const moveDirectories = async (userInput) => {
     for (const dir of oldDirs) {
       const oldDirPath = path.join(root, dir);
       if (fs.existsSync(oldDirPath)) {
-        if (userInput === "y") {
+        if (shouldMove(userInput)) {
           const newDirPath = path.join(root, exampleDir, dir);
           await fs.promises.rename(oldDirPath, newDirPath);
           console.log(`➡️ /${dir} moved to /${exampleDir}/${dir}.`);
@@ -88,7 +95,7 @@ const moveDirectories = async (userInput) => {
     console.log("\n✅ Project reset complete. Next steps:");
     console.log(
       `1. Run \`npx expo start\` to start a development server.\n2. Edit app/index.tsx to edit the main screen.${
-        userInput === "y"
+        shouldMove(userInput)
           ? `\n3. Delete the /${exampleDir} directory when you're done referencing it.`
           : ""
       }`
@@ -98,15 +105,13 @@ const moveDirectories = async (userInput) => {
   }
 };
 
-rl.question(
-  "Do you want to move existing files to /app-example instead of deleting them? (Y/n): ",
-  (answer) => {
-    const userInput = answer.trim().toLowerCase() || "y";
-    if (userInput === "y" || userInput === "n") {
-      moveDirectories(userInput).finally(() => rl.close());
-    } else {
-      console.log("❌ Invalid input. Please enter 'Y' or 'N'.");
-      rl.close();
-    }
+rl.question(PROMPT, (answer) => {
+  const userInput = answer.trim().toLowerCase() || DEFAULT_ANSWER;
+  if (isValidAnswer(userInput)) {
+    moveDirectories(userInput).finally(() => rl.close());
+    return;
   }
-);
+
+  console.log("❌ Invalid input. Please enter 'Y' or 'N'.");
+  rl.close();
+});

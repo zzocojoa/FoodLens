@@ -1,22 +1,43 @@
-const IS_DEV = process.env.APP_VARIANT === "development";
+const IS_DEV = process.env.APP_VARIANT === 'development';
+
+const APP_NAME = 'FoodLens';
+const APP_NAME_DEV = 'FoodLens (Dev)';
+const APP_SLUG = 'FoodLens';
+const APP_VERSION = '1.0.0';
+const APP_SCHEME = 'foodlens';
+
+const IOS_BUNDLE_ID = 'com.hoihou.foodlens';
+const IOS_BUNDLE_ID_DEV = 'com.hoihou.foodlens.dev';
+const ANDROID_PACKAGE = 'com.hoihou.foodlens';
+const ANDROID_PACKAGE_DEV = 'com.hoihou.foodlens.dev';
+
+const DEV_PLIST_PATH = './Dev.plist';
+const PROD_PLIST_PATH = './Prod.plist';
+
+const ICON_PATH = './assets/images/icon.png';
+const FAVICON_PATH = './assets/images/favicon.png';
+const SPLASH_IMAGE_PATH = './assets/images/splash-icon.png';
+
+const EAS_PROJECT_ID = 'dab80641-3ca1-4633-a381-36ddbb37a22e';
+
+const IOS_GOOGLE_SERVICES_FILE = IS_DEV ? DEV_PLIST_PATH : PROD_PLIST_PATH;
+const IOS_BUNDLE_IDENTIFIER = IS_DEV ? IOS_BUNDLE_ID_DEV : IOS_BUNDLE_ID;
+const ANDROID_APP_PACKAGE = IS_DEV ? ANDROID_PACKAGE_DEV : ANDROID_PACKAGE;
 
 export default {
   expo: {
-    name: IS_DEV ? "FoodLens (Dev)" : "FoodLens",
-    slug: "FoodLens",
-    version: "1.0.0",
-    orientation: "portrait",
-    icon: "./assets/images/icon.png",
-    scheme: "foodlens",
-    userInterfaceStyle: "automatic",
+    name: IS_DEV ? APP_NAME_DEV : APP_NAME,
+    slug: APP_SLUG,
+    version: APP_VERSION,
+    orientation: 'portrait',
+    icon: ICON_PATH,
+    scheme: APP_SCHEME,
+    userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: IS_DEV
-        ? "com.hoihou.foodlens.dev"
-        : "com.hoihou.foodlens",
-      // Dynamically load the correct plist
-      googleServicesFile: IS_DEV ? "./Dev.plist" : "./Prod.plist",
+      bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
+      googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
       infoPlist: {
         NSAppTransportSecurity: {
           NSAllowsArbitraryLoads: true,
@@ -24,43 +45,42 @@ export default {
       },
     },
     android: {
-      package: IS_DEV ? "com.hoihou.foodlens.dev" : "com.hoihou.foodlens",
+      package: ANDROID_APP_PACKAGE,
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
-        foregroundImage: "./assets/images/android-icon-foreground.png",
-        backgroundImage: "./assets/images/android-icon-background.png",
-        monochromeImage: "./assets/images/android-icon-monochrome.png",
+        backgroundColor: '#E6F4FE',
+        foregroundImage: './assets/images/android-icon-foreground.png',
+        backgroundImage: './assets/images/android-icon-background.png',
+        monochromeImage: './assets/images/android-icon-monochrome.png',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
-      // googleServicesFile: IS_DEV ? "./google-services-dev.json" : "./google-services-prod.json", // If Android needed
     },
     web: {
-      output: "static",
-      favicon: "./assets/images/favicon.png",
+      output: 'static',
+      favicon: FAVICON_PATH,
     },
     plugins: [
-      "expo-router",
+      'expo-router',
       [
-        "expo-splash-screen",
+        'expo-splash-screen',
         {
-          image: "./assets/images/splash-icon.png",
+          image: SPLASH_IMAGE_PATH,
           imageWidth: 1242,
-          resizeMode: "contain",
-          backgroundColor: "#010105",
-          imagePosition: "top",
+          resizeMode: 'contain',
+          backgroundColor: '#010105',
+          imagePosition: 'top',
           dark: {
-            backgroundColor: "#010105",
+            backgroundColor: '#010105',
           },
         },
       ],
       [
-        "expo-media-library",
+        'expo-media-library',
         {
           photosPermission:
-            "Allow $(PRODUCT_NAME) to access your photos to save analysis results.",
+            'Allow $(PRODUCT_NAME) to access your photos to save analysis results.',
           savePhotosPermission:
-            "Allow $(PRODUCT_NAME) to save photos to your library.",
+            'Allow $(PRODUCT_NAME) to save photos to your library.',
           isAccessMediaLocationEnabled: true,
         },
       ],
@@ -71,7 +91,7 @@ export default {
     },
     extra: {
       eas: {
-        projectId: "dab80641-3ca1-4633-a381-36ddbb37a22e",
+        projectId: EAS_PROJECT_ID,
       },
     },
   },
