@@ -191,6 +191,155 @@ Date: 2026-02-13
 [FILE] FoodLens/app/trip-stats.tsx
 #### Batch 5 END
 
+## Remaining Execution Batches
+
+### P0 Remaining (Batch 6~9)
+
+### Batch 6 (Client Storage / Shared Service State)
+#### Batch 6 START
+[FILE] FoodLens/services/storage.ts
+[FILE] FoodLens/services/dataStore.ts
+[FILE] FoodLens/services/imageStorage.ts
+[FILE] FoodLens/services/utils.ts
+[FILE] FoodLens/services/utils/location.ts
+#### Batch 6 END
+
+### Batch 7 (Analyst Runtime / Core Postprocess)
+#### Batch 7 START
+[FILE] modules/analyst_runtime/generation.py
+[FILE] modules/analyst_runtime/safety.py
+[FILE] modules/analyst_core/response_utils.py
+[FILE] modules/analyst_core/postprocess.py
+#### Batch 7 END
+
+### Batch 8 (Analyst Core Contracts / Prompt)
+#### Batch 8 START
+[FILE] modules/analyst_core/prompts.py
+[FILE] modules/analyst_core/schemas.py
+#### Batch 8 END
+
+### Batch 9 (Barcode Clients)
+#### Batch 9 START
+[FILE] modules/barcode/clients/datago_client.py
+[FILE] modules/barcode/clients/openfoodfacts_client.py
+[FILE] modules/barcode/clients/public_data_client.py
+#### Batch 9 END
+
+### P1 Planned Batches (Batch P1-1~P1-6)
+
+### Batch P1-1 (Map / History Composition)
+#### Batch P1-1 START
+[FILE] FoodLens/components/HistoryMap.tsx
+[FILE] FoodLens/components/HistoryList.tsx
+[FILE] FoodLens/components/historyMap/hooks/useHistoryMapState.ts
+[FILE] FoodLens/components/historyMap/components/HistoryMapMarkers.tsx
+[FILE] FoodLens/components/historyMap/components/HistoryMapOverlay.tsx
+[FILE] FoodLens/components/historyMap/components/HistoryMapStatusLayers.tsx
+[FILE] FoodLens/hooks/useHistoryData.ts
+#### Batch P1-1 END
+
+### Batch P1-2 (Profile / Sheet Interaction)
+#### Batch P1-2 START
+[FILE] FoodLens/components/ProfileSheet.tsx
+[FILE] FoodLens/components/profileSheet/hooks/useProfileSheetState.ts
+[FILE] FoodLens/components/profileSheet/hooks/useSheetGesture.ts
+[FILE] FoodLens/components/InfoBottomSheet.tsx
+[FILE] FoodLens/components/DateEditSheet.tsx
+[FILE] FoodLens/components/TravelerAllergyCard.tsx
+#### Batch P1-2 END
+
+### Batch P1-3 (Result Container / Actions)
+#### Batch P1-3 START
+[FILE] FoodLens/components/result/ResultContent.tsx
+[FILE] FoodLens/components/result/ResultHeader.tsx
+[FILE] FoodLens/components/result/ActionButtons.tsx
+[FILE] FoodLens/components/result/PinOverlay.tsx
+[FILE] FoodLens/components/result/SpatialPin.tsx
+[FILE] FoodLens/hooks/result/useResultUI.ts
+[FILE] FoodLens/hooks/result/usePinLayout.ts
+[FILE] FoodLens/hooks/result/useAnalysisData.ts
+[FILE] FoodLens/hooks/result/useAutoSave.ts
+#### Batch P1-3 END
+
+### Batch P1-4 (Result Content Subcomponents)
+#### Batch P1-4 START
+[FILE] FoodLens/components/result/resultContent/components/ResultMetaHeader.tsx
+[FILE] FoodLens/components/result/resultContent/components/IngredientsListWithExpand.tsx
+[FILE] FoodLens/components/result/resultContent/components/IngredientItem.tsx
+[FILE] FoodLens/components/result/resultContent/components/AllergyAlertCard.tsx
+[FILE] FoodLens/components/result/resultContent/components/AiSummaryCard.tsx
+[FILE] FoodLens/components/BreakdownOverlay.tsx
+[FILE] FoodLens/components/BoundingBoxOverlay.tsx
+#### Batch P1-4 END
+
+### Batch P1-5 (Visual Motion / Dashboard Widgets)
+#### Batch P1-5 START
+[FILE] FoodLens/components/SpatialApple.tsx
+[FILE] FoodLens/components/FloatingEmojis.tsx
+[FILE] FoodLens/components/WeeklyStatsStrip.tsx
+[FILE] FoodLens/components/weeklyStatsStrip/WeeklyStatsStripView.tsx
+#### Batch P1-5 END
+
+### Batch P1-6 (P1 Integration Sweep)
+#### Batch P1-6 START
+[FILE] FoodLens/components/ProfileSheet.tsx
+[FILE] FoodLens/components/HistoryMap.tsx
+[FILE] FoodLens/components/result/ResultContent.tsx
+[FILE] FoodLens/hooks/result/useResultUI.ts
+#### Batch P1-6 END
+
+### P2 Planned Batches (Batch P2-1~P2-5)
+
+### Batch P2-1 (Component / Feature Styles & Local Types)
+#### Batch P2-1 START
+[FILE] FoodLens/components/**/styles.ts
+[FILE] FoodLens/components/**/constants.ts
+[FILE] FoodLens/components/**/types.ts
+[FILE] FoodLens/components/**/utils/*.ts
+[FILE] FoodLens/features/**/styles/*.ts
+[FILE] FoodLens/features/**/constants/*.ts
+[FILE] FoodLens/features/**/types/*.ts
+[FILE] FoodLens/features/**/utils/*.ts
+#### Batch P2-1 END
+
+### Batch P2-2 (Service Shared Types / Mappers / Helpers)
+#### Batch P2-2 START
+[FILE] FoodLens/services/aiCore/constants.ts
+[FILE] FoodLens/services/aiCore/mappers.ts
+[FILE] FoodLens/services/aiCore/types.ts
+[FILE] FoodLens/services/utils/coordinates.ts
+[FILE] FoodLens/services/utils/date.ts
+[FILE] FoodLens/services/utils/emoji.ts
+[FILE] FoodLens/services/utils/types.ts
+#### Batch P2-2 END
+
+### Batch P2-3 (Domain Model / App Constants / Data)
+#### Batch P2-3 START
+[FILE] FoodLens/constants/theme.ts
+[FILE] FoodLens/models/User.ts
+[FILE] FoodLens/models/History.ts
+[FILE] FoodLens/data/ingredients.ts
+[FILE] FoodLens/utils/pinLayoutAlgorithm.ts
+#### Batch P2-3 END
+
+### Batch P2-4 (Config / Tooling)
+#### Batch P2-4 START
+[FILE] FoodLens/app.config.js
+[FILE] FoodLens/babel.config.js
+[FILE] FoodLens/eslint.config.js
+[FILE] FoodLens/jest.config.js
+[FILE] FoodLens/expo-env.d.ts
+[FILE] FoodLens/scripts/reset-project.js
+#### Batch P2-4 END
+
+### Batch P2-5 (Python Ancillary Utilities)
+#### Batch P2-5 START
+[FILE] modules/analyst_core/constants.py
+[FILE] modules/analyst_core/allergen_utils.py
+[FILE] modules/__init__.py
+[FILE] scripts/remove_bg.py
+#### Batch P2-5 END
+
 ## Notes
 - 본 문서는 리팩토링 순서 결정을 위한 계획 문서이며, 실제 커밋 단위는 배치별로 분리한다.
 - 각 배치 완료 시 `tsc --noEmit` 및 핵심 플로우 수동 검증을 수행한다.

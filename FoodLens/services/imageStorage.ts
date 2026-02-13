@@ -1,4 +1,13 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import {
+  buildManagedImageUri,
+  createManagedFilename,
+  extractFilename,
+  getManagedImageDirectory,
+  IMAGE_DIR,
+  isLegacyAbsoluteUri,
+  isManagedImageReference,
+} from './imageStorage.helpers';
 
 /**
  * ImageStorage Utility
@@ -8,24 +17,11 @@ import * as FileSystem from 'expo-file-system/legacy';
  * sandbox UUID changes (e.g. Debug → Release builds, app updates).
  */
 
-const IMAGE_DIR = 'foodlens_images/';
-
-/**
- * Get the absolute path of the permanent image directory.
- */
-const getImageDir = (): string => {
-    // Ensure documentDirectory ends with a slash
-    const docDir = FileSystem.documentDirectory?.endsWith('/')
-        ? FileSystem.documentDirectory
-        : `${FileSystem.documentDirectory}/`;
-    return `${docDir}${IMAGE_DIR}`;
-};
-
 /**
  * Ensure the permanent image directory exists.
  */
 const ensureDir = async (): Promise<void> => {
-    const dir = getImageDir();
+    const dir = getManagedImageDirectory();
     const info = await FileSystem.getInfoAsync(dir);
     if (!info.exists) {
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -43,17 +39,16 @@ export const saveImagePermanently = async (cacheUri: string): Promise<string | n
     if (!cacheUri) return null;
 
     // If already in our permanent directory, just extract the filename
-    const permanentDir = getImageDir();
-    if (cacheUri.includes(IMAGE_DIR)) {
-        return cacheUri.split('/').pop() || null;
+    const permanentDir = getManagedImageDirectory();
+    if (isManagedImageReference(cacheUri)) {
+        return extractFilename(cacheUri);
     }
 
     try {
         await ensureDir();
 
         // Generate a unique filename
-        const ext = cacheUri.split('.').pop()?.split('?')[0] || 'jpg';
-        const filename = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+        const filename = createManagedFilename(cacheUri);
         const destUri = `${permanentDir}${filename}`;
 
         await FileSystem.copyAsync({ from: cacheUri, to: destUri });
@@ -76,16 +71,12 @@ export const resolveImageUri = (stored: string | undefined | null): string | nul
     if (!stored) return null;
 
     // Legacy: already an absolute URI → use as-is (may break on reinstall, but best effort)
-    if (stored.startsWith('file://') || stored.startsWith('/') || stored.startsWith('ph://')) {
+    if (isLegacyAbsoluteUri(stored)) {
         return stored;
     }
 
     // New format: filename → reconstruct full path
-    const docDir = FileSystem.documentDirectory?.endsWith('/')
-        ? FileSystem.documentDirectory
-        : `${FileSystem.documentDirectory}/`;
-        
-    return `${docDir}${IMAGE_DIR}${stored}`;
+    return buildManagedImageUri(stored);
 };
 
 /**
@@ -95,12 +86,12 @@ export const deleteImage = async (stored: string | undefined | null): Promise<vo
     if (!stored) return;
 
     // Only delete files in our managed directory
-    if (stored.startsWith('file://') || stored.startsWith('/') || stored.startsWith('ph://')) {
+    if (isLegacyAbsoluteUri(stored)) {
         // Legacy path — don't delete system files
         return;
     }
 
-    const fullPath = `${FileSystem.documentDirectory}${IMAGE_DIR}${stored}`;
+    const fullPath = buildManagedImageUri(stored);
     try {
         const info = await FileSystem.getInfoAsync(fullPath);
         if (info.exists) {

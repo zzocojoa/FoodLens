@@ -1,5 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const logParseError = (key: string, error: unknown): void => {
+  console.error(`[SafeStorage] Error parsing key "${key}":`, error);
+};
+
+const logClearError = (key: string, error: unknown): void => {
+  console.error(`[SafeStorage] Failed to clear key "${key}":`, error);
+};
+
+const parseStoredValue = <T>(jsonValue: string | null, fallback: T): T => {
+  if (jsonValue === null) return fallback;
+  return JSON.parse(jsonValue) as T;
+};
+
 /**
  * Safe Storage Wrapper
  * Handles JSON parsing errors gracefully and ensures type safety.
@@ -14,18 +27,15 @@ export const SafeStorage = {
     async get<T>(key: string, fallback: T): Promise<T> {
         try {
             const jsonValue = await AsyncStorage.getItem(key);
-            if (jsonValue === null) {
-                return fallback;
-            }
-            return JSON.parse(jsonValue) as T;
+            return parseStoredValue(jsonValue, fallback);
         } catch (error) {
-            console.error(`[SafeStorage] Error parsing key "${key}":`, error);
+            logParseError(key, error);
             // Self-healing: Remove corrupted data so app can recover on next launch/save
             try {
                 await AsyncStorage.removeItem(key);
                 console.log(`[SafeStorage] Corrupted key "${key}" cleared.`);
             } catch (e) {
-                console.error(`[SafeStorage] Failed to clear key "${key}":`, e);
+                logClearError(key, e);
             }
             return fallback;
         }

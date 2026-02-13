@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { validateCoordinates } from './coordinates';
 import { LocationData } from './types';
+import { mapPlaceToLocationData } from './locationMapper';
 
 /**
  * Timeout helper for promises.
@@ -32,44 +33,27 @@ export const getLocationData = async (): Promise<LocationData | null> => {
 
     const { latitude, longitude } = locationResult.coords;
 
-    let country: string | null = null;
-    let city: string | null = null;
-    let district = '';
-    let subregion = '';
-    let isoCountryCode: string | undefined;
-    let formattedAddress = '';
+    let mappedLocation: LocationData = {
+      latitude,
+      longitude,
+      country: null,
+      city: null,
+      district: '',
+      subregion: '',
+      isoCountryCode: undefined,
+      formattedAddress: '',
+    };
 
     try {
       const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (reverseGeocode.length > 0) {
-        const place = reverseGeocode[0];
-        country = place.country || null;
-        city = place.city || place.region || null;
-        district = place.district || place.subregion || '';
-        subregion = place.name || place.street || '';
-        isoCountryCode = place.isoCountryCode || undefined;
-
-        const addressParts = [subregion, district, city, country].filter(Boolean) as string[];
-        const uniqueParts: string[] = [];
-        addressParts.forEach((part) => {
-          if (!uniqueParts.includes(part)) uniqueParts.push(part);
-        });
-        formattedAddress = uniqueParts.join(', ');
+        mappedLocation = mapPlaceToLocationData(reverseGeocode[0], latitude, longitude);
       }
     } catch (error) {
       console.warn('Reverse geocode failed', error);
     }
 
-    return {
-      latitude,
-      longitude,
-      country,
-      city,
-      district,
-      subregion,
-      isoCountryCode,
-      formattedAddress,
-    };
+    return mappedLocation;
   } catch (error) {
     console.error('getLocationData failed', error);
     return null;
@@ -102,24 +86,7 @@ export const extractLocationFromExif = async (exif: any): Promise<LocationData |
     });
 
     if (reverseGeocode.length > 0) {
-      const place = reverseGeocode[0];
-      return {
-        latitude: valid.latitude,
-        longitude: valid.longitude,
-        country: place.country || null,
-        city: place.city || place.region || null,
-        district: place.district || place.subregion || '',
-        subregion: place.name || place.street || '',
-        isoCountryCode: place.isoCountryCode || 'US',
-        formattedAddress: [
-          place.name || place.street,
-          place.district || place.subregion,
-          place.city || place.region,
-          place.country,
-        ]
-          .filter(Boolean)
-          .join(', '),
-      };
+      return mapPlaceToLocationData(reverseGeocode[0], valid.latitude, valid.longitude, 'US');
     }
   } catch (error) {
     console.warn('EXIF Reverse Geocode failed:', error);
@@ -136,4 +103,3 @@ export const extractLocationFromExif = async (exif: any): Promise<LocationData |
     formattedAddress: `${valid.latitude.toFixed(4)}, ${valid.longitude.toFixed(4)}`,
   };
 };
-
