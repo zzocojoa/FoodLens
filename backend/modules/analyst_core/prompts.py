@@ -32,6 +32,8 @@ ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
             -   Do NOT include descriptive adjectives in the `foodName` field.
             -   `foodName_en` and `foodName_ko` MUST be provided.
             -   Each ingredient MUST include `name_en` and `name_ko`.
+            -   Provide `ai_title_en` and `ai_title_ko` for UI summary card title.
+                Keep title concise and stable (e.g., "AI Health Coach" / "AI 건강 코치").
 
         3.  **VISUAL VERIFICATION (ANTI-HALLUCINATION)**
             -   Only list ingredients clearly visible in the image.
@@ -55,6 +57,8 @@ ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
            "foodName": "Specific Dish Name",
            "foodName_en": "English Name",
            "foodName_ko": "Korean Name",
+           "ai_title_en": "AI Health Coach",
+           "ai_title_ko": "AI 건강 코치",
            "foodOrigin": "Cuisine Origin (e.g., Korean, Italian)",
            "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
            "confidence": 0-100,
@@ -94,6 +98,7 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
         -   **Unit Normalization**: Extract values as numbers (e.g., "15g" -> 15).
         -   **Allergen Detection**: Be extremely strict with `{allergy_info}`.
         -   **Multilingual Names**: Always provide `foodName_en`, `foodName_ko`, and for each ingredient `name_en`, `name_ko`.
+        -   Provide `ai_title_en` and `ai_title_ko` for UI summary card title.
         -   **JSON Format**: Return only raw JSON.
 
         **OUTPUT FORMAT**
@@ -101,6 +106,8 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
            "foodName": "Product Name from Label",
            "foodName_en": "English Name",
            "foodName_ko": "Korean Name",
+           "ai_title_en": "AI Health Coach",
+           "ai_title_ko": "AI 건강 코치",
            "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
            "confidence": 0-100,
            "nutrition": {{

@@ -28,6 +28,8 @@ export type ResultContentData = {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
+    ai_title_en?: string;
+    ai_title_ko?: string;
     confidence?: number;
     ingredients: ResultIngredient[];
     raw_result?: string;

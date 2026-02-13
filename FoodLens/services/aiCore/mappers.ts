@@ -133,6 +133,8 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
         foodName: getString(data['foodName'], 'Analyzed Food'),
         foodName_en: getOptionalString(data['foodName_en']),
         foodName_ko: getOptionalString(data['foodName_ko']),
+        ai_title_en: getOptionalString(data['ai_title_en']),
+        ai_title_ko: getOptionalString(data['ai_title_ko']),
         safetyStatus:
             safetyStatus === 'SAFE' || safetyStatus === 'CAUTION' || safetyStatus === 'DANGER'
                 ? safetyStatus
@@ -183,6 +185,8 @@ export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
         foodName: getString(data['food_name'], 'Unknown Product'),
         foodName_en: getOptionalString(data['food_name_en']),
         foodName_ko: getOptionalString(data['food_name_ko']),
+        ai_title_en: getOptionalString(data['ai_title_en']),
+        ai_title_ko: getOptionalString(data['ai_title_ko']),
         safetyStatus:
             data['safetyStatus'] === 'SAFE' || data['safetyStatus'] === 'CAUTION' || data['safetyStatus'] === 'DANGER'
                 ? data['safetyStatus']

@@ -10,6 +10,7 @@ import { resolveImageUri } from '../../../services/imageStorage';
 import { formatDate, getEmoji } from '../../../services/utils';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { formatHomeSectionTitle, getHomeScanStatusBadge } from '../utils/homeUi';
+import { getLocalizedFoodName } from '../utils/localizedFoodName';
 
 type HomeScansSectionProps = {
   filteredScans: AnalysisRecord[];
@@ -71,6 +72,7 @@ export default function HomeScansSection({
         {filteredScans.length > 0 ? (
           filteredScans.map((item, index) => {
             const badgeStyle = getHomeScanStatusBadge(item.safetyStatus);
+            const localizedFoodName = getLocalizedFoodName(item, locale);
             return (
               <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>
                 <Swipeable
@@ -95,7 +97,7 @@ export default function HomeScansSection({
                       <View style={[styles.scanEmojiBox, { backgroundColor: theme.surface }]}>
                         <FoodThumbnail
                           uri={resolveImageUri(item.imageUri) || undefined}
-                          emoji={getEmoji(item.foodName)}
+                          emoji={getEmoji(localizedFoodName)}
                           style={{
                             width: '100%',
                             height: '100%',
@@ -107,7 +109,7 @@ export default function HomeScansSection({
                         />
                       </View>
                       <View>
-                        <Text style={[styles.scanName, { color: theme.textPrimary }]}>{item.foodName}</Text>
+                        <Text style={[styles.scanName, { color: theme.textPrimary }]}>{localizedFoodName}</Text>
                         <Text style={[styles.scanDate, { color: theme.textSecondary }]}>
                           {formatDate(item.timestamp, locale)}
                         </Text>

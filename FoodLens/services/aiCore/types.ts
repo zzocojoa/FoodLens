@@ -22,6 +22,8 @@ export interface AnalyzedData {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
+    ai_title_en?: string;
+    ai_title_ko?: string;
     safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
     confidence?: number;
     ingredients: {

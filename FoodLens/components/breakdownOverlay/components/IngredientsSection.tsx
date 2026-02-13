@@ -20,6 +20,7 @@ export default function IngredientsSection({ resultData, model, t }: Ingredients
     const theme = Colors[colorScheme];
     const { locale } = useI18n();
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
+    const isKoreanLocale = locale.toLowerCase().startsWith('ko');
 
     if (!styles) return null;
 
@@ -33,11 +34,14 @@ export default function IngredientsSection({ resultData, model, t }: Ingredients
             {resultData.ingredients.map((item, index) => {
                 const ingNutrition = item.nutrition;
                 const ingCal = ingNutrition?.calories ?? null;
+                const ingredientName = isKoreanLocale
+                    ? item.name_ko || item.name_en || item.name
+                    : item.name_en || item.name || item.name_ko || 'Unknown';
 
                 return (
                     <View key={index} style={styles.ingredientRow}>
                         <View style={styles.ingredientInfo}>
-                            <Text style={styles.ingredientName}>{item.name}</Text>
+                            <Text style={styles.ingredientName}>{ingredientName}</Text>
                             <View style={styles.ingredientMetaRow}>
                                 {item.isAllergen && (
                                     <View style={styles.allergenTag}>

@@ -21,3 +21,13 @@ export const resolveLocalizedIngredientName = (
   }
   return ingredient.name_en || ingredient.name || ingredient.name_ko || 'Unknown';
 };
+
+export const resolveLocalizedAiTitle = (
+  result: ResultContentData,
+  locale?: string
+): string | undefined => {
+  if (isKoreanLocale(locale)) {
+    return result.ai_title_ko || result.ai_title_en;
+  }
+  return result.ai_title_en || result.ai_title_ko;
+};
