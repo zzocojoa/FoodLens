@@ -1,4 +1,9 @@
 import { StyleSheet } from 'react-native';
+import {
+  FLOATING_BAR_BOTTOM_PADDING,
+  FLOATING_BAR_HEIGHT,
+  FLOATING_DELETE_COLOR,
+} from './constants';
 
 export const historyListStyles = StyleSheet.create({
   filterContainer: {
@@ -30,18 +35,18 @@ export const historyListStyles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 120,
+    height: FLOATING_BAR_HEIGHT,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 40,
+    paddingBottom: FLOATING_BAR_BOTTOM_PADDING,
     zIndex: 200,
   },
   floatingDeleteButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: FLOATING_DELETE_COLOR,
     borderRadius: 30,
     paddingHorizontal: 24,
     paddingVertical: 14,
-    shadowColor: '#EF4444',
+    shadowColor: FLOATING_DELETE_COLOR,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 12,

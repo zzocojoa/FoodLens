@@ -1,6 +1,13 @@
 import { ImageSourcePropType } from 'react-native';
 
 export const FLOAT_DURATIONS = [2000, 2400, 2200] as const;
+export const FLOATING_EMOJIS_CONTAINER_SIZE = 200;
+export const FLOATING_EMOJI_SIZE = 60;
+export const FLOATING_POSITIONS = {
+  topCenter: { top: 0, left: 70 },
+  topLeft: { top: 30, left: 20 },
+  topRight: { top: 30, right: 20 },
+} as const;
 
 export type FloatingItemConfig = {
   key: string;

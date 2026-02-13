@@ -1,6 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated, Easing, Image } from 'react-native';
-import { FLOAT_DURATIONS, FLOATING_ITEMS } from './floatingEmojis/constants';
+import {
+    FLOAT_DURATIONS,
+    FLOATING_EMOJIS_CONTAINER_SIZE,
+    FLOATING_EMOJI_SIZE,
+    FLOATING_ITEMS,
+    FLOATING_POSITIONS,
+} from './floatingEmojis/constants';
 import { createFloatingLoop, createOpacityTiming } from './floatingEmojis/utils';
 
 export interface FloatingEmojisHandle {
@@ -88,8 +94,8 @@ FloatingEmojis.displayName = 'FloatingEmojis';
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        width: 200,
-        height: 200,
+        width: FLOATING_EMOJIS_CONTAINER_SIZE,
+        height: FLOATING_EMOJIS_CONTAINER_SIZE,
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 0, // Behind the button if needed, or around it
@@ -102,21 +108,10 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
     },
     emojiImage: {
-        width: 60,
-        height: 60,
+        width: FLOATING_EMOJI_SIZE,
+        height: FLOATING_EMOJI_SIZE,
     },
-    // Use hardcoded values for 10, 12, 2 o'clock positions relative to 200x200 container
-    // Center is (100, 100)
-    pos1: { // 12 o'clock (Egg) - Top Center
-        top: 0,
-        left: 70, // 100 - 30 (half)
-    },
-    pos2: { // 10 o'clock (Peanut) - Top Left
-        top: 30,
-        left: 20,
-    },
-    pos3: { // 2 o'clock (Soy) - Top Right
-        top: 30,
-        right: 20,
-    }
+    pos1: FLOATING_POSITIONS.topCenter,
+    pos2: FLOATING_POSITIONS.topLeft,
+    pos3: FLOATING_POSITIONS.topRight,
 });
