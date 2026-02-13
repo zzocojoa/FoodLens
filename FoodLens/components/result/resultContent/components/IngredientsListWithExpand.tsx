@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultIngredient, ResultTheme } from '../types';
 import { buildIngredientsVisibleState } from '../utils/resultContentFormatters';
+import { getIngredientExpandLabel } from '../utils/ingredientExpandLabel';
 import IngredientItem from './IngredientItem';
 
 type IngredientsListWithExpandProps = {
@@ -35,7 +36,7 @@ export default function IngredientsListWithExpand({ ingredients, theme }: Ingred
                         <ChevronDown size={16} color={theme.textSecondary} />
                     )}
                     <Text style={{ color: theme.textSecondary, fontSize: 13, marginLeft: 6 }}>
-                        {expanded ? '접기' : `더 보기 (+${state.hiddenCount})`}
+                        {getIngredientExpandLabel(expanded, state.hiddenCount)}
                     </Text>
                 </TouchableOpacity>
             )}

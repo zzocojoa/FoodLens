@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { Sparkles } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultTheme } from '../types';
+import { getAiSummaryCardColors, resolveAiSummaryText } from '../utils/cardPresentation';
 
 type AiSummaryCardProps = {
     colorScheme: 'light' | 'dark';
@@ -11,14 +12,13 @@ type AiSummaryCardProps = {
 };
 
 export default function AiSummaryCard({ colorScheme, theme, summary }: AiSummaryCardProps) {
+    const colors = getAiSummaryCardColors(colorScheme, theme);
+
     return (
         <View
             style={[
                 styles.aiSummaryCard,
-                {
-                    backgroundColor: colorScheme === 'dark' ? theme.surface : '#F0F9FF',
-                    borderColor: colorScheme === 'dark' ? theme.border : '#E0F2FE',
-                },
+                colors,
             ]}
         >
             <View style={styles.aiGlow} />
@@ -27,8 +27,7 @@ export default function AiSummaryCard({ colorScheme, theme, summary }: AiSummary
                 <Text style={styles.aiTitle}>AI Health Coach</Text>
             </View>
             <Text style={[styles.aiText, { color: theme.textPrimary }]}>
-                {summary ||
-                    'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.'}
+                {resolveAiSummaryText(summary)}
             </Text>
         </View>
     );

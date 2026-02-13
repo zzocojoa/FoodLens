@@ -2,28 +2,28 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
+import { getAllergyAlertCardColors } from '../utils/cardPresentation';
 
 type AllergyAlertCardProps = {
     colorScheme: 'light' | 'dark';
 };
 
 export default function AllergyAlertCard({ colorScheme }: AllergyAlertCardProps) {
+    const colors = getAllergyAlertCardColors(colorScheme);
+
     return (
         <View
             style={[
                 styles.allergyCard,
-                colorScheme === 'dark' && {
-                    backgroundColor: 'rgba(225, 29, 72, 0.15)',
-                    borderColor: 'rgba(225, 29, 72, 0.3)',
-                },
+                colors.container,
             ]}
         >
             <View style={styles.allergyIconBox}>
                 <AlertCircle size={28} color="white" />
             </View>
             <View style={{ flex: 1 }}>
-                <Text style={[styles.allergyTitle, colorScheme === 'dark' && { color: '#FDA4AF' }]}>Allergy Alert</Text>
-                <Text style={[styles.allergyDesc, colorScheme === 'dark' && { color: '#FECDD3' }]}>
+                <Text style={[styles.allergyTitle, colors.titleColor && { color: colors.titleColor }]}>Allergy Alert</Text>
+                <Text style={[styles.allergyDesc, colors.descColor && { color: colors.descColor }]}>
                     Contains ingredients that match your allergy profile. Please exercise caution.
                 </Text>
             </View>

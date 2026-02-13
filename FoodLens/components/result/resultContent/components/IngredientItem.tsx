@@ -3,6 +3,11 @@ import { Text, View } from 'react-native';
 import { AlertCircle, Leaf, ShieldCheck } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultIngredient, ResultTheme } from '../types';
+import {
+    getIngredientIconColor,
+    getIngredientMetaText,
+    getIngredientNameColor,
+} from '../utils/ingredientPresentation';
 
 type IngredientItemProps = {
     item: ResultIngredient;
@@ -26,14 +31,14 @@ export default function IngredientItem({ item, theme }: IngredientItemProps) {
                         item.isAllergen && styles.iconBgDanger,
                     ]}
                 >
-                    <Leaf size={20} color={item.isAllergen ? '#E11D48' : theme.textSecondary} />
+                    <Leaf size={20} color={getIngredientIconColor(item, theme)} />
                 </View>
                 <View>
-                    <Text style={[styles.ingredientName, { color: theme.textPrimary }, item.isAllergen && { color: '#881337' }]}> 
+                    <Text style={[styles.ingredientName, { color: getIngredientNameColor(item, theme) }]}> 
                         {item.name}
                     </Text>
                     <Text style={[styles.ingredientMeta, { color: theme.textSecondary }]}>
-                        {item.isAllergen ? 'Allergen detected' : 'Healthy component'}
+                        {getIngredientMetaText(item)}
                     </Text>
                 </View>
             </View>

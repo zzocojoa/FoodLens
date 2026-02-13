@@ -10,12 +10,13 @@ import { useBreakdownPanGesture } from './breakdownOverlay/hooks/useBreakdownPan
 import { breakdownOverlayStyles as styles } from './breakdownOverlay/styles';
 import { BreakdownOverlayProps } from './breakdownOverlay/types';
 import { buildBreakdownViewModel } from './breakdownOverlay/utils/breakdownData';
+import { shouldRenderBreakdownOverlay } from './breakdownOverlay/utils/visibility';
 
 const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, resultData }) => {
     const insets = useSafeAreaInsets();
     const { translateY, opacity, panResponder } = useBreakdownPanGesture(onClose);
 
-    if (!isOpen || !resultData) return null;
+    if (!shouldRenderBreakdownOverlay(isOpen, !!resultData) || !resultData) return null;
 
     const model = buildBreakdownViewModel(resultData);
 

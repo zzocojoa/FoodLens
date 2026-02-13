@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { Calendar, MapPin, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultTheme } from '../types';
+import { toConfidenceLabel } from '../utils/metaHeader';
 
 type ResultMetaHeaderProps = {
     foodName: string;
@@ -59,9 +60,7 @@ export default function ResultMetaHeader({
             <View style={styles.statsRow}>
                 <View style={[styles.statBadge, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
                     <ShieldCheck size={14} color="#059669" />
-                    <Text style={[styles.statText, { color: '#047857' }]}>
-                        {typeof confidence === 'number' ? `${confidence}% MATCH` : 'N/A'}
-                    </Text>
+                    <Text style={[styles.statText, { color: '#047857' }]}>{toConfidenceLabel(confidence)}</Text>
                 </View>
                 <TouchableOpacity
                     onPress={onOpenBreakdown}
