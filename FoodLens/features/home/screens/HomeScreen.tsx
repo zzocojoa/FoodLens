@@ -12,16 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Heart, ShieldCheck, Trash2 } from 'lucide-react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { Camera, Heart, ShieldCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
 import { Colors, THEME } from '../../../constants/theme';
 import { useColorScheme } from '../../../hooks/use-color-scheme';
 import { dataStore } from '../../../services/dataStore';
-import { formatDate, getEmoji } from '../../../services/utils';
-import { resolveImageUri } from '../../../services/imageStorage';
-import { FoodThumbnail } from '../../../components/FoodThumbnail';
 import { FloatingEmojis, FloatingEmojisHandle } from '../../../components/FloatingEmojis';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import ProfileSheet from '../../../components/ProfileSheet';
@@ -30,20 +26,9 @@ import { SecureImage } from '../../../components/SecureImage';
 import { WeeklyStatsStrip } from '../../../components/WeeklyStatsStrip';
 import { HapticsService } from '../../../services/haptics';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import HomeScansSection from '../components/HomeScansSection';
 import { useHomeDashboard } from '../hooks/useHomeDashboard';
 import { homeStyles as styles } from '../styles/homeStyles';
-import { isSameDay } from '../utils/homeDashboard';
-
-const getBadgeStyle = (status: string) => {
-  switch (status) {
-    case 'SAFE':
-      return { container: styles.badgeSafe, text: { color: '#15803D' } };
-    case 'DANGER':
-      return { container: styles.badgeDanger, text: { color: '#BE123C' } };
-    default:
-      return { container: { backgroundColor: '#FEF3C7' }, text: { color: '#B45309' } };
-  }
-};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -84,26 +69,6 @@ export default function HomeScreen() {
   const handleStartAnalysis = () => {
     HapticsService.tickTick();
     router.push('/scan/camera');
-  };
-
-  const renderRightActions = (dragX: any, onClick: () => void) => {
-    const trans = dragX.interpolate({
-      inputRange: [-80, 0],
-      outputRange: [0, 80],
-      extrapolate: 'clamp',
-    });
-
-    return (
-      <TouchableOpacity onPress={onClick} style={styles.deleteAction}>
-        <Animated.View
-          style={[styles.deleteBtnContent, { transform: [{ translateX: trans }] }]}
-          pointerEvents="none"
-        >
-          <Trash2 size={24} color="white" />
-          <Text style={styles.deleteText}>Delete</Text>
-        </Animated.View>
-      </TouchableOpacity>
-    );
   };
 
   return (
@@ -243,111 +208,17 @@ export default function HomeScreen() {
             />
           </View>
 
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-              {isSameDay(selectedDate, new Date())
-                ? 'Recent Scans'
-                : `Scans on ${new Intl.DateTimeFormat('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                  }).format(selectedDate)}`}
-            </Text>
-            <HapticTouchableOpacity onPress={() => router.push('/history')} hapticType="selection">
-              <View pointerEvents="none">
-                <Text style={[styles.seeAllText, { color: theme.primary }]}>See All</Text>
-              </View>
-            </HapticTouchableOpacity>
-          </View>
-
-          <View style={styles.scanList}>
-            {filteredScans.length > 0 ? (
-              filteredScans.map((item, index) => (
-                <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>
-                  <Swipeable
-                    renderRightActions={(_, dragX) =>
-                      renderRightActions(dragX, () => handleDeleteItem(item.id))
-                    }
-                  >
-                    <HapticTouchableOpacity
-                      style={[
-                        styles.scanItem,
-                        { marginBottom: 0 },
-                        {
-                          backgroundColor: theme.glass,
-                          borderColor: theme.glassBorder,
-                        },
-                      ]}
-                      activeOpacity={0.7}
-                      hapticType="light"
-                      onPress={() => {
-                        dataStore.setData(item, item.location, item.imageUri || '');
-                        router.push({ pathname: '/result', params: { fromStore: 'true' } });
-                      }}
-                    >
-                      <View style={styles.scanInfo}>
-                        <View style={[styles.scanEmojiBox, { backgroundColor: theme.surface }]}>
-                          <FoodThumbnail
-                            uri={resolveImageUri(item.imageUri) || undefined}
-                            emoji={getEmoji(item.foodName)}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              borderRadius: 16,
-                              backgroundColor: 'transparent',
-                            }}
-                            imageStyle={{ borderRadius: 12 }}
-                            fallbackFontSize={24}
-                          />
-                        </View>
-                        <View>
-                          <Text style={[styles.scanName, { color: theme.textPrimary }]}>{item.foodName}</Text>
-                          <Text style={[styles.scanDate, { color: theme.textSecondary }]}>
-                            {formatDate(item.timestamp)}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {(() => {
-                        const badgeStyle = getBadgeStyle(item.safetyStatus);
-                        let displayStatus = 'ASK';
-                        if (item.safetyStatus === 'SAFE') displayStatus = 'OK';
-                        if (item.safetyStatus === 'DANGER') displayStatus = 'AVOID';
-
-                        return (
-                          <View style={[styles.badge, badgeStyle.container]}>
-                            <Text style={[styles.badgeText, badgeStyle.text]}>{displayStatus}</Text>
-                          </View>
-                        );
-                      })()}
-                    </HapticTouchableOpacity>
-                  </Swipeable>
-                </View>
-              ))
-            ) : (
-              <View style={{ paddingVertical: 32, alignItems: 'center', opacity: 0.5 }}>
-                <Text
-                  style={{
-                    textAlign: 'center',
-                    color: theme.textSecondary,
-                    fontSize: 16,
-                    fontWeight: '500',
-                  }}
-                >
-                  No records for this day
-                </Text>
-                <Text
-                  style={{
-                    textAlign: 'center',
-                    color: theme.textSecondary,
-                    fontSize: 12,
-                    marginTop: 4,
-                  }}
-                >
-                  Try analyzing a new meal!
-                </Text>
-              </View>
-            )}
-          </View>
+          <HomeScansSection
+            filteredScans={filteredScans}
+            selectedDate={selectedDate}
+            theme={theme}
+            onOpenHistory={() => router.push('/history')}
+            onOpenResult={(item) => {
+              dataStore.setData(item, item.location, item.imageUri || '');
+              router.push({ pathname: '/result', params: { fromStore: 'true' } });
+            }}
+            onDeleteItem={handleDeleteItem}
+          />
         </ScrollView>
 
         <ProfileSheet

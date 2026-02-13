@@ -3,11 +3,11 @@ import { Alert, InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
-import { UserService } from '../../../services/userService';
 import { UserProfile } from '../../../models/User';
 import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
 import { HomeModalType } from '../types/home.types';
-import { buildWeeklyStats, filterScansByDate } from '../utils/homeDashboard';
+import { filterScansByDate } from '../utils/homeDashboard';
+import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
 
 const TEST_UID = 'test-user-v1';
 
@@ -42,25 +42,19 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
 
   const loadDashboardData = useCallback(async () => {
     try {
-      const [recentData, allHistory, profile] = await Promise.all([
-        AnalysisService.getRecentAnalyses(TEST_UID, 3),
-        AnalysisService.getAllAnalyses(TEST_UID),
-        UserService.getUserProfile(TEST_UID),
-      ]);
+      const snapshot = await fetchHomeDashboardData(TEST_UID);
+      const { recentData: fetchedRecent, allHistory, profile, weeklyStats, safeCount } = snapshot;
 
       console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
 
-      setRecentScans(recentData);
+      setRecentScans(fetchedRecent);
       setAllHistoryCache(allHistory);
-      setWeeklyStats(buildWeeklyStats(allHistory));
-      setSafeCount(allHistory.filter((item) => item.safetyStatus === 'SAFE').length);
+      setWeeklyStats(weeklyStats);
+      setSafeCount(safeCount);
 
       if (profile) {
         setUserProfile(profile);
-        const count =
-          (profile.safetyProfile.allergies?.length || 0) +
-          (profile.safetyProfile.dietaryRestrictions?.length || 0);
-        setAllergyCount(count);
+        setAllergyCount(getProfileRestrictionCount(profile));
       }
     } catch (error) {
       console.error(error);
