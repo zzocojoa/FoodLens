@@ -1,8 +1,6 @@
 """Prompt builders for analyst workflows."""
 
-
-def build_analysis_prompt(allergy_info: str, iso_current_country: str) -> str:
-    return f"""
+ANALYSIS_PROMPT_TEMPLATE = """
         # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]
 
         **ROLE**
@@ -74,9 +72,7 @@ def build_analysis_prompt(allergy_info: str, iso_current_country: str) -> str:
         }}
         """
 
-
-def build_label_prompt(allergy_info: str) -> str:
-    return f"""
+LABEL_PROMPT_TEMPLATE = """
         # [System Prompt: Food Lens OCR Engine v1.0]
 
         **ROLE**
@@ -123,10 +119,7 @@ def build_label_prompt(allergy_info: str) -> str:
         }}
         """
 
-
-def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: list[str]) -> str:
-    ingredients_str = ", ".join(f'"{ing}"' for ing in ingredients)
-    return f"""
+BARCODE_PROMPT_TEMPLATE = """
         You are a food allergen analyst. Analyze the following ingredient list from a packaged food product
         and determine if any ingredient matches or contains the user's allergens.
 
@@ -150,3 +143,31 @@ def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: lis
 
         Return JSON only.
         """
+
+
+def _render_prompt(template: str, **kwargs) -> str:
+    return template.format(**kwargs)
+
+
+def _format_ingredients_for_prompt(ingredients: list[str]) -> str:
+    return ", ".join(f'"{ingredient}"' for ingredient in ingredients)
+
+
+def build_analysis_prompt(allergy_info: str, iso_current_country: str) -> str:
+    return _render_prompt(
+        ANALYSIS_PROMPT_TEMPLATE,
+        allergy_info=allergy_info,
+        iso_current_country=iso_current_country,
+    )
+
+
+def build_label_prompt(allergy_info: str) -> str:
+    return _render_prompt(LABEL_PROMPT_TEMPLATE, allergy_info=allergy_info)
+
+
+def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: list[str]) -> str:
+    return _render_prompt(
+        BARCODE_PROMPT_TEMPLATE,
+        normalized_allergens=normalized_allergens,
+        ingredients_str=_format_ingredients_for_prompt(ingredients),
+    )
