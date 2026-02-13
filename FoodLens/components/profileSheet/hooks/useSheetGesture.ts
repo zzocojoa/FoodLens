@@ -1,24 +1,27 @@
 import React from 'react';
 import { Animated as RNAnimated, PanResponder } from 'react-native';
 
+const SHEET_INITIAL_Y = 800;
+const CLOSE_THRESHOLD_Y = 120;
+const CLOSE_THRESHOLD_VY = 0.5;
+const SHEET_SPRING_CONFIG = { useNativeDriver: true, friction: 8, tension: 40 } as const;
+
 export const useSheetGesture = (onCloseComplete: () => void) => {
-    const panY = React.useRef(new RNAnimated.Value(800)).current;
+    const panY = React.useRef(new RNAnimated.Value(SHEET_INITIAL_Y)).current;
 
     const closeSheet = React.useCallback(() => {
         RNAnimated.timing(panY, {
-            toValue: 800,
+            toValue: SHEET_INITIAL_Y,
             duration: 250,
             useNativeDriver: true,
         }).start(onCloseComplete);
     }, [onCloseComplete, panY]);
 
     const openSheet = React.useCallback(() => {
-        panY.setValue(800);
+        panY.setValue(SHEET_INITIAL_Y);
         RNAnimated.spring(panY, {
             toValue: 0,
-            useNativeDriver: true,
-            friction: 8,
-            tension: 40,
+            ...SHEET_SPRING_CONFIG,
             }).start();
     }, [panY]);
 
@@ -31,14 +34,12 @@ export const useSheetGesture = (onCloseComplete: () => void) => {
                 if (gestureState.dy >= 0) panY.setValue(gestureState.dy);
             },
             onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > 120 || gestureState.vy > 0.5) {
+                if (gestureState.dy > CLOSE_THRESHOLD_Y || gestureState.vy > CLOSE_THRESHOLD_VY) {
                     closeSheet();
                 } else {
                     RNAnimated.spring(panY, {
                         toValue: 0,
-                        useNativeDriver: true,
-                        friction: 8,
-                        tension: 40,
+                        ...SHEET_SPRING_CONFIG,
                     }).start();
                 }
             },

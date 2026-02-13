@@ -13,7 +13,6 @@ import { Globe, User, Zap } from 'lucide-react-native';
 import { HapticTouchableOpacity } from './HapticFeedback';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
-import { LANGUAGE_OPTIONS } from './profileSheet/constants';
 import AnimatedThemeToggle from './profileSheet/components/AnimatedThemeToggle';
 import LanguageSelectorModal from './profileSheet/components/LanguageSelectorModal';
 import ProfileIdentitySection from './profileSheet/components/ProfileIdentitySection';
@@ -22,6 +21,7 @@ import { useProfileSheetState } from './profileSheet/hooks/useProfileSheetState'
 import { useSheetGesture } from './profileSheet/hooks/useSheetGesture';
 import { profileSheetStyles as styles } from './profileSheet/styles';
 import { ProfileSheetProps } from './profileSheet/types';
+import { toLanguageLabel, toTargetLanguage } from './profileSheet/utils/profileSheetUtils';
 
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
     const router = useRouter();
@@ -119,11 +119,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                             <ProfileMenuItem
                                 icon={<Globe size={20} color="#059669" />}
                                 title="Translation Language"
-                                subtitle={
-                                    state.language
-                                        ? LANGUAGE_OPTIONS.find((opt) => opt.code === state.language)?.label || 'Auto (GPS)'
-                                        : 'Auto (GPS)'
-                                }
+                                subtitle={toLanguageLabel(state.language)}
                                 iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
                                 onPress={() => state.setLangModalVisible(true)}
                                 theme={theme}
@@ -147,7 +143,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
                             panHandlers={panResponder.panHandlers}
                             onClose={closeLangModal}
                             onSelectLanguage={(code) => {
-                                state.setLanguage(code === 'GPS' ? undefined : code);
+                                state.setLanguage(toTargetLanguage(code));
                                 closeLangModal();
                             }}
                         />
