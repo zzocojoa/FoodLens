@@ -1,4 +1,6 @@
-export const SEARCHABLE_INGREDIENTS = [
+export type SearchableIngredient = string;
+
+export const SEARCHABLE_INGREDIENTS: SearchableIngredient[] = [
   // --- Fruits & Veggies ---
   // Fruits
   "Peach (복숭아)", "Nectarine (천도복숭아)", "Kiwi (키위)", "Golden Kiwi (골드키위)",

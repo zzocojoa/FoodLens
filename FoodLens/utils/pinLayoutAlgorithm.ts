@@ -1,19 +1,33 @@
+export type PinLayoutInput = Record<string, unknown> & {
+  box_2d?: number[];
+};
+
 export interface PinPosition {
   cx: number;
   cy: number;
   originalCx: number;
   originalCy: number;
   box_2d?: number[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
+
+const SINGLE_PIN_POSITION: [number, number] = [50, 50];
+const TWO_PIN_LEFT_X = 30;
+const TWO_PIN_RIGHT_X = 70;
+const PIN_CENTER_Y = 50;
+const MIN_DISTANCE = 18;
+const ITERATION_COUNT = 8;
+const BOUNDS = { minX: 10, maxX: 90, minY: 10, maxY: 85 } as const;
+const BOX_HALF_SIZE = 50;
+const COORD_SCALE = 10;
 
 /**
  * Calculates grid-based positions for ingredients to ensure even distribution.
  * Strategy: Distribute pins in a visually balanced pattern.
  */
 function calculateInitialPosition(idx: number, total: number): [number, number] {
-  if (total === 1) return [50, 50];
-  if (total === 2) return [idx === 0 ? 30 : 70, 50];
+  if (total === 1) return SINGLE_PIN_POSITION;
+  if (total === 2) return [idx === 0 ? TWO_PIN_LEFT_X : TWO_PIN_RIGHT_X, PIN_CENTER_Y];
   
   if (total === 3) {
       const positions: [number, number][] = [[50, 30], [30, 65], [70, 65]];
@@ -45,22 +59,19 @@ function calculateInitialPosition(idx: number, total: number): [number, number] 
  * Main function to generate layout for pins.
  * applies initial grid -> collision resolution -> boundary clamping.
  */
-export function generatePinLayout(ingredients: any[]): PinPosition[] {
+export function generatePinLayout<T extends PinLayoutInput>(ingredients: T[]): Array<T & PinPosition> {
   if (!ingredients || ingredients.length === 0) return [];
   
   const count = ingredients.length;
 
   // 1. Initial Positions
-  let pins: PinPosition[] = ingredients.map((item, index) => {
+  let pins: Array<T & PinPosition> = ingredients.map((item, index) => {
       const [cx, cy] = calculateInitialPosition(index, count);
       return { ...item, cx, cy, originalCx: cx, originalCy: cy };
   });
 
   // 2. Collision Resolution (Iterative repulsion)
-  const MIN_DIST = 18; // %
-  const ITERATIONS = 8;
-  
-  for (let iter = 0; iter < ITERATIONS; iter++) {
+  for (let iter = 0; iter < ITERATION_COUNT; iter++) {
       for (let i = 0; i < pins.length; i++) {
           for (let j = i + 1; j < pins.length; j++) {
               const p1 = pins[i];
@@ -70,9 +81,9 @@ export function generatePinLayout(ingredients: any[]): PinPosition[] {
               const dy = p1.cy - p2.cy;
               const dist = Math.sqrt(dx * dx + dy * dy);
 
-              if (dist < MIN_DIST && dist > 0) {
+              if (dist < MIN_DISTANCE && dist > 0) {
                   // Push apart
-                  const overlap = MIN_DIST - dist;
+                  const overlap = MIN_DISTANCE - dist;
                   const adjustX = (dx / dist) * overlap * 0.5;
                   const adjustY = (dy / dist) * overlap * 0.5;
 
@@ -91,13 +102,18 @@ export function generatePinLayout(ingredients: any[]): PinPosition[] {
 
   // 3. Keep within bounds
   pins.forEach((p) => {
-      p.cx = Math.max(10, Math.min(90, p.cx));
-      p.cy = Math.max(10, Math.min(85, p.cy));
+      p.cx = Math.max(BOUNDS.minX, Math.min(BOUNDS.maxX, p.cx));
+      p.cy = Math.max(BOUNDS.minY, Math.min(BOUNDS.maxY, p.cy));
   });
 
   // 4. Convert to box_2d format
   return pins.map((p) => ({
       ...p,
-      box_2d: [p.cy * 10 - 50, p.cx * 10 - 50, p.cy * 10 + 50, p.cx * 10 + 50]
+      box_2d: [
+        p.cy * COORD_SCALE - BOX_HALF_SIZE,
+        p.cx * COORD_SCALE - BOX_HALF_SIZE,
+        p.cy * COORD_SCALE + BOX_HALF_SIZE,
+        p.cx * COORD_SCALE + BOX_HALF_SIZE,
+      ],
   }));
 }

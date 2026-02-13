@@ -1,21 +1,26 @@
 import { AnalysisRecord } from '../services/analysisService';
 
+export type SafetyType = 'ok' | 'avoid' | 'ask';
+export type CountryCoordinates = [number, number] | number[];
+
+export interface RegionItem {
+    id: string;
+    name: string;
+    type: SafetyType;
+    date: string;
+    emoji: string;
+    originalRecord: AnalysisRecord;
+}
+
 export interface RegionData {
     name: string;
-    items: {
-        id: string; 
-        name: string;
-        type: 'ok' | 'avoid' | 'ask';
-        date: string;
-        emoji: string;
-        originalRecord: AnalysisRecord;
-    }[];
+    items: RegionItem[];
 }
 
 export interface CountryData {
     country: string;
     flag: string;
     total: number;
-    coordinates: number[];
+    coordinates: CountryCoordinates;
     regions: RegionData[];
 }

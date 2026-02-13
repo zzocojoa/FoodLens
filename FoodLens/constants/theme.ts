@@ -8,6 +8,23 @@ import { Platform } from 'react-native';
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 
+type Palette = {
+  text: string;
+  background: string;
+  tint: string;
+  icon: string;
+  tabIconDefault: string;
+  tabIconSelected: string;
+  surface: string;
+  textPrimary: string;
+  textSecondary: string;
+  border: string;
+  primary: string;
+  glass: string;
+  glassBorder: string;
+  shadow: string;
+};
+
 export const Colors = {
   light: {
     text: '#11181C',
@@ -26,7 +43,7 @@ export const Colors = {
     glass: 'rgba(255, 255, 255, 0.7)',
     glassBorder: 'rgba(255, 255, 255, 0.4)',
     shadow: '#3B82F6',
-  },
+  } satisfies Palette,
   dark: {
     text: '#ECEDEE',
     background: '#020617', // Slate-950
@@ -44,8 +61,11 @@ export const Colors = {
     glass: 'rgba(30, 41, 59, 0.7)', // Slate-800 with opacity
     glassBorder: 'rgba(255, 255, 255, 0.1)',
     shadow: '#000000',
-  },
+  } satisfies Palette,
 };
+
+export type ColorSchemeName = keyof typeof Colors;
+export type ThemePalette = (typeof Colors)[ColorSchemeName];
 
 export const Fonts = Platform.select({
   ios: {
