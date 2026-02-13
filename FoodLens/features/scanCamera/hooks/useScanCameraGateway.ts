@@ -9,23 +9,23 @@ import {
 } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
 import { useIsFocused } from '@react-navigation/native';
 import { analyzeImage, analyzeLabel, analyzeSmart, lookupBarcode } from '../../../services/ai';
-import { saveImagePermanently } from '../../../services/imageStorage';
 import { dataStore } from '../../../services/dataStore';
-import {
-    normalizeTimestamp,
-    getLocationData,
-    validateCoordinates,
-    extractLocationFromExif,
-} from '../../../services/utils';
+import { getLocationData } from '../../../services/utils';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
 import { createFallbackLocation } from '../utils/scanCameraMappers';
+import {
+    assertImageFileReady,
+    beginAnalysis,
+    createProgressHandler,
+    getIsoCode,
+    persistAndNavigateAnalysisResult,
+} from '../utils/scanCameraGatewayHelpers';
+import { resolveGalleryMetadata } from '../utils/galleryMetadata';
 
 export const useScanCameraGateway = () => {
     const router = useRouter();
@@ -243,9 +243,7 @@ export const useScanCameraGateway = () => {
         ) => {
             try {
                 isCancelled.current = false;
-                setIsAnalyzing(true);
-                setCapturedImage(uri);
-                setActiveStep(0);
+                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
 
                 let locationData = customLocation || cachedLocation.current;
                 if (!locationData) {
@@ -265,36 +263,30 @@ export const useScanCameraGateway = () => {
                     return;
                 }
 
-                const isoCode = locationData?.isoCountryCode || 'US';
-                const fileInfo = await FileSystem.getInfoAsync(uri);
-                if (!fileInfo.exists || (fileInfo as any).size === 0) {
-                    throw new Error('File validation failed: Image is empty or missing.');
-                }
+                const isoCode = getIsoCode(locationData, 'US');
+                await assertImageFileReady(uri);
 
                 setActiveStep(1);
                 setUploadProgress(0);
 
-                const analysisResult = await analyzeImage(uri, isoCode, (progress) => {
-                    if (!isCancelled.current) {
-                        setUploadProgress(progress);
-                        if (progress >= 1) setActiveStep(2);
-                    }
-                });
+                const analysisResult = await analyzeImage(
+                    uri,
+                    isoCode,
+                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
+                );
 
                 if (isCancelled.current) return;
 
                 setActiveStep(3);
 
-                const locationContext =
-                    locationData || createFallbackLocation(0, 0, isoCode, 'Location Unavailable');
-                const finalTimestamp = normalizeTimestamp(customTimestamp);
-                const savedFilename = await saveImagePermanently(uri);
-
-                dataStore.setData(analysisResult, locationContext, savedFilename || uri, finalTimestamp);
-
-                router.replace({
-                    pathname: '/result',
-                    params: { fromStore: 'true', isNew: 'true' },
+                await persistAndNavigateAnalysisResult({
+                    analysisResult,
+                    locationData,
+                    isoCode,
+                    timestamp: customTimestamp,
+                    imageUri: uri,
+                    fallbackAddress: 'Location Unavailable',
+                    router,
                 });
 
                 resetState();
@@ -314,9 +306,7 @@ export const useScanCameraGateway = () => {
         async (uri: string, customTimestamp?: string | null) => {
             try {
                 isCancelled.current = false;
-                setIsAnalyzing(true);
-                setCapturedImage(uri);
-                setActiveStep(0);
+                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
 
                 if (!isConnectedRef.current) {
                     Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
@@ -325,33 +315,27 @@ export const useScanCameraGateway = () => {
                 }
 
                 const locationData = cachedLocation.current || (await getLocationData().catch(() => null));
-                const isoCode = locationData?.isoCountryCode || 'US';
+                const isoCode = getIsoCode(locationData, 'US');
 
                 setActiveStep(1);
                 setUploadProgress(0);
 
-                const analysisResult = await analyzeLabel(uri, isoCode, (progress) => {
-                    if (!isCancelled.current) {
-                        setUploadProgress(progress);
-                        if (progress >= 1) setActiveStep(2);
-                    }
-                });
+                const analysisResult = await analyzeLabel(
+                    uri,
+                    isoCode,
+                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
+                );
 
                 if (isCancelled.current) return;
 
                 setActiveStep(3);
-                const finalTimestamp = normalizeTimestamp(customTimestamp);
-                const savedFilename = await saveImagePermanently(uri);
-                dataStore.setData(
+                await persistAndNavigateAnalysisResult({
                     analysisResult,
-                    locationData || createFallbackLocation(0, 0, isoCode),
-                    savedFilename || uri,
-                    finalTimestamp
-                );
-
-                router.replace({
-                    pathname: '/result',
-                    params: { fromStore: 'true', isNew: 'true' },
+                    locationData,
+                    isoCode,
+                    timestamp: customTimestamp,
+                    imageUri: uri,
+                    router,
                 });
 
                 resetState();
@@ -371,9 +355,7 @@ export const useScanCameraGateway = () => {
         ) => {
             try {
                 isCancelled.current = false;
-                setIsAnalyzing(true);
-                setCapturedImage(uri);
-                setActiveStep(0);
+                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
 
                 let locationData = customLocation || cachedLocation.current;
                 if (!locationData) {
@@ -393,36 +375,30 @@ export const useScanCameraGateway = () => {
                     return;
                 }
 
-                const isoCode = locationData?.isoCountryCode || 'US';
-                const fileInfo = await FileSystem.getInfoAsync(uri);
-                if (!fileInfo.exists || (fileInfo as any).size === 0) {
-                    throw new Error('File validation failed: Image is empty or missing.');
-                }
+                const isoCode = getIsoCode(locationData, 'US');
+                await assertImageFileReady(uri);
 
                 setActiveStep(1);
                 setUploadProgress(0);
 
-                const analysisResult = await analyzeSmart(uri, isoCode, (progress) => {
-                    if (!isCancelled.current) {
-                        setUploadProgress(progress);
-                        if (progress >= 1) setActiveStep(2);
-                    }
-                });
+                const analysisResult = await analyzeSmart(
+                    uri,
+                    isoCode,
+                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
+                );
 
                 if (isCancelled.current) return;
 
                 setActiveStep(3);
 
-                const locationContext =
-                    locationData || createFallbackLocation(0, 0, isoCode, 'Location Unavailable');
-                const finalTimestamp = normalizeTimestamp(customTimestamp);
-                const savedFilename = await saveImagePermanently(uri);
-
-                dataStore.setData(analysisResult, locationContext, savedFilename || uri, finalTimestamp);
-
-                router.replace({
-                    pathname: '/result',
-                    params: { fromStore: 'true', isNew: 'true' },
+                await persistAndNavigateAnalysisResult({
+                    analysisResult,
+                    locationData,
+                    isoCode,
+                    timestamp: customTimestamp,
+                    imageUri: uri,
+                    fallbackAddress: 'Location Unavailable',
+                    router,
                 });
 
                 resetState();
@@ -480,34 +456,7 @@ export const useScanCameraGateway = () => {
                 const asset = result.assets[0];
                 const uri = asset.uri;
 
-                let finalDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
-
-                let exifLocation = null;
-                try {
-                    exifLocation = await extractLocationFromExif(asset.exif);
-                } catch (e) {
-                    console.warn('[Gallery] Failed to parse EXIF location:', e);
-                }
-
-                if (!finalDate && asset.assetId) {
-                    try {
-                        const permissionResult = await MediaLibrary.requestPermissionsAsync();
-                        if (permissionResult.granted) {
-                            const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
-                            if (info && info.creationTime) {
-                                finalDate = new Date(info.creationTime).toISOString();
-                            }
-
-                            if (!exifLocation && info.location) {
-                                if (info.location.latitude && info.location.longitude) {
-                                    validateCoordinates(info.location.latitude, info.location.longitude);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('[Gallery] MediaLibrary lookup failed:', e);
-                    }
-                }
+                const { timestamp: finalDate, exifLocation } = await resolveGalleryMetadata(asset);
 
                 if (mode === 'LABEL') {
                     // Legacy manual mode override (optional, but SmartRouter handles label too)
@@ -552,4 +501,3 @@ export const useScanCameraGateway = () => {
         MODES,
     };
 };
-

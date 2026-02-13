@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system/legacy';
 import { analyzeImage } from '../../../services/ai';
 import { dataStore } from '../../../services/dataStore';
-import { getLocationData, normalizeTimestamp, validateCoordinates } from '../../../services/utils';
-import { UserService } from '../../../services/userService';
-import { CAMERA_ERROR_MESSAGES, DEFAULT_ISO_CODE, TEST_UID } from '../constants/camera.constants';
+import { getLocationData, normalizeTimestamp } from '../../../services/utils';
+import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
 import { createFallbackLocation, isFileError, isRetryableServerError } from '../utils/cameraMappers';
+import {
+    assertImageFileReady,
+    resolveInitialLocationContext,
+    resolveIsoCodeFromContext,
+} from '../utils/cameraGatewayHelpers';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -131,24 +133,8 @@ export const useCameraGateway = ({
                     return;
                 }
 
-                let isoCode = locationData?.isoCountryCode;
-                if (!isoCode) {
-                    try {
-                        const user = await UserService.getUserProfile(TEST_UID);
-                        if (user && user.settings.targetLanguage) {
-                            isoCode = user.settings.targetLanguage;
-                        }
-                    } catch (e) {
-                        console.warn('Failed to load user preference for language fallback', e);
-                    }
-                }
-
-                isoCode = isoCode || DEFAULT_ISO_CODE;
-
-                const fileInfo = await FileSystem.getInfoAsync(uri);
-                if (!fileInfo.exists || (fileInfo as any).size === 0) {
-                    throw new Error('File validation failed: Image is empty or missing.');
-                }
+                const isoCode = await resolveIsoCodeFromContext(locationData);
+                await assertImageFileReady(uri);
 
                 setActiveStep(1);
                 setUploadProgress(0);
@@ -188,62 +174,17 @@ export const useCameraGateway = ({
 
     useEffect(() => {
         const initLocation = async () => {
-            if (photoLat && photoLng) {
-                const validCoords = validateCoordinates(photoLat, photoLng);
+            const resolvedLocation = await resolveInitialLocationContext({
+                photoLat,
+                photoLng,
+                sourceType,
+            });
+            cachedLocation.current = resolvedLocation;
 
-                if (validCoords) {
-                    const { latitude: lat, longitude: lng } = validCoords;
-                    const fallbackLocation = createFallbackLocation(lat, lng);
-
-                    try {
-                        const reverseGeocode = await Location.reverseGeocodeAsync({
-                            latitude: lat,
-                            longitude: lng,
-                        });
-
-                        if (reverseGeocode.length > 0) {
-                            const place = reverseGeocode[0];
-                            const country = place.country || 'Unknown';
-                            const city = place.city || place.region || 'Unknown';
-                            const district = place.district || place.subregion || '';
-                            const subregion = place.name || place.street || '';
-
-                            const addressParts = [subregion, district, city, country];
-                            const uniqueParts = Array.from(
-                                new Set(addressParts.filter((part) => part && part !== 'Unknown'))
-                            );
-                            const formattedAddress = uniqueParts.join(', ');
-
-                            cachedLocation.current = {
-                                ...fallbackLocation,
-                                country,
-                                city,
-                                district,
-                                subregion,
-                                isoCountryCode: place.isoCountryCode || undefined,
-                                formattedAddress,
-                            };
-                        } else {
-                            cachedLocation.current = fallbackLocation;
-                        }
-                    } catch (e) {
-                        console.warn('Reverse geocode for photo failed', e);
-                        cachedLocation.current = fallbackLocation;
-                    }
-                } else {
-                    console.warn('Invalid EXIF coordinates provided:', photoLat, photoLng);
-                }
-            } else if (sourceType === 'camera') {
-                const data = await getLocationData();
-                if (data) {
-                    cachedLocation.current = data;
-                } else {
-                    setTimeout(() => {
-                        Alert.alert('위치 정보 없음', CAMERA_ERROR_MESSAGES.locationUnavailable);
-                    }, 500);
-                }
-            } else {
-                cachedLocation.current = null;
+            if (!resolvedLocation && sourceType === 'camera') {
+                setTimeout(() => {
+                    Alert.alert('위치 정보 없음', CAMERA_ERROR_MESSAGES.locationUnavailable);
+                }, 500);
             }
 
             setIsLocationReady(true);
@@ -267,4 +208,3 @@ export const useCameraGateway = ({
         handleCancelAnalysis,
     };
 };
-
