@@ -2,7 +2,7 @@ import { ALLERGEN_TERMS, ALLERGY_TRANSLATIONS } from '@/services/staticTranslati
 
 type AiTranslation = {
   language: string;
-  text: string | null;
+  text?: string | null;
   audio_query?: string;
 } | null | undefined;
 
@@ -16,7 +16,7 @@ export const translateAllergen = (allergen: string, targetCode: string) => {
   return dict ? dict[targetCode] || allergen : allergen;
 };
 
-export const buildDisplayData = (countryCode: string | null, aiTranslation: AiTranslation) => {
+export const buildDisplayData = (countryCode: string | null | undefined, aiTranslation: AiTranslation) => {
   const code = countryCode || 'DEFAULT';
   const staticData = ALLERGY_TRANSLATIONS[code] || ALLERGY_TRANSLATIONS.DEFAULT;
   const isAiLoaded = aiTranslation !== undefined;
@@ -42,7 +42,7 @@ export const buildDisplayData = (countryCode: string | null, aiTranslation: AiTr
 export const buildTravelerMessage = (
   baseText: string,
   aiTranslation: AiTranslation,
-  countryCode: string | null,
+  countryCode: string | null | undefined,
   userAllergens: string[]
 ): string => {
   if (aiTranslation || userAllergens.length === 0) return baseText;

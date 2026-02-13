@@ -9,10 +9,10 @@ import {
 } from './travelerAllergyCard/utils';
 
 interface TravelerAllergyCardProps {
-  countryCode: string | null;
+  countryCode: string | null | undefined;
   aiTranslation: {
       language: string;
-      text: string | null;
+      text?: string | null;
       audio_query?: string;
   } | undefined | null;
 }

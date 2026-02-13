@@ -1,4 +1,5 @@
 import { Region } from 'react-native-maps';
+import { CountryData } from '@/models/History';
 import { resolveImageUri } from '@/services/imageStorage';
 import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM } from '../constants';
 import { ENABLE_MAP_DEBUG_LOGS, ENABLE_QA_MAP_METRICS } from '../constants';
@@ -19,8 +20,11 @@ export const metricsLog = (...args: any[]) => {
 export const isClusterFeature = (item: ClusterOrPoint): item is ClusterFeature =>
     (item as ClusterFeature).properties.cluster === true;
 
-export const parseCoordinateValue = (value: number | string | undefined) =>
-    typeof value === 'string' ? Number(value) : value;
+export const parseCoordinateValue = (value: number | string | undefined): number | undefined => {
+    const numeric = typeof value === 'string' ? Number(value) : value;
+    if (numeric === undefined || !Number.isFinite(numeric)) return undefined;
+    return numeric;
+};
 
 export const isValidLatitude = (value: number) => Number.isFinite(value) && value >= -90 && value <= 90;
 export const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -180 && value <= 180;
@@ -45,25 +49,35 @@ export const toApproxZoom = (region: Region): number => {
     return Math.max(CLUSTER_MIN_ZOOM, Math.min(CLUSTER_MAX_ZOOM, Math.floor(zoom)));
 };
 
-export const flattenMarkers = (data: any[]): MapMarker[] => {
+type HistoryMapSourceItem = CountryData['regions'][number]['items'][number] & {
+    imageUri?: string;
+    originalRecord?: {
+        location?: {
+            latitude?: number | string;
+            longitude?: number | string;
+        };
+    };
+};
+
+export const flattenMarkers = (data: CountryData[]): MapMarker[] => {
     const markers: MapMarker[] = [];
 
-    data.forEach((country: any, countryIdx: number) => {
-        (country?.regions || []).forEach((region: any) => {
-            (region?.items || []).forEach((item: any) => {
-                const loc = item?.originalRecord?.location;
+    data.forEach((country, countryIdx) => {
+        (country?.regions || []).forEach((region) => {
+            (region?.items || []).forEach((rawItem) => {
+                const item = rawItem as HistoryMapSourceItem;
+                const loc = item.originalRecord?.location;
                 const lat = parseCoordinateValue(loc?.latitude);
                 const lng = parseCoordinateValue(loc?.longitude);
 
-                if (!isValidLatitude(lat as number) || !isValidLongitude(lng as number)) return;
+                if (lat === undefined || lng === undefined) return;
+                if (!isValidLatitude(lat) || !isValidLongitude(lng)) return;
 
-                const latitude = Number(lat);
-                const longitude = Number(lng);
-                if (latitude === 0 && longitude === 0) return;
+                if (lat === 0 && lng === 0) return;
 
                 markers.push({
                     id: item.id,
-                    coordinate: { latitude, longitude },
+                    coordinate: { latitude: lat, longitude: lng },
                     countryId: `${country.country}-${countryIdx}`,
                     emoji: item.emoji,
                     name: item.name,
@@ -86,7 +100,7 @@ export const toMarkerFeatures = (markers: MapMarker[]): PointFeature[] =>
         },
     }));
 
-export const getFavoriteCountry = (data: any[]): string =>
+export const getFavoriteCountry = (data: CountryData[]): string =>
     [...data].sort((a, b) => (b.total ?? 0) - (a.total ?? 0))[0]?.country || '-';
 
 export const getVisitedPercentage = (visitedCount: number, totalCountries: number): number =>

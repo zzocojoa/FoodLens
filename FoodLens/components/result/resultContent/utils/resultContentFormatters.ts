@@ -1,12 +1,12 @@
 import { INGREDIENTS_INITIAL_LIMIT } from '../constants';
-import { ResultIngredient } from '../types';
+import { ResultIngredient, ResultLocationData } from '../types';
 
 export const formatTimestamp = (timestamp: string): string => {
     const date = new Date(timestamp);
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 };
 
-export const getLocationText = (locationData: any): string =>
+export const getLocationText = (locationData: ResultLocationData): string =>
     locationData?.formattedAddress ||
     [locationData?.city, locationData?.country].filter(Boolean).join(', ') ||
     'No Location Info';
