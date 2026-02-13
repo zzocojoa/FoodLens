@@ -1,11 +1,12 @@
+export type NullableText = string | null;
+
 export type LocationData = {
   latitude: number;
   longitude: number;
-  country: string | null;
-  city: string | null;
+  country: NullableText;
+  city: NullableText;
   district: string;
   subregion: string;
   isoCountryCode?: string;
   formattedAddress: string;
 };
-
