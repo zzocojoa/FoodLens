@@ -1,48 +1,10 @@
-import { SafeStorage } from './storage';
 import { AnalyzedData } from './ai';
 import { deleteImage } from './imageStorage';
+import { generateId, resolveRecordTimestamp } from './analysis/helpers';
+import { getStoredAnalyses, saveAnalyses } from './analysis/storage';
+import { AnalysisRecord } from './analysis/types';
 
-const ANALYSES_STORAGE_KEY = '@foodlens_analyses';
-
-export interface AnalysisRecord extends AnalyzedData {
-    id: string;
-    timestamp: Date;
-    imageUri?: string;
-    location?: {
-        latitude: number;
-        longitude: number;
-        country?: string;
-        city?: string;
-        district?: string;
-        subregion?: string;
-        formattedAddress?: string;
-        isoCountryCode?: string;
-    }
-}
-
-// Helper to generate unique ID
-const generateId = (): string => {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-};
-
-// Helper to get all analyses from storage
-const getStoredAnalyses = async (): Promise<AnalysisRecord[]> => {
-    // SafeStorage handles try-catch and JSON parsing
-    // Returns [] if error or null
-    const analyses = await SafeStorage.get<any[]>(ANALYSES_STORAGE_KEY, []);
-
-    // Convert timestamp strings back to Date objects
-    // Note: If SafeStorage cleared data, analyses is [], so map returns []
-    return analyses.map((a: any) => ({
-        ...a,
-        timestamp: new Date(a.timestamp)
-    }));
-};
-
-// Helper to save all analyses to storage
-const saveAnalyses = async (analyses: AnalysisRecord[]): Promise<void> => {
-    await SafeStorage.set(ANALYSES_STORAGE_KEY, analyses);
-};
+export type { AnalysisRecord } from './analysis/types';
 
 export const AnalysisService = {
     /**
@@ -51,18 +13,7 @@ export const AnalysisService = {
     saveAnalysis: async (userId: string, data: AnalyzedData, imageUri?: string, location?: AnalysisRecord['location'], originalTimestamp?: string) => {
         try {
             const analyses = await getStoredAnalyses();
-            
-            // Timestamp Logic:
-            // originalTimestamp should already be normalized ISO string from camera.tsx -> dataStore -> result.tsx -> useAutoSave
-            // But we do a safety check just in case.
-            let finalDate = new Date();
-            
-            if (originalTimestamp) {
-                const parsed = new Date(originalTimestamp);
-                if (!isNaN(parsed.getTime())) {
-                    finalDate = parsed;
-                }
-            }
+            const finalDate = resolveRecordTimestamp(originalTimestamp);
 
             const newRecord: AnalysisRecord = {
                 ...data,

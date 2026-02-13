@@ -1,20 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { ANALYSIS_TIMEOUT_MS } from './constants';
-
-export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    let timeoutId: any;
-    const timeout = new Promise<T>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            reject(new Error(`Operation timed out after ${ms} ms`));
-        }, ms);
-    });
-
-    return Promise.race([promise, timeout]).finally(() => {
-        clearTimeout(timeoutId);
-    });
-}
-
-export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { runWithAnalysisTimeout, sleep } from './internal/retryUtils';
 
 export const uploadWithRetry = async (
     url: string,
@@ -37,7 +22,7 @@ export const uploadWithRetry = async (
                 if (onProgress) onProgress(progress);
             });
 
-            const result = await withTimeout(task.uploadAsync(), ANALYSIS_TIMEOUT_MS);
+            const result = await runWithAnalysisTimeout(task.uploadAsync());
 
             if (!result) throw new Error('Upload failed: No result');
 

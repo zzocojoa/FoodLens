@@ -1,9 +1,8 @@
-import { UserProfile, DEFAULT_USER_PROFILE, DEFAULT_AVATARS } from '../models/User';
+import { UserProfile } from '../models/User';
 import { SafeStorage } from './storage'; 
-import * as FileSystem from 'expo-file-system/legacy';
-import { resolveImageUri } from './imageStorage';
-
-const USER_STORAGE_KEY = '@foodlens_user_profile';
+import { USER_STORAGE_KEY } from './user/constants';
+import { buildDefaultProfile } from './user/profileFactory';
+import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage';
 
 export const UserService = {
   /**
@@ -14,69 +13,27 @@ export const UserService = {
     const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
 
     if (profile) {
-      // Resolve image URI if it's a filename
-      const resolvedImage = resolveImageUri(profile.profileImage);
-      if (resolvedImage) {
-          profile.profileImage = resolvedImage;
-      }
+      const validated = await resolveAndValidateProfileImage(profile);
+      const resolvedProfile = validated.profile;
+      const isValidImage = validated.isValidImage;
 
       console.log(`[UserService] Loaded profile:`, { 
-        uid: profile.uid, 
-        hasImage: !!profile.profileImage, 
-        imageLen: profile.profileImage?.length 
+        uid: resolvedProfile.uid, 
+        hasImage: !!resolvedProfile.profileImage, 
+        imageLen: resolvedProfile.profileImage?.length 
       });
 
-      // VALIDATION: If it's a local file, check if it exists
-      let isValidImage = true;
-      if (profile.profileImage?.startsWith('file://')) {
-          try {
-              const fileInfo = await FileSystem.getInfoAsync(profile.profileImage);
-              if (!fileInfo.exists) {
-                  console.warn("[UserService] Saved profile image file does not exist. Resetting.");
-                  isValidImage = false;
-              }
-          } catch (e) {
-              console.warn("Failed to validate local image file", e);
-              isValidImage = false;
-          }
+      if (!isValidImage) {
+        resolvedProfile.profileImage = '';
       }
-
-      // Lazy Migration: If existing profile has no image OR INVALID image, assign one now
-      if (!isValidImage || !profile.profileImage || profile.profileImage.trim() === '') {
-          console.log("[UserService] Image missing or invalid. Starting migration...");
-          try {
-              // Guard against empty presets
-              const avatars = DEFAULT_AVATARS.length > 0 ? DEFAULT_AVATARS : ["https://api.dicebear.com/7.x/avataaars/png?seed=Felix"];
-              const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
-              
-              profile.profileImage = randomAvatar;
-
-              // Persist the migration
-              await SafeStorage.set(USER_STORAGE_KEY, profile);
-              console.log(`[Migration] Auto-assigned avatar for user ${uid}: ${randomAvatar}`);
-          } catch (error) {
-              // Silent fail to keep app running
-              console.warn("[Migration] Failed to persist auto-assigned avatar:", error);
-          }
-      } else {
-        console.log("[UserService] Profile has valid image:", profile.profileImage);
+      const hydrated = await ensureProfileImageExists(uid, resolvedProfile);
+      if (isValidImage && hydrated.profileImage) {
+        console.log('[UserService] Profile has valid image:', hydrated.profileImage);
       }
-      return profile;
+      return hydrated;
     }
 
-    // Pick a random avatar from the presets
-    const randomAvatar = DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)];
-
-    // Fallback: Default Object Pattern
-    // Ensures UI never crashes due to null profile
-    return {
-        ...DEFAULT_USER_PROFILE,
-        uid: uid || "guest-user",
-        email: "guest@foodlens.ai",
-        profileImage: randomAvatar,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-    };
+    return buildDefaultProfile(uid);
   },
 
   /**
