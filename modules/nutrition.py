@@ -8,93 +8,17 @@ from dotenv import load_dotenv
 load_dotenv()
 import httpx
 from typing import Optional, Dict, Any
-from urllib.parse import quote
-
-# API Endpoints
-USDA_API_BASE = "https://api.nal.usda.gov/fdc/v1"
-KOREAN_FDA_API_BASE = "http://apis.data.go.kr/1471000/FoodNtrCpntDbInfo02"
-OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl"
-FATSECRET_TOKEN_URL = "https://oauth.fatsecret.com/connect/token"
-FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
-
-# Timeout Configuration (seconds)
-# Shorter timeouts for faster fallback to next API
-API_TIMEOUT_FAST = 3.0       # For reliable APIs (USDA, Korean FDA)
-API_TIMEOUT_SLOW = 10.0      # Increased for Open Food Facts reliability
-API_CONNECT_TIMEOUT = 2.0    # Connection timeout (fail fast if server unreachable)
-
-# Food name synonyms for fuzzy matching
-# Maps common variations → standardized search term
-FOOD_SYNONYMS = {
-    # Korean dishes
-    "kimchi stew": "kimchi jjigae",
-    "kimchi soup": "kimchi jjigae",
-    "김치찌개": "kimchi jjigae",
-    "bibimbap": "bibimbap",
-    "비빔밥": "bibimbap",
-    "bulgogi": "bulgogi",
-    "불고기": "bulgogi",
-    "korean bbq": "bulgogi",
-    "tteokbokki": "tteokbokki",
-    "떡볶이": "tteokbokki",
-    "spicy rice cake": "tteokbokki",
-    "samgyeopsal": "pork belly",
-    "삼겹살": "pork belly",
-    
-    # Japanese
-    "sashimi": "raw fish",
-    "onigiri": "rice ball",
-    
-    # Western
-    "mac and cheese": "macaroni and cheese",
-    "mac n cheese": "macaroni and cheese",
-    "burger": "hamburger",
-    "fries": "french fries",
-    
-    # Common variations
-    "fried rice": "fried rice",
-    "볶음밥": "fried rice",
-}
-
-def normalize_food_name(food_name: str) -> list[str]:
-    """
-    Returns a list of normalized food name variants for API queries.
-    Includes the original name plus any synonyms.
-    
-    Args:
-        food_name: Original food name from AI analysis
-        
-    Returns:
-        List of search terms to try (original + synonyms + variations)
-    """
-    if not food_name:
-        return []
-    
-    variants = [food_name]
-    lower_name = food_name.lower().strip()
-    
-    # Check direct synonym match
-    if lower_name in FOOD_SYNONYMS:
-        variants.append(FOOD_SYNONYMS[lower_name])
-    
-    # Check partial matches
-    for key, value in FOOD_SYNONYMS.items():
-        if key in lower_name or lower_name in key:
-            if value not in variants:
-                variants.append(value)
-    
-    # Add common transformations
-    # Remove common prefixes/suffixes
-    transforms = [
-        lower_name.replace("korean ", ""),
-        lower_name.replace(" dish", ""),
-        lower_name.replace(" bowl", ""),
-    ]
-    for t in transforms:
-        if t != lower_name and t not in variants:
-            variants.append(t)
-    
-    return variants
+from modules.nutrition_core.constants import (
+    API_CONNECT_TIMEOUT,
+    API_TIMEOUT_FAST,
+    API_TIMEOUT_SLOW,
+    FATSECRET_API_URL,
+    FATSECRET_TOKEN_URL,
+    KOREAN_FDA_API_BASE,
+    OPEN_FOOD_FACTS_API,
+    USDA_API_BASE,
+)
+from modules.nutrition_core.names import normalize_food_name
 
 
 class NutritionLookup:

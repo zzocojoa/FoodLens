@@ -1,16 +1,19 @@
 import asyncio
-import json
 import time
 import traceback
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-from google.cloud import aiplatform
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, Image as VertexImage
+from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
 import io
 
 from modules.analyst import FoodAnalyst
+from modules.smart_router_utils import (
+    build_barcode_route_response,
+    build_not_food_response,
+    build_router_error_response,
+    parse_classification_response,
+)
 
 class SmartRouter:
     """
@@ -63,14 +66,7 @@ class SmartRouter:
                 generation_config={"response_mime_type": "application/json", "temperature": 0.0}
             )
             
-            try:
-                classification = json.loads(response.text)
-                category = classification.get("category", "NOT_FOOD")
-                confidence = classification.get("confidence", 0.0)
-            except json.JSONDecodeError:
-                print(f"[SmartRouter] Failed to parse JSON: {response.text}")
-                category = "NOT_FOOD"
-                confidence = 0.0
+            category, confidence = parse_classification_response(response.text)
 
             print(f"[SmartRouter] Result: {category} ({confidence:.2f}) - {time.time() - start_time:.2f}s")
 
@@ -95,28 +91,12 @@ class SmartRouter:
                 return result
 
             elif category == "BARCODE":
-                return {
-                    "safetyStatus": "CAUTION",
-                    "coachMessage": "바코드가 감지되었습니다. 더 정확한 분석을 위해 바코드 스캐너를 이용해주세요.",
-                    "foodName": "바코드 감지됨",
-                    "ingredients": [],
-                    "router_category": category
-                }
+                return build_barcode_route_response(category)
 
             else: # NOT_FOOD or Unknown
-                return {
-                    "safetyStatus": "CAUTION",
-                    "coachMessage": "음식이나 영양성분표가 아닌 것 같습니다. 음식 사진을 올려주세요.",
-                    "foodName": "알 수 없음",
-                    "ingredients": [],
-                    "router_category": category
-                }
+                return build_not_food_response(category)
 
         except Exception as e:
             print(f"[SmartRouter] Error: {e}")
             traceback.print_exc()
-            return {
-                "safetyStatus": "CAUTION",
-                "coachMessage": "이미지 분석 중 오류가 발생했습니다.",
-                "error": str(e)
-            }
+            return build_router_error_response(e)
