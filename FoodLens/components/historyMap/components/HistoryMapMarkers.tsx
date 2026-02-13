@@ -38,11 +38,6 @@ export default function HistoryMapMarkers({
         >
             <View style={styles.mapPinContainer}>
                 <View pointerEvents="none">
-                    <View style={styles.mapLabel}>
-                        <Text style={styles.mapLabelText} numberOfLines={1} ellipsizeMode="tail">
-                            {marker.name}
-                        </Text>
-                    </View>
                     <View style={styles.mapPinCircle}>
                         <FoodThumbnail
                             uri={marker.imageUri}

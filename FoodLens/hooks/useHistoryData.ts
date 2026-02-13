@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { Region } from 'react-native-maps';
 import { useHistoryQuery } from './queries/useHistoryQuery';
 import { useDeleteAnalysisMutation } from './mutations/useAnalysisMutations';
+import { useI18n } from '@/features/i18n';
 import {
     aggregateHistoryByCountry,
     buildInitialRegion,
@@ -9,6 +10,7 @@ import {
 } from './historyDataUtils';
 
 export const useHistoryData = (userId: string) => {
+    const { locale } = useI18n();
     const { 
         data: records = [], 
         isLoading: loading, 
@@ -22,8 +24,8 @@ export const useHistoryData = (userId: string) => {
     const hasAutoExpandedInitialCountryRef = useRef(false);
 
     const archiveData = useMemo(() => {
-        return aggregateHistoryByCountry(records);
-    }, [records]);
+        return aggregateHistoryByCountry(records, locale);
+    }, [records, locale]);
 
     useEffect(() => {
         // Expand the first country only once on initial load.

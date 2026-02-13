@@ -2,6 +2,7 @@ import { CountryData } from '../models/History';
 import { AnalysisRecord } from '../services/analysisService';
 import { resolveImageUri } from '../services/imageStorage';
 import { getEmoji } from '../services/utils';
+import { getLocalizedFoodName } from '../features/home/utils/localizedFoodName';
 
 type SafetyType = 'ok' | 'avoid' | 'ask';
 
@@ -47,17 +48,18 @@ const toCountryAndCity = (record: AnalysisRecord) => {
   return { hasLocation, country, city };
 };
 
-export const aggregateHistoryByCountry = (records: AnalysisRecord[]): CountryData[] => {
+export const aggregateHistoryByCountry = (records: AnalysisRecord[], locale?: string): CountryData[] => {
   const countryMap = new Map<string, CountryData>();
 
   records.forEach((record) => {
     const { hasLocation, country, city } = toCountryAndCity(record);
+    const localizedFoodName = getLocalizedFoodName(record, locale);
     const itemData = {
       id: record.id,
-      name: record.foodName,
+      name: localizedFoodName,
       type: toSafetyType(record.safetyStatus),
       timestamp: record.timestamp,
-      emoji: getEmoji(record.foodName),
+      emoji: getEmoji(localizedFoodName),
       imageUri: resolveImageUri(record.imageUri) || undefined,
       originalRecord: record,
     };
