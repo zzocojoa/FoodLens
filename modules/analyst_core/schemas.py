@@ -1,9 +1,11 @@
 """JSON schema builders for Gemini structured output."""
+from typing import Any, Final, TypeAlias
 
-SAFETY_STATUS_ENUM = ["SAFE", "CAUTION", "DANGER"]
+SchemaDict: TypeAlias = dict[str, Any]
+SAFETY_STATUS_ENUM: Final[list[str]] = ["SAFE", "CAUTION", "DANGER"]
 
 
-def _build_object_schema(properties: dict, required: list[str] | None = None) -> dict:
+def _build_object_schema(properties: SchemaDict, required: list[str] | None = None) -> SchemaDict:
     schema = {
         "type": "OBJECT",
         "properties": properties,
@@ -13,14 +15,14 @@ def _build_object_schema(properties: dict, required: list[str] | None = None) ->
     return schema
 
 
-def _build_array_schema(item_schema: dict) -> dict:
+def _build_array_schema(item_schema: SchemaDict) -> SchemaDict:
     return {
         "type": "ARRAY",
         "items": item_schema,
     }
 
 
-def _build_allergen_ingredient_item_schema() -> dict:
+def _build_allergen_ingredient_item_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "name": {"type": "STRING"},
@@ -31,7 +33,7 @@ def _build_allergen_ingredient_item_schema() -> dict:
     )
 
 
-def _build_food_ingredient_item_schema() -> dict:
+def _build_food_ingredient_item_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "name": {"type": "STRING"},
@@ -42,7 +44,7 @@ def _build_food_ingredient_item_schema() -> dict:
     )
 
 
-def build_label_response_schema() -> dict:
+def build_label_response_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "foodName": {"type": "STRING"},
@@ -70,7 +72,7 @@ def build_label_response_schema() -> dict:
     )
 
 
-def build_food_response_schema() -> dict:
+def build_food_response_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "foodName": {"type": "STRING"},
@@ -94,7 +96,7 @@ def build_food_response_schema() -> dict:
     )
 
 
-def build_barcode_allergen_schema() -> dict:
+def build_barcode_allergen_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "safetyStatus": {"type": "STRING", "enum": SAFETY_STATUS_ENUM},

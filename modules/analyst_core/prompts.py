@@ -1,6 +1,7 @@
 """Prompt builders for analyst workflows."""
+from typing import Final
 
-ANALYSIS_PROMPT_TEMPLATE = """
+ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
         # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]
 
         **ROLE**
@@ -72,7 +73,7 @@ ANALYSIS_PROMPT_TEMPLATE = """
         }}
         """
 
-LABEL_PROMPT_TEMPLATE = """
+LABEL_PROMPT_TEMPLATE: Final[str] = """
         # [System Prompt: Food Lens OCR Engine v1.0]
 
         **ROLE**
@@ -119,7 +120,7 @@ LABEL_PROMPT_TEMPLATE = """
         }}
         """
 
-BARCODE_PROMPT_TEMPLATE = """
+BARCODE_PROMPT_TEMPLATE: Final[str] = """
         You are a food allergen analyst. Analyze the following ingredient list from a packaged food product
         and determine if any ingredient matches or contains the user's allergens.
 
@@ -150,6 +151,8 @@ def _render_prompt(template: str, **kwargs) -> str:
 
 
 def _format_ingredients_for_prompt(ingredients: list[str]) -> str:
+    if not ingredients:
+        return ""
     return ", ".join(f'"{ingredient}"' for ingredient in ingredients)
 
 
