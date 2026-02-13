@@ -4,12 +4,16 @@ import { DEFAULT_AVATARS } from '@/models/User';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
+import { CanonicalLocale } from '@/features/i18n';
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
 
 export const useProfileSheetState = (userId: string) => {
     const [name, setName] = useState(DEFAULT_NAME);
     const [image, setImage] = useState(DEFAULT_IMAGE);
-    const [language, setLanguage] = useState<string | undefined>(undefined);
-    const [langModalVisible, setLangModalVisible] = useState(false);
+    const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(undefined);
+    const [uiLanguage, setUiLanguage] = useState<CanonicalLocale>('auto');
+    const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
+    const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const loadProfile = useCallback(async () => {
@@ -17,7 +21,8 @@ export const useProfileSheetState = (userId: string) => {
         if (profile) {
             setName(profile.name || DEFAULT_NAME);
             setImage(profile.profileImage || DEFAULT_IMAGE);
-            setLanguage(profile.settings?.targetLanguage);
+            setTravelerLanguage(profile.settings?.targetLanguage);
+            setUiLanguage(normalizeCanonicalLocale(profile.settings?.language));
         }
     }, [userId]);
 
@@ -29,7 +34,8 @@ export const useProfileSheetState = (userId: string) => {
                     userId,
                     name,
                     image,
-                    language,
+                    travelerLanguage,
+                    uiLanguage,
                 });
                 onUpdate();
                 onClose();
@@ -40,7 +46,7 @@ export const useProfileSheetState = (userId: string) => {
                 setLoading(false);
             }
         },
-        [image, language, name, userId]
+        [image, travelerLanguage, name, uiLanguage, userId]
     );
 
     const pickImage = useCallback(async (useCamera: boolean) => {
@@ -57,10 +63,14 @@ export const useProfileSheetState = (userId: string) => {
         setName,
         image,
         setImage,
-        language,
-        setLanguage,
-        langModalVisible,
-        setLangModalVisible,
+        travelerLanguage,
+        setTravelerLanguage,
+        uiLanguage,
+        setUiLanguage,
+        travelerLangModalVisible,
+        setTravelerLangModalVisible,
+        uiLangModalVisible,
+        setUiLangModalVisible,
         loading,
         loadProfile,
         handleUpdate,

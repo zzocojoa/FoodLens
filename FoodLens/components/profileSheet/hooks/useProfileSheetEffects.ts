@@ -3,18 +3,22 @@ import { useEffect } from 'react';
 type UseProfileSheetEffectsParams = {
   isOpen: boolean;
   userId: string;
-  isLanguageModalVisible: boolean;
+  isTravelerLanguageModalVisible: boolean;
+  isUiLanguageModalVisible: boolean;
   openProfile: () => void;
-  openLanguageModal: () => void;
+  openTravelerLanguageModal: () => void;
+  openUiLanguageModal: () => void;
   loadProfile: () => Promise<void>;
 };
 
 export const useProfileSheetEffects = ({
   isOpen,
   userId,
-  isLanguageModalVisible,
+  isTravelerLanguageModalVisible,
+  isUiLanguageModalVisible,
   openProfile,
-  openLanguageModal,
+  openTravelerLanguageModal,
+  openUiLanguageModal,
   loadProfile,
 }: UseProfileSheetEffectsParams) => {
   useEffect(() => {
@@ -28,6 +32,10 @@ export const useProfileSheetEffects = ({
   }, [isOpen, userId, loadProfile]);
 
   useEffect(() => {
-    if (isLanguageModalVisible) openLanguageModal();
-  }, [isLanguageModalVisible, openLanguageModal]);
+    if (isTravelerLanguageModalVisible) openTravelerLanguageModal();
+  }, [isTravelerLanguageModalVisible, openTravelerLanguageModal]);
+
+  useEffect(() => {
+    if (isUiLanguageModalVisible) openUiLanguageModal();
+  }, [isUiLanguageModalVisible, openUiLanguageModal]);
 };

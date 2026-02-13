@@ -20,7 +20,15 @@ export function ResultContent({
     t,
     locale,
 }: ResultContentProps) {
-    const { hasAllergens, colorScheme, theme, locationText, formattedTimestamp } = useResultContentModel(
+    const {
+        hasAllergens,
+        colorScheme,
+        theme,
+        locationText,
+        formattedTimestamp,
+        localizedFoodName,
+        localizedIngredients,
+    } = useResultContentModel(
         result,
         locationData,
         timestamp,
@@ -36,7 +44,7 @@ export function ResultContent({
 
             <View style={styles.contentPadding}>
                 <ResultMetaHeader
-                    foodName={result.foodName}
+                    foodName={localizedFoodName}
                     confidence={result.confidence}
                     locationText={locationText}
                     formattedTimestamp={formattedTimestamp}
@@ -48,7 +56,7 @@ export function ResultContent({
 
                 {hasAllergens && <AllergyAlertCard colorScheme={colorScheme} t={t} />}
 
-                <ResultIngredientsSection ingredients={result.ingredients} theme={theme} t={t} />
+                <ResultIngredientsSection ingredients={localizedIngredients} theme={theme} t={t} />
 
                 <AiSummaryCard colorScheme={colorScheme} theme={theme} summary={result.raw_result} t={t} />
 

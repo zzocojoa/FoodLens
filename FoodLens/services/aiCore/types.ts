@@ -20,10 +20,14 @@ export interface TranslationCard {
 
 export interface AnalyzedData {
     foodName: string;
+    foodName_en?: string;
+    foodName_ko?: string;
     safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
     confidence?: number;
     ingredients: {
         name: string;
+        name_en?: string;
+        name_ko?: string;
         isAllergen: boolean;
         confidence_score?: number;
         box_2d?: number[];

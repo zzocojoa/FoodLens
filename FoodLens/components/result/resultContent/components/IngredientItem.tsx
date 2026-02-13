@@ -36,7 +36,7 @@ export default function IngredientItem({ item, theme, t }: IngredientItemProps) 
                 </View>
                 <View>
                     <Text style={[styles.ingredientName, { color: getIngredientNameColor(item, theme) }]}> 
-                        {item.name}
+                        {item.displayName || item.name}
                     </Text>
                     <Text style={[styles.ingredientMeta, { color: theme.textSecondary }]}>
                         {getIngredientMetaText(

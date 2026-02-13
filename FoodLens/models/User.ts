@@ -34,8 +34,8 @@ export interface UserSafetyProfile {
 }
 
 export interface UserSettings {
-  language: string; // 앱 표시 언어 (예: 'ko')
-  targetLanguage?: string; // 여행지 언어 (예: 'th' - 태국어)
+  language: string; // 앱 UI 표시 언어 (예: 'ko-KR', 'en-US')
+  targetLanguage?: string; // Traveler Allergy Card 번역 언어 (auto/null = 위치 기반)
   autoPlayAudio: boolean; // 분석 결과 오디오 자동 재생 여부
   selectedEmoji?: string; // 대시보드 히어로 이모지 (예: '🍎', '🍊')
 }

@@ -7,6 +7,33 @@ const EXIF_DATE_PATTERN = /(\d{4})[:/\-](\d{2})[:/\-](\d{2})[ T](\d{2}):(\d{2}):
 const isValidDate = (value: Date): boolean => !isNaN(value.getTime());
 const nowIso = (): string => new Date().toISOString();
 
+type RelativeFormatter = {
+  format: (value: number, unit: 'minute' | 'hour') => string;
+};
+
+const hasRelativeTimeFormat = (): boolean =>
+  typeof Intl !== 'undefined' && typeof (Intl as any).RelativeTimeFormat === 'function';
+
+const createRelativeFormatter = (locale: string): RelativeFormatter | null => {
+  if (!hasRelativeTimeFormat()) return null;
+
+  try {
+    return new (Intl as any).RelativeTimeFormat(locale, { numeric: 'auto' }) as RelativeFormatter;
+  } catch {
+    return null;
+  }
+};
+
+const formatRelativeFallback = (mins: number, hours: number, locale: string): string => {
+  const normalized = locale.toLowerCase();
+  const isKorean = normalized.startsWith('ko');
+
+  if (mins < 1) return isKorean ? '방금 전' : 'just now';
+  if (mins < MINUTES_IN_HOUR) return isKorean ? `${mins}분 전` : `${mins}m ago`;
+  if (hours < HOURS_IN_DAY) return isKorean ? `${hours}시간 전` : `${hours}h ago`;
+  return '';
+};
+
 /**
  * Formats dates into user-friendly strings (e.g., "Just now", "5m ago").
  */
@@ -18,13 +45,18 @@ export const formatDate = (date: Date, localeOverride?: string): string => {
   const mins = Math.floor(diff / MS_IN_MINUTE);
 
   const locale = localeOverride || Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
-  const relativeFormatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-
-  if (mins < 1) return relativeFormatter.format(0, 'minute');
-  if (mins < MINUTES_IN_HOUR) return relativeFormatter.format(-mins, 'minute');
+  const relativeFormatter = createRelativeFormatter(locale);
 
   const hours = Math.floor(mins / MINUTES_IN_HOUR);
-  if (hours < HOURS_IN_DAY) return relativeFormatter.format(-hours, 'hour');
+
+  if (relativeFormatter) {
+    if (mins < 1) return relativeFormatter.format(0, 'minute');
+    if (mins < MINUTES_IN_HOUR) return relativeFormatter.format(-mins, 'minute');
+    if (hours < HOURS_IN_DAY) return relativeFormatter.format(-hours, 'hour');
+  } else {
+    const fallback = formatRelativeFallback(mins, hours, locale);
+    if (fallback) return fallback;
+  }
 
   return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(date);
 };

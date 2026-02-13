@@ -152,6 +152,10 @@ def sanitize_response(result: dict[str, Any]) -> dict[str, Any]:
             name = ing.get("name", "").strip()
             if not name:
                 continue
+            if "name_en" in ing and isinstance(ing.get("name_en"), str):
+                ing["name_en"] = _sanitize_text(ing["name_en"], MAX_FOOD_NAME_LENGTH)
+            if "name_ko" in ing and isinstance(ing.get("name_ko"), str):
+                ing["name_ko"] = _sanitize_text(ing["name_ko"], MAX_FOOD_NAME_LENGTH)
             normalized = name.lower()
             if normalized not in seen_names:
                 seen_names.add(normalized)

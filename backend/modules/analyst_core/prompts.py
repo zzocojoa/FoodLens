@@ -30,6 +30,8 @@ ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
             -   Use standard, specific proper nouns (e.g., "Pork Belly", "Carbonara").
             -   Avoid generic terms like "Lunch", "Plate", "Appetizer".
             -   Do NOT include descriptive adjectives in the `foodName` field.
+            -   `foodName_en` and `foodName_ko` MUST be provided.
+            -   Each ingredient MUST include `name_en` and `name_ko`.
 
         3.  **VISUAL VERIFICATION (ANTI-HALLUCINATION)**
             -   Only list ingredients clearly visible in the image.
@@ -59,6 +61,8 @@ ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
            "ingredients": [
                 {{
                   "name": "Ingredient Name",
+                  "name_en": "Ingredient Name in English",
+                  "name_ko": "Ingredient Name in Korean",
                   "bbox": [ymin, xmin, ymax, xmax],
                   "confidence_score": 0.00,
                   "isAllergen": boolean,
@@ -89,6 +93,7 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
         -   **Accuracy First**: Do not hallucinate numbers. If a value is missing, use null or 0.
         -   **Unit Normalization**: Extract values as numbers (e.g., "15g" -> 15).
         -   **Allergen Detection**: Be extremely strict with `{allergy_info}`.
+        -   **Multilingual Names**: Always provide `foodName_en`, `foodName_ko`, and for each ingredient `name_en`, `name_ko`.
         -   **JSON Format**: Return only raw JSON.
 
         **OUTPUT FORMAT**
@@ -112,6 +117,8 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
            "ingredients": [
                 {{
                   "name": "Ingredient Name",
+                  "name_en": "Ingredient Name in English",
+                  "name_ko": "Ingredient Name in Korean",
                   "isAllergen": boolean,
                   "riskReason": "Statement if allergen"
                 }}

@@ -26,6 +26,8 @@ def _build_allergen_ingredient_item_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "name": {"type": "STRING"},
+            "name_en": {"type": "STRING"},
+            "name_ko": {"type": "STRING"},
             "isAllergen": {"type": "BOOLEAN"},
             "riskReason": {"type": "STRING"},
         },
@@ -37,6 +39,8 @@ def _build_food_ingredient_item_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
             "name": {"type": "STRING"},
+            "name_en": {"type": "STRING"},
+            "name_ko": {"type": "STRING"},
             "bbox": {"type": "ARRAY", "items": {"type": "INTEGER"}},
             "isAllergen": {"type": "BOOLEAN"},
         },

@@ -4,9 +4,9 @@ import { resolveImageUri } from '../../services/imageStorage';
 type AnyObject = any;
 
 export const isBarcodeResult = (result: AnyObject, isBarcodeParam: string | string[] | undefined) =>
-  !!result?.isBarcode ||
-  isBarcodeParam === 'true' ||
-  (!!result?.raw_data && typeof result.raw_data === 'object');
+  result?.isBarcode === true ||
+  result?.raw_data?.isBarcode === true ||
+  isBarcodeParam === 'true';
 
 export const getBarcodeImageSource = () => {
   return {

@@ -7,20 +7,24 @@ export const useProfileSheetController = ({ isOpen, onClose, userId }: ProfileSh
   const state = useProfileSheetState(userId);
 
   const profileSheet = useSheetGesture(onClose);
-  const languageSheet = useSheetGesture(() => state.setLangModalVisible(false));
+  const travelerLanguageSheet = useSheetGesture(() => state.setTravelerLangModalVisible(false));
+  const uiLanguageSheet = useSheetGesture(() => state.setUiLangModalVisible(false));
 
   useProfileSheetEffects({
     isOpen,
     userId,
-    isLanguageModalVisible: state.langModalVisible,
+    isTravelerLanguageModalVisible: state.travelerLangModalVisible,
+    isUiLanguageModalVisible: state.uiLangModalVisible,
     openProfile: profileSheet.openSheet,
-    openLanguageModal: languageSheet.openSheet,
+    openTravelerLanguageModal: travelerLanguageSheet.openSheet,
+    openUiLanguageModal: uiLanguageSheet.openSheet,
     loadProfile: state.loadProfile,
   });
 
   return {
     state,
     profileSheet,
-    languageSheet,
+    travelerLanguageSheet,
+    uiLanguageSheet,
   };
 };

@@ -6,6 +6,7 @@ import { UserService } from '../../../services/userService';
 import { DEFAULT_ISO_CODE, TEST_UID } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from './cameraMappers';
+import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage';
 
 export const assertImageFileReady = async (uri: string): Promise<void> => {
     const fileInfo = await FileSystem.getInfoAsync(uri);
@@ -18,18 +19,24 @@ export const assertImageFileReady = async (uri: string): Promise<void> => {
 export const resolveIsoCodeFromContext = async (
     locationData: LocationContext | null | undefined
 ): Promise<string> => {
-    let isoCode = locationData?.isoCountryCode;
-    if (!isoCode) {
+    const photoCountryCode = locationData?.isoCountryCode;
+    let targetLanguage: string | undefined;
+    if (!photoCountryCode) {
         try {
             const user = await UserService.getUserProfile(TEST_UID);
             if (user && user.settings.targetLanguage) {
-                isoCode = user.settings.targetLanguage;
+                targetLanguage = user.settings.targetLanguage;
             }
         } catch (error) {
             console.warn('Failed to load user preference for language fallback', error);
         }
     }
-    return isoCode || DEFAULT_ISO_CODE;
+
+    return resolveTravelerCardCountryCode({
+        photoCountryCode,
+        targetLanguage,
+        fallbackCountryCode: DEFAULT_ISO_CODE,
+    });
 };
 
 export const resolveInitialLocationContext = async ({

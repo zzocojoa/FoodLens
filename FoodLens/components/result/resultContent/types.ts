@@ -18,11 +18,16 @@ export type ResultLocationData = {
 
 export type ResultIngredient = {
     name: string;
+    name_en?: string;
+    name_ko?: string;
+    displayName?: string;
     isAllergen: boolean;
 };
 
 export type ResultContentData = {
     foodName: string;
+    foodName_en?: string;
+    foodName_ko?: string;
     confidence?: number;
     ingredients: ResultIngredient[];
     raw_result?: string;

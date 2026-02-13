@@ -8,6 +8,19 @@
 - 핵심 플로우(홈 → 스캔 → 결과 → 히스토리)에서 언어 혼재를 제거한다.
 - 안전/경고 문구의 이해도를 높여 여행 중 의사결정 오류를 줄인다.
 
+## 용어 분리 (혼선 방지)
+- `UI Language`:
+  - 앱 전반 버튼/타이틀/안내문(`t(...)`) 표시 언어
+  - 본 문서의 EN/KO 리소스/키 점검 범위
+- `Traveler Card Language`:
+  - `/result`의 `Traveler Allergy Card` 문구 언어
+  - 사용자 선택값(`auto`, `ko-KR`, `en-US`, `ja-JP`, `zh-Hans`, `th-TH`, `vi-VN`) 기준
+  - `auto`는 사진/결과 위치의 국가 코드 기반 자동 결정
+
+정책:
+- `Translation Language` 설정은 **Traveler Allergy Card 전용 설정**으로 해석한다.
+- `UI Language`와 `Traveler Card Language`는 별도 정책으로 관리한다.
+
 ---
 
 ## Phase 1. 언어 정책/스키마 확정
@@ -46,22 +59,22 @@
   - 사용자 프로필 저장/조회 시 단일 source of truth 정의
 - 필드 표준(권장):
   - `language`: 앱 UI 표시 언어 (BCP-47, 예: `ko-KR`, `en-US`, `auto`)
-  - `targetLanguage`: 분석 결과 텍스트 요청 언어 (BCP-47, nullable)
+  - `targetLanguage`: Traveler Allergy Card 번역 언어 (BCP-47, nullable)
 - 저장/조회 규칙:
   - 앱 로딩 시:
     - `language`가 있으면 UI 언어는 `language` 사용
     - `language`가 없고 `targetLanguage`만 있으면 `language = targetLanguage`로 보정
     - 둘 다 없으면 `language = auto`
   - 분석 요청 시:
-    - `targetLanguage`가 있으면 해당 값 전달
-    - `targetLanguage`가 없으면 `language` 사용 (`auto`면 device locale 기반 해석)
+    - `targetLanguage`가 있으면 해당 값 전달 (Traveler Card 번역 언어 우선)
+    - `targetLanguage`가 없으면 위치/디바이스 기반 fallback 사용
   - 설정 저장 시:
-    - 사용자가 언어를 명시 선택하면 `language`와 `targetLanguage`를 동일 값으로 저장
-    - 사용자가 자동 선택이면 `language = auto`, `targetLanguage = null`
+    - Traveler Card 언어 선택은 `targetLanguage`만 갱신
+    - UI 언어(`language`)는 별도 설정 경로에서만 갱신
+    - 자동 선택이면 `targetLanguage = null`
 - 레거시 마이그레이션 규칙:
   - 기존 `targetLanguage`가 레거시 코드(`KR/US/JP/CN/TH/VN/GPS`)면 `T001` 매퍼로 표준화
-  - 기존 `language`가 누락되어 있으면 변환된 `targetLanguage`로 `language` 채움
-  - 기존 `language`가 존재하면 `language` 우선, `targetLanguage`는 필요 시 동기화
+  - `targetLanguage` 보정은 UI 언어(`language`)와 독립적으로 수행
 - 산출물:
   - 필드 매핑 표, 마이그레이션 규칙
   - `normalizeLanguageSettings(profile)` 유틸 스펙

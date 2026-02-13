@@ -5,14 +5,18 @@ import { useTheme } from '@/contexts/ThemeContext';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
 import { useProfileSheetController } from './profileSheet/hooks/useProfileSheetController';
 import { ProfileSheetProps } from './profileSheet/types';
-import { toLanguageLabel, toTargetLanguage } from './profileSheet/utils/profileSheetUtils';
+import {
+  toLanguageLabel,
+  toTargetLanguage,
+  toUiLanguageLabel,
+} from './profileSheet/utils/profileSheetUtils';
 
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
   const router = useRouter();
   const { theme: currentTheme, setTheme, colorScheme } = useTheme();
   const theme = Colors[colorScheme];
 
-  const { state, profileSheet, languageSheet } = useProfileSheetController({
+  const { state, profileSheet, travelerLanguageSheet, uiLanguageSheet } = useProfileSheetController({
     isOpen,
     onClose,
     userId,
@@ -32,10 +36,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       state={state}
       profilePanY={profileSheet.panY}
       profilePanHandlers={profileSheet.panResponder.panHandlers}
-      languagePanY={languageSheet.panY}
-      languagePanHandlers={languageSheet.panResponder.panHandlers}
-      closeLanguageModal={languageSheet.closeSheet}
-      languageLabel={toLanguageLabel(state.language)}
+      travelerLanguagePanY={travelerLanguageSheet.panY}
+      travelerLanguagePanHandlers={travelerLanguageSheet.panResponder.panHandlers}
+      closeTravelerLanguageModal={travelerLanguageSheet.closeSheet}
+      travelerLanguageLabel={toLanguageLabel(state.travelerLanguage)}
+      uiLanguagePanY={uiLanguageSheet.panY}
+      uiLanguagePanHandlers={uiLanguageSheet.panResponder.panHandlers}
+      closeUiLanguageModal={uiLanguageSheet.closeSheet}
+      uiLanguageLabel={toUiLanguageLabel(state.uiLanguage)}
       toLanguageCode={toTargetLanguage}
     />
   );

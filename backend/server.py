@@ -17,6 +17,33 @@ app = FastAPI()
 # This uses the same logic as app.py (Vertex AI or Gemini API)
 analyst, barcode_service, smart_router = initialize_services()
 
+LOCALE_TO_ISO = {
+    "ko-kr": "KR",
+    "en-us": "US",
+    "ja-jp": "JP",
+    "zh-hans": "CN",
+    "th-th": "TH",
+    "vi-vn": "VN",
+}
+
+
+def resolve_prompt_country_code(iso_country_code: str, locale: str | None) -> str:
+    """
+    Resolve language/country code used by AI prompt.
+    Priority: app UI locale override > request iso country code > US fallback.
+    """
+    if locale:
+        mapped = LOCALE_TO_ISO.get(locale.strip().lower())
+        if mapped:
+            return mapped
+
+    if iso_country_code:
+        normalized = iso_country_code.strip().upper()
+        if normalized:
+            return normalized
+
+    return "US"
+
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
@@ -31,7 +58,8 @@ async def debug_models():
 async def analyze_food(
     file: UploadFile = File(...), 
     allergy_info: str = Form("None"),
-    iso_country_code: str = Form("US")
+    iso_country_code: str = Form("US"),
+    locale: str | None = Form(None),
 ):
     try:
         # Read image
@@ -39,10 +67,12 @@ async def analyze_food(
         image = decode_upload_to_image(contents)
         
         # Analyze using JSON-specific method
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+
         data = analyst.analyze_food_json(
             food_image=image, 
             allergy_info=allergy_info,
-            iso_current_country=iso_country_code
+            iso_current_country=prompt_country_code
         )
         return data
         
@@ -55,7 +85,8 @@ async def analyze_food(
 async def analyze_label(
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
-    iso_country_code: str = Form("US")
+    iso_country_code: str = Form("US"),
+    locale: str | None = Form(None),
 ):
     """
     Perform OCR nutrition analysis on a label image.
@@ -65,10 +96,12 @@ async def analyze_label(
         contents = await file.read()
         image = decode_upload_to_image(contents)
         
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+
         data = analyst.analyze_label_json(
             label_image=image,
             allergy_info=allergy_info,
-            iso_current_country=iso_country_code
+            iso_current_country=prompt_country_code
         )
         return data
         
@@ -80,7 +113,8 @@ async def analyze_label(
 async def analyze_smart(
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
-    iso_country_code: str = Form("US")
+    iso_country_code: str = Form("US"),
+    locale: str | None = Form(None),
 ):
     """
     Smart routing endpoint for Gallery uploads.
@@ -92,10 +126,12 @@ async def analyze_smart(
         image = decode_upload_to_image(contents)
         
         # Delegate to SmartRouter
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+
         result = await smart_router.route_analysis(
             image=image,
             allergy_info=allergy_info,
-            iso_country_code=iso_country_code
+            iso_country_code=prompt_country_code
         )
         return result
         

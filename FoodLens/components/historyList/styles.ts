@@ -13,9 +13,11 @@ export const historyListStyles = StyleSheet.create({
     gap: 4,
   },
   filterChip: {
+    flex: 1,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 14,
+    alignItems: 'center',
   },
   filterChipActive: {
     backgroundColor: '#FFFFFF',

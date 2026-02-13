@@ -3,6 +3,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ResultContentProps } from '../types';
 import { hasAllergenIngredients } from '../utils/contentMeta';
 import { formatTimestamp, getLocationText } from '../utils/resultContentFormatters';
+import {
+  resolveLocalizedFoodName,
+  resolveLocalizedIngredientName,
+} from '../utils/localizedNames';
 
 export const useResultContentModel = (
   result: ResultContentProps['result'],
@@ -18,6 +22,11 @@ export const useResultContentModel = (
     colorScheme,
     theme,
     hasAllergens: hasAllergenIngredients(result.ingredients),
+    localizedFoodName: resolveLocalizedFoodName(result, locale),
+    localizedIngredients: result.ingredients.map((ingredient) => ({
+      ...ingredient,
+      displayName: resolveLocalizedIngredientName(ingredient, locale),
+    })),
     locationText: getLocationText(locationData, t?.('result.location.none', 'No Location Info') ?? 'No Location Info'),
     formattedTimestamp: timestamp ? formatTimestamp(timestamp, locale) : null,
   };

@@ -17,6 +17,17 @@ taskID: `I18N-P1-T012`
 
 ## 수동 회귀 시나리오
 
+### 시나리오 0: Traveler Card 언어 결정 규칙
+- taskID: `I18N-P1-T012-S00`
+- 사전 조건: 결과 화면에서 Traveler Allergy Card 확인 가능
+- 절차:
+  1. 프로필 시트의 `Traveler Card Language`를 `Auto (Photo/GPS)`로 설정
+  2. 서로 다른 국가 코드의 결과 2건을 열어 카드 언어 확인
+  3. `Korean/English` 등 수동 언어를 선택 후 동일 결과 재확인
+- 기대 결과:
+  - `auto`에서는 위치 국가 기반 언어 표시
+  - 수동 선택 시 위치와 무관하게 선택 언어로 표시
+
 ### 시나리오 1: 언어 전환 즉시 반영
 - taskID: `I18N-P1-T012-S01`
 - 사전 조건: 프로필 화면 진입 가능

@@ -110,12 +110,29 @@ const resolveSummaryText = (data: Record<string, unknown>, translationCard?: Tra
 
 export const mapAnalyzedData = (input: unknown): AnalyzedData => {
     const data = isRecord(input) ? input : {};
-    const ingredients = Array.isArray(data['ingredients']) ? data['ingredients'] : [];
+    const ingredients = Array.isArray(data['ingredients'])
+        ? (data['ingredients'] as unknown[]).map((ing) => {
+              if (!isRecord(ing)) return { name: 'Unknown', isAllergen: false };
+              return {
+                  name: getString(ing['name'], 'Unknown'),
+                  name_en: getOptionalString(ing['name_en']),
+                  name_ko: getOptionalString(ing['name_ko']),
+                  isAllergen: ing['isAllergen'] === true,
+                  confidence_score:
+                      typeof ing['confidence_score'] === 'number' ? ing['confidence_score'] : undefined,
+                  box_2d: Array.isArray(ing['box_2d']) ? (ing['box_2d'] as number[]) : undefined,
+                  bbox: Array.isArray(ing['bbox']) ? (ing['bbox'] as number[]) : undefined,
+                  nutrition: parseNutrition(ing['nutrition']),
+              };
+          })
+        : [];
     const safetyStatus = data['safetyStatus'];
     const translationCard = parseTranslationCardFromPayload(data);
 
     return {
         foodName: getString(data['foodName'], 'Analyzed Food'),
+        foodName_en: getOptionalString(data['foodName_en']),
+        foodName_ko: getOptionalString(data['foodName_ko']),
         safetyStatus:
             safetyStatus === 'SAFE' || safetyStatus === 'CAUTION' || safetyStatus === 'DANGER'
                 ? safetyStatus
@@ -149,6 +166,8 @@ export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
               if (isRecord(ing)) {
                   return {
                       name: getString(ing['name'], 'Unknown'),
+                      name_en: getOptionalString(ing['name_en']),
+                      name_ko: getOptionalString(ing['name_ko']),
                       isAllergen: ing['isAllergen'] === true,
                       riskReason: getString(ing['riskReason']),
                   };
@@ -162,6 +181,8 @@ export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
 
     return {
         foodName: getString(data['food_name'], 'Unknown Product'),
+        foodName_en: getOptionalString(data['food_name_en']),
+        foodName_ko: getOptionalString(data['food_name_ko']),
         safetyStatus:
             data['safetyStatus'] === 'SAFE' || data['safetyStatus'] === 'CAUTION' || data['safetyStatus'] === 'DANGER'
                 ? data['safetyStatus']

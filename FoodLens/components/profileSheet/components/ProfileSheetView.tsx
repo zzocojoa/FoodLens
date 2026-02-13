@@ -15,6 +15,9 @@ import LanguageSelectorModal from './LanguageSelectorModal';
 import ProfileIdentitySection from './ProfileIdentitySection';
 import ProfileMenuItem from './ProfileMenuItem';
 import { profileSheetStyles as styles } from '../styles';
+import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
+import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
+import { CanonicalLocale } from '@/features/i18n';
 
 type ProfileSheetViewProps = {
   isOpen: boolean;
@@ -29,21 +32,29 @@ type ProfileSheetViewProps = {
     name: string;
     image: string;
     avatars: string[];
-    language?: string;
-    langModalVisible: boolean;
+    travelerLanguage?: string;
+    uiLanguage: CanonicalLocale;
+    travelerLangModalVisible: boolean;
+    uiLangModalVisible: boolean;
     loading: boolean;
     setName: (value: string) => void;
     setImage: (value: string) => void;
-    setLanguage: (value: string | undefined) => void;
-    setLangModalVisible: (value: boolean) => void;
+    setTravelerLanguage: (value: string | undefined) => void;
+    setUiLanguage: (value: CanonicalLocale) => void;
+    setTravelerLangModalVisible: (value: boolean) => void;
+    setUiLangModalVisible: (value: boolean) => void;
     pickImage: (useCamera: boolean) => Promise<void>;
   };
   profilePanY: RNAnimated.Value;
   profilePanHandlers: any;
-  languagePanY: RNAnimated.Value;
-  languagePanHandlers: any;
-  closeLanguageModal: () => void;
-  languageLabel: string;
+  travelerLanguagePanY: RNAnimated.Value;
+  travelerLanguagePanHandlers: any;
+  closeTravelerLanguageModal: () => void;
+  travelerLanguageLabel: string;
+  uiLanguagePanY: RNAnimated.Value;
+  uiLanguagePanHandlers: any;
+  closeUiLanguageModal: () => void;
+  uiLanguageLabel: string;
   toLanguageCode: (code: string) => string | undefined;
 };
 
@@ -59,10 +70,14 @@ export default function ProfileSheetView({
   state,
   profilePanY,
   profilePanHandlers,
-  languagePanY,
-  languagePanHandlers,
-  closeLanguageModal,
-  languageLabel,
+  travelerLanguagePanY,
+  travelerLanguagePanHandlers,
+  closeTravelerLanguageModal,
+  travelerLanguageLabel,
+  uiLanguagePanY,
+  uiLanguagePanHandlers,
+  closeUiLanguageModal,
+  uiLanguageLabel,
   toLanguageCode,
 }: ProfileSheetViewProps) {
   return (
@@ -123,10 +138,19 @@ export default function ProfileSheetView({
 
               <ProfileMenuItem
                 icon={<Globe size={20} color="#059669" />}
-                title="Translation Language"
-                subtitle={languageLabel}
+                title="Traveler Card Language"
+                subtitle={`${travelerLanguageLabel} • Result card only`}
                 iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
-                onPress={() => state.setLangModalVisible(true)}
+                onPress={() => state.setTravelerLangModalVisible(true)}
+                theme={theme}
+              />
+
+              <ProfileMenuItem
+                icon={<Globe size={20} color="#2563EB" />}
+                title="Settings Language"
+                subtitle={uiLanguageLabel}
+                iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
+                onPress={() => state.setUiLangModalVisible(true)}
                 theme={theme}
               />
 
@@ -140,16 +164,35 @@ export default function ProfileSheetView({
             </View>
 
             <LanguageSelectorModal
-              visible={state.langModalVisible}
-              language={state.language}
+              visible={state.travelerLangModalVisible}
+              title="Traveler Card Language"
+              options={LANGUAGE_OPTIONS}
+              selectedCode={state.travelerLanguage}
               colorScheme={colorScheme}
               theme={theme}
-              panY={languagePanY}
-              panHandlers={languagePanHandlers}
-              onClose={closeLanguageModal}
+              panY={travelerLanguagePanY}
+              panHandlers={travelerLanguagePanHandlers}
+              onClose={closeTravelerLanguageModal}
               onSelectLanguage={(code) => {
-                state.setLanguage(toLanguageCode(code));
-                closeLanguageModal();
+                state.setTravelerLanguage(toLanguageCode(code));
+                closeTravelerLanguageModal();
+              }}
+              normalizeForSelection={normalizeTravelerTargetLanguage}
+            />
+
+            <LanguageSelectorModal
+              visible={state.uiLangModalVisible}
+              title="Settings Language"
+              options={UI_LANGUAGE_OPTIONS}
+              selectedCode={state.uiLanguage}
+              colorScheme={colorScheme}
+              theme={theme}
+              panY={uiLanguagePanY}
+              panHandlers={uiLanguagePanHandlers}
+              onClose={closeUiLanguageModal}
+              onSelectLanguage={(code) => {
+                state.setUiLanguage(code as CanonicalLocale);
+                closeUiLanguageModal();
               }}
             />
 
