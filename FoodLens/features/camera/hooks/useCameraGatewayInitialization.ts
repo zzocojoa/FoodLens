@@ -1,0 +1,50 @@
+import { MutableRefObject, useEffect } from 'react';
+import { Alert } from 'react-native';
+import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
+import { CameraSourceType, LocationContext } from '../types/camera.types';
+import { resolveInitialLocationContext } from '../utils/cameraGatewayHelpers';
+
+type UseCameraGatewayInitializationParams = {
+  photoLat?: string;
+  photoLng?: string;
+  sourceType?: CameraSourceType;
+  externalImageUri?: string;
+  processImage: (uri: string) => Promise<void>;
+  cachedLocation: MutableRefObject<LocationContext | null | undefined>;
+  setIsLocationReady: (value: boolean) => void;
+};
+
+export const useCameraGatewayInitialization = ({
+  photoLat,
+  photoLng,
+  sourceType,
+  externalImageUri,
+  processImage,
+  cachedLocation,
+  setIsLocationReady,
+}: UseCameraGatewayInitializationParams) => {
+  useEffect(() => {
+    const initLocation = async () => {
+      const resolvedLocation = await resolveInitialLocationContext({
+        photoLat,
+        photoLng,
+        sourceType,
+      });
+      cachedLocation.current = resolvedLocation;
+
+      if (!resolvedLocation && sourceType === 'camera') {
+        setTimeout(() => {
+          Alert.alert('위치 정보 없음', CAMERA_ERROR_MESSAGES.locationUnavailable);
+        }, 500);
+      }
+
+      setIsLocationReady(true);
+
+      if (externalImageUri) {
+        await processImage(externalImageUri);
+      }
+    };
+
+    void initLocation();
+  }, [cachedLocation, externalImageUri, photoLat, photoLng, processImage, setIsLocationReady, sourceType]);
+};

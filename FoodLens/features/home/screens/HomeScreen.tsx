@@ -13,32 +13,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, Heart, ShieldCheck } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
 
-import { Colors, THEME } from '../../../constants/theme';
-import { useColorScheme } from '../../../hooks/use-color-scheme';
-import { dataStore } from '../../../services/dataStore';
-import { FloatingEmojis, FloatingEmojisHandle } from '../../../components/FloatingEmojis';
+import { THEME } from '../../../constants/theme';
+import { FloatingEmojis } from '../../../components/FloatingEmojis';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import ProfileSheet from '../../../components/ProfileSheet';
 import SpatialApple from '../../../components/SpatialApple';
 import { SecureImage } from '../../../components/SecureImage';
 import { WeeklyStatsStrip } from '../../../components/WeeklyStatsStrip';
-import { HapticsService } from '../../../services/haptics';
-import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import HomeScansSection from '../components/HomeScansSection';
-import { useHomeDashboard } from '../hooks/useHomeDashboard';
+import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
-  const theme = Colors[colorScheme];
-  const { isConnected } = useNetworkStatus();
-
-  const floatingEmojisRef = React.useRef<FloatingEmojisHandle>(null);
-  const orbAnim = React.useRef(new Animated.Value(1)).current;
-
+  const {
+    colorScheme,
+    theme,
+    isConnected,
+    floatingEmojisRef,
+    orbAnim,
+    dashboard,
+    handleAppleMotion,
+    handleOpenProfile,
+    handleOpenEmojiPicker,
+    handleStartAnalysis,
+    handleOpenHistory,
+    handleOpenResult,
+    handleOpenTripStats,
+    handleOpenAllergies,
+  } = useHomeScreenController();
   const {
     activeModal,
     allergyCount,
@@ -51,25 +54,7 @@ export default function HomeScreen() {
     setSelectedDate,
     loadDashboardData,
     handleDeleteItem,
-  } = useHomeDashboard();
-
-  const handleAppleMotion = React.useCallback(() => {
-    floatingEmojisRef.current?.trigger();
-  }, []);
-
-  React.useEffect(() => {
-    Animated.spring(orbAnim, {
-      toValue: activeModal === 'PROFILE' ? 0 : 1,
-      useNativeDriver: true,
-      friction: 8,
-      tension: 40,
-    }).start();
-  }, [activeModal, orbAnim]);
-
-  const handleStartAnalysis = () => {
-    HapticsService.tickTick();
-    router.push('/scan/camera');
-  };
+  } = dashboard;
 
   return (
     <View style={styles.container}>
@@ -87,10 +72,7 @@ export default function HomeScreen() {
         <View style={[styles.header, { paddingHorizontal: 24 }]}>
           <View style={styles.userInfo}>
             <Pressable
-              onPress={() => {
-                HapticsService.medium();
-                setActiveModal('PROFILE');
-              }}
+              onPress={handleOpenProfile}
               style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
               hitSlop={20}
             >
@@ -115,10 +97,7 @@ export default function HomeScreen() {
           </View>
 
           <Pressable
-            onPress={() => {
-              HapticsService.light();
-              router.push('/emoji-picker');
-            }}
+            onPress={handleOpenEmojiPicker}
             style={({ pressed }) => [styles.emojiPickerButton, { opacity: pressed ? 0.6 : 1 }]}
             hitSlop={10}
           >
@@ -164,7 +143,7 @@ export default function HomeScreen() {
               activeOpacity={0.8}
               style={{ flex: 1 }}
               hapticType="light"
-              onPress={() => router.push('/trip-stats')}
+              onPress={handleOpenTripStats}
             >
               <BlurView
                 intensity={80}
@@ -183,7 +162,7 @@ export default function HomeScreen() {
             <HapticTouchableOpacity
               style={{ flex: 1 }}
               hapticType="light"
-              onPress={() => router.push('/allergies')}
+              onPress={handleOpenAllergies}
             >
               <BlurView
                 intensity={80}
@@ -212,17 +191,8 @@ export default function HomeScreen() {
             filteredScans={filteredScans}
             selectedDate={selectedDate}
             theme={theme}
-            onOpenHistory={() => router.push('/history')}
-            onOpenResult={(item) => {
-              dataStore.setData(item, item.location, item.imageUri || '');
-              router.push({
-                pathname: '/result',
-                params: {
-                  fromStore: 'true',
-                  isBarcode: item.isBarcode ? 'true' : 'false',
-                },
-              });
-            }}
+            onOpenHistory={handleOpenHistory}
+            onOpenResult={handleOpenResult}
             onDeleteItem={handleDeleteItem}
           />
         </ScrollView>

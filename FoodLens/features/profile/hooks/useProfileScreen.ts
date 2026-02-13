@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
-import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { UseProfileScreenResult } from '../types/profile.types';
 import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
-import { addUniqueItem, removeStringItem, toggleStringItem } from '../utils/profileSelection';
-import { buildSuggestions } from '../utils/profileSuggestions';
+import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const [loading, setLoading] = useState(false);
@@ -35,50 +33,21 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         loadProfile();
     }, [loadProfile]);
 
-    const toggleAllergen = useCallback((id: string) => {
-        setAllergies((prev) => toggleStringItem(prev, id));
-    }, []);
-
-    const addItemToRestrictions = useCallback((text: string) => {
-        const item = text.trim();
-        if (!item) {
-            return;
-        }
-
-        setOtherRestrictions((prev) => {
-            const next = addUniqueItem(prev, item);
-            if (next.length !== prev.length) {
-                shouldScrollRef.current = true;
-            }
-            return next;
-        });
-
-        setInputValue('');
-        setSuggestions([]);
-    }, []);
-
-    const addOtherRestriction = useCallback(() => {
-        addItemToRestrictions(inputValue);
-    }, [addItemToRestrictions, inputValue]);
-
-    const removeRestriction = useCallback((item: string) => {
-        setOtherRestrictions((prev) => removeStringItem(prev, item));
-    }, []);
-
-    const handleInputChange = useCallback(
-        (text: string) => {
-            setInputValue(text);
-            setSuggestions(buildSuggestions(text, SEARCHABLE_INGREDIENTS, otherRestrictions));
-        },
-        [otherRestrictions]
-    );
-
-    const selectSuggestion = useCallback(
-        (item: string) => {
-            addItemToRestrictions(item);
-        },
-        [addItemToRestrictions]
-    );
+    const {
+        toggleAllergen,
+        addOtherRestriction,
+        removeRestriction,
+        handleInputChange,
+        selectSuggestion,
+    } = useProfileRestrictionHandlers({
+        inputValue,
+        otherRestrictions,
+        setInputValue,
+        setSuggestions,
+        setAllergies,
+        setOtherRestrictions,
+        shouldScrollRef,
+    });
 
     const saveProfile = useCallback(async () => {
         setLoading(true);

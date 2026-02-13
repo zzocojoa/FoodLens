@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Alert, Animated, Easing } from 'react-native';
+import { Alert } from 'react-native';
 import {
     CameraView,
     CameraType,
@@ -11,21 +11,17 @@ import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
-import { analyzeImage, analyzeLabel, analyzeSmart, lookupBarcode } from '../../../services/ai';
+import { analyzeImage, analyzeLabel, analyzeSmart } from '../../../services/ai';
 import { dataStore } from '../../../services/dataStore';
-import { getLocationData } from '../../../services/utils';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
 import { createFallbackLocation } from '../utils/scanCameraMappers';
-import {
-    assertImageFileReady,
-    beginAnalysis,
-    createProgressHandler,
-    getIsoCode,
-    persistAndNavigateAnalysisResult,
-} from '../utils/scanCameraGatewayHelpers';
 import { resolveGalleryMetadata } from '../utils/galleryMetadata';
+import { useScanCameraLaserAnimation } from './useScanCameraLaserAnimation';
+import { lookupBarcodeWithCache, normalizeBarcodeIngredients } from '../services/scanCameraBarcodeService';
+import { isBarcodeInCenteredRoi, evaluateScanConfidence } from '../utils/barcodeScannerUtils';
+import { runAnalysisFlow } from '../services/scanCameraAnalysisService';
 
 export const useScanCameraGateway = () => {
     const { navigate, replace, back } = useAppNavigation();
@@ -63,32 +59,7 @@ export const useScanCameraGateway = () => {
         isProcessingRef.current = false;
     }, [mode]);
 
-    const laserAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        if (mode === 'BARCODE') {
-            laserAnim.setValue(0);
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(laserAnim, {
-                        toValue: 1,
-                        duration: 1500,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(laserAnim, {
-                        toValue: 0,
-                        duration: 1500,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
-        } else {
-            laserAnim.stopAnimation();
-            laserAnim.setValue(0);
-        }
-    }, [laserAnim, mode]);
+    const laserAnim = useScanCameraLaserAnimation(mode);
 
     const toggleFlash = () => {
         setFlash((current) => {
@@ -161,35 +132,11 @@ export const useScanCameraGateway = () => {
                     return;
                 }
 
-                // Check cache first
-                const { BarcodeCache } = await import('../../../services/aiCore/internal/barcodeCache');
-                const cachedResult = await BarcodeCache.get(barcode);
-                
-                let result;
-                if (cachedResult) {
-                    console.log('[AI] Barcode found in cache:', barcode);
-                    result = cachedResult;
-                } else {
-                    result = await lookupBarcode(barcode);
-                    if (result.found) {
-                        await BarcodeCache.set(barcode, result);
-                    }
-                }
+                const result = await lookupBarcodeWithCache(barcode);
 
                 if (result.found && result.data) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    const product = result.data;
-
-                    if (
-                        product.ingredients &&
-                        product.ingredients.length > 0 &&
-                        typeof product.ingredients[0] === 'string'
-                    ) {
-                        product.ingredients = (product.ingredients as any).map((ing: string) => ({
-                            name: ing,
-                            isAllergen: false,
-                        }));
-                    }
+                    const product = normalizeBarcodeIngredients(result.data);
 
                     const locationData = cachedLocation.current || createFallbackLocation(0, 0, 'US');
                     const finalTimestamp = new Date().toISOString();
@@ -245,39 +192,22 @@ export const useScanCameraGateway = () => {
         (scanningResult: BarcodeScanningResult) => {
             if (mode !== 'BARCODE' || scanned || isAnalyzing || isProcessingRef.current) return;
 
-            // ROI Check: Filter results outside the 280x280 central viewfinder
-            // Note: coordinates are relative to the CameraView
-            const { width, height } = require('react-native').Dimensions.get('window');
-            const VIEWFINDER_SIZE = 280;
-            const horizontalMargin = (width - VIEWFINDER_SIZE) / 2;
-            const verticalMargin = (height - VIEWFINDER_SIZE) / 2;
+            if (!isBarcodeInCenteredRoi(scanningResult, 280)) return;
 
-            const { origin, size } = scanningResult.bounds;
-            const barcodeCenterX = origin.x + size.width / 2;
-            const barcodeCenterY = origin.y + size.height / 2;
+            const confidence = evaluateScanConfidence({
+                currentData: scanningResult.data,
+                lastData: lastScannedData.current,
+                consecutiveScans,
+                requiredMatches: 3,
+            });
 
-            const isInROI = 
-                barcodeCenterX >= horizontalMargin && 
-                barcodeCenterX <= (horizontalMargin + VIEWFINDER_SIZE) &&
-                barcodeCenterY >= verticalMargin &&
-                barcodeCenterY <= (verticalMargin + VIEWFINDER_SIZE);
+            lastScannedData.current = confidence.nextLastData;
+            setConsecutiveScans(confidence.nextCount);
 
-            if (!isInROI) return;
-
-            // Confidence check: Requires 3 consecutive identical reads
-            if (scanningResult.data === lastScannedData.current) {
-                const newCount = consecutiveScans + 1;
-                if (newCount >= 3) {
-                    isProcessingRef.current = true;
-                    setScanned(true);
-                    processBarcode(scanningResult.data);
-                    setConsecutiveScans(0);
-                } else {
-                    setConsecutiveScans(newCount);
-                }
-            } else {
-                lastScannedData.current = scanningResult.data;
-                setConsecutiveScans(1);
+            if (confidence.action === 'accept') {
+                isProcessingRef.current = true;
+                setScanned(true);
+                processBarcode(scanningResult.data);
             }
         },
         [isAnalyzing, mode, processBarcode, scanned, consecutiveScans]
@@ -290,59 +220,25 @@ export const useScanCameraGateway = () => {
             customTimestamp?: string | null,
             customLocation?: any
         ) => {
-            try {
-                isCancelled.current = false;
-                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
-
-                let locationData = customLocation || cachedLocation.current;
-                if (!locationData) {
-                    try {
-                        locationData = await getLocationData();
-                        if (locationData) cachedLocation.current = locationData;
-                    } catch (e) {
-                        console.warn('Location fetch failed', e);
-                    }
-                }
-
-                if (isCancelled.current) return;
-
-                if (!isConnectedRef.current) {
-                    Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
-                    resetState();
-                    return;
-                }
-
-                const isoCode = getIsoCode(locationData, 'US');
-                await assertImageFileReady(uri);
-
-                setActiveStep(1);
-                setUploadProgress(0);
-
-                const analysisResult = await analyzeImage(
-                    uri,
-                    isoCode,
-                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
-                );
-
-                if (isCancelled.current) return;
-
-                setActiveStep(3);
-
-                await persistAndNavigateAnalysisResult({
-                    analysisResult,
-                    locationData,
-                    isoCode,
-                    timestamp: customTimestamp,
-                    imageUri: uri,
-                    fallbackAddress: 'Location Unavailable',
-                    router: { replace },
-                });
-
-                resetState();
-            } catch (error: any) {
-                if (isCancelled.current) return;
-                handleError(error);
-            }
+            void customSourceType;
+            await runAnalysisFlow({
+                uri,
+                timestamp: customTimestamp,
+                customLocation,
+                fallbackAddress: 'Location Unavailable',
+                needsFileValidation: true,
+                analyzer: analyzeImage,
+                isCancelled,
+                isConnectedRef,
+                cachedLocation,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                replace,
+                resetState,
+                handleError,
+            });
         },
         [handleError, resetState, replace]
     );
@@ -353,45 +249,22 @@ export const useScanCameraGateway = () => {
 
     const processLabel = useCallback(
         async (uri: string, customTimestamp?: string | null) => {
-            try {
-                isCancelled.current = false;
-                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
-
-                if (!isConnectedRef.current) {
-                    Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
-                    resetState();
-                    return;
-                }
-
-                const locationData = cachedLocation.current || (await getLocationData().catch(() => null));
-                const isoCode = getIsoCode(locationData, 'US');
-
-                setActiveStep(1);
-                setUploadProgress(0);
-
-                const analysisResult = await analyzeLabel(
-                    uri,
-                    isoCode,
-                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
-                );
-
-                if (isCancelled.current) return;
-
-                setActiveStep(3);
-                await persistAndNavigateAnalysisResult({
-                    analysisResult,
-                    locationData,
-                    isoCode,
-                    timestamp: customTimestamp,
-                    imageUri: uri,
-                    router: { replace },
-                });
-
-                resetState();
-            } catch (error: any) {
-                if (isCancelled.current) return;
-                handleError(error);
-            }
+            await runAnalysisFlow({
+                uri,
+                timestamp: customTimestamp,
+                needsFileValidation: false,
+                analyzer: analyzeLabel,
+                isCancelled,
+                isConnectedRef,
+                cachedLocation,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                replace,
+                resetState,
+                handleError,
+            });
         },
         [handleError, resetState, replace]
     );
@@ -402,59 +275,24 @@ export const useScanCameraGateway = () => {
             customTimestamp?: string | null,
             customLocation?: any
         ) => {
-            try {
-                isCancelled.current = false;
-                beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
-
-                let locationData = customLocation || cachedLocation.current;
-                if (!locationData) {
-                    try {
-                        locationData = await getLocationData();
-                        if (locationData) cachedLocation.current = locationData;
-                    } catch (e) {
-                        console.warn('Location fetch failed', e);
-                    }
-                }
-
-                if (isCancelled.current) return;
-
-                if (!isConnectedRef.current) {
-                    Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
-                    resetState();
-                    return;
-                }
-
-                const isoCode = getIsoCode(locationData, 'US');
-                await assertImageFileReady(uri);
-
-                setActiveStep(1);
-                setUploadProgress(0);
-
-                const analysisResult = await analyzeSmart(
-                    uri,
-                    isoCode,
-                    createProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
-                );
-
-                if (isCancelled.current) return;
-
-                setActiveStep(3);
-
-                await persistAndNavigateAnalysisResult({
-                    analysisResult,
-                    locationData,
-                    isoCode,
-                    timestamp: customTimestamp,
-                    imageUri: uri,
-                    fallbackAddress: 'Location Unavailable',
-                    router: { replace },
-                });
-
-                resetState();
-            } catch (error: any) {
-                if (isCancelled.current) return;
-                handleError(error);
-            }
+            await runAnalysisFlow({
+                uri,
+                timestamp: customTimestamp,
+                customLocation,
+                fallbackAddress: 'Location Unavailable',
+                needsFileValidation: true,
+                analyzer: analyzeSmart,
+                isCancelled,
+                isConnectedRef,
+                cachedLocation,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                replace,
+                resetState,
+                handleError,
+            });
         },
         [handleError, resetState, replace]
     );

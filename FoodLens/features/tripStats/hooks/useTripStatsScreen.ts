@@ -2,8 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { TEST_UID } from '../constants/tripStats.constants';
-import { tripStatsService } from '../services/tripStatsService';
-import { countSafeAnalysesFromStart, countSafeAnalysesTotal } from '../utils/tripStatsCalculations';
+import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
 import { useTripStartToast } from './useTripStartToast';
 
 export function useTripStatsScreen(insetsTop: number) {
@@ -19,22 +18,11 @@ export function useTripStatsScreen(insetsTop: number) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const { user, allAnalyses } = await tripStatsService.loadUserTripData(TEST_UID);
-
-            setTotalCount(allAnalyses.length);
-
-            if (user?.currentTripStart) {
-                const startTime = new Date(user.currentTripStart).getTime();
-                setTripStartDate(new Date(user.currentTripStart));
-                setSafeCount(countSafeAnalysesFromStart(allAnalyses, startTime));
-
-                if (user.currentTripLocation) {
-                    setCurrentLocation(user.currentTripLocation);
-                }
-            } else {
-                setSafeCount(countSafeAnalysesTotal(allAnalyses));
-                setTripStartDate(null);
-            }
+            const snapshot = await loadTripStatsSnapshot(TEST_UID);
+            setTotalCount(snapshot.totalCount);
+            setSafeCount(snapshot.safeCount);
+            setTripStartDate(snapshot.tripStartDate);
+            setCurrentLocation(snapshot.currentLocation);
         } catch (e) {
             console.error(e);
         } finally {
@@ -51,8 +39,8 @@ export function useTripStatsScreen(insetsTop: number) {
     const handleStartNewTrip = useCallback(async () => {
         setIsLocating(true);
         try {
-            const locationResult = await tripStatsService.resolveCurrentLocation();
-            if (!locationResult.ok) {
+            const result = await startTripFromCurrentLocation(TEST_UID);
+            if (!result.ok) {
                 Alert.alert(
                     'Permission Denied',
                     'Location access is needed to tag your trip. Please enable it in settings.'
@@ -61,17 +49,9 @@ export function useTripStatsScreen(insetsTop: number) {
                 return;
             }
 
-            const now = new Date();
-            await tripStatsService.startTrip(
-                TEST_UID,
-                locationResult.locationName,
-                locationResult.coordinates,
-                now
-            );
-
-            setTripStartDate(now);
+            setTripStartDate(result.tripStartDate);
             setSafeCount(0);
-            setCurrentLocation(locationResult.locationName);
+            setCurrentLocation(result.currentLocation);
             triggerToast();
         } catch (e) {
             console.error(e);

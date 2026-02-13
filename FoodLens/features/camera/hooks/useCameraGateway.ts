@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { analyzeImage } from '../../../services/ai';
-import { dataStore } from '../../../services/dataStore';
-import { getLocationData, normalizeTimestamp } from '../../../services/utils';
 import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
-import { createFallbackLocation, isFileError, isRetryableServerError } from '../utils/cameraMappers';
-import {
-    assertImageFileReady,
-    resolveInitialLocationContext,
-    resolveIsoCodeFromContext,
-} from '../utils/cameraGatewayHelpers';
+import { isFileError, isRetryableServerError } from '../utils/cameraMappers';
+import { runCameraImageAnalysis } from '../services/cameraAnalysisService';
+import { useCameraPermissionEffects } from './useCameraPermissionEffects';
+import { useCameraGatewayInitialization } from './useCameraGatewayInitialization';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -44,22 +39,12 @@ export const useCameraGateway = ({
         isConnectedRef.current = isConnected;
     }, [isConnected]);
 
-    useEffect(() => {
-        if (permission && !permission.granted && permission.canAskAgain) {
-            requestPermission();
-        }
-    }, [permission, requestPermission]);
-
-    useEffect(() => {
-        if (permission?.granted && !externalImageUri) {
-            const timer = setTimeout(() => {
-                Alert.alert('오류', CAMERA_ERROR_MESSAGES.missingImage);
-                onExit();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-        return undefined;
-    }, [permission, externalImageUri, onExit]);
+    useCameraPermissionEffects({
+        permission,
+        requestPermission,
+        externalImageUri,
+        onExit,
+    });
 
     const resetState = useCallback(() => {
         setIsAnalyzing(false);
@@ -110,57 +95,20 @@ export const useCameraGateway = ({
     const processImage = useCallback(
         async (uri: string) => {
             try {
-                isCancelled.current = false;
-                setIsAnalyzing(true);
-                setCapturedImage(uri);
-                setActiveStep(0);
-
-                let locationData = cachedLocation.current;
-
-                if (locationData === undefined) {
-                    try {
-                        locationData = await getLocationData();
-                    } catch (e) {
-                        console.warn('Location fetch failed, defaulting to US context', e);
-                    }
-                }
-
-                if (isCancelled.current) return;
-
-                if (!isConnectedRef.current) {
-                    Alert.alert('오프라인', CAMERA_ERROR_MESSAGES.offline);
-                    resetState();
-                    onExit();
-                    return;
-                }
-
-                const isoCode = await resolveIsoCodeFromContext(locationData);
-                await assertImageFileReady(uri);
-
-                setActiveStep(1);
-                setUploadProgress(0);
-
-                const analysisResult = await analyzeImage(uri, isoCode, (progress) => {
-                    if (!isCancelled.current) {
-                        setUploadProgress(progress);
-                        if (progress >= 1) {
-                            setActiveStep(2);
-                        }
-                    }
+                await runCameraImageAnalysis({
+                    uri,
+                    photoTimestamp,
+                    cachedLocation,
+                    isCancelled,
+                    isConnectedRef,
+                    setIsAnalyzing,
+                    setCapturedImage,
+                    setActiveStep,
+                    setUploadProgress,
+                    resetState,
+                    onExit,
+                    onSuccess,
                 });
-
-                if (isCancelled.current) return;
-
-                setActiveStep(3);
-
-                const locationContext =
-                    locationData ||
-                    createFallbackLocation(0, 0, isoCode, 'Location Unavailable (Using Preference)');
-                const finalTimestamp = normalizeTimestamp(photoTimestamp);
-
-                dataStore.setData(analysisResult, locationContext, uri, finalTimestamp);
-                onSuccess();
-                resetState();
             } catch (error: any) {
                 if (isCancelled.current) return;
                 handleError(error, uri);
@@ -173,30 +121,15 @@ export const useCameraGateway = ({
         processImageRef.current = processImage;
     }, [processImage]);
 
-    useEffect(() => {
-        const initLocation = async () => {
-            const resolvedLocation = await resolveInitialLocationContext({
-                photoLat,
-                photoLng,
-                sourceType,
-            });
-            cachedLocation.current = resolvedLocation;
-
-            if (!resolvedLocation && sourceType === 'camera') {
-                setTimeout(() => {
-                    Alert.alert('위치 정보 없음', CAMERA_ERROR_MESSAGES.locationUnavailable);
-                }, 500);
-            }
-
-            setIsLocationReady(true);
-
-            if (externalImageUri) {
-                processImage(externalImageUri);
-            }
-        };
-
-        initLocation();
-    }, [externalImageUri, photoLat, photoLng, processImage, sourceType]);
+    useCameraGatewayInitialization({
+        photoLat,
+        photoLng,
+        sourceType,
+        externalImageUri,
+        processImage,
+        cachedLocation,
+        setIsLocationReady,
+    });
 
     return {
         permission,
