@@ -22,8 +22,6 @@ export interface AnalyzedData {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
-    ai_title_en?: string;
-    ai_title_ko?: string;
     safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
     confidence?: number;
     ingredients: {
@@ -39,6 +37,8 @@ export interface AnalyzedData {
     nutrition?: NutritionData;
     translationCard?: TranslationCard;
     raw_result?: string;
+    raw_result_en?: string;
+    raw_result_ko?: string;
     raw_data?: Record<string, unknown>;
     used_model?: string;
     isBarcode?: boolean;

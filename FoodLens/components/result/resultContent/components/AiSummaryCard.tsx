@@ -8,13 +8,12 @@ import { useAiSummaryCardModel } from '../hooks/useAiSummaryCardModel';
 type AiSummaryCardProps = {
     colorScheme: 'light' | 'dark';
     theme: ResultTheme;
-    summaryTitle?: string;
     summary?: string;
     locale?: string;
     t: (key: string, fallback?: string) => string;
 };
 
-export default function AiSummaryCard({ colorScheme, theme, summaryTitle, summary, locale, t }: AiSummaryCardProps) {
+export default function AiSummaryCard({ colorScheme, theme, summary, locale, t }: AiSummaryCardProps) {
     const isKoreanLocale = (locale || '').toLowerCase().startsWith('ko');
     const titleFallback = isKoreanLocale ? 'AI 건강 코치' : 'AI Health Coach';
     const summaryFallback = isKoreanLocale
@@ -38,7 +37,7 @@ export default function AiSummaryCard({ colorScheme, theme, summaryTitle, summar
             <View style={styles.aiGlow} />
             <View style={styles.aiHeader}>
                 <Sparkles size={18} color="#60A5FA" fill="#60A5FA" />
-                <Text style={styles.aiTitle}>{summaryTitle || t('result.ai.title', titleFallback)}</Text>
+                <Text style={styles.aiTitle}>{t('result.ai.title', titleFallback)}</Text>
             </View>
             <Text style={[styles.aiText, { color: theme.textPrimary }]}>
                 {summaryText}

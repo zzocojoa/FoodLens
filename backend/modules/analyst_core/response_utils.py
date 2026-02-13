@@ -99,8 +99,8 @@ def get_safe_fallback_response(user_message: str) -> dict[str, Any]:
         "foodName": "분석 오류",
         "foodName_en": "Analysis Error",
         "foodName_ko": "분석 오류",
-        "ai_title_en": "AI Health Coach",
-        "ai_title_ko": "AI 건강 코치",
+        "raw_result_en": "Analysis failed. Please try again.",
+        "raw_result_ko": "분석에 실패했습니다. 다시 시도해주세요.",
         "canonicalFoodId": "error",
         "foodOrigin": "unknown",
         "safetyStatus": "CAUTION",
@@ -170,12 +170,12 @@ def sanitize_response(result: dict[str, Any]) -> dict[str, Any]:
         result["foodName_en"] = _sanitize_text(result["foodName_en"], MAX_FOOD_NAME_LENGTH)
     if "foodName_ko" in result:
         result["foodName_ko"] = _sanitize_text(result["foodName_ko"], MAX_FOOD_NAME_LENGTH)
-    if "ai_title_en" in result:
-        result["ai_title_en"] = _sanitize_text(result["ai_title_en"], MAX_FOOD_NAME_LENGTH)
-    if "ai_title_ko" in result:
-        result["ai_title_ko"] = _sanitize_text(result["ai_title_ko"], MAX_FOOD_NAME_LENGTH)
     if "raw_result" in result:
         result["raw_result"] = _sanitize_text(result["raw_result"])
+    if "raw_result_en" in result:
+        result["raw_result_en"] = _sanitize_text(result["raw_result_en"])
+    if "raw_result_ko" in result:
+        result["raw_result_ko"] = _sanitize_text(result["raw_result_ko"])
     if "translationCard" in result and result["translationCard"]:
         if "text" in result["translationCard"]:
             result["translationCard"]["text"] = _sanitize_text(result["translationCard"]["text"])

@@ -4,6 +4,7 @@ import { Check } from 'lucide-react-native';
 import { EMOJI_OPTIONS } from '../constants/emojiPicker.constants';
 import { EmojiPickerTheme } from '../types/emojiPicker.types';
 import { emojiPickerStyles as styles } from '../styles/emojiPickerStyles';
+import { useI18n } from '@/features/i18n';
 
 type EmojiGridProps = {
     selectedEmoji: string;
@@ -12,9 +13,12 @@ type EmojiGridProps = {
 };
 
 export default function EmojiGrid({ selectedEmoji, onSelectEmoji, theme }: EmojiGridProps) {
+    const { t } = useI18n();
     return (
         <ScrollView contentContainerStyle={styles.gridContainer}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>이모지 선택</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                {t('emojiPicker.section.title', 'Choose an Emoji')}
+            </Text>
             <View style={styles.grid}>
                 {EMOJI_OPTIONS.map((emoji) => (
                     <TouchableOpacity
@@ -38,4 +42,3 @@ export default function EmojiGrid({ selectedEmoji, onSelectEmoji, theme }: Emoji
         </ScrollView>
     );
 }
-

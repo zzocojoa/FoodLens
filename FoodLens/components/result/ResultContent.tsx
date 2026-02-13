@@ -28,7 +28,7 @@ export function ResultContent({
         formattedTimestamp,
         localizedFoodName,
         localizedIngredients,
-        localizedAiTitle,
+        localizedSummary,
     } = useResultContentModel(
         result,
         locationData,
@@ -62,8 +62,7 @@ export function ResultContent({
                 <AiSummaryCard
                     colorScheme={colorScheme}
                     theme={theme}
-                    summaryTitle={localizedAiTitle}
-                    summary={result.raw_result}
+                    summary={localizedSummary}
                     locale={locale}
                     t={t}
                 />

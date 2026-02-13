@@ -22,12 +22,12 @@ export const resolveLocalizedIngredientName = (
   return ingredient.name_en || ingredient.name || ingredient.name_ko || 'Unknown';
 };
 
-export const resolveLocalizedAiTitle = (
+export const resolveLocalizedSummary = (
   result: ResultContentData,
   locale?: string
 ): string | undefined => {
   if (isKoreanLocale(locale)) {
-    return result.ai_title_ko || result.ai_title_en;
+    return result.raw_result_ko || result.raw_result_en || result.raw_result;
   }
-  return result.ai_title_en || result.ai_title_ko;
+  return result.raw_result_en || result.raw_result || result.raw_result_ko;
 };

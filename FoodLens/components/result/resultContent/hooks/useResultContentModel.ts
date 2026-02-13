@@ -4,9 +4,9 @@ import { ResultContentProps } from '../types';
 import { hasAllergenIngredients } from '../utils/contentMeta';
 import { formatTimestamp, getLocationText } from '../utils/resultContentFormatters';
 import {
-  resolveLocalizedAiTitle,
   resolveLocalizedFoodName,
   resolveLocalizedIngredientName,
+  resolveLocalizedSummary,
 } from '../utils/localizedNames';
 
 export const useResultContentModel = (
@@ -23,8 +23,8 @@ export const useResultContentModel = (
     colorScheme,
     theme,
     hasAllergens: hasAllergenIngredients(result.ingredients),
-    localizedAiTitle: resolveLocalizedAiTitle(result, locale),
     localizedFoodName: resolveLocalizedFoodName(result, locale),
+    localizedSummary: resolveLocalizedSummary(result, locale),
     localizedIngredients: result.ingredients.map((ingredient) => ({
       ...ingredient,
       displayName: resolveLocalizedIngredientName(ingredient, locale),

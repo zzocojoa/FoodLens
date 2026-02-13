@@ -139,5 +139,8 @@
   "tripStats.toast.nowExploringTemplate": "Now exploring {location}",
   "tripStats.alert.permissionDeniedTitle": "Permission Denied",
   "tripStats.alert.permissionDeniedMessage": "Location access is needed to tag your trip. Please enable it in settings.",
-  "tripStats.alert.failedToGetLocation": "Failed to get location. Please try again."
+  "tripStats.alert.failedToGetLocation": "Failed to get location. Please try again.",
+  "emojiPicker.title": "Emoji Selection",
+  "emojiPicker.preview": "Preview",
+  "emojiPicker.section.title": "Choose an Emoji"
 }

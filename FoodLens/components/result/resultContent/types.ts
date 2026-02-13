@@ -28,11 +28,11 @@ export type ResultContentData = {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
-    ai_title_en?: string;
-    ai_title_ko?: string;
     confidence?: number;
     ingredients: ResultIngredient[];
     raw_result?: string;
+    raw_result_en?: string;
+    raw_result_ko?: string;
     translationCard?: ResultTranslationCard | null;
     isBarcode?: boolean;
     imageUri?: string;
