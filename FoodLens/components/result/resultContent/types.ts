@@ -38,4 +38,6 @@ export type ResultContentProps = {
     timestamp?: string | null;
     onOpenBreakdown: () => void;
     onDatePress?: () => void;
+    t: (key: string, fallback?: string) => string;
+    locale: string;
 };

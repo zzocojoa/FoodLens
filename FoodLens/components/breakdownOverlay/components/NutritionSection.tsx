@@ -5,20 +5,25 @@ import { BreakdownViewModel } from '../types';
 import { getBreakdownOverlayStyles } from '../styles';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
+import { useI18n, formatNumber, formatPercent } from '@/features/i18n';
 
 type NutritionSectionProps = {
     model: BreakdownViewModel;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function NutritionSection({ model }: NutritionSectionProps) {
+export default function NutritionSection({ model, t }: NutritionSectionProps) {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const { locale } = useI18n();
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
 
     if (!styles || !model.hasNutrition) {
         return (
             <View style={styles.noNutritionCard}>
-                <Text style={styles.noNutritionText}>Nutrition data unavailable</Text>
+                <Text style={styles.noNutritionText}>
+                    {t('result.breakdown.nutritionUnavailable', 'Nutrition data unavailable')}
+                </Text>
             </View>
         );
     }
@@ -44,8 +49,8 @@ export default function NutritionSection({ model }: NutritionSectionProps) {
                         />
                     </Svg>
                     <View style={styles.ringCenter}>
-                        <Text style={styles.calorieValue}>{Math.round(model.calories)}</Text>
-                        <Text style={styles.calorieLabel}>KCAL</Text>
+                        <Text style={styles.calorieValue}>{formatNumber(Math.round(model.calories), locale, { maximumFractionDigits: 0 })}</Text>
+                        <Text style={styles.calorieLabel}>{t('result.breakdown.kcal', 'KCAL')}</Text>
                     </View>
                 </View>
 
@@ -54,9 +59,21 @@ export default function NutritionSection({ model }: NutritionSectionProps) {
                         <View key={macro.name} style={styles.macroRow}>
                             <View style={styles.macroLabel}>
                                 <View style={[styles.macroDot, { backgroundColor: macro.color }]} />
-                                <Text style={styles.macroName}>{macro.name}</Text>
+                                <Text style={styles.macroName}>
+                                    {macro.name === 'PROTEIN'
+                                        ? t('result.breakdown.macro.protein', 'PROTEIN')
+                                        : macro.name === 'CARBS'
+                                          ? t('result.breakdown.macro.carbs', 'CARBS')
+                                          : macro.name === 'FAT'
+                                            ? t('result.breakdown.macro.fat', 'FAT')
+                                            : macro.name}
+                                </Text>
                             </View>
-                            <Text style={styles.macroValue}>{macro.value}g ({macro.percent}%)</Text>
+                            <Text style={styles.macroValue}>
+                                {t('result.breakdown.macroValueTemplate', '{gram} ({percent})')
+                                    .replace('{gram}', `${formatNumber(macro.value, locale)}${t('common.unit.gram', 'g')}`)
+                                    .replace('{percent}', formatPercent(macro.percent, locale))}
+                            </Text>
                         </View>
                     ))}
                 </View>
@@ -64,9 +81,14 @@ export default function NutritionSection({ model }: NutritionSectionProps) {
 
             {model.nutrition && (
                 <View style={styles.sourceCard}>
-                    <Text style={styles.sourceLabel}>Data Source</Text>
+                    <Text style={styles.sourceLabel}>{t('result.breakdown.dataSource', 'Data Source')}</Text>
                     <Text style={styles.sourceValue}>{model.nutrition.dataSource}</Text>
-                    <Text style={styles.sourceServing}>per {model.nutrition.servingSize}</Text>
+                    <Text style={styles.sourceServing}>
+                        {t('result.breakdown.perTemplate', 'per {serving}').replace(
+                            '{serving}',
+                            String(model.nutrition.servingSize)
+                        )}
+                    </Text>
                 </View>
             )}
         </>

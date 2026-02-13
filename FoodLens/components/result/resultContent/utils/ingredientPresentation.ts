@@ -1,7 +1,10 @@
 import { ResultIngredient, ResultTheme } from '../types';
 
-export const getIngredientMetaText = (ingredient: ResultIngredient): string =>
-  ingredient.isAllergen ? 'Allergen detected' : 'Healthy component';
+export const getIngredientMetaText = (
+  ingredient: ResultIngredient,
+  allergenLabel: string = 'Allergen detected',
+  healthyLabel: string = 'Healthy component'
+): string => (ingredient.isAllergen ? allergenLabel : healthyLabel);
 
 export const getIngredientNameColor = (ingredient: ResultIngredient, theme: ResultTheme): string =>
   ingredient.isAllergen ? '#881337' : theme.textPrimary;

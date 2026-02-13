@@ -6,6 +6,7 @@ import { FilterType } from '../../../hooks/useHistoryFilter';
 import { HapticTouchableOpacity } from '../../HapticFeedback';
 import { HISTORY_FILTERS, toFilterLabel } from '@/components/historyList/constants';
 import { historyListStyles as styles } from '@/components/historyList/styles';
+import { useI18n } from '@/features/i18n';
 
 type HistoryFilterChipsProps = {
   filter: FilterType;
@@ -15,6 +16,7 @@ type HistoryFilterChipsProps = {
 export default function HistoryFilterChips({ filter, setFilter }: HistoryFilterChipsProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { t } = useI18n();
 
   return (
     <View
@@ -50,7 +52,7 @@ export default function HistoryFilterChips({ filter, setFilter }: HistoryFilterC
                 filter === filterValue && [styles.filterTextActive, { color: theme.primary }],
               ]}
             >
-              {toFilterLabel(filterValue)}
+              {toFilterLabel(filterValue, t)}
             </Text>
           </View>
         </HapticTouchableOpacity>

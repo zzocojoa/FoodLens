@@ -13,12 +13,14 @@ type ResultErrorStateProps = {
     imageSource: any;
     locationData: any;
     errorInfo: ResultErrorInfo;
+    t: (key: string, fallback?: string) => string;
 };
 
 export default function ResultErrorState({
     imageSource,
     locationData,
     errorInfo,
+    t,
 }: ResultErrorStateProps) {
     const router = useRouter();
 
@@ -46,7 +48,7 @@ export default function ResultErrorState({
                                 textAlign: 'center',
                             }}
                         >
-                            SAFETY CARD (OFFLINE MODE)
+                            {t('result.error.safetyCardOffline', 'SAFETY CARD (OFFLINE MODE)')}
                         </Text>
                         <TravelerAllergyCard countryCode={locationData.isoCountryCode} aiTranslation={null} />
                     </View>
@@ -58,11 +60,11 @@ export default function ResultErrorState({
                     onPress={() => router.replace('/scan/camera')}
                 >
                     <Ionicons name="refresh" size={18} color="white" style={{ marginRight: 8 }} />
-                    <Text style={styles.retryText}>다시 시도</Text>
+                    <Text style={styles.retryText}>{t('result.error.retry', 'Retry')}</Text>
                 </HapticTouchableOpacity>
 
                 <HapticTouchableOpacity style={styles.homeButton} hapticType="light" onPress={() => router.replace('/')}>
-                    <Text style={styles.homeText}>홈으로 돌아가기</Text>
+                    <Text style={styles.homeText}>{t('result.error.backHome', 'Back to Home')}</Text>
                 </HapticTouchableOpacity>
             </View>
         </View>

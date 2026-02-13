@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { TripStatsTheme } from '../types/tripStats.types';
 import { tripStatsStyles as styles } from '../styles/tripStatsStyles';
+import { useI18n } from '@/features/i18n';
 
 type TripStatsHeaderProps = {
     theme: TripStatsTheme;
@@ -10,6 +11,8 @@ type TripStatsHeaderProps = {
 };
 
 export default function TripStatsHeader({ theme, onBack }: TripStatsHeaderProps) {
+    const { t } = useI18n();
+
     return (
         <View style={styles.header}>
             <TouchableOpacity
@@ -20,7 +23,9 @@ export default function TripStatsHeader({ theme, onBack }: TripStatsHeaderProps)
                     <ChevronLeft size={24} color={theme.textPrimary} />
                 </View>
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Trip Statistics</Text>
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
+                {t('tripStats.header.title', 'Trip Statistics')}
+            </Text>
             <View style={{ width: 40 }} />
         </View>
     );

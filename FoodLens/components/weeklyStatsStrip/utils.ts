@@ -1,4 +1,5 @@
-import { DAY_ITEM_HALF_WIDTH, SNAP_INTERVAL, WEEKDAY_FORMATTER } from './constants';
+import { DAY_ITEM_HALF_WIDTH, SNAP_INTERVAL } from './constants';
+import { formatWeekdayShort } from '@/features/i18n/services/formatService';
 
 export const isSameDay = (d1: Date, d2: Date): boolean => {
   return (
@@ -8,9 +9,8 @@ export const isSameDay = (d1: Date, d2: Date): boolean => {
   );
 };
 
-export const formatDateDay = (date: Date): string => {
-  return WEEKDAY_FORMATTER.format(date);
-};
+export const formatDateDay = (date: Date, locale?: string): string =>
+  formatWeekdayShort(date, locale);
 
 export const formatDateNumber = (date: Date): number => {
   return date.getDate();
@@ -19,4 +19,3 @@ export const formatDateNumber = (date: Date): number => {
 export const getScrollOffsetForIndex = (index: number, screenWidth: number): number => {
   return index * SNAP_INTERVAL - screenWidth / 2 + DAY_ITEM_HALF_WIDTH;
 };
-

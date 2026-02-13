@@ -4,6 +4,7 @@ import { MapPin, Navigation } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { TripStatsTheme } from '../types/tripStats.types';
 import { THEME_STYLES, tripStatsStyles as styles } from '../styles/tripStatsStyles';
+import { useI18n } from '@/features/i18n';
 
 type TripStatsTripCardProps = {
     currentLocation: string | null;
@@ -20,6 +21,8 @@ export default function TripStatsTripCard({
     theme,
     onStartNewTrip,
 }: TripStatsTripCardProps) {
+    const { t } = useI18n();
+
     return (
         <BlurView
             intensity={70}
@@ -35,8 +38,12 @@ export default function TripStatsTripCard({
                     <MapPin size={24} color="#3B82F6" />
                 </View>
                 <View>
-                    <Text style={[styles.tripTitle, { color: theme.textPrimary }]}>Current Trip</Text>
-                    <Text style={[styles.tripLocation, { color: theme.textSecondary }]}>{currentLocation || 'Location not set'}</Text>
+                    <Text style={[styles.tripTitle, { color: theme.textPrimary }]}>
+                        {t('tripStats.trip.currentTrip', 'Current Trip')}
+                    </Text>
+                    <Text style={[styles.tripLocation, { color: theme.textSecondary }]}>
+                        {currentLocation || t('tripStats.trip.locationNotSet', 'Location not set')}
+                    </Text>
                 </View>
             </View>
 
@@ -49,13 +56,18 @@ export default function TripStatsTripCard({
                 <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     {isLocating ? <ActivityIndicator color="#94A3B8" /> : <Navigation size={20} color="white" />}
                     <Text style={[styles.startButtonText, isLocating && { color: '#94A3B8' }]}>
-                        {isLocating ? 'Verifying Location...' : 'Start New Trip'}
+                        {isLocating
+                            ? t('tripStats.trip.verifyingLocation', 'Verifying Location...')
+                            : t('tripStats.trip.startNew', 'Start New Trip')}
                     </Text>
                 </View>
             </TouchableOpacity>
 
             <Text style={[styles.disclaimer, { color: theme.textSecondary }]}>
-                * New trip requires location access. Starting a new trip will reset the current counter for this session.
+                {t(
+                    'tripStats.trip.disclaimer',
+                    '* New trip requires location access. Starting a new trip will reset the current counter for this session.'
+                )}
             </Text>
         </BlurView>
     );

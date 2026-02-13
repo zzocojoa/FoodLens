@@ -56,7 +56,7 @@ export const aggregateHistoryByCountry = (records: AnalysisRecord[]): CountryDat
       id: record.id,
       name: record.foodName,
       type: toSafetyType(record.safetyStatus),
-      date: record.timestamp.toLocaleDateString(),
+      timestamp: record.timestamp,
       emoji: getEmoji(record.foodName),
       imageUri: resolveImageUri(record.imageUri) || undefined,
       originalRecord: record,

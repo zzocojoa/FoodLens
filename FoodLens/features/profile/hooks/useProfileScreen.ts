@@ -3,8 +3,10 @@ import { Alert, ScrollView } from 'react-native';
 import { UseProfileScreenResult } from '../types/profile.types';
 import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
+import { useI18n } from '@/features/i18n';
 
 export const useProfileScreen = (): UseProfileScreenResult => {
+    const { t } = useI18n();
     const [loading, setLoading] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [allergies, setAllergies] = useState<string[]>([]);
@@ -53,13 +55,19 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setLoading(true);
         try {
             await saveTestUserProfile(allergies, otherRestrictions);
-            Alert.alert('Updated', 'Your profile and preferences have been saved.');
+            Alert.alert(
+                t('profile.alert.updatedTitle', 'Updated'),
+                t('profile.alert.updatedMessage', 'Your profile and preferences have been saved.')
+            );
         } catch {
-            Alert.alert('Error', 'Failed to save.');
+            Alert.alert(
+                t('profile.alert.errorTitle', 'Error'),
+                t('profile.alert.saveFailed', 'Failed to save.')
+            );
         } finally {
             setLoading(false);
         }
-    }, [allergies, otherRestrictions]);
+    }, [allergies, otherRestrictions, t]);
 
     return {
         loading,

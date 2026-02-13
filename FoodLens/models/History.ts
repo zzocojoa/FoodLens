@@ -7,7 +7,7 @@ export interface RegionItem {
     id: string;
     name: string;
     type: SafetyType;
-    date: string;
+    timestamp: Date;
     emoji: string;
     originalRecord: AnalysisRecord;
 }

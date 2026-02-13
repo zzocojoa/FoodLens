@@ -8,9 +8,10 @@ import { Colors } from '@/constants/theme';
 type BreakdownHeaderProps = {
     onClose: () => void;
     panHandlers: any;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function BreakdownHeader({ onClose, panHandlers }: BreakdownHeaderProps) {
+export default function BreakdownHeader({ onClose, panHandlers, t }: BreakdownHeaderProps) {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
@@ -22,8 +23,12 @@ export default function BreakdownHeader({ onClose, panHandlers }: BreakdownHeade
 
             <View style={styles.header}>
                 <View style={{ flex: 1 }} {...panHandlers}>
-                    <Text style={styles.headerTitle}>Molecular Breakdown</Text>
-                    <Text style={styles.headerSubtitle}>SWIPE DOWN TO CLOSE</Text>
+                    <Text style={styles.headerTitle}>
+                        {t('result.breakdown.title', 'Molecular Breakdown')}
+                    </Text>
+                    <Text style={styles.headerSubtitle}>
+                        {t('result.breakdown.swipeToClose', 'SWIPE DOWN TO CLOSE')}
+                    </Text>
                 </View>
                 <TouchableOpacity
                     onPress={onClose}

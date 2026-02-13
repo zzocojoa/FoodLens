@@ -3,6 +3,7 @@ import { ANALYSIS_TIMEOUT_MS } from '../constants';
 import { getAllergyString } from '../allergy';
 import { uploadWithRetry } from '../upload';
 import { ServerConfig } from '../serverConfig';
+import { resolveRequestLocale } from './requestLocale';
 
 type ProgressCallback = (progress: number) => void;
 
@@ -21,6 +22,7 @@ export const performMultipartAnalysisUpload = async ({
 }: AnalyzeUploadParams): Promise<any> => {
   const activeServerUrl = await ServerConfig.getServerUrl();
   const allergyString = await getAllergyString();
+  const locale = await resolveRequestLocale();
 
   const uploadResult = await uploadWithRetry(
     `${activeServerUrl}${endpointPath}`,
@@ -32,6 +34,7 @@ export const performMultipartAnalysisUpload = async ({
       parameters: {
         allergy_info: allergyString,
         iso_country_code: isoCountryCode,
+        locale,
       },
     },
     3,
@@ -50,4 +53,3 @@ export const rethrowTimeoutAsColdStartMessage = (
   }
   throw error;
 };
-

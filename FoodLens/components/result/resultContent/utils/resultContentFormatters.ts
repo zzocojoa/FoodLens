@@ -1,15 +1,17 @@
 import { INGREDIENTS_INITIAL_LIMIT } from '../constants';
 import { ResultIngredient, ResultLocationData } from '../types';
+import { formatDateTime } from '@/features/i18n/services/formatService';
 
-export const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-};
+export const formatTimestamp = (timestamp: string, locale?: string): string =>
+    formatDateTime(timestamp, locale);
 
-export const getLocationText = (locationData: ResultLocationData): string =>
+export const getLocationText = (
+    locationData: ResultLocationData,
+    noLocationLabel: string = 'No Location Info'
+): string =>
     locationData?.formattedAddress ||
     [locationData?.city, locationData?.country].filter(Boolean).join(', ') ||
-    'No Location Info';
+    noLocationLabel;
 
 export const sortIngredientsByRisk = (ingredients: ResultIngredient[]): ResultIngredient[] =>
     [...ingredients].sort((a, b) => (b.isAllergen ? 1 : 0) - (a.isAllergen ? 1 : 0));

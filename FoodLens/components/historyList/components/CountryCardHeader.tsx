@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { Colors } from '@/constants/theme';
 import { StyleSheet } from 'react-native';
+import { useI18n } from '@/features/i18n';
 
 type CountryCardHeaderProps = {
     flag: string;
@@ -29,6 +30,7 @@ export default function CountryCardHeader({
     colorScheme,
 }: CountryCardHeaderProps) {
     const theme = Colors[colorScheme];
+    const { t } = useI18n();
 
     return (
         <HapticTouchableOpacity
@@ -44,7 +46,9 @@ export default function CountryCardHeader({
                         <Text style={[styles.countryName, { color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
                             {countryName}
                         </Text>
-                        <Text style={[styles.countryCount, { color: theme.textSecondary }]}>{total} SCANS</Text>
+                        <Text style={[styles.countryCount, { color: theme.textSecondary }]}>
+                            {t('history.country.scanCountTemplate', '{count} SCANS').replace('{count}', String(total))}
+                        </Text>
                     </View>
                 </View>
                 <ChevronDown

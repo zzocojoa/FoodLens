@@ -22,6 +22,8 @@ type RunAnalysisFlowParams = {
   timestamp?: string | null;
   customLocation?: LocationData | null;
   fallbackAddress?: string;
+  offlineAlertTitle: string;
+  offlineAlertMessage: string;
   needsFileValidation?: boolean;
   analyzer: AnalysisExecutor;
   isCancelled: MutableRefObject<boolean>;
@@ -41,6 +43,8 @@ export const runAnalysisFlow = async ({
   timestamp,
   customLocation,
   fallbackAddress,
+  offlineAlertTitle,
+  offlineAlertMessage,
   needsFileValidation = true,
   analyzer,
   isCancelled,
@@ -71,7 +75,7 @@ export const runAnalysisFlow = async ({
     if (isCancelled.current) return;
 
     if (!isConnectedRef.current) {
-      Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
+      Alert.alert(offlineAlertTitle, offlineAlertMessage);
       resetState();
       return;
     }

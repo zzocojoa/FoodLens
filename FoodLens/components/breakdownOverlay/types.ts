@@ -4,12 +4,13 @@ export type BreakdownOverlayProps = {
     isOpen: boolean;
     onClose: () => void;
     resultData: AnalyzedData | null;
+    t: (key: string, fallback?: string) => string;
 };
 
 export type MacroRow = {
     name: string;
     color: string;
-    value: string;
+    value: number;
     percent: number;
 };
 

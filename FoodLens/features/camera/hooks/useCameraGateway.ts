@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
+import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
 import { isFileError, isRetryableServerError } from '../utils/cameraMappers';
 import { runCameraImageAnalysis } from '../services/cameraAnalysisService';
 import { useCameraPermissionEffects } from './useCameraPermissionEffects';
 import { useCameraGatewayInitialization } from './useCameraGatewayInitialization';
+import { useI18n } from '@/features/i18n';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -21,6 +22,9 @@ export const useCameraGateway = ({
     onExit,
     onSuccess,
 }: UseCameraGatewayOptions): CameraGatewayState => {
+    const { t } = useI18n();
+    const messages = getCameraErrorMessages(t);
+
     const [permission, requestPermission] = ImagePicker.useCameraPermissions();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -67,24 +71,28 @@ export const useCameraGateway = ({
             const errorMessage = error?.message?.toLowerCase() || '';
 
             if (isRetryableServerError(errorMessage)) {
-                Alert.alert('서버 오류', '일시적인 서버 문제가 발생했습니다.\n다시 시도하시겠습니까?', [
-                    { text: '취소', style: 'cancel', onPress: () => onExit() },
+                Alert.alert(
+                    t('camera.alert.serverErrorTitle', 'Server Error'),
+                    t('camera.alert.serverRetryMessage', 'A temporary server issue occurred.\nWould you like to try again?'),
+                    [
+                    { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => onExit() },
                     {
-                        text: '재시도',
+                        text: t('common.retry', 'Retry'),
                         onPress: () => {
                             if (uri) {
                                 processImageRef.current(uri);
                             }
                         },
                     },
-                ]);
+                    ]
+                );
                 return;
             }
 
             if (isFileError(errorMessage)) {
-                Alert.alert('파일 오류', CAMERA_ERROR_MESSAGES.file);
+                Alert.alert(t('camera.alert.fileErrorTitle', 'File Error'), messages.file);
             } else {
-                Alert.alert('분석 실패', CAMERA_ERROR_MESSAGES.analysis);
+                Alert.alert(t('camera.alert.analysisFailedTitle', 'Analysis Failed'), messages.analysis);
             }
 
             onExit();
@@ -108,13 +116,15 @@ export const useCameraGateway = ({
                     resetState,
                     onExit,
                     onSuccess,
+                    offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
+                    offlineAlertMessage: messages.offline,
                 });
             } catch (error: any) {
                 if (isCancelled.current) return;
                 handleError(error, uri);
             }
         },
-        [handleError, onExit, onSuccess, photoTimestamp, resetState]
+        [handleError, onExit, onSuccess, photoTimestamp, resetState, t, messages.offline]
     );
 
     useEffect(() => {

@@ -13,6 +13,44 @@ describe('aiCore mappers', () => {
         expect(mapped.foodName).toBe('Analyzed Food');
         expect(mapped.safetyStatus).toBe('CAUTION');
         expect(mapped.ingredients).toEqual([]);
+        expect(typeof mapped.raw_result).toBe('string');
+    });
+
+    it('falls back summary to alternative payload fields', () => {
+        const mapped = mapAnalyzedData({
+            foodName: 'Soup',
+            safetyStatus: 'SAFE',
+            summary: 'Localized summary text',
+        });
+        expect(mapped.raw_result).toBe('Localized summary text');
+    });
+
+    it('falls back summary to translation text when summary is missing', () => {
+        const mapped = mapAnalyzedData({
+            foodName: 'Soup',
+            safetyStatus: 'SAFE',
+            translation_card: {
+                language: 'ko-KR',
+                text: '요약 번역',
+            },
+        });
+        expect(mapped.raw_result).toBe('요약 번역');
+        expect(mapped.translationCard?.text).toBe('요약 번역');
+    });
+
+    it('parses translation card from alternate keys', () => {
+        const mapped = mapAnalyzedData({
+            ai_translation: {
+                locale: 'en-US',
+                message: 'Translated card text',
+            },
+        });
+
+        expect(mapped.translationCard).toEqual({
+            language: 'en-US',
+            text: 'Translated card text',
+            audio_query: undefined,
+        });
     });
 
     it('maps barcode payload to analyzed data', () => {

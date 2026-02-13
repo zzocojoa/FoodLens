@@ -8,11 +8,12 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
-import { HISTORY_TITLE, TEST_UID } from '../constants/history.constants';
+import { TEST_UID } from '../constants/history.constants';
 import { useHistoryScreen } from '../hooks/useHistoryScreen';
 import { historyStyles as styles } from '../styles/historyStyles';
 import { toggleCountryExpanded } from '../utils/historySelection';
 import HistoryHeader from '../components/HistoryHeader';
+import { useI18n } from '@/features/i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -20,6 +21,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function HistoryScreen() {
     const router = useRouter();
+    const { t } = useI18n();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
@@ -49,7 +51,7 @@ export default function HistoryScreen() {
             <Stack.Screen options={{ headerShown: false }} />
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                 <HistoryHeader
-                    title={HISTORY_TITLE}
+                    title={t('history.header.title', 'Food Passport')}
                     theme={theme}
                     archiveMode={ui.archiveMode}
                     isEditMode={ui.isEditMode}
@@ -93,4 +95,3 @@ export default function HistoryScreen() {
         </View>
     );
 }
-

@@ -10,15 +10,16 @@ import IngredientItem from './IngredientItem';
 type IngredientsListWithExpandProps = {
     ingredients: ResultIngredient[];
     theme: ResultTheme;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function IngredientsListWithExpand({ ingredients, theme }: IngredientsListWithExpandProps) {
+export default function IngredientsListWithExpand({ ingredients, theme, t }: IngredientsListWithExpandProps) {
     const { expanded, state, toggleExpanded } = useIngredientsExpand(ingredients);
 
     return (
         <View style={styles.ingredientsList}>
             {state.visible.map((item, index) => (
-                <IngredientItem key={`${item.name}-${index}`} item={item} theme={theme} />
+                <IngredientItem key={`${item.name}-${index}`} item={item} theme={theme} t={t} />
             ))}
             {state.shouldCollapse && (
                 <TouchableOpacity
@@ -31,7 +32,12 @@ export default function IngredientsListWithExpand({ ingredients, theme }: Ingred
                         <ChevronDown size={16} color={theme.textSecondary} />
                     )}
                     <Text style={{ color: theme.textSecondary, fontSize: 13, marginLeft: 6 }}>
-                        {getIngredientExpandLabel(expanded, state.hiddenCount)}
+                        {getIngredientExpandLabel(
+                            expanded,
+                            state.hiddenCount,
+                            t('result.ingredients.expand.collapse', 'Collapse'),
+                            t('result.ingredients.expand.moreTemplate', 'Show more (+{count})')
+                        )}
                     </Text>
                 </TouchableOpacity>
             )}

@@ -8,6 +8,7 @@ import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
 import { HomeModalType } from '../types/home.types';
 import { filterScansByDate } from '../utils/homeDashboard';
 import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
+import { useI18n } from '@/features/i18n';
 
 const TEST_UID = 'test-user-v1';
 
@@ -26,6 +27,7 @@ type UseHomeDashboardReturn = {
 };
 
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
+  const { t } = useI18n();
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]);
   const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]);
@@ -82,10 +84,13 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       } catch (error) {
         console.error('Home delete failed:', error);
         setRecentScans(previousScans);
-        Alert.alert('Error', 'Failed to delete item. Restoring data.');
+        Alert.alert(
+          t('home.alert.errorTitle', 'Error'),
+          t('home.alert.deleteFailedRestore', 'Failed to delete item. Restoring data.')
+        );
       }
     },
-    [loadDashboardData, recentScans],
+    [loadDashboardData, recentScans, t],
   );
 
   return {

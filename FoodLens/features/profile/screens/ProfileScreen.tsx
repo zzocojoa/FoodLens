@@ -17,9 +17,11 @@ import RestrictionTags from '../components/RestrictionTags';
 import SaveProfileFooter from '../components/SaveProfileFooter';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { useI18n } from '@/features/i18n';
 
 export default function ProfileScreen() {
     const router = useRouter();
+    const { t } = useI18n();
     const { colorScheme } = useTheme();
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
@@ -60,18 +62,27 @@ export default function ProfileScreen() {
                     }}
                 >
                     <View style={styles.heroSection}>
-                        <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>What should we avoid?</Text>
-                        <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>Select ingredients you are allergic to or cannot eat.</Text>
+                        <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>
+                            {t('profile.hero.title', 'What should we avoid?')}
+                        </Text>
+                        <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
+                            {t('profile.hero.subtitle', 'Select ingredients you are allergic to or cannot eat.')}
+                        </Text>
                     </View>
 
-                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>Common Allergens</Text>
+                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
+                        {t('profile.section.commonAllergens', 'Common Allergens')}
+                    </Text>
                     <AllergenGrid
                         theme={theme}
                         selectedAllergies={allergies}
                         onToggle={toggleAllergen}
+                        t={t}
                     />
 
-                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>Other Restrictions</Text>
+                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
+                        {t('profile.section.otherRestrictions', 'Other Restrictions')}
+                    </Text>
                     <RestrictionInput
                         theme={theme}
                         inputValue={inputValue}
@@ -79,13 +90,14 @@ export default function ProfileScreen() {
                         onChangeText={handleInputChange}
                         onSubmit={addOtherRestriction}
                         onSelectSuggestion={selectSuggestion}
+                        t={t}
                     />
 
                     <RestrictionTags theme={theme} items={otherRestrictions} onRemove={removeRestriction} />
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <SaveProfileFooter theme={theme} loading={loading} onSave={saveProfile} />
+            <SaveProfileFooter theme={theme} loading={loading} onSave={saveProfile} t={t} />
         </SafeAreaView>
     );
 }

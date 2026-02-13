@@ -4,7 +4,11 @@ import { HapticTouchableOpacity } from '../HapticFeedback';
 import { actionButtonsStyles as styles } from './styles/actionButtons.styles';
 import { useActionButtonsModel } from './hooks/useActionButtonsModel';
 
-export function ActionButtons() {
+type ActionButtonsProps = {
+  t: (key: string, fallback?: string) => string;
+};
+
+export function ActionButtons({ t }: ActionButtonsProps) {
   const { buttonTheme, shadowColor, onGoHome } = useActionButtonsModel();
   
   return (
@@ -21,7 +25,9 @@ export function ActionButtons() {
             hapticType="success"
         >
             <ArrowUpCircle size={22} color={buttonTheme.foregroundColor} />
-            <Text style={[styles.saveButtonText, { color: buttonTheme.foregroundColor }]}>Back to Home</Text>
+            <Text style={[styles.saveButtonText, { color: buttonTheme.foregroundColor }]}>
+              {t('result.action.backHome', 'Back to Home')}
+            </Text>
         </HapticTouchableOpacity>
     </View>
   );

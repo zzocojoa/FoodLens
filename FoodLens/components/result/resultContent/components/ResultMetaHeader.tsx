@@ -14,6 +14,7 @@ type ResultMetaHeaderProps = {
     theme: ResultTheme;
     onOpenBreakdown: () => void;
     onDatePress?: () => void;
+    t: (key: string, fallback?: string) => string;
 };
 
 export default function ResultMetaHeader({
@@ -24,14 +25,17 @@ export default function ResultMetaHeader({
     theme,
     onOpenBreakdown,
     onDatePress,
+    t,
 }: ResultMetaHeaderProps) {
-    const { confidenceLabel } = useResultMetaHeaderModel(confidence);
+    const { confidenceLabel } = useResultMetaHeaderModel(confidence, t);
 
     return (
         <View style={styles.headerSection}>
             <View style={styles.subHeaderRow}>
                 <MapPin size={12} color="#60A5FA" />
-                <Text style={[styles.subHeaderText, { color: theme.textSecondary }]}>VISUAL RECOGNITION</Text>
+                <Text style={[styles.subHeaderText, { color: theme.textSecondary }]}>
+                    {t('result.meta.visualRecognition', 'VISUAL RECOGNITION')}
+                </Text>
             </View>
             <Text style={[styles.titleText, { color: theme.textPrimary }]}>{foodName}</Text>
 
@@ -45,6 +49,7 @@ export default function ResultMetaHeader({
                     formattedTimestamp={formattedTimestamp}
                     theme={theme}
                     onDatePress={onDatePress}
+                    t={t}
                 />
             )}
 
@@ -58,7 +63,9 @@ export default function ResultMetaHeader({
                     style={[styles.statBadge, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
                 >
                     <Sparkles size={14} color="#4F46E5" />
-                    <Text style={[styles.statText, { color: '#4F46E5' }]}>BREAKDOWN</Text>
+                    <Text style={[styles.statText, { color: '#4F46E5' }]}>
+                        {t('result.meta.breakdown', 'BREAKDOWN')}
+                    </Text>
                 </TouchableOpacity>
             </View>
         </View>

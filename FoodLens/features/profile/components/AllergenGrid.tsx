@@ -9,9 +9,10 @@ type AllergenGridProps = {
     theme: ProfileTheme;
     selectedAllergies: string[];
     onToggle: (id: string) => void;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function AllergenGrid({ theme, selectedAllergies, onToggle }: AllergenGridProps) {
+export default function AllergenGrid({ theme, selectedAllergies, onToggle, t }: AllergenGridProps) {
     return (
         <View style={styles.grid}>
             {COMMON_ALLERGENS.map((item) => {
@@ -42,7 +43,7 @@ export default function AllergenGrid({ theme, selectedAllergies, onToggle }: All
                                 isSelected && { color: 'white' },
                             ]}
                         >
-                            {item.label}
+                            {t(`profile.allergen.${item.id}`, item.label)}
                         </Text>
                         {isSelected && (
                             <View style={styles.checkBadge}>

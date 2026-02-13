@@ -11,7 +11,7 @@ import { BreakdownOverlayProps } from './breakdownOverlay/types';
 import { useColorScheme } from '../hooks/use-color-scheme';
 import { Colors } from '../constants/theme';
 
-const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, resultData }) => {
+const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, resultData, t }) => {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
@@ -44,18 +44,20 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
                         },
                     ]}
                 >
-                    <BreakdownHeader onClose={onClose} panHandlers={panResponder.panHandlers} />
+                    <BreakdownHeader onClose={onClose} panHandlers={panResponder.panHandlers} t={t} />
 
                     <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
                         {model.hasAllergens && (
                             <View style={styles.allergenBanner}>
                                 <AlertTriangle size={18} color="#F43F5E" />
-                                <Text style={styles.allergenText}>Contains Allergens</Text>
+                                <Text style={styles.allergenText}>
+                                    {t('result.breakdown.containsAllergens', 'Contains Allergens')}
+                                </Text>
                             </View>
                         )}
 
-                        <NutritionSection model={model} />
-                        <IngredientsSection resultData={resultData} model={model} />
+                        <NutritionSection model={model} t={t} />
+                        <IngredientsSection resultData={resultData} model={model} t={t} />
                     </ScrollView>
                 </Animated.View>
             </Animated.View>

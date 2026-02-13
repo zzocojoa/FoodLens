@@ -9,10 +9,11 @@ type WeeklyDayItemProps = {
   day: WeeklyData;
   selectedDate: Date;
   theme: any;
+  locale: string;
   onPress: (date: Date) => void;
 };
 
-export function WeeklyDayItem({ day, selectedDate, theme, onPress }: WeeklyDayItemProps) {
+export function WeeklyDayItem({ day, selectedDate, theme, locale, onPress }: WeeklyDayItemProps) {
   const selected = isSameDay(day.date, selectedDate);
   const today = isSameDay(day.date, new Date());
   const empty = !day.hasData;
@@ -29,7 +30,7 @@ export function WeeklyDayItem({ day, selectedDate, theme, onPress }: WeeklyDayIt
       ]}
     >
       <Text style={[styles.dayLabel, selected ? { color: theme.background } : { color: theme.textSecondary }]}>
-        {formatDateDay(day.date)}
+        {formatDateDay(day.date, locale)}
       </Text>
 
       <Text

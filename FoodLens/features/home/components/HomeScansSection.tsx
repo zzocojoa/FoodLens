@@ -15,6 +15,8 @@ type HomeScansSectionProps = {
   filteredScans: AnalysisRecord[];
   selectedDate: Date;
   theme: any;
+  t: (key: string, fallback?: string) => string;
+  locale: string;
   onOpenHistory: () => void;
   onOpenResult: (item: AnalysisRecord) => void;
   onDeleteItem: (itemId: string) => void;
@@ -24,6 +26,8 @@ export default function HomeScansSection({
   filteredScans,
   selectedDate,
   theme,
+  t,
+  locale,
   onOpenHistory,
   onOpenResult,
   onDeleteItem,
@@ -42,7 +46,7 @@ export default function HomeScansSection({
           pointerEvents="none"
         >
           <Trash2 size={24} color="white" />
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>{t('common.delete', 'Delete')}</Text>
         </Animated.View>
       </TouchableOpacity>
     );
@@ -52,11 +56,13 @@ export default function HomeScansSection({
     <>
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-          {formatHomeSectionTitle(selectedDate)}
+          {formatHomeSectionTitle(selectedDate, t, locale)}
         </Text>
         <HapticTouchableOpacity onPress={onOpenHistory} hapticType="selection">
           <View pointerEvents="none">
-            <Text style={[styles.seeAllText, { color: theme.primary }]}>See All</Text>
+            <Text style={[styles.seeAllText, { color: theme.primary }]}>
+              {t('home.scans.seeAll', 'See All')}
+            </Text>
           </View>
         </HapticTouchableOpacity>
       </View>
@@ -103,7 +109,7 @@ export default function HomeScansSection({
                       <View>
                         <Text style={[styles.scanName, { color: theme.textPrimary }]}>{item.foodName}</Text>
                         <Text style={[styles.scanDate, { color: theme.textSecondary }]}>
-                          {formatDate(item.timestamp)}
+                          {formatDate(item.timestamp, locale)}
                         </Text>
                       </View>
                     </View>
@@ -128,7 +134,7 @@ export default function HomeScansSection({
                 fontWeight: '500',
               }}
             >
-              No records for this day
+              {t('home.scans.empty.title', 'No records for this day')}
             </Text>
             <Text
               style={{
@@ -138,7 +144,7 @@ export default function HomeScansSection({
                 marginTop: 4,
               }}
             >
-              Try analyzing a new meal!
+              {t('home.scans.empty.subtitle', 'Try analyzing a new meal!')}
             </Text>
           </View>
         )}
@@ -146,4 +152,3 @@ export default function HomeScansSection({
     </>
   );
 }
-

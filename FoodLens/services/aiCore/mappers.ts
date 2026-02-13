@@ -9,6 +9,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const getString = (value: unknown, fallback = ''): string =>
     typeof value === 'string' && value.length > 0 ? value : fallback;
 
+const getOptionalString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
 const getNumberOrNull = (value: unknown): number | null =>
     typeof value === 'number' ? value : null;
 
@@ -32,19 +35,84 @@ const parseNutrition = (value: unknown): NutritionData | undefined => {
 
 const parseTranslationCard = (value: unknown): TranslationCard | undefined => {
     if (!isRecord(value)) return undefined;
-    if (typeof value['language'] !== 'string') return undefined;
+    const language =
+        getOptionalString(value['language']) ??
+        getOptionalString(value['locale']) ??
+        getOptionalString(value['lang']) ??
+        getOptionalString(value['targetLanguage']) ??
+        'unknown';
+    const text =
+        getOptionalString(value['text']) ??
+        getOptionalString(value['message']) ??
+        getOptionalString(value['translated_text']) ??
+        null;
 
     return {
-        language: value['language'],
-        text: typeof value['text'] === 'string' || value['text'] === null ? value['text'] : null,
+        language,
+        text,
         audio_query: typeof value['audio_query'] === 'string' ? value['audio_query'] : undefined,
     };
+};
+
+const getDefaultSummaryByLocale = (): string => {
+    const deviceLocale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+    if (deviceLocale.startsWith('ko')) {
+        return '분석 요약이 제공되지 않았습니다. 성분 정보를 확인해 주세요.';
+    }
+    return 'No analysis summary was returned. Please review the ingredient details.';
+};
+
+const parseTranslationCardFromPayload = (data: Record<string, unknown>): TranslationCard | undefined => {
+    const direct =
+        parseTranslationCard(data['translationCard']) ??
+        parseTranslationCard(data['translation_card']) ??
+        parseTranslationCard(data['aiTranslation']) ??
+        parseTranslationCard(data['ai_translation']);
+
+    if (direct) return direct;
+
+    const fallbackText =
+        getOptionalString(data['translated_text']) ??
+        getOptionalString(data['translation_text']) ??
+        getOptionalString(data['localized_text']);
+
+    if (!fallbackText) return undefined;
+
+    return {
+        language:
+            getOptionalString(data['translation_language']) ??
+            getOptionalString(data['target_language']) ??
+            'unknown',
+        text: fallbackText,
+    };
+};
+
+const resolveSummaryText = (data: Record<string, unknown>, translationCard?: TranslationCard): string => {
+    const candidates = [
+        data['raw_result'],
+        data['coachMessage'],
+        data['summary'],
+        data['result_text'],
+        data['analysis_text'],
+        data['message'],
+        data['localized_summary'],
+        data['localized_text'],
+    ];
+
+    for (const candidate of candidates) {
+        const text = getOptionalString(candidate);
+        if (text) return text;
+    }
+
+    if (translationCard?.text) return translationCard.text;
+    return getDefaultSummaryByLocale();
 };
 
 export const mapAnalyzedData = (input: unknown): AnalyzedData => {
     const data = isRecord(input) ? input : {};
     const ingredients = Array.isArray(data['ingredients']) ? data['ingredients'] : [];
     const safetyStatus = data['safetyStatus'];
+    const translationCard = parseTranslationCardFromPayload(data);
 
     return {
         foodName: getString(data['foodName'], 'Analyzed Food'),
@@ -55,8 +123,9 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
         confidence: clampConfidence(data['confidence']),
         ingredients: ingredients as AnalyzedData['ingredients'],
         nutrition: parseNutrition(data['nutrition']),
-        translationCard: parseTranslationCard(data['translationCard']),
-        raw_result: typeof data['raw_result'] === 'string' ? data['raw_result'] : undefined,
+        translationCard,
+        raw_result: resolveSummaryText(data, translationCard),
+        raw_data: data,
     };
 };
 
@@ -100,10 +169,7 @@ export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
         confidence: 100,
         ingredients,
         nutrition,
-        raw_result:
-            typeof data['coachMessage'] === 'string'
-                ? data['coachMessage']
-                : '등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요.',
+        raw_result: resolveSummaryText(data),
         raw_data: data,
     };
 };

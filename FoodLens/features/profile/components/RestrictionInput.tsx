@@ -8,6 +8,7 @@ type RestrictionInputProps = {
     theme: ProfileTheme;
     inputValue: string;
     suggestions: string[];
+    t: (key: string, fallback?: string) => string;
     onChangeText: (text: string) => void;
     onSubmit: () => void;
     onSelectSuggestion: (item: string) => void;
@@ -17,6 +18,7 @@ export default function RestrictionInput({
     theme,
     inputValue,
     suggestions,
+    t,
     onChangeText,
     onSubmit,
     onSelectSuggestion,
@@ -27,7 +29,7 @@ export default function RestrictionInput({
                 <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 10 }} />
                 <TextInput
                     style={[styles.input, { color: theme.textPrimary }]}
-                    placeholder="Type (e.g. Peach, Vegan)..."
+                    placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
                     placeholderTextColor={theme.textSecondary}
                     value={inputValue}
                     onChangeText={onChangeText}

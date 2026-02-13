@@ -12,9 +12,10 @@ import {
 type IngredientItemProps = {
     item: ResultIngredient;
     theme: ResultTheme;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function IngredientItem({ item, theme }: IngredientItemProps) {
+export default function IngredientItem({ item, theme, t }: IngredientItemProps) {
     return (
         <View
             style={[
@@ -38,7 +39,11 @@ export default function IngredientItem({ item, theme }: IngredientItemProps) {
                         {item.name}
                     </Text>
                     <Text style={[styles.ingredientMeta, { color: theme.textSecondary }]}>
-                        {getIngredientMetaText(item)}
+                        {getIngredientMetaText(
+                            item,
+                            t('result.ingredients.meta.allergenDetected', 'Allergen detected'),
+                            t('result.ingredients.meta.healthyComponent', 'Healthy component')
+                        )}
                     </Text>
                 </View>
             </View>

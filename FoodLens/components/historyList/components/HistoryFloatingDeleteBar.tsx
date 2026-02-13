@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Trash2 } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '../../HapticFeedback';
 import { historyListStyles as styles } from '@/components/historyList/styles';
+import { useI18n } from '@/features/i18n';
 
 type HistoryFloatingDeleteBarProps = {
   selectedCount: number;
@@ -14,6 +15,8 @@ export default function HistoryFloatingDeleteBar({
   selectedCount,
   onBulkDelete,
 }: HistoryFloatingDeleteBarProps) {
+  const { t } = useI18n();
+
   if (selectedCount <= 0) return null;
 
   return (
@@ -30,7 +33,9 @@ export default function HistoryFloatingDeleteBar({
       >
         <View style={styles.floatingDeleteContent}>
           <Trash2 size={24} color="white" />
-          <Text style={styles.floatingDeleteText}>Delete ({selectedCount})</Text>
+          <Text style={styles.floatingDeleteText}>
+            {t('history.action.deleteCountTemplate', 'Delete ({count})').replace('{count}', String(selectedCount))}
+          </Text>
         </View>
       </HapticTouchableOpacity>
     </LinearGradient>

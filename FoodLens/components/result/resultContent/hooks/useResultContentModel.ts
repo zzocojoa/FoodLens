@@ -7,7 +7,9 @@ import { formatTimestamp, getLocationText } from '../utils/resultContentFormatte
 export const useResultContentModel = (
   result: ResultContentProps['result'],
   locationData: ResultContentProps['locationData'],
-  timestamp?: string | null
+  timestamp?: string | null,
+  t?: (key: string, fallback?: string) => string,
+  locale?: string
 ) => {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -16,7 +18,7 @@ export const useResultContentModel = (
     colorScheme,
     theme,
     hasAllergens: hasAllergenIngredients(result.ingredients),
-    locationText: getLocationText(locationData),
-    formattedTimestamp: timestamp ? formatTimestamp(timestamp) : null,
+    locationText: getLocationText(locationData, t?.('result.location.none', 'No Location Info') ?? 'No Location Info'),
+    formattedTimestamp: timestamp ? formatTimestamp(timestamp, locale) : null,
   };
 };

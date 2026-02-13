@@ -24,5 +24,7 @@ export const getAiSummaryCardColors = (colorScheme: 'light' | 'dark', theme: Res
   borderColor: colorScheme === 'dark' ? theme.border : '#E0F2FE',
 });
 
-export const resolveAiSummaryText = (summary?: string): string =>
-  summary || 'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.';
+export const resolveAiSummaryText = (
+  summary?: string,
+  fallbackSummary: string = 'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.'
+): string => summary || fallbackSummary;

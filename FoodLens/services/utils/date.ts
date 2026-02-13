@@ -1,5 +1,4 @@
 const UNKNOWN_DATE = 'Unknown date';
-const JUST_NOW = 'Just now';
 const MINUTES_IN_HOUR = 60;
 const HOURS_IN_DAY = 24;
 const MS_IN_MINUTE = 60_000;
@@ -11,20 +10,23 @@ const nowIso = (): string => new Date().toISOString();
 /**
  * Formats dates into user-friendly strings (e.g., "Just now", "5m ago").
  */
-export const formatDate = (date: Date): string => {
+export const formatDate = (date: Date, localeOverride?: string): string => {
   if (!(date instanceof Date) || !isValidDate(date)) return UNKNOWN_DATE;
 
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const mins = Math.floor(diff / MS_IN_MINUTE);
 
-  if (mins < 1) return JUST_NOW;
-  if (mins < MINUTES_IN_HOUR) return `${mins}m ago`;
+  const locale = localeOverride || Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
+  const relativeFormatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+
+  if (mins < 1) return relativeFormatter.format(0, 'minute');
+  if (mins < MINUTES_IN_HOUR) return relativeFormatter.format(-mins, 'minute');
 
   const hours = Math.floor(mins / MINUTES_IN_HOUR);
-  if (hours < HOURS_IN_DAY) return `${hours}h ago`;
+  if (hours < HOURS_IN_DAY) return relativeFormatter.format(-hours, 'hour');
 
-  return date.toLocaleDateString();
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(date);
 };
 
 /**

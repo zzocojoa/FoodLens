@@ -1,12 +1,20 @@
 export const TEST_UID = 'test-user-v1';
 export const DEFAULT_ISO_CODE = 'US';
 
-export const CAMERA_ERROR_MESSAGES = {
-    missingImage: '이미지 정보를 불러올 수 없습니다. 다시 시도해주세요.',
-    locationUnavailable:
-        '위치 권한이 없거나 가져올 수 없습니다. 위치 기반 알러지 필터가 적용되지 않을 수 있습니다.',
-    offline: '인터넷 연결을 확인해주세요.',
-    file: '이미지 파일을 불러올 수 없습니다. 다른 사진을 선택해주세요.',
-    analysis: '서버 연결에 문제가 있습니다. 네트워크를 확인하고 다시 시도해주세요.',
-} as const;
-
+export const getCameraErrorMessages = (t: (key: string, fallback?: string) => string) =>
+    ({
+        missingImage: t(
+            'camera.error.missingImage',
+            'Unable to load image information. Please try again.'
+        ),
+        locationUnavailable: t(
+            'camera.error.locationUnavailable',
+            'Location is unavailable. Location-based allergy filtering may not be applied.'
+        ),
+        offline: t('camera.error.offline', 'Please check your internet connection.'),
+        file: t('camera.error.file', 'Unable to load the image file. Please choose another photo.'),
+        analysis: t(
+            'camera.error.analysis',
+            'There is a problem connecting to the server. Check your network and try again.'
+        ),
+    }) as const;

@@ -6,9 +6,10 @@ import { useAllergyAlertCardModel } from '../hooks/useAllergyAlertCardModel';
 
 type AllergyAlertCardProps = {
     colorScheme: 'light' | 'dark';
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function AllergyAlertCard({ colorScheme }: AllergyAlertCardProps) {
+export default function AllergyAlertCard({ colorScheme, t }: AllergyAlertCardProps) {
     const { colors } = useAllergyAlertCardModel(colorScheme);
 
     return (
@@ -22,9 +23,14 @@ export default function AllergyAlertCard({ colorScheme }: AllergyAlertCardProps)
                 <AlertCircle size={28} color="white" />
             </View>
             <View style={{ flex: 1 }}>
-                <Text style={[styles.allergyTitle, colors.titleColor && { color: colors.titleColor }]}>Allergy Alert</Text>
+                <Text style={[styles.allergyTitle, colors.titleColor && { color: colors.titleColor }]}>
+                    {t('result.allergyAlert.title', 'Allergy Alert')}
+                </Text>
                 <Text style={[styles.allergyDesc, colors.descColor && { color: colors.descColor }]}>
-                    Contains ingredients that match your allergy profile. Please exercise caution.
+                    {t(
+                        'result.allergyAlert.desc',
+                        'Contains ingredients that match your allergy profile. Please exercise caution.'
+                    )}
                 </Text>
             </View>
         </View>

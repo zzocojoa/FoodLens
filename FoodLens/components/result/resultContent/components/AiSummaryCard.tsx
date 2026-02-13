@@ -9,10 +9,16 @@ type AiSummaryCardProps = {
     colorScheme: 'light' | 'dark';
     theme: ResultTheme;
     summary?: string;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function AiSummaryCard({ colorScheme, theme, summary }: AiSummaryCardProps) {
-    const { colors, summaryText } = useAiSummaryCardModel(colorScheme, theme, summary);
+export default function AiSummaryCard({ colorScheme, theme, summary, t }: AiSummaryCardProps) {
+    const { colors, summaryText } = useAiSummaryCardModel(
+        colorScheme,
+        theme,
+        summary,
+        t('result.ai.defaultSummary', 'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.')
+    );
 
     return (
         <View
@@ -24,7 +30,7 @@ export default function AiSummaryCard({ colorScheme, theme, summary }: AiSummary
             <View style={styles.aiGlow} />
             <View style={styles.aiHeader}>
                 <Sparkles size={18} color="#60A5FA" fill="#60A5FA" />
-                <Text style={styles.aiTitle}>AI Health Coach</Text>
+                <Text style={styles.aiTitle}>{t('result.ai.title', 'AI Health Coach')}</Text>
             </View>
             <Text style={[styles.aiText, { color: theme.textPrimary }]}>
                 {summaryText}

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { ChevronLeft, Globe, List } from 'lucide-react-native';
 import { ArchiveMode } from '../types/history.types';
 import { historyStyles as styles } from '../styles/historyStyles';
+import { useI18n } from '@/features/i18n';
 
 type HistoryHeaderProps = {
     title: string;
@@ -23,6 +24,8 @@ export default function HistoryHeader({
     onSwitchMode,
     onToggleEdit,
 }: HistoryHeaderProps) {
+    const { t } = useI18n();
+
     return (
         <View style={styles.header}>
             <TouchableOpacity
@@ -58,7 +61,9 @@ export default function HistoryHeader({
                                         paddingHorizontal: 4,
                                     }}
                                 >
-                                    {isEditMode ? 'Done' : 'Edit'}
+                                    {isEditMode
+                                        ? t('history.header.done', 'Done')
+                                        : t('history.header.edit', 'Edit')}
                                 </Text>
                             </View>
                         </TouchableOpacity>
@@ -93,4 +98,3 @@ export default function HistoryHeader({
         </View>
     );
 }
-

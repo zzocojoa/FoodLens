@@ -10,9 +10,13 @@
     "ios:dev": "APP_VARIANT=development expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "i18n:check": "node ./scripts/i18n-check.js",
+    "i18n:hardcoded-check": "node ./scripts/i18n-hardcoded-check.js",
+    "i18n:verify": "npm run i18n:check && npm run i18n:hardcoded-check",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:ci": "jest --ci --runInBand"
+    "test:ci": "jest --ci --runInBand",
+    "i18n:release-gate": "npm run i18n:verify && npx tsc --noEmit && npm run lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

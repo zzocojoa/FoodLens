@@ -17,10 +17,16 @@ export const getHomeScanStatusBadge = (status: string): ScanBadge => {
   }
 };
 
-export const formatHomeSectionTitle = (selectedDate: Date): string => {
-  if (isSameDay(selectedDate, new Date())) return 'Recent Scans';
-  return `Scans on ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+export const formatHomeSectionTitle = (
+  selectedDate: Date,
+  t: (key: string, fallback?: string) => string,
+  locale: string
+): string => {
+  if (isSameDay(selectedDate, new Date())) return t('home.scans.recentTitle', 'Recent Scans');
+  return t('home.scans.onDateTemplate', 'Scans on {date}').replace(
+    '{date}',
+    new Intl.DateTimeFormat(locale || 'en-US', { month: 'short', day: 'numeric' }).format(
     selectedDate,
-  )}`;
+    )
+  );
 };
-

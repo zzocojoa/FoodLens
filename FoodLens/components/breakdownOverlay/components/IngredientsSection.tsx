@@ -7,15 +7,18 @@ import { getBreakdownOverlayStyles } from '../styles';
 import { AnalyzedData } from '@/services/ai';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
+import { useI18n, formatNumber } from '@/features/i18n';
 
 type IngredientsSectionProps = {
     resultData: AnalyzedData;
     model: BreakdownViewModel;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function IngredientsSection({ resultData, model }: IngredientsSectionProps) {
+export default function IngredientsSection({ resultData, model, t }: IngredientsSectionProps) {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const { locale } = useI18n();
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
 
     if (!styles) return null;
@@ -24,7 +27,7 @@ export default function IngredientsSection({ resultData, model }: IngredientsSec
         <View style={styles.confidenceSection}>
             <View style={styles.sectionHeader}>
                 <Zap size={18} color="#FBBF24" fill="#FBBF24" />
-                <Text style={styles.sectionTitle}>Ingredients</Text>
+                <Text style={styles.sectionTitle}>{t('result.ingredients.title', 'Ingredients')}</Text>
             </View>
 
             {resultData.ingredients.map((item, index) => {
@@ -38,11 +41,17 @@ export default function IngredientsSection({ resultData, model }: IngredientsSec
                             <View style={styles.ingredientMetaRow}>
                                 {item.isAllergen && (
                                     <View style={styles.allergenTag}>
-                                        <Text style={styles.allergenTagText}>ALLERGEN</Text>
+                                        <Text style={styles.allergenTagText}>
+                                            {t('result.breakdown.allergenTag', 'ALLERGEN')}
+                                        </Text>
                                     </View>
                                 )}
                                 {ingCal !== null && (
-                                    <Text style={styles.ingredientCalories}>{Math.round(ingCal)} kcal</Text>
+                                    <Text style={styles.ingredientCalories}>
+                                        {t('result.breakdown.calorieValueTemplate', '{value} {unit}')
+                                            .replace('{value}', formatNumber(Math.round(ingCal), locale, { maximumFractionDigits: 0 }))
+                                            .replace('{unit}', t('common.unit.kcal', 'kcal'))}
+                                    </Text>
                                 )}
                             </View>
                         </View>
@@ -50,7 +59,16 @@ export default function IngredientsSection({ resultData, model }: IngredientsSec
                             <View style={styles.ingredientMacroRow}>
                                 {INGREDIENT_MACRO_KEYS.map((macroKey) => (
                                     <Text key={macroKey} style={styles.ingredientMacroText}>
-                                        {model.ingredientMacroLabels[macroKey]}: {ingNutrition[macroKey]?.toFixed(1) ?? '-'}g
+                                        {(() => {
+                                            const rawValue = ingNutrition[macroKey];
+                                            const gramValue =
+                                                typeof rawValue === 'number'
+                                                    ? `${formatNumber(rawValue, locale)}${t('common.unit.gram', 'g')}`
+                                                    : '-';
+                                            return t('result.breakdown.ingredientMacroTemplate', '{label}: {gram}')
+                                                .replace('{label}', model.ingredientMacroLabels[macroKey])
+                                                .replace('{gram}', gramValue);
+                                        })()}
                                     </Text>
                                 ))}
                             </View>

@@ -6,12 +6,14 @@ import { useWeeklyStripAutoScroll } from './hooks/useWeeklyStripAutoScroll';
 import { useWeeklyStatsStripModel } from './hooks/useWeeklyStatsStripModel';
 import { weeklyStatsStripStyles as styles } from './styles';
 import { WeeklyStatsStripProps } from './types';
+import { useI18n } from '@/features/i18n';
 
 export function WeeklyStatsStripView({
   weeklyData,
   selectedDate,
   onSelectDate,
 }: WeeklyStatsStripProps) {
+  const { locale } = useI18n();
   const scrollViewRef = useRef<ScrollView>(null);
   const { theme, handleSelectDate } = useWeeklyStatsStripModel(onSelectDate);
 
@@ -33,6 +35,7 @@ export function WeeklyStatsStripView({
             day={day}
             selectedDate={selectedDate}
             theme={theme}
+            locale={locale}
             onPress={handleSelectDate}
           />
         ))}

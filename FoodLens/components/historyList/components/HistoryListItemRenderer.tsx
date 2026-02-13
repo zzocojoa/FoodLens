@@ -8,6 +8,8 @@ import { HistoryListItemRendererProps } from '@/components/historyList/types';
 import { historyListViewStyles as styles } from '@/components/historyList/styles';
 import { FoodThumbnail } from '@/components/FoodThumbnail';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import { useI18n } from '@/features/i18n';
+import { formatCalendarDate } from '@/features/i18n/services/formatService';
 
 export default function HistoryListItemRenderer({
   item,
@@ -19,6 +21,8 @@ export default function HistoryListItemRenderer({
   selectedItems,
   onFoodItemPress,
 }: HistoryListItemRendererProps) {
+  const { t, locale } = useI18n();
+
   switch (item.type) {
     case 'country-header':
       return (
@@ -67,7 +71,9 @@ export default function HistoryListItemRenderer({
                 <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
                   {item.data.name}
                 </Text>
-                <Text style={[styles.itemDate, { color: theme.textSecondary }]}>{item.data.date}</Text>
+                <Text style={[styles.itemDate, { color: theme.textSecondary }]}>
+                  {formatCalendarDate(item.data.timestamp, locale)}
+                </Text>
               </View>
             </View>
             <View style={[styles.statusIconBox, statusMeta.containerStyle]} pointerEvents="none">
@@ -80,7 +86,12 @@ export default function HistoryListItemRenderer({
     case 'empty-region':
       return (
         <View style={styles.emptyRegionContainer}>
-          <Text style={{ color: '#94A3B8', fontSize: 12 }}>No {item.filter.toUpperCase()} records in this trip.</Text>
+          <Text style={{ color: '#94A3B8', fontSize: 12 }}>
+            {t('history.empty.noFilterRecordsTemplate', 'No {filter} records in this trip.').replace(
+              '{filter}',
+              item.filter.toUpperCase()
+            )}
+          </Text>
         </View>
       );
     default:

@@ -3,4 +3,6 @@ export interface DateEditSheetProps {
   initialDate: Date;
   onClose: () => void;
   onConfirm: (date: Date) => void;
+  locale?: string;
+  t?: (key: string, fallback?: string) => string;
 }

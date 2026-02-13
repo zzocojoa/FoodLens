@@ -4,8 +4,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { TEST_UID } from '../constants/tripStats.constants';
 import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
 import { useTripStartToast } from './useTripStartToast';
+import { useI18n } from '@/features/i18n';
 
 export function useTripStatsScreen(insetsTop: number) {
+    const { t } = useI18n();
     const [loading, setLoading] = useState(true);
     const [safeCount, setSafeCount] = useState(0);
     const [totalCount, setTotalCount] = useState(0);
@@ -42,8 +44,11 @@ export function useTripStatsScreen(insetsTop: number) {
             const result = await startTripFromCurrentLocation(TEST_UID);
             if (!result.ok) {
                 Alert.alert(
-                    'Permission Denied',
-                    'Location access is needed to tag your trip. Please enable it in settings.'
+                    t('tripStats.alert.permissionDeniedTitle', 'Permission Denied'),
+                    t(
+                        'tripStats.alert.permissionDeniedMessage',
+                        'Location access is needed to tag your trip. Please enable it in settings.'
+                    )
                 );
                 setIsLocating(false);
                 return;
@@ -55,11 +60,14 @@ export function useTripStatsScreen(insetsTop: number) {
             triggerToast();
         } catch (e) {
             console.error(e);
-            Alert.alert('Error', 'Failed to get location. Please try again.');
+            Alert.alert(
+                t('camera.alert.errorTitle', 'Error'),
+                t('tripStats.alert.failedToGetLocation', 'Failed to get location. Please try again.')
+            );
         } finally {
             setIsLocating(false);
         }
-    }, [triggerToast]);
+    }, [triggerToast, t]);
 
     return {
         loading,

@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { Alert } from 'react-native';
 import { PermissionResponse } from 'expo-image-picker';
-import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
+import { getCameraErrorMessages } from '../constants/camera.constants';
+import { useI18n } from '@/features/i18n';
 
 type UseCameraPermissionEffectsParams = {
   permission: PermissionResponse | null;
@@ -16,6 +17,9 @@ export const useCameraPermissionEffects = ({
   externalImageUri,
   onExit,
 }: UseCameraPermissionEffectsParams) => {
+  const { t } = useI18n();
+  const messages = getCameraErrorMessages(t);
+
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
       void requestPermission();
@@ -25,11 +29,14 @@ export const useCameraPermissionEffects = ({
   useEffect(() => {
     if (permission?.granted && !externalImageUri) {
       const timer = setTimeout(() => {
-        Alert.alert('오류', CAMERA_ERROR_MESSAGES.missingImage);
+        Alert.alert(
+          t('camera.alert.errorTitle', 'Error'),
+          messages.missingImage
+        );
         onExit();
       }, 500);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [permission, externalImageUri, onExit]);
+  }, [permission, externalImageUri, onExit, messages.missingImage, t]);
 };

@@ -11,8 +11,10 @@ import { AnalysisOrbs } from '../../../components/animation/AnalysisOrbs';
 import { InfoBottomSheet } from '../../../components/InfoBottomSheet';
 import { scanCameraStyles as styles } from '../styles/scanCameraStyles';
 import { useScanCameraGateway } from '../hooks/useScanCameraGateway';
+import { useI18n } from '@/features/i18n';
 
 export default function ScanCameraScreen() {
+    const { t } = useI18n();
     const camera = useScanCameraGateway();
 
     if (!camera.permission) return <View style={styles.container} />;
@@ -20,9 +22,9 @@ export default function ScanCameraScreen() {
     if (!camera.permission.granted) {
         return (
             <View style={styles.permissionContainer}>
-                <Text style={styles.permissionText}>카메라 접근 권한이 필요합니다.</Text>
+                <Text style={styles.permissionText}>{t('scan.permission.cameraRequired', 'Camera access is required.')}</Text>
                 <TouchableOpacity style={styles.permissionButton} onPress={camera.requestPermission}>
-                    <Text style={styles.permissionButtonText}>권한 허용하기</Text>
+                    <Text style={styles.permissionButtonText}>{t('scan.permission.grant', 'Grant Permission')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.closeButton} onPress={camera.handleClose}>
                     <X size={24} color="white" />
@@ -112,10 +114,10 @@ export default function ScanCameraScreen() {
 
                     <Text style={styles.guideText}>
                         {camera.mode === 'FOOD'
-                            ? '음식을 중앙에 맞춰주세요'
+                            ? t('scan.guide.food', 'Center the food in frame')
                             : camera.mode === 'LABEL'
-                              ? '영양성분표를 가득 차게 찍어주세요'
-                              : '바코드를 스캔하세요'}
+                              ? t('scan.guide.label', 'Fill the frame with the nutrition label')
+                              : t('scan.guide.barcode', 'Scan the barcode')}
                     </Text>
                 </View>
             </View>
@@ -177,7 +179,11 @@ export default function ScanCameraScreen() {
                             style={[styles.modeChip, camera.mode === m.id && styles.modeChipActive]}
                         >
                             <Text style={[styles.modeText, camera.mode === m.id && styles.modeTextActive]}>
-                                {m.label}
+                                {m.id === 'LABEL'
+                                    ? t('scan.mode.label', 'Label')
+                                    : m.id === 'FOOD'
+                                      ? t('scan.mode.food', 'Food')
+                                      : t('scan.mode.barcode', 'Barcode')}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -186,4 +192,3 @@ export default function ScanCameraScreen() {
         </SafeAreaView>
     );
 }
-

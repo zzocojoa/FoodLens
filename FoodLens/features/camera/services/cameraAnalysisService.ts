@@ -3,7 +3,6 @@ import { MutableRefObject } from 'react';
 import { analyzeImage } from '../../../services/ai';
 import { dataStore } from '../../../services/dataStore';
 import { getLocationData, normalizeTimestamp } from '../../../services/utils';
-import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from '../utils/cameraMappers';
 import {
@@ -24,6 +23,8 @@ type RunCameraImageAnalysisParams = {
   resetState: () => void;
   onExit: () => void;
   onSuccess: () => void;
+  offlineAlertTitle: string;
+  offlineAlertMessage: string;
 };
 
 export const runCameraImageAnalysis = async ({
@@ -39,6 +40,8 @@ export const runCameraImageAnalysis = async ({
   resetState,
   onExit,
   onSuccess,
+  offlineAlertTitle,
+  offlineAlertMessage,
 }: RunCameraImageAnalysisParams) => {
   isCancelled.current = false;
   setIsAnalyzing(true);
@@ -58,7 +61,7 @@ export const runCameraImageAnalysis = async ({
   if (isCancelled.current) return;
 
   if (!isConnectedRef.current) {
-    Alert.alert('오프라인', CAMERA_ERROR_MESSAGES.offline);
+    Alert.alert(offlineAlertTitle, offlineAlertMessage);
     resetState();
     onExit();
     return;

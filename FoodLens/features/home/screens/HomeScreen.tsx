@@ -24,8 +24,10 @@ import { WeeklyStatsStrip } from '../../../components/WeeklyStatsStrip';
 import HomeScansSection from '../components/HomeScansSection';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
+import { useI18n } from '@/features/i18n';
 
 export default function HomeScreen() {
+  const { t, locale } = useI18n();
   const {
     colorScheme,
     theme,
@@ -65,7 +67,9 @@ export default function HomeScreen() {
 
         {isConnected === false && (
           <View style={styles.offlineBanner}>
-            <Text style={styles.offlineText}>Offline Mode: Using cached data</Text>
+            <Text style={styles.offlineText}>
+              {t('home.offline.cachedMode', 'Offline Mode: Using cached data')}
+            </Text>
           </View>
         )}
 
@@ -89,9 +93,11 @@ export default function HomeScreen() {
               </View>
             </Pressable>
             <View>
-              <Text style={[styles.welcomeText, { color: theme.textSecondary }]}>Welcome back,</Text>
+              <Text style={[styles.welcomeText, { color: theme.textSecondary }]}>
+                {t('home.greeting.welcomeBack', 'Welcome back,')}
+              </Text>
               <Text style={[styles.userName, { color: theme.textPrimary }]}>
-                {userProfile?.name || 'Traveler Joy'} ✈️
+                {userProfile?.name || t('home.greeting.defaultName', 'Traveler Joy')} ✈️
               </Text>
             </View>
           </View>
@@ -135,7 +141,9 @@ export default function HomeScreen() {
               />
             </View>
             <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>Food Lens</Text>
-            <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>Travel Safe, Eat Smart</Text>
+            <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
+              {t('home.hero.subtitle', 'Travel Safe, Eat Smart')}
+            </Text>
           </View>
 
           <View style={styles.statsGrid}>
@@ -154,7 +162,9 @@ export default function HomeScreen() {
                 <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
                   <ShieldCheck size={22} color="#166534" />
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Safe Items</Text>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                  {t('home.stats.safeItems', 'Safe Items')}
+                </Text>
                 <Text style={[styles.statValue, { color: theme.textPrimary }]}>{safeCount}</Text>
               </BlurView>
             </HapticTouchableOpacity>
@@ -173,7 +183,9 @@ export default function HomeScreen() {
                 <View style={[styles.statIconBox, { backgroundColor: '#FFE4E6' }]}>
                   <Heart size={22} color="#E11D48" />
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Allergies</Text>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                  {t('home.stats.allergies', 'Allergies')}
+                </Text>
                 <Text style={[styles.statValue, { color: theme.textPrimary }]}>{allergyCount}</Text>
               </BlurView>
             </HapticTouchableOpacity>
@@ -194,6 +206,8 @@ export default function HomeScreen() {
             onOpenHistory={handleOpenHistory}
             onOpenResult={handleOpenResult}
             onDeleteItem={handleDeleteItem}
+            t={t}
+            locale={locale}
           />
         </ScrollView>
 

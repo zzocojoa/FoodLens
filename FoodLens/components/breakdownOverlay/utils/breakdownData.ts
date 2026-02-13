@@ -22,9 +22,9 @@ export const buildBreakdownViewModel = (resultData: AnalyzedData): BreakdownView
     const hasAllergens = resultData.ingredients.some((item) => item.isAllergen);
 
     const macroRows = [
-        { name: 'PROTEIN', color: '#3B82F6', value: protein.toFixed(1), percent: proteinPercent },
-        { name: 'CARBS', color: '#F97316', value: carbs.toFixed(1), percent: carbsPercent },
-        { name: 'FAT', color: '#10B981', value: fat.toFixed(1), percent: fatPercent },
+        { name: 'PROTEIN', color: '#3B82F6', value: protein, percent: proteinPercent },
+        { name: 'CARBS', color: '#F97316', value: carbs, percent: carbsPercent },
+        { name: 'FAT', color: '#10B981', value: fat, percent: fatPercent },
     ];
 
     const ingredientMacroLabels = { protein: 'P', carbs: 'C', fat: 'F' } as const;

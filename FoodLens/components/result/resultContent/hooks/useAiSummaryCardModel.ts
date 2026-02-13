@@ -5,13 +5,17 @@ import { getAiSummaryCardColors, resolveAiSummaryText } from '../utils/cardPrese
 export const useAiSummaryCardModel = (
   colorScheme: 'light' | 'dark',
   theme: ResultTheme,
-  summary?: string
+  summary?: string,
+  defaultSummary?: string
 ) => {
   const colors = useMemo(
     () => getAiSummaryCardColors(colorScheme, theme),
     [colorScheme, theme]
   );
-  const summaryText = useMemo(() => resolveAiSummaryText(summary), [summary]);
+  const summaryText = useMemo(
+    () => resolveAiSummaryText(summary, defaultSummary),
+    [summary, defaultSummary]
+  );
 
   return {
     colors,

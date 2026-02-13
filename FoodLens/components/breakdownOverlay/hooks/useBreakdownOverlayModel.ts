@@ -1,11 +1,16 @@
 import { useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BreakdownOverlayProps } from '../types';
 import { buildBreakdownViewModel } from '../utils/breakdownData';
 import { shouldRenderBreakdownOverlay } from '../utils/visibility';
 import { useBreakdownPanGesture } from './useBreakdownPanGesture';
 
-export const useBreakdownOverlayModel = ({ isOpen, onClose, resultData }: BreakdownOverlayProps) => {
+type BreakdownOverlayModelInput = {
+  isOpen: boolean;
+  onClose: () => void;
+  resultData: import('@/services/ai').AnalyzedData | null;
+};
+
+export const useBreakdownOverlayModel = ({ isOpen, onClose, resultData }: BreakdownOverlayModelInput) => {
   const insets = useSafeAreaInsets();
   const { translateY, opacity, panResponder } = useBreakdownPanGesture(onClose);
   const wasOpen = useRef(isOpen);

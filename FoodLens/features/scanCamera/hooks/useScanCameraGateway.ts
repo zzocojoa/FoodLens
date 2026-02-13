@@ -22,8 +22,10 @@ import { useScanCameraLaserAnimation } from './useScanCameraLaserAnimation';
 import { lookupBarcodeWithCache, normalizeBarcodeIngredients } from '../services/scanCameraBarcodeService';
 import { isBarcodeInCenteredRoi, evaluateScanConfidence } from '../utils/barcodeScannerUtils';
 import { runAnalysisFlow } from '../services/scanCameraAnalysisService';
+import { useI18n } from '@/features/i18n';
 
 export const useScanCameraGateway = () => {
+    const { t } = useI18n();
     const { navigate, replace, back } = useAppNavigation();
     const isFocused = useIsFocused();
     const cameraRef = useRef<CameraView>(null);
@@ -109,12 +111,18 @@ export const useScanCameraGateway = () => {
 
             const errorMessage = error?.message?.toLowerCase() || '';
             if (errorMessage.includes('status 5') || errorMessage.includes('status 500')) {
-                Alert.alert('서버 오류', '일시적인 서버 문제가 발생했습니다.');
+                Alert.alert(
+                    t('camera.alert.serverErrorTitle', 'Server Error'),
+                    t('scan.alert.serverTemporary', 'A temporary server issue occurred.')
+                );
             } else {
-                Alert.alert('분석 실패', '문제가 발생했습니다. 다시 시도해주세요.');
+                Alert.alert(
+                    t('camera.alert.analysisFailedTitle', 'Analysis Failed'),
+                    t('scan.alert.analysisFailed', 'Something went wrong. Please try again.')
+                );
             }
         },
-        [resetState]
+        [resetState, t]
     );
 
     const [consecutiveScans, setConsecutiveScans] = useState(0);
@@ -127,7 +135,10 @@ export const useScanCameraGateway = () => {
                 setActiveStep(0);
 
                 if (!isConnectedRef.current) {
-                    Alert.alert('오프라인', '인터넷 연결을 확인해주세요.');
+                    Alert.alert(
+                        t('camera.alert.offlineTitle', 'Offline'),
+                        t('camera.error.offline', 'Please check your internet connection.')
+                    );
                     resetState();
                     return;
                 }
@@ -158,9 +169,15 @@ export const useScanCameraGateway = () => {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                     setIsAnalyzing(false);
 
-                    Alert.alert('제품 정보 없음', '등록되지 않은 바코드입니다.\n사진으로 성분표를 분석하시겠습니까?', [
+                    Alert.alert(
+                        t('scan.alert.productNotFoundTitle', 'Product Not Found'),
+                        t(
+                            'scan.alert.productNotFoundMessage',
+                            'This barcode is not registered.\nWould you like to analyze the label with a photo?'
+                        ),
+                        [
                         {
-                            text: '취소',
+                            text: t('common.cancel', 'Cancel'),
                             style: 'cancel',
                             onPress: () => {
                                 setScanned(false);
@@ -169,7 +186,7 @@ export const useScanCameraGateway = () => {
                             },
                         },
                         {
-                            text: '촬영하기',
+                            text: t('scan.alert.takePhoto', 'Take Photo'),
                             onPress: () => {
                                 setMode('LABEL');
                                 setScanned(false);
@@ -177,15 +194,19 @@ export const useScanCameraGateway = () => {
                                 setConsecutiveScans(0);
                             },
                         },
-                    ]);
+                        ]
+                    );
                 }
             } catch (e: any) {
                 console.error('Barcode Error:', e);
-                Alert.alert('오류', '바코드 조회 중 문제가 발생했습니다.');
+                Alert.alert(
+                    t('camera.alert.errorTitle', 'Error'),
+                    t('scan.alert.barcodeLookupFailed', 'There was a problem looking up the barcode.')
+                );
                 resetState();
             }
         },
-        [resetState, replace]
+        [resetState, replace, t]
     );
 
     const handleBarcodeScanned = useCallback(
@@ -226,6 +247,8 @@ export const useScanCameraGateway = () => {
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',
+                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
+                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 needsFileValidation: true,
                 analyzer: analyzeImage,
                 isCancelled,
@@ -240,7 +263,7 @@ export const useScanCameraGateway = () => {
                 handleError,
             });
         },
-        [handleError, resetState, replace]
+        [handleError, resetState, replace, t]
     );
 
     useEffect(() => {
@@ -253,6 +276,8 @@ export const useScanCameraGateway = () => {
                 uri,
                 timestamp: customTimestamp,
                 needsFileValidation: false,
+                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
+                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 analyzer: analyzeLabel,
                 isCancelled,
                 isConnectedRef,
@@ -266,7 +291,7 @@ export const useScanCameraGateway = () => {
                 handleError,
             });
         },
-        [handleError, resetState, replace]
+        [handleError, resetState, replace, t]
     );
 
     const processSmart = useCallback(
@@ -280,6 +305,8 @@ export const useScanCameraGateway = () => {
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',
+                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
+                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 needsFileValidation: true,
                 analyzer: analyzeSmart,
                 isCancelled,
@@ -294,7 +321,7 @@ export const useScanCameraGateway = () => {
                 handleError,
             });
         },
-        [handleError, resetState, replace]
+        [handleError, resetState, replace, t]
     );
 
 
@@ -314,7 +341,10 @@ export const useScanCameraGateway = () => {
                     const exifDate = photo.exif?.DateTimeOriginal || photo.exif?.DateTime || null;
 
                     if (mode === 'BARCODE') {
-                        Alert.alert('알림', '바코드를 카메라에 비춰주세요.');
+                        Alert.alert(
+                            t('scan.alert.noticeTitle', 'Notice'),
+                            t('scan.alert.aimBarcode', 'Please point the barcode at the camera.')
+                        );
                     } else if (mode === 'LABEL') {
                         processLabel(photo.uri, exifDate);
                     } else {
@@ -323,7 +353,10 @@ export const useScanCameraGateway = () => {
                 }
             } catch (e) {
                 console.error(e);
-                Alert.alert('Error', '촬영에 실패했습니다.');
+                Alert.alert(
+                    t('camera.alert.errorTitle', 'Error'),
+                    t('scan.alert.captureFailed', 'Failed to capture photo.')
+                );
             }
         }
     };
@@ -355,7 +388,10 @@ export const useScanCameraGateway = () => {
             }
         } catch (e) {
             console.error(e);
-            Alert.alert('Error', '갤러리를 열 수 없습니다.');
+            Alert.alert(
+                t('camera.alert.errorTitle', 'Error'),
+                t('scan.alert.galleryOpenFailed', 'Unable to open gallery.')
+            );
         }
     };
 

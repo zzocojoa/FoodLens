@@ -7,9 +7,11 @@ import CameraPermissionGate from '../components/CameraPermissionGate';
 import { useCameraGateway } from '../hooks/useCameraGateway';
 import { cameraStyles as styles } from '../styles/cameraStyles';
 import { CameraRouteParams } from '../types/camera.types';
+import { useI18n } from '@/features/i18n';
 
 export default function CameraScreen() {
     const router = useRouter();
+    const { t } = useI18n();
     const params = useLocalSearchParams<CameraRouteParams>();
     const { isConnected } = useNetworkStatus();
 
@@ -63,10 +65,11 @@ export default function CameraScreen() {
                 />
             ) : !camera.isLocationReady ? null : (
                 <View style={styles.launchingTextContainer}>
-                    <Text style={styles.launchingText}>Preparing Camera...</Text>
+                    <Text style={styles.launchingText}>
+                        {t('camera.loading.preparing', 'Preparing Camera...')}
+                    </Text>
                 </View>
             )}
         </View>
     );
 }
-

@@ -3,6 +3,7 @@ import { Animated, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { ShieldCheck } from 'lucide-react-native';
 import { tripStatsStyles as styles } from '../styles/tripStatsStyles';
+import { useI18n } from '@/features/i18n';
 
 type TripStatsToastProps = {
     visible: boolean;
@@ -19,6 +20,8 @@ export default function TripStatsToast({
     toastOpacity,
     toastTranslate,
 }: TripStatsToastProps) {
+    const { t } = useI18n();
+
     if (!visible) return null;
 
     return (
@@ -46,14 +49,19 @@ export default function TripStatsToast({
                     <ShieldCheck size={16} color="white" />
                 </View>
                 <View>
-                    <Text style={[styles.toastTitle, { color: colorScheme === 'dark' ? '#0F172A' : 'white' }]}>Trip Started!</Text>
+                    <Text style={[styles.toastTitle, { color: colorScheme === 'dark' ? '#0F172A' : 'white' }]}>
+                        {t('tripStats.toast.startedTitle', 'Trip Started!')}
+                    </Text>
                     <Text
                         style={[
                             styles.toastMessage,
                             { color: colorScheme === 'dark' ? '#64748B' : '#94A3B8' },
                         ]}
                     >
-                        Now exploring {currentLocation}
+                        {t('tripStats.toast.nowExploringTemplate', 'Now exploring {location}').replace(
+                            '{location}',
+                            currentLocation ?? t('tripStats.trip.locationNotSet', 'Location not set')
+                        )}
                     </Text>
                 </View>
             </BlurView>

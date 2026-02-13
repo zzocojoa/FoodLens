@@ -3,12 +3,14 @@ import { LayoutAnimation } from 'react-native';
 import { ArchiveMode } from '../types/history.types';
 import { confirmBulkDelete } from '../utils/historyDialogs';
 import { toggleInSet } from '../utils/historySelection';
+import { useI18n } from '@/features/i18n';
 
 type UseHistoryScreenOptions = {
     deleteMultipleItems: (ids: Set<string>) => Promise<void>;
 };
 
 export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOptions) => {
+    const { t } = useI18n();
     const [archiveMode, setArchiveMode] = useState<ArchiveMode>('map');
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -35,8 +37,8 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         confirmBulkDelete(selectedItems.size, async () => {
             await deleteMultipleItems(selectedItems);
             setIsEditMode(false);
-        });
-    }, [deleteMultipleItems, selectedItems]);
+        }, t);
+    }, [deleteMultipleItems, selectedItems, t]);
 
     return {
         archiveMode,

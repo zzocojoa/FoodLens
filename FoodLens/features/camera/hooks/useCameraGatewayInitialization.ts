@@ -1,8 +1,9 @@
 import { MutableRefObject, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { CAMERA_ERROR_MESSAGES } from '../constants/camera.constants';
+import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraSourceType, LocationContext } from '../types/camera.types';
 import { resolveInitialLocationContext } from '../utils/cameraGatewayHelpers';
+import { useI18n } from '@/features/i18n';
 
 type UseCameraGatewayInitializationParams = {
   photoLat?: string;
@@ -23,6 +24,9 @@ export const useCameraGatewayInitialization = ({
   cachedLocation,
   setIsLocationReady,
 }: UseCameraGatewayInitializationParams) => {
+  const { t } = useI18n();
+  const messages = getCameraErrorMessages(t);
+
   useEffect(() => {
     const initLocation = async () => {
       const resolvedLocation = await resolveInitialLocationContext({
@@ -34,7 +38,10 @@ export const useCameraGatewayInitialization = ({
 
       if (!resolvedLocation && sourceType === 'camera') {
         setTimeout(() => {
-          Alert.alert('위치 정보 없음', CAMERA_ERROR_MESSAGES.locationUnavailable);
+          Alert.alert(
+            t('camera.alert.locationUnavailableTitle', 'Location Unavailable'),
+            messages.locationUnavailable
+          );
         }, 500);
       }
 
@@ -46,5 +53,5 @@ export const useCameraGatewayInitialization = ({
     };
 
     void initLocation();
-  }, [cachedLocation, externalImageUri, photoLat, photoLng, processImage, setIsLocationReady, sourceType]);
+  }, [cachedLocation, externalImageUri, photoLat, photoLng, processImage, setIsLocationReady, sourceType, messages.locationUnavailable, t]);
 };

@@ -7,9 +7,10 @@ type SaveProfileFooterProps = {
     theme: ProfileTheme;
     loading: boolean;
     onSave: () => void;
+    t: (key: string, fallback?: string) => string;
 };
 
-export default function SaveProfileFooter({ theme, loading, onSave }: SaveProfileFooterProps) {
+export default function SaveProfileFooter({ theme, loading, onSave, t }: SaveProfileFooterProps) {
     return (
         <View style={[styles.footer, { backgroundColor: theme.background, borderTopColor: theme.border }]}>
             <TouchableOpacity
@@ -20,7 +21,9 @@ export default function SaveProfileFooter({ theme, loading, onSave }: SaveProfil
                 {loading ? (
                     <ActivityIndicator color={theme.background} />
                 ) : (
-                    <Text style={[styles.saveButtonText, { color: theme.background }]}>Save Changes</Text>
+                    <Text style={[styles.saveButtonText, { color: theme.background }]}>
+                        {t('profile.action.saveChanges', 'Save Changes')}
+                    </Text>
                 )}
             </TouchableOpacity>
         </View>
