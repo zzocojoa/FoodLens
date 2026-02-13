@@ -1,3 +1,5 @@
-import CameraScreen from '../features/camera/screens/CameraScreen';
+import { Redirect } from 'expo-router';
 
-export default CameraScreen;
+export default function LegacyCameraRedirect() {
+  return <Redirect href="/scan/camera" />;
+}

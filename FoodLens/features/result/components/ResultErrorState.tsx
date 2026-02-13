@@ -12,16 +12,12 @@ import { resultStyles as styles } from '../styles/resultStyles';
 type ResultErrorStateProps = {
     imageSource: any;
     locationData: any;
-    rawImageUri?: string;
-    displayImageUri?: string;
     errorInfo: ResultErrorInfo;
 };
 
 export default function ResultErrorState({
     imageSource,
     locationData,
-    rawImageUri,
-    displayImageUri,
     errorInfo,
 }: ResultErrorStateProps) {
     const router = useRouter();
@@ -59,19 +55,7 @@ export default function ResultErrorState({
                 <HapticTouchableOpacity
                     style={styles.retryButton}
                     hapticType="medium"
-                    onPress={() => {
-                        if (rawImageUri) {
-                            router.replace({
-                                pathname: '/camera',
-                                params: {
-                                    imageUri: displayImageUri,
-                                    sourceType: 'retry',
-                                },
-                            });
-                        } else {
-                            router.replace('/');
-                        }
-                    }}
+                    onPress={() => router.replace('/scan/camera')}
                 >
                     <Ionicons name="refresh" size={18} color="white" style={{ marginRight: 8 }} />
                     <Text style={styles.retryText}>다시 시도</Text>

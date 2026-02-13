@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { StatusBar } from 'expo-status-bar';
 import Animated from 'react-native-reanimated';
@@ -17,6 +17,7 @@ import ResultLoadingState from '../components/ResultLoadingState';
 import ResultNavBar from '../components/ResultNavBar';
 
 export default function ResultScreen() {
+    const router = useRouter();
     const { back } = useAppNavigation();
 
     const {
@@ -25,8 +26,6 @@ export default function ResultScreen() {
         result,
         locationData,
         imageSource,
-        rawImageUri,
-        displayImageUri,
         timestamp,
         isDateEditOpen,
         setIsDateEditOpen,
@@ -51,7 +50,22 @@ export default function ResultScreen() {
     if (!result) {
         return (
             <View style={styles.loadingContainer}>
-                <Text>No Data</Text>
+                <Text style={{ color: '#94A3B8', marginBottom: 16 }}>No analysis data found.</Text>
+                <TouchableOpacity
+                    style={{
+                        backgroundColor: '#2563EB',
+                        paddingHorizontal: 18,
+                        paddingVertical: 12,
+                        borderRadius: 10,
+                        marginBottom: 10,
+                    }}
+                    onPress={() => router.replace('/scan/camera')}
+                >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Start Scan</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => router.replace('/')}>
+                    <Text style={{ color: '#64748B', fontWeight: '600' }}>Back to Home</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -61,8 +75,6 @@ export default function ResultScreen() {
             <ResultErrorState
                 imageSource={imageSource}
                 locationData={locationData}
-                rawImageUri={rawImageUri}
-                displayImageUri={displayImageUri}
                 errorInfo={errorInfo}
             />
         );

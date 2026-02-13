@@ -24,13 +24,6 @@ export default function TabLayout() {
           tabBarStyle: { display: 'none' }, // Hide tab bar for full screen custom UI
         }}
       />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
     </Tabs>
   );
 }

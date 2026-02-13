@@ -9,7 +9,6 @@ import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage } from '../services/storage';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
-import { useColorScheme } from '@/hooks/use-color-scheme'; // Keep for now, although we might change it
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
@@ -58,7 +57,6 @@ function LayoutContent() {
             <Stack.Screen name="history" />
             <Stack.Screen name="trip-stats" />
             <Stack.Screen name="emoji-picker" />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', headerShown: true }} />
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>

@@ -5,7 +5,7 @@ import { actionButtonsStyles as styles } from './styles/actionButtons.styles';
 import { useActionButtonsModel } from './hooks/useActionButtonsModel';
 
 export function ActionButtons() {
-  const { buttonTheme, shadowColor, onSaveToJournal } = useActionButtonsModel();
+  const { buttonTheme, shadowColor, onGoHome } = useActionButtonsModel();
   
   return (
     <View style={styles.bottomFloat}>
@@ -17,11 +17,11 @@ export function ActionButtons() {
                     shadowColor
                 }
             ]} 
-            onPress={onSaveToJournal}
+            onPress={onGoHome}
             hapticType="success"
         >
             <ArrowUpCircle size={22} color={buttonTheme.foregroundColor} />
-            <Text style={[styles.saveButtonText, { color: buttonTheme.foregroundColor }]}>Save to Journal</Text>
+            <Text style={[styles.saveButtonText, { color: buttonTheme.foregroundColor }]}>Back to Home</Text>
         </HapticTouchableOpacity>
     </View>
   );

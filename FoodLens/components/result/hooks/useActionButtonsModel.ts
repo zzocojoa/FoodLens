@@ -12,6 +12,6 @@ export function useActionButtonsModel() {
   return {
     buttonTheme,
     shadowColor: theme.shadow,
-    onSaveToJournal: () => router.replace('/'),
+    onGoHome: () => router.replace('/'),
   };
 }

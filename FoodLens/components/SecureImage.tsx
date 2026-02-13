@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Image, ImageProps, View, StyleSheet, StyleProp, ImageStyle } from 'react-native';
 import { ImageOff } from 'lucide-react-native';
-import Animated from 'react-native-reanimated';
 
 interface SecureImageProps extends ImageProps {
   fallbackIconSize?: number;
@@ -9,8 +8,6 @@ interface SecureImageProps extends ImageProps {
   fallbackContainerStyle?: StyleProp<ImageStyle>;
   sharedTransitionTag?: string; // Add this prop
 }
-
-const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 /**
  * SecureImage Component
@@ -25,7 +22,7 @@ export const SecureImage: React.FC<SecureImageProps> = ({
   fallbackIconSize = 24,
   fallbackColor = '#94A3B8',
   fallbackContainerStyle,
-  sharedTransitionTag,
+  sharedTransitionTag: _sharedTransitionTag,
   ...props 
 }) => {
   const [hasError, setHasError] = useState(false);
@@ -44,16 +41,11 @@ export const SecureImage: React.FC<SecureImageProps> = ({
     );
   }
 
-  // Use AnimatedImage if sharedTransitionTag is provided
-  const ImageComponent = sharedTransitionTag ? AnimatedImage : Image;
-
   return (
-    // @ts-ignore - sharedTransitionTag is a Reanimated prop
-    <ImageComponent
+    <Image
       {...props}
       source={imageSource}
       style={style}
-      sharedTransitionTag={sharedTransitionTag}
       onError={(e) => {
         setHasError(true);
         if (props.onError) props.onError(e);
