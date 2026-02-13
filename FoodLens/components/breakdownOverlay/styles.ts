@@ -1,7 +1,11 @@
 import { StyleSheet } from 'react-native';
 import { SHEET_HEIGHT } from './constants';
 
-export const breakdownOverlayStyles = StyleSheet.create({
+import { Colors } from '../../constants/theme';
+
+export function getBreakdownOverlayStyles(theme: any) {
+  const activeTheme = theme || Colors.light;
+  return StyleSheet.create({
     backdrop: {
         flex: 1,
         backgroundColor: 'rgba(15, 23, 42, 0.4)',
@@ -9,10 +13,10 @@ export const breakdownOverlayStyles = StyleSheet.create({
     },
     sheet: {
         height: SHEET_HEIGHT,
-        backgroundColor: 'white',
+        backgroundColor: activeTheme.surface,
         borderTopLeftRadius: 48,
         borderTopRightRadius: 48,
-        shadowColor: '#000',
+        shadowColor: activeTheme.shadow,
         shadowOffset: { width: 0, height: -20 },
         shadowOpacity: 0.3,
         shadowRadius: 60,
@@ -26,7 +30,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
     dragIndicator: {
         width: 48,
         height: 6,
-        backgroundColor: '#E2E8F0',
+        backgroundColor: activeTheme.border,
         borderRadius: 3,
     },
     header: {
@@ -39,14 +43,14 @@ export const breakdownOverlayStyles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: '900',
-        color: '#0F172A',
+        color: activeTheme.textPrimary,
         textTransform: 'uppercase',
         letterSpacing: -0.5,
     },
     headerSubtitle: {
         fontSize: 9,
         fontWeight: '700',
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
         letterSpacing: 2,
         marginTop: 4,
         fontStyle: 'italic',
@@ -55,7 +59,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#F8FAFC',
+        backgroundColor: activeTheme.background,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -67,7 +71,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: '#FFF1F2',
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
         paddingVertical: 12,
         paddingHorizontal: 16,
         borderRadius: 16,
@@ -82,7 +86,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 24,
-        backgroundColor: '#F8FAFC',
+        backgroundColor: activeTheme.background,
         padding: 24,
         borderRadius: 40,
         marginBottom: 16,
@@ -104,12 +108,12 @@ export const breakdownOverlayStyles = StyleSheet.create({
     calorieValue: {
         fontSize: 28,
         fontWeight: '900',
-        color: '#0F172A',
+        color: activeTheme.textPrimary,
     },
     calorieLabel: {
         fontSize: 9,
         fontWeight: '900',
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
         letterSpacing: 2,
     },
     macroList: {
@@ -134,23 +138,23 @@ export const breakdownOverlayStyles = StyleSheet.create({
     macroName: {
         fontSize: 11,
         fontWeight: '800',
-        color: '#64748B',
+        color: activeTheme.textSecondary,
         letterSpacing: 0.5,
     },
     macroValue: {
         fontSize: 13,
         fontWeight: '800',
-        color: '#0F172A',
+        color: activeTheme.textPrimary,
     },
     noNutritionCard: {
-        backgroundColor: '#F8FAFC',
+        backgroundColor: activeTheme.background,
         padding: 32,
         borderRadius: 24,
         alignItems: 'center',
         marginBottom: 16,
     },
     noNutritionText: {
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
         fontWeight: '600',
     },
     sourceCard: {
@@ -161,19 +165,19 @@ export const breakdownOverlayStyles = StyleSheet.create({
     sourceLabel: {
         fontSize: 9,
         fontWeight: '700',
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
         letterSpacing: 1,
         textTransform: 'uppercase',
     },
     sourceValue: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#3B82F6',
+        color: activeTheme.primary,
         marginTop: 2,
     },
     sourceServing: {
         fontSize: 10,
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
         marginTop: 2,
     },
     confidenceSection: {
@@ -188,7 +192,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
     sectionTitle: {
         fontSize: 18,
         fontWeight: '900',
-        color: '#0F172A',
+        color: activeTheme.textPrimary,
     },
     ingredientRow: {
         marginBottom: 16,
@@ -202,7 +206,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
     ingredientName: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#334155',
+        color: activeTheme.textPrimary,
     },
     ingredientMetaRow: {
         flexDirection: 'row',
@@ -211,7 +215,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
     },
     ingredientCalories: {
         fontSize: 11,
-        color: '#64748B',
+        color: activeTheme.textSecondary,
         fontWeight: '600',
     },
     ingredientMacroRow: {
@@ -221,10 +225,10 @@ export const breakdownOverlayStyles = StyleSheet.create({
     },
     ingredientMacroText: {
         fontSize: 10,
-        color: '#94A3B8',
+        color: activeTheme.textSecondary,
     },
     allergenTag: {
-        backgroundColor: '#FFF1F2',
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 4,
@@ -237,7 +241,7 @@ export const breakdownOverlayStyles = StyleSheet.create({
     },
     confidenceBar: {
         height: 6,
-        backgroundColor: '#F1F5F9',
+        backgroundColor: activeTheme.border,
         borderRadius: 3,
         overflow: 'hidden',
     },
@@ -245,4 +249,5 @@ export const breakdownOverlayStyles = StyleSheet.create({
         height: '100%',
         borderRadius: 3,
     },
-});
+  });
+}

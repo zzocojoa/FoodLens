@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { DEFAULT_AVATARS } from '@/models/User';
-import { UserService } from '@/services/userService';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
-import { persistProfileImageIfNeeded, pickProfileImageUri } from '../utils/profileSheetStateUtils';
+import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
+import { profileSheetService } from '../services/profileSheetService';
 
 export const useProfileSheetState = (userId: string) => {
     const [name, setName] = useState(DEFAULT_NAME);
@@ -13,7 +13,7 @@ export const useProfileSheetState = (userId: string) => {
     const [loading, setLoading] = useState(false);
 
     const loadProfile = useCallback(async () => {
-        const profile = await UserService.getUserProfile(userId);
+        const profile = await profileSheetService.loadProfile(userId);
         if (profile) {
             setName(profile.name || DEFAULT_NAME);
             setImage(profile.profileImage || DEFAULT_IMAGE);
@@ -25,16 +25,11 @@ export const useProfileSheetState = (userId: string) => {
         async (onUpdate: () => void, onClose: () => void) => {
             setLoading(true);
             try {
-                const profileImageToSave = await persistProfileImageIfNeeded(image);
-
-                await UserService.CreateOrUpdateProfile(userId, 'user@example.com', {
+                await profileSheetService.updateProfile({
+                    userId,
                     name,
-                    profileImage: profileImageToSave,
-                    settings: {
-                        targetLanguage: language,
-                        language: 'en',
-                        autoPlayAudio: false,
-                    },
+                    image,
+                    language,
                 });
                 onUpdate();
                 onClose();

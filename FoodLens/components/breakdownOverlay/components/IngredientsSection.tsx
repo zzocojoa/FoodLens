@@ -3,8 +3,10 @@ import { Text, View } from 'react-native';
 import { Zap } from 'lucide-react-native';
 import { INGREDIENT_MACRO_KEYS } from '../constants';
 import { BreakdownViewModel } from '../types';
-import { breakdownOverlayStyles as styles } from '../styles';
+import { getBreakdownOverlayStyles } from '../styles';
 import { AnalyzedData } from '@/services/ai';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 type IngredientsSectionProps = {
     resultData: AnalyzedData;
@@ -12,6 +14,12 @@ type IngredientsSectionProps = {
 };
 
 export default function IngredientsSection({ resultData, model }: IngredientsSectionProps) {
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
+    const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
+
+    if (!styles) return null;
+
     return (
         <View style={styles.confidenceSection}>
             <View style={styles.sectionHeader}>

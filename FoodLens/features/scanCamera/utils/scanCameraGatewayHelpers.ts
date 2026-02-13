@@ -13,7 +13,7 @@ type LocationLike = {
 } | null;
 
 type RouterLike = {
-    replace: (route: Href) => void;
+    replace: (route: any) => void;
 };
 
 type BeginParams = {

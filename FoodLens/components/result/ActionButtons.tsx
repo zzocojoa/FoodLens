@@ -1,17 +1,11 @@
 import { View, Text } from 'react-native';
 import { ArrowUpCircle } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
 import { HapticTouchableOpacity } from '../HapticFeedback';
-import { Colors } from '../../constants/theme';
-import { useColorScheme } from '../../hooks/use-color-scheme';
 import { actionButtonsStyles as styles } from './styles/actionButtons.styles';
-import { getActionButtonTheme } from './utils/actionButtonTheme';
+import { useActionButtonsModel } from './hooks/useActionButtonsModel';
 
 export function ActionButtons() {
-  const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
-  const theme = Colors[colorScheme];
-  const buttonTheme = getActionButtonTheme(colorScheme);
+  const { buttonTheme, shadowColor, onSaveToJournal } = useActionButtonsModel();
   
   return (
     <View style={styles.bottomFloat}>
@@ -20,10 +14,10 @@ export function ActionButtons() {
                 styles.saveButton, 
                 {
                     backgroundColor: buttonTheme.backgroundColor,
-                    shadowColor: theme.shadow
+                    shadowColor
                 }
             ]} 
-            onPress={() => router.replace('/')} 
+            onPress={onSaveToJournal}
             hapticType="success"
         >
             <ArrowUpCircle size={22} color={buttonTheme.foregroundColor} />

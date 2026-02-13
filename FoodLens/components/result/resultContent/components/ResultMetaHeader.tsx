@@ -1,9 +1,10 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Calendar, MapPin, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { MapPin, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultTheme } from '../types';
-import { toConfidenceLabel } from '../utils/metaHeader';
+import { useResultMetaHeaderModel } from '../hooks/useResultMetaHeaderModel';
+import ResultTimestampRow from './ResultTimestampRow';
 
 type ResultMetaHeaderProps = {
     foodName: string;
@@ -24,6 +25,8 @@ export default function ResultMetaHeader({
     onOpenBreakdown,
     onDatePress,
 }: ResultMetaHeaderProps) {
+    const { confidenceLabel } = useResultMetaHeaderModel(confidence);
+
     return (
         <View style={styles.headerSection}>
             <View style={styles.subHeaderRow}>
@@ -38,29 +41,17 @@ export default function ResultMetaHeader({
             </View>
 
             {formattedTimestamp && (
-                <TouchableOpacity onPress={onDatePress} activeOpacity={0.7}>
-                    <View style={styles.locationRow}>
-                        <Calendar size={12} color={theme.textSecondary} />
-                        <Text style={[styles.locationText, { color: theme.textSecondary }]}>{formattedTimestamp}</Text>
-                        <View
-                            style={{
-                                marginLeft: 6,
-                                backgroundColor: '#F1F5F9',
-                                borderRadius: 4,
-                                paddingHorizontal: 4,
-                                paddingVertical: 2,
-                            }}
-                        >
-                            <Text style={{ fontSize: 9, color: '#64748B', fontWeight: 'bold' }}>EDIT</Text>
-                        </View>
-                    </View>
-                </TouchableOpacity>
+                <ResultTimestampRow
+                    formattedTimestamp={formattedTimestamp}
+                    theme={theme}
+                    onDatePress={onDatePress}
+                />
             )}
 
             <View style={styles.statsRow}>
                 <View style={[styles.statBadge, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
                     <ShieldCheck size={14} color="#059669" />
-                    <Text style={[styles.statText, { color: '#047857' }]}>{toConfidenceLabel(confidence)}</Text>
+                    <Text style={[styles.statText, { color: '#047857' }]}>{confidenceLabel}</Text>
                 </View>
                 <TouchableOpacity
                     onPress={onOpenBreakdown}

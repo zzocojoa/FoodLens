@@ -29,13 +29,13 @@ export const useNewResultHaptic = (resultExists: boolean) => {
     const params = useLocalSearchParams();
 
     React.useEffect(() => {
-        if (resultExists && params.isNew === 'true') {
+        if (resultExists && params['isNew'] === 'true') {
             const timer = setTimeout(() => {
                 HapticsService.success();
             }, 300);
             return () => clearTimeout(timer);
         }
         return undefined;
-    }, [resultExists, params.isNew]);
+    }, [resultExists, params['isNew']]);
 };
 

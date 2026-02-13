@@ -10,7 +10,7 @@ type GalleryMetadata = {
 };
 
 export const resolveGalleryMetadata = async (asset: ImagePickerAsset): Promise<GalleryMetadata> => {
-    let finalDate = asset.exif?.DateTimeOriginal || asset.exif?.DateTime || null;
+    let finalDate = asset.exif?.['DateTimeOriginal'] || asset.exif?.['DateTime'] || null;
 
     let exifLocation = null;
     try {

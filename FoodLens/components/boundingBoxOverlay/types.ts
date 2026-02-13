@@ -9,3 +9,15 @@ export interface BoundingBoxOverlayProps {
   imageHeight: number;
   ingredients: BoundingBoxIngredient[];
 }
+
+export interface BoundingBoxRenderItem {
+  key: string;
+  name: string;
+  isAllergen: boolean;
+  frame: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
+}

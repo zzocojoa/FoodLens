@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { AnalysisService } from '../../services/analysisService';
-import { shouldAutoSaveResult, TEST_UID } from './autoSaveUtils';
+import { autoSaveService } from './autoSaveService';
+import { shouldAutoSaveResult } from './autoSaveUtils';
 
 export function useAutoSave(
     result: any, 
@@ -18,7 +18,12 @@ export function useAutoSave(
         hasSaved.current = true;
         
         console.log("[useAutoSave] Saving new analysis...");
-        AnalysisService.saveAnalysis(TEST_UID, result, rawImageUri, locationData, timestamp || undefined)
+        autoSaveService.save({
+            result,
+            rawImageUri,
+            locationData,
+            timestamp,
+        })
         .then(savedRecord => {
             if (onSave && savedRecord) {
                 onSave(savedRecord);

@@ -4,21 +4,27 @@ import { resolveImageUri } from '../../services/imageStorage';
 type AnyObject = any;
 
 export const isBarcodeResult = (result: AnyObject, isBarcodeParam: string | string[] | undefined) =>
-  !!result?.isBarcode || isBarcodeParam === 'true';
+  !!result?.isBarcode ||
+  isBarcodeParam === 'true' ||
+  (!!result?.raw_data && typeof result.raw_data === 'object');
 
 export const getBarcodeImageSource = () => {
-  const barcodeBackground = require('@/assets/images/barcode_bg.png');
-  const assetSource = Image.resolveAssetSource(barcodeBackground);
   return {
-    imageSource: barcodeBackground,
-    imageDimensions: { width: assetSource.width, height: assetSource.height },
+    imageSource: null,
+    imageDimensions: null,
   };
 };
 
-export const getResolvedImageSource = (storedImageRef: string | null | undefined) => ({
-  imageSource: storedImageRef ? { uri: resolveImageUri(storedImageRef) } : null,
-  imageDimensions: null,
-});
+export const getResolvedImageSource = (storedImageRef: string | null | undefined) => {
+  if (!storedImageRef) {
+    return { imageSource: null, imageDimensions: null };
+  }
+  const resolvedUri = resolveImageUri(storedImageRef);
+  return {
+    imageSource: resolvedUri ? { uri: resolvedUri } : null,
+    imageDimensions: null,
+  };
+};
 
 export const parseSearchParamObject = (value: string | string[] | undefined) => {
   if (typeof value !== 'string') return null;

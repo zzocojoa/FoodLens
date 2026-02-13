@@ -12,25 +12,26 @@ export const useBreakdownPanGesture = (onClose: () => void) => {
             onPanResponderMove: (_, gestureState) => {
                 if (gestureState.dy > 0) {
                     translateY.setValue(gestureState.dy);
-                    opacity.setValue(1 - gestureState.dy / 500);
                 }
             },
             onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > DISMISS_THRESHOLD) {
-                    Animated.timing(translateY, {
+                if (gestureState.dy > DISMISS_THRESHOLD || gestureState.vy > 0.5) {
+                    // Dismiss with spring animation that incorporates velocity
+                    Animated.spring(translateY, {
                         toValue: SCREEN_HEIGHT,
-                        duration: 300,
+                        velocity: gestureState.vy,
+                        tension: 65,
+                        friction: 10,
                         useNativeDriver: true,
                     }).start(() => {
                         onClose();
-                        translateY.setValue(0);
-                        opacity.setValue(1);
                     });
                 } else {
                     Animated.spring(translateY, {
                         toValue: 0,
                         useNativeDriver: true,
                     }).start();
+                    // Reset opacity via its own spring to ensure consistency if it were ever moved manually
                     Animated.spring(opacity, {
                         toValue: 1,
                         useNativeDriver: true,

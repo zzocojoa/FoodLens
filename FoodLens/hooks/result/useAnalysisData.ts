@@ -1,11 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { dataStore } from '../../services/dataStore';
+import { analysisDataService } from './analysisDataService';
 import {
-  getBarcodeImageSource,
-  getResolvedImageSource,
-  isBarcodeResult,
-  parseSearchParamObject,
   toDisplayImageUri,
 } from './analysisDataUtils';
 
@@ -31,59 +28,33 @@ export function useAnalysisData() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const applyImageSource = (
-      resultData: any,
-      storedImageRef: string | null | undefined,
-      barcodeParam: string | string[] | undefined
-    ) => {
-      if (isBarcodeResult(resultData, barcodeParam)) {
-        const barcode = getBarcodeImageSource();
-        setImageSource(barcode.imageSource);
-        setImageDimensions(barcode.imageDimensions);
-        return;
-      }
-      const resolved = getResolvedImageSource(storedImageRef);
-      setImageSource(resolved.imageSource);
-      setImageDimensions(resolved.imageDimensions);
-    };
-
     async function loadData() {
       if (isRestoring) {
-          console.log("[useAnalysisData] Restoring from backup...");
-          const success = await dataStore.restoreBackup();
-          console.log("[useAnalysisData] Restore success:", success);
-          setIsRestoring(false);
-          
-          if (success) {
-            // Re-fetch from store after restore
-            const stored = dataStore.getData();
-            setResult(stored.result);
-            setLocationData(stored.location);
-            setStoredImageRef(stored.imageUri || undefined);
-            applyImageSource(stored.result, stored.imageUri, isBarcode);
-          }
-      } else {
-        // Normal Load
-        if (fromStore === 'true') {
-            const stored = dataStore.getData();
-            setResult(stored.result);
-            setLocationData(stored.location);
-            setStoredImageRef(stored.imageUri || undefined);
-            applyImageSource(stored.result, stored.imageUri, isBarcode);
-        } else {
-            const parsedResult = parseSearchParamObject(data);
-            setResult(parsedResult);
-            setLocationData(parseSearchParamObject(location));
-            
-            const storedData = dataStore.getData();
-            setStoredImageRef(storedData.imageUri || undefined);
-            applyImageSource(parsedResult, storedData.imageUri, isBarcode);
-        }
+        console.log("[useAnalysisData] Restoring from backup...");
       }
+
+      const loadedData = await analysisDataService.load({
+        isRestoring,
+        fromStore,
+        data,
+        location,
+        isBarcode,
+      });
+
+      if (isRestoring) {
+        console.log("[useAnalysisData] Restore success:", !!loadedData.result);
+      }
+
+      setIsRestoring(loadedData.isRestoring);
+      setResult(loadedData.result);
+      setLocationData(loadedData.locationData);
+      setStoredImageRef(loadedData.storedImageRef);
+      setImageSource(loadedData.imageSource);
+      setImageDimensions(loadedData.imageDimensions);
       setLoaded(true);
     }
     
-    loadData();
+    void loadData();
   }, [data, fromStore, isBarcode, isRestoring, location]);
 
   // Reactive timestamp state

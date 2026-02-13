@@ -1,10 +1,5 @@
 import { ALLERGEN_TERMS, ALLERGY_TRANSLATIONS } from '@/services/staticTranslations';
-
-type AiTranslation = {
-  language: string;
-  text?: string | null;
-  audio_query?: string;
-} | null | undefined;
+import { AiTranslation } from './types';
 
 export const isNullAiTranslation = (aiTranslation: AiTranslation, isAiLoaded: boolean) =>
   isAiLoaded && (aiTranslation === null || aiTranslation?.text === null);
@@ -18,7 +13,7 @@ export const translateAllergen = (allergen: string, targetCode: string) => {
 
 export const buildDisplayData = (countryCode: string | null | undefined, aiTranslation: AiTranslation) => {
   const code = countryCode || 'DEFAULT';
-  const staticData = ALLERGY_TRANSLATIONS[code] || ALLERGY_TRANSLATIONS.DEFAULT;
+  const staticData = ALLERGY_TRANSLATIONS[code] || ALLERGY_TRANSLATIONS['DEFAULT'];
   const isAiLoaded = aiTranslation !== undefined;
   const hasAiContent = isAiLoaded && !!aiTranslation;
 

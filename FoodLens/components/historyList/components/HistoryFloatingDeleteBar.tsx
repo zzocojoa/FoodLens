@@ -3,11 +3,11 @@ import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Trash2 } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '../../HapticFeedback';
-import { historyListStyles as styles } from '../styles';
+import { historyListStyles as styles } from '@/components/historyList/styles';
 
 type HistoryFloatingDeleteBarProps = {
   selectedCount: number;
-  onBulkDelete: () => void;
+  onBulkDelete: (ids?: Set<string>) => void;
 };
 
 export default function HistoryFloatingDeleteBar({
@@ -23,7 +23,7 @@ export default function HistoryFloatingDeleteBar({
       pointerEvents="box-none"
     >
       <HapticTouchableOpacity
-        onPress={onBulkDelete}
+        onPress={() => onBulkDelete()}
         style={styles.floatingDeleteButton}
         activeOpacity={0.9}
         hapticType="warning"

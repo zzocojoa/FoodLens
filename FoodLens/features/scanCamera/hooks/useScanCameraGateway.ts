@@ -7,7 +7,7 @@ import {
     useCameraPermissions,
     BarcodeScanningResult,
 } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
@@ -28,7 +28,7 @@ import {
 import { resolveGalleryMetadata } from '../utils/galleryMetadata';
 
 export const useScanCameraGateway = () => {
-    const router = useRouter();
+    const { navigate, replace, back } = useAppNavigation();
     const isFocused = useIsFocused();
     const cameraRef = useRef<CameraView>(null);
 
@@ -127,7 +127,7 @@ export const useScanCameraGateway = () => {
         if (isAnalyzing) {
             handleCancelAnalysis();
         } else {
-            router.back();
+            back();
         }
     };
 
@@ -146,6 +146,9 @@ export const useScanCameraGateway = () => {
         [resetState]
     );
 
+    const [consecutiveScans, setConsecutiveScans] = useState(0);
+    const lastScannedData = useRef<string | null>(null);
+
     const processBarcode = useCallback(
         async (barcode: string) => {
             try {
@@ -158,7 +161,20 @@ export const useScanCameraGateway = () => {
                     return;
                 }
 
-                const result = await lookupBarcode(barcode);
+                // Check cache first
+                const { BarcodeCache } = await import('../../../services/aiCore/internal/barcodeCache');
+                const cachedResult = await BarcodeCache.get(barcode);
+                
+                let result;
+                if (cachedResult) {
+                    console.log('[AI] Barcode found in cache:', barcode);
+                    result = cachedResult;
+                } else {
+                    result = await lookupBarcode(barcode);
+                    if (result.found) {
+                        await BarcodeCache.set(barcode, result);
+                    }
+                }
 
                 if (result.found && result.data) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -185,7 +201,7 @@ export const useScanCameraGateway = () => {
                         finalTimestamp
                     );
 
-                    router.replace({
+                    replace({
                         pathname: '/result',
                         params: { fromStore: 'true', isNew: 'true', isBarcode: 'true' },
                     });
@@ -202,6 +218,7 @@ export const useScanCameraGateway = () => {
                             onPress: () => {
                                 setScanned(false);
                                 isProcessingRef.current = false;
+                                setConsecutiveScans(0);
                             },
                         },
                         {
@@ -210,6 +227,7 @@ export const useScanCameraGateway = () => {
                                 setMode('LABEL');
                                 setScanned(false);
                                 isProcessingRef.current = false;
+                                setConsecutiveScans(0);
                             },
                         },
                     ]);
@@ -220,18 +238,49 @@ export const useScanCameraGateway = () => {
                 resetState();
             }
         },
-        [resetState, router]
+        [resetState, replace]
     );
 
     const handleBarcodeScanned = useCallback(
         (scanningResult: BarcodeScanningResult) => {
             if (mode !== 'BARCODE' || scanned || isAnalyzing || isProcessingRef.current) return;
 
-            isProcessingRef.current = true;
-            setScanned(true);
-            processBarcode(scanningResult.data);
+            // ROI Check: Filter results outside the 280x280 central viewfinder
+            // Note: coordinates are relative to the CameraView
+            const { width, height } = require('react-native').Dimensions.get('window');
+            const VIEWFINDER_SIZE = 280;
+            const horizontalMargin = (width - VIEWFINDER_SIZE) / 2;
+            const verticalMargin = (height - VIEWFINDER_SIZE) / 2;
+
+            const { origin, size } = scanningResult.bounds;
+            const barcodeCenterX = origin.x + size.width / 2;
+            const barcodeCenterY = origin.y + size.height / 2;
+
+            const isInROI = 
+                barcodeCenterX >= horizontalMargin && 
+                barcodeCenterX <= (horizontalMargin + VIEWFINDER_SIZE) &&
+                barcodeCenterY >= verticalMargin &&
+                barcodeCenterY <= (verticalMargin + VIEWFINDER_SIZE);
+
+            if (!isInROI) return;
+
+            // Confidence check: Requires 3 consecutive identical reads
+            if (scanningResult.data === lastScannedData.current) {
+                const newCount = consecutiveScans + 1;
+                if (newCount >= 3) {
+                    isProcessingRef.current = true;
+                    setScanned(true);
+                    processBarcode(scanningResult.data);
+                    setConsecutiveScans(0);
+                } else {
+                    setConsecutiveScans(newCount);
+                }
+            } else {
+                lastScannedData.current = scanningResult.data;
+                setConsecutiveScans(1);
+            }
         },
-        [isAnalyzing, mode, processBarcode, scanned]
+        [isAnalyzing, mode, processBarcode, scanned, consecutiveScans]
     );
 
     const processImage = useCallback(
@@ -286,7 +335,7 @@ export const useScanCameraGateway = () => {
                     timestamp: customTimestamp,
                     imageUri: uri,
                     fallbackAddress: 'Location Unavailable',
-                    router,
+                    router: { replace },
                 });
 
                 resetState();
@@ -295,7 +344,7 @@ export const useScanCameraGateway = () => {
                 handleError(error);
             }
         },
-        [handleError, resetState, router]
+        [handleError, resetState, replace]
     );
 
     useEffect(() => {
@@ -335,7 +384,7 @@ export const useScanCameraGateway = () => {
                     isoCode,
                     timestamp: customTimestamp,
                     imageUri: uri,
-                    router,
+                    router: { replace },
                 });
 
                 resetState();
@@ -344,7 +393,7 @@ export const useScanCameraGateway = () => {
                 handleError(error);
             }
         },
-        [handleError, resetState, router]
+        [handleError, resetState, replace]
     );
 
     const processSmart = useCallback(
@@ -398,7 +447,7 @@ export const useScanCameraGateway = () => {
                     timestamp: customTimestamp,
                     imageUri: uri,
                     fallbackAddress: 'Location Unavailable',
-                    router,
+                    router: { replace },
                 });
 
                 resetState();
@@ -407,7 +456,7 @@ export const useScanCameraGateway = () => {
                 handleError(error);
             }
         },
-        [handleError, resetState, router]
+        [handleError, resetState, replace]
     );
 
 

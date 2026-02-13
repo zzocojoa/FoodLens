@@ -1,0 +1,11 @@
+- [x] 이미지 분석 오류 분석
+- [x] 이미지 에러 수정 (MPO 포맷 변환)
+- [x] `google-genai` 라이브러리 설치
+- [x] `main.py` 업데이트 (Google GenAI 적용)
+- [x] 이미지 분석 검증 (한글 출력 지원)
+- [x] 이미지 편집(Editing) 기능 시도 (Vertex AI 과금 문제로 중단)
+- [x] 의류 누끼 추출 구현 1 (Gemini + Rembg)
+- [x] 정교한 추출 구현 2 (SegFormer, 인물 파싱)
+- [x] 하이브리드 SAM 2 추출 구현 (Gemini + 공식 SAM 2)
+- [x] 상업용 클라우드 확장 가이드 제공
+- [x] 사업 계획서 및 비용 분석 작성

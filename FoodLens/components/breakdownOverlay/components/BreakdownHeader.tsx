@@ -1,7 +1,9 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { X } from 'lucide-react-native';
-import { breakdownOverlayStyles as styles } from '../styles';
+import { getBreakdownOverlayStyles } from '../styles';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 type BreakdownHeaderProps = {
     onClose: () => void;
@@ -9,6 +11,9 @@ type BreakdownHeaderProps = {
 };
 
 export default function BreakdownHeader({ onClose, panHandlers }: BreakdownHeaderProps) {
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
+    const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
     return (
         <>
             <View style={styles.dragIndicatorContainer} {...panHandlers}>

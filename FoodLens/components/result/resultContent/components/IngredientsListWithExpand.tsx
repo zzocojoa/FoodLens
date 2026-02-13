@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultIngredient, ResultTheme } from '../types';
-import { buildIngredientsVisibleState } from '../utils/resultContentFormatters';
 import { getIngredientExpandLabel } from '../utils/ingredientExpandLabel';
+import { useIngredientsExpand } from '../hooks/useIngredientsExpand';
 import IngredientItem from './IngredientItem';
 
 type IngredientsListWithExpandProps = {
@@ -13,12 +13,7 @@ type IngredientsListWithExpandProps = {
 };
 
 export default function IngredientsListWithExpand({ ingredients, theme }: IngredientsListWithExpandProps) {
-    const [expanded, setExpanded] = useState(false);
-
-    const state = useMemo(
-        () => buildIngredientsVisibleState(ingredients, expanded),
-        [ingredients, expanded]
-    );
+    const { expanded, state, toggleExpanded } = useIngredientsExpand(ingredients);
 
     return (
         <View style={styles.ingredientsList}>
@@ -27,7 +22,7 @@ export default function IngredientsListWithExpand({ ingredients, theme }: Ingred
             ))}
             {state.shouldCollapse && (
                 <TouchableOpacity
-                    onPress={() => setExpanded((prev) => !prev)}
+                    onPress={toggleExpanded}
                     style={[styles.expandButton, { borderColor: theme.border }]}
                 >
                     {expanded ? (

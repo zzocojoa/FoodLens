@@ -1,11 +1,9 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Location from 'expo-location';
-import { AnalysisService } from '@/services/analysisService';
-import { UserService } from '@/services/userService';
 import { TEST_UID } from '../constants/tripStats.constants';
-import { buildLocationLabel, countSafeAnalysesFromStart, countSafeAnalysesTotal } from '../utils/tripStatsCalculations';
+import { tripStatsService } from '../services/tripStatsService';
+import { countSafeAnalysesFromStart, countSafeAnalysesTotal } from '../utils/tripStatsCalculations';
 import { useTripStartToast } from './useTripStartToast';
 
 export function useTripStatsScreen(insetsTop: number) {
@@ -21,8 +19,7 @@ export function useTripStatsScreen(insetsTop: number) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const user = await UserService.getUserProfile(TEST_UID);
-            const allAnalyses = await AnalysisService.getAllAnalyses(TEST_UID);
+            const { user, allAnalyses } = await tripStatsService.loadUserTripData(TEST_UID);
 
             setTotalCount(allAnalyses.length);
 
@@ -54,8 +51,8 @@ export function useTripStatsScreen(insetsTop: number) {
     const handleStartNewTrip = useCallback(async () => {
         setIsLocating(true);
         try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
+            const locationResult = await tripStatsService.resolveCurrentLocation();
+            if (!locationResult.ok) {
                 Alert.alert(
                     'Permission Denied',
                     'Location access is needed to tag your trip. Please enable it in settings.'
@@ -64,31 +61,17 @@ export function useTripStatsScreen(insetsTop: number) {
                 return;
             }
 
-            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            const { latitude, longitude } = location.coords;
-
-            let locationName = 'Unknown Location';
-            try {
-                const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-                locationName = buildLocationLabel(
-                    reverseGeocode.length > 0 ? reverseGeocode[0] : null,
-                    `Lat: ${latitude.toFixed(2)}, Lon: ${longitude.toFixed(2)}`
-                );
-            } catch (geocodeError) {
-                console.warn('Geocoding failed', geocodeError);
-                locationName = `Lat: ${latitude.toFixed(2)}, Lon: ${longitude.toFixed(2)}`;
-            }
-
             const now = new Date();
-            await UserService.CreateOrUpdateProfile(TEST_UID, '', {
-                currentTripStart: now.toISOString(),
-                currentTripLocation: locationName,
-                currentTripCoordinates: { latitude, longitude },
-            });
+            await tripStatsService.startTrip(
+                TEST_UID,
+                locationResult.locationName,
+                locationResult.coordinates,
+                now
+            );
 
             setTripStartDate(now);
             setSafeCount(0);
-            setCurrentLocation(locationName);
+            setCurrentLocation(locationResult.locationName);
             triggerToast();
         } catch (e) {
             console.error(e);

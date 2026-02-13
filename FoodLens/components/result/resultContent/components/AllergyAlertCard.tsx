@@ -2,14 +2,14 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
-import { getAllergyAlertCardColors } from '../utils/cardPresentation';
+import { useAllergyAlertCardModel } from '../hooks/useAllergyAlertCardModel';
 
 type AllergyAlertCardProps = {
     colorScheme: 'light' | 'dark';
 };
 
 export default function AllergyAlertCard({ colorScheme }: AllergyAlertCardProps) {
-    const colors = getAllergyAlertCardColors(colorScheme);
+    const { colors } = useAllergyAlertCardModel(colorScheme);
 
     return (
         <View

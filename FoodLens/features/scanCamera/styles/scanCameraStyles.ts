@@ -1,4 +1,9 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const VIEWFINDER_SIZE = 280;
+const verticalMargin = (SCREEN_HEIGHT - VIEWFINDER_SIZE) / 2;
+const horizontalMargin = (SCREEN_WIDTH - VIEWFINDER_SIZE) / 2;
 
 export const scanCameraStyles = StyleSheet.create({
     container: {
@@ -90,37 +95,33 @@ export const scanCameraStyles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 5,
     },
-    darkenTop: {
-        position: 'absolute',
-        top: -1000,
-        left: -1000,
-        right: -1000,
-        height: 1000,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-    },
-    darkenBottom: {
-        position: 'absolute',
-        bottom: -1000,
-        left: -1000,
-        right: -1000,
-        height: 1000,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-    },
-    darkenLeft: {
+    blurTop: {
         position: 'absolute',
         top: 0,
-        bottom: 0,
-        left: -1000,
-        width: 1000,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        left: 0,
+        right: 0,
+        height: verticalMargin,
     },
-    darkenRight: {
+    blurBottom: {
         position: 'absolute',
-        top: 0,
         bottom: 0,
-        right: -1000,
-        width: 1000,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        left: 0,
+        right: 0,
+        height: verticalMargin,
+    },
+    blurLeft: {
+        position: 'absolute',
+        top: verticalMargin,
+        bottom: verticalMargin,
+        left: 0,
+        width: horizontalMargin,
+    },
+    blurRight: {
+        position: 'absolute',
+        top: verticalMargin,
+        bottom: verticalMargin,
+        right: 0,
+        width: horizontalMargin,
     },
     bottomBar: {
         position: 'absolute',
@@ -229,4 +230,3 @@ export const scanCameraStyles = StyleSheet.create({
         textShadowRadius: 3,
     },
 });
-

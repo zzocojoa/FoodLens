@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Info, X, Image as ImageIcon, Zap, ZapOff, ZoomIn, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AnalysisLoadingScreen from '../../../components/AnalysisLoadingScreen';
+import { AnalysisOrbs } from '../../../components/animation/AnalysisOrbs';
 import { InfoBottomSheet } from '../../../components/InfoBottomSheet';
 import { scanCameraStyles as styles } from '../styles/scanCameraStyles';
 import { useScanCameraGateway } from '../hooks/useScanCameraGateway';
@@ -34,14 +36,17 @@ export default function ScanCameraScreen() {
             <InfoBottomSheet isOpen={camera.showInfoSheet} onClose={() => camera.setShowInfoSheet(false)} />
 
             {camera.isAnalyzing && (
-                <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
-                    <AnalysisLoadingScreen
-                        onCancel={camera.handleCancelAnalysis}
-                        imageUri={camera.capturedImage || ''}
-                        manualStep={camera.activeStep ?? 0}
-                        manualProgress={camera.uploadProgress}
-                    />
-                </View>
+                <>
+                    <AnalysisOrbs />
+                    <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
+                        <AnalysisLoadingScreen
+                            onCancel={camera.handleCancelAnalysis}
+                            imageUri={camera.capturedImage || ''}
+                            manualStep={camera.activeStep ?? 0}
+                            manualProgress={camera.uploadProgress}
+                        />
+                    </View>
+                </>
             )}
 
             {camera.isFocused && (
@@ -59,6 +64,14 @@ export default function ScanCameraScreen() {
             )}
 
             <View style={styles.overlay} pointerEvents="none">
+                {camera.mode === 'BARCODE' && (
+                    <>
+                        <BlurView intensity={20} style={styles.blurTop} tint="dark" />
+                        <BlurView intensity={20} style={styles.blurBottom} tint="dark" />
+                        <BlurView intensity={20} style={styles.blurLeft} tint="dark" />
+                        <BlurView intensity={20} style={styles.blurRight} tint="dark" />
+                    </>
+                )}
                 <View style={styles.viewfinderContainer}>
                     <View style={[styles.corner, styles.tl]} />
                     <View style={[styles.corner, styles.tr]} />

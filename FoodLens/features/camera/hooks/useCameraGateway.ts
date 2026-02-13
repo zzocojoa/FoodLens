@@ -58,6 +58,7 @@ export const useCameraGateway = ({
             }, 500);
             return () => clearTimeout(timer);
         }
+        return undefined;
     }, [permission, externalImageUri, onExit]);
 
     const resetState = useCallback(() => {

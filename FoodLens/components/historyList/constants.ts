@@ -1,10 +1,11 @@
-import { FilterType } from '../../hooks/useHistoryFilter';
+export const HISTORY_FILTERS = ['all', 'ok', 'avoid', 'ask'] as const;
 
-export const HISTORY_FILTERS: FilterType[] = ['all', 'ok', 'avoid', 'ask'];
-
-export const toFilterLabel = (filter: FilterType): string =>
-  filter === 'ask' ? 'ASK' : filter.toUpperCase();
-
-export const FLOATING_DELETE_COLOR = '#EF4444';
-export const FLOATING_BAR_HEIGHT = 120;
-export const FLOATING_BAR_BOTTOM_PADDING = 40;
+export const toFilterLabel = (filter: string): string => {
+  switch (filter) {
+    case 'all': return 'All Scans';
+    case 'ok': return 'Safe';
+    case 'avoid': return 'Avoid';
+    case 'ask': return 'Ask';
+    default: return filter;
+  }
+};

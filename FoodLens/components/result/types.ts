@@ -20,4 +20,12 @@ export interface ResultHeaderProps {
   pins: ResultPinItem[];
   scrollY: SharedValue<number>;
   layoutStyle?: StyleProp<ViewStyle>;
+  isBarcode?: boolean;
+}
+
+export interface SpatialPinProps {
+  x: number;
+  y: number;
+  label: string;
+  isAllergen?: boolean;
 }

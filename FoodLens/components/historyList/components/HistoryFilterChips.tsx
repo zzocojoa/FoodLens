@@ -4,8 +4,8 @@ import { Colors } from '../../../constants/theme';
 import { useColorScheme } from '../../../hooks/use-color-scheme';
 import { FilterType } from '../../../hooks/useHistoryFilter';
 import { HapticTouchableOpacity } from '../../HapticFeedback';
-import { HISTORY_FILTERS, toFilterLabel } from '../constants';
-import { historyListStyles as styles } from '../styles';
+import { HISTORY_FILTERS, toFilterLabel } from '@/components/historyList/constants';
+import { historyListStyles as styles } from '@/components/historyList/styles';
 
 type HistoryFilterChipsProps = {
   filter: FilterType;

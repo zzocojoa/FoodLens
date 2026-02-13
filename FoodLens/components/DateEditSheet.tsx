@@ -1,18 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { BlurView } from 'expo-blur';
 import { dateEditSheetStyles as styles } from './dateEditSheet/styles';
+import { useDateEditSheetState } from './dateEditSheet/hooks/useDateEditSheetState';
 import { DateEditSheetProps } from './dateEditSheet/types';
 
 export function DateEditSheet({ isVisible, initialDate, onClose, onConfirm }: DateEditSheetProps) {
-    const [tempDate, setTempDate] = useState(initialDate);
-
-    const handleChange = (event: any, selectedDate?: Date) => {
-        if (selectedDate) {
-            setTempDate(selectedDate);
-        }
-    };
+    const { tempDate, handleDateChange } = useDateEditSheetState(initialDate);
 
     if (!isVisible) return null;
 
@@ -38,7 +33,7 @@ export function DateEditSheet({ isVisible, initialDate, onClose, onConfirm }: Da
                                 value={tempDate}
                                 mode="datetime"
                                 display="spinner"
-                                onChange={handleChange}
+                                onChange={handleDateChange}
                                 textColor="black"
                                 locale="ko-KR"
                                 themeVariant="light"

@@ -1,3 +1,4 @@
+import { ImageSourcePropType } from 'react-native';
 import { Colors } from '@/constants/theme';
 
 export type ResultTheme = typeof Colors.light;
@@ -26,11 +27,14 @@ export type ResultContentData = {
     ingredients: ResultIngredient[];
     raw_result?: string;
     translationCard?: ResultTranslationCard | null;
+    isBarcode?: boolean;
+    imageUri?: string;
 };
 
 export type ResultContentProps = {
     result: ResultContentData;
     locationData: ResultLocationData;
+    imageSource: ImageSourcePropType | null;
     timestamp?: string | null;
     onOpenBreakdown: () => void;
     onDatePress?: () => void;

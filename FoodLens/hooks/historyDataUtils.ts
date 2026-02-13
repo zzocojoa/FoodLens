@@ -117,3 +117,79 @@ export const removeItemsFromArchive = (
       return { ...country, regions, total };
     })
     .filter((country) => country.total > 0);
+
+/**
+ * Types for FlashList flattened data
+ */
+export type FlattenedHistoryItem = 
+  | { type: 'country-header'; id: string; country: CountryData; index: number }
+  | { type: 'region-header'; id: string; name: string }
+  | { type: 'food-item'; id: string; data: any; countryName: string }
+  | { type: 'empty-region'; id: string; filter: string };
+
+/**
+ * Flattens the hierarchical CountryData into a single array for FlashList
+ */
+export const flattenHistoryData = (
+    data: CountryData[],
+    expandedCountries: Set<string>,
+    filter: string,
+    matchesFilter: (type: string | undefined) => boolean,
+    isAllowedItemType: (type: string | undefined) => boolean
+): FlattenedHistoryItem[] => {
+    const flattened: FlattenedHistoryItem[] = [];
+
+    data.forEach((country, countryIdx) => {
+        const countryKey = `${country.country}-${countryIdx}`;
+        const isExpanded = expandedCountries.has(countryKey);
+
+        // 1. Add Country Header
+        flattened.push({
+            type: 'country-header',
+            id: countryKey,
+            country,
+            index: countryIdx
+        });
+
+        if (isExpanded) {
+            let countryHasVisibleItems = false;
+
+            country.regions.forEach((region, regionIdx) => {
+                const visibleItems = (region.items || []).filter(
+                    (item) => isAllowedItemType(item.type) && matchesFilter(item.type)
+                );
+
+                if (visibleItems.length > 0) {
+                    countryHasVisibleItems = true;
+                    // 2. Add Region Header
+                    flattened.push({
+                        type: 'region-header',
+                        id: `${countryKey}-reg-${regionIdx}`,
+                        name: region.name
+                    });
+
+                    // 3. Add Food Items
+                    visibleItems.forEach((item) => {
+                        flattened.push({
+                            type: 'food-item',
+                            id: item.id,
+                            data: item,
+                            countryName: country.country
+                        });
+                    });
+                }
+            });
+
+            // 4. Empty state for expanded country with no matching items
+            if (!countryHasVisibleItems) {
+                flattened.push({
+                    type: 'empty-region',
+                    id: `${countryKey}-empty`,
+                    filter
+                });
+            }
+        }
+    });
+
+    return flattened;
+};

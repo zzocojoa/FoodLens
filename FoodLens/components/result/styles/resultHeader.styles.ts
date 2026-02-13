@@ -28,4 +28,23 @@ export const resultHeaderStyles = StyleSheet.create({
     bottom: 0,
     height: '25%',
   },
+  barcodeFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111827',
+  },
+  barcodeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  barcodeBar: {
+    backgroundColor: '#0F172A',
+    borderRadius: 1,
+  },
 });

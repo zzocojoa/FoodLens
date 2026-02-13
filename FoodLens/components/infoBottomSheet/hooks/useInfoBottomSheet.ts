@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Gesture } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { SCREEN_HEIGHT, SHEET_EXIT_DURATION_MS } from '../constants';
 import { shouldCloseSheet } from '../utils/shouldCloseSheet';
 

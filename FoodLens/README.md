@@ -31,8 +31,10 @@ Food Lens는 해외 여행 중 낯선 음식을 만났을 때, 카메라 촬영 
 ### 1. 백엔드 서버 실행
 
 ```bash
-cd .. # 프로젝트 루트로 이동 (server.py가 있는 곳)
+cd .. # 프로젝트 루트로 이동
 source myenv/bin/activate  # 가상환경 활성화
+python -m backend.server  # 권장 실행 경로
+# 또는 (호환 경로)
 python server.py
 ```
 

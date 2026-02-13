@@ -4,7 +4,9 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '../services/queryClient';
+import { SafeStorage, initializeSafeStorage } from '../services/storage';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { useColorScheme } from '@/hooks/use-color-scheme'; // Keep for now, although we might change it
@@ -15,10 +17,10 @@ const DEVICE_ID_KEY = '@foodlens_device_id';
 // Generate or retrieve a persistent device ID
 const initializeDeviceId = async () => {
   try {
-    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    let deviceId = await SafeStorage.get<string | null>(DEVICE_ID_KEY, null);
     if (!deviceId) {
       deviceId = 'device_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+      await SafeStorage.set(DEVICE_ID_KEY, deviceId);
       console.log(`[AUTH] Created new device ID: ${deviceId}`);
     } else {
       console.log(`[AUTH] Using existing device ID: ${deviceId}`);
@@ -38,7 +40,10 @@ function LayoutContent() {
   const { colorScheme } = useTheme();
 
   useEffect(() => {
-    initializeDeviceId();
+    (async () => {
+        await initializeSafeStorage();
+        await initializeDeviceId();
+    })();
   }, []);
 
   return (
@@ -47,6 +52,8 @@ function LayoutContent() {
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="camera" options={{ animation: 'none' }} />
+            <Stack.Screen name="result" options={{ animation: 'fade_from_bottom' }} />
             <Stack.Screen name="profile" />
             <Stack.Screen name="history" />
             <Stack.Screen name="trip-stats" />
@@ -62,8 +69,10 @@ function LayoutContent() {
 
 export default function RootLayout() {
   return (
-    <CustomThemeProvider>
-      <LayoutContent />
-    </CustomThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <CustomThemeProvider>
+        <LayoutContent />
+      </CustomThemeProvider>
+    </QueryClientProvider>
   );
 }

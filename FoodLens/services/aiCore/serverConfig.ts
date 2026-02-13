@@ -3,7 +3,7 @@ import { DEFAULT_SERVER_URL, STORAGE_KEY } from './constants';
 
 export const ServerConfig = {
     getServerUrl: async (): Promise<string> => {
-        const envUrl = process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL;
+        const envUrl = process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
         if (envUrl) return envUrl;
 
         const stored = await SafeStorage.get<string>(STORAGE_KEY, DEFAULT_SERVER_URL);

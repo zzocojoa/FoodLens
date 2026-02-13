@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
+import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { StatusBar } from 'expo-status-bar';
 import Animated from 'react-native-reanimated';
 import BreakdownOverlay from '@/components/BreakdownOverlay';
@@ -16,7 +17,7 @@ import ResultLoadingState from '../components/ResultLoadingState';
 import ResultNavBar from '../components/ResultNavBar';
 
 export default function ResultScreen() {
-    const router = useRouter();
+    const { back } = useAppNavigation();
 
     const {
         isRestoring,
@@ -37,7 +38,8 @@ export default function ResultScreen() {
         imageAnimatedStyle,
         headerOverlayStyle,
         isBreakdownOpen,
-        setIsBreakdownOpen,
+        openBreakdown,
+        closeBreakdown,
         isError,
         errorInfo,
     } = useResultScreen();
@@ -78,9 +80,10 @@ export default function ResultScreen() {
                 pins={pins}
                 scrollY={scrollY}
                 layoutStyle={layoutStyle}
+                isBarcode={result?.isBarcode}
             />
 
-            <ResultNavBar onBack={() => router.back()} />
+            <ResultNavBar onBack={back} />
 
             <Animated.ScrollView
                 onScroll={scrollHandler}
@@ -91,8 +94,9 @@ export default function ResultScreen() {
                 <ResultContent
                     result={result}
                     locationData={locationData}
+                    imageSource={imageSource}
                     timestamp={timestamp}
-                    onOpenBreakdown={() => setIsBreakdownOpen(true)}
+                    onOpenBreakdown={openBreakdown}
                     onDatePress={() => setIsDateEditOpen(true)}
                 />
             </Animated.ScrollView>
@@ -106,7 +110,7 @@ export default function ResultScreen() {
 
             <BreakdownOverlay
                 isOpen={isBreakdownOpen}
-                onClose={() => setIsBreakdownOpen(false)}
+                onClose={closeBreakdown}
                 resultData={result}
             />
 

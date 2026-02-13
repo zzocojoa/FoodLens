@@ -2,14 +2,20 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { BreakdownViewModel } from '../types';
-import { breakdownOverlayStyles as styles } from '../styles';
+import { getBreakdownOverlayStyles } from '../styles';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 type NutritionSectionProps = {
     model: BreakdownViewModel;
 };
 
 export default function NutritionSection({ model }: NutritionSectionProps) {
-    if (!model.hasNutrition) {
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
+    const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
+
+    if (!styles || !model.hasNutrition) {
         return (
             <View style={styles.noNutritionCard}>
                 <Text style={styles.noNutritionText}>Nutrition data unavailable</Text>
@@ -22,13 +28,13 @@ export default function NutritionSection({ model }: NutritionSectionProps) {
             <View style={styles.nutritionCard}>
                 <View style={styles.ringContainer}>
                     <Svg width={128} height={128} style={styles.ringSvg}>
-                        <Circle cx={64} cy={64} r={model.radius} fill="transparent" stroke="#E2E8F0" strokeWidth={12} />
+                        <Circle cx={64} cy={64} r={model.radius} fill="transparent" stroke={theme.border} strokeWidth={12} />
                         <Circle
                             cx={64}
                             cy={64}
                             r={model.radius}
                             fill="transparent"
-                            stroke="#3B82F6"
+                            stroke={theme.primary}
                             strokeWidth={12}
                             strokeDasharray={model.circumference}
                             strokeDashoffset={model.strokeDashoffset}

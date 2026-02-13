@@ -10,7 +10,13 @@ export const toDocumentDirectory = (): string => {
 export const getManagedImageDirectory = (): string => `${toDocumentDirectory()}${IMAGE_DIR}`;
 
 export const isLegacyAbsoluteUri = (uri: string): boolean =>
-  uri.startsWith('file://') || uri.startsWith('/') || uri.startsWith('ph://');
+  uri.startsWith('file://') ||
+  uri.startsWith('/') ||
+  uri.startsWith('ph://') ||
+  uri.startsWith('content://') ||
+  uri.startsWith('assets-library://') ||
+  uri.startsWith('http://') ||
+  uri.startsWith('https://');
 
 export const isManagedImageReference = (uri: string): boolean => uri.includes(IMAGE_DIR);
 

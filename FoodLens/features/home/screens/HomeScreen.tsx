@@ -215,7 +215,13 @@ export default function HomeScreen() {
             onOpenHistory={() => router.push('/history')}
             onOpenResult={(item) => {
               dataStore.setData(item, item.location, item.imageUri || '');
-              router.push({ pathname: '/result', params: { fromStore: 'true' } });
+              router.push({
+                pathname: '/result',
+                params: {
+                  fromStore: 'true',
+                  isBarcode: item.isBarcode ? 'true' : 'false',
+                },
+              });
             }}
             onDeleteItem={handleDeleteItem}
           />

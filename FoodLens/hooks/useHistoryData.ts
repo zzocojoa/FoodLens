@@ -1,103 +1,63 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { Region } from 'react-native-maps';
-import { AnalysisService } from '../services/analysisService';
-import { CountryData } from '../models/History';
+import { useHistoryQuery } from './queries/useHistoryQuery';
+import { useDeleteAnalysisMutation } from './mutations/useAnalysisMutations';
 import {
     aggregateHistoryByCountry,
     buildInitialRegion,
     removeItemsFromArchive,
 } from './historyDataUtils';
 
-const LOAD_ERROR_LOG = '[HistoryData] Failed to load history';
-const DELETE_ERROR_LOG = '[HistoryData] Failed to delete item';
-const BULK_DELETE_ERROR_LOG = '[HistoryData] Failed to delete items';
-
 export const useHistoryData = (userId: string) => {
-    const [archiveData, setArchiveData] = useState<CountryData[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [initialRegion, setInitialRegion] = useState<Region | null>(null);
-    const [refreshing, setRefreshing] = useState(false);
+    const { 
+        data: records = [], 
+        isLoading: loading, 
+        refetch, 
+        isRefetching: refreshing 
+    } = useHistoryQuery(userId);
+
+    const deleteMutation = useDeleteAnalysisMutation(userId);
+
     const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
+    const hasAutoExpandedInitialCountryRef = useRef(false);
 
-    const loadHistory = useCallback(async (silent = false) => {
-        if (!silent) setLoading(true);
-        try {
-            const records = await AnalysisService.getAllAnalyses(userId);
-            
-            // Sort by timestamp descending
-            records.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-            
-            const foundRegion = buildInitialRegion(records);
-            if (foundRegion) {
-                setInitialRegion(foundRegion);
-            }
+    const archiveData = useMemo(() => {
+        return aggregateHistoryByCountry(records);
+    }, [records]);
 
-            const aggregatedData = aggregateHistoryByCountry(records);
-            setArchiveData(aggregatedData);
-            
-            // Auto expand first
-            if (aggregatedData.length > 0 && expandedCountries.size === 0) {
-                 setExpandedCountries(new Set([`${aggregatedData[0].country}-0`]));
-            }
-            
-        } catch (error) {
-            console.error(LOAD_ERROR_LOG, error);
-        } finally {
-            setLoading(false);
-        }
-    }, [expandedCountries.size, userId]);
+    useEffect(() => {
+        // Expand the first country only once on initial load.
+        // Users should still be able to collapse all folders afterward.
+        if (hasAutoExpandedInitialCountryRef.current) return;
+        if (archiveData.length === 0) return;
+        if (expandedCountries.size > 0) return;
 
-    const removeItemsLocally = useCallback((deletedIds: Set<string>) => {
-        setArchiveData(prevData => {
-            return removeItemsFromArchive(prevData, deletedIds);
-        });
-    }, []);
+        setExpandedCountries(new Set([`${archiveData[0].country}-0`]));
+        hasAutoExpandedInitialCountryRef.current = true;
+    }, [archiveData, expandedCountries.size]);
+
+    const initialRegion = useMemo(() => buildInitialRegion(records), [records]);
 
     const deleteItem = useCallback(async (itemId: string) => {
-        // Optimistic Update
-        removeItemsLocally(new Set([itemId]));
-        
-        try {
-            await AnalysisService.deleteAnalysis(userId, itemId);
-        } catch (error) {
-            console.error(DELETE_ERROR_LOG, error);
-            loadHistory(true); // Revert
-        }
-    }, [loadHistory, removeItemsLocally, userId]);
+        await deleteMutation.mutateAsync([itemId]);
+    }, [deleteMutation]);
 
     const deleteMultipleItems = useCallback(async (itemIds: Set<string>) => {
         if (itemIds.size === 0) return;
-        
-        // Optimistic Update
-        removeItemsLocally(itemIds);
-
-        try {
-            // Use batch deletion to prevent race conditions in concurrent storage writes
-            await AnalysisService.deleteAnalyses(userId, Array.from(itemIds));
-        } catch (error) {
-            console.error(BULK_DELETE_ERROR_LOG, error);
-            loadHistory(true);
-        }
-    }, [loadHistory, removeItemsLocally, userId]);
+        await deleteMutation.mutateAsync(Array.from(itemIds));
+    }, [deleteMutation]);
 
     const onRefresh = useCallback(async () => {
-        setRefreshing(true);
-        await loadHistory(true);
-        setRefreshing(false);
-    }, [loadHistory]);
-
-    useEffect(() => {
-        loadHistory();
-    }, [loadHistory]);
+        await refetch();
+    }, [refetch]);
 
     return {
         archiveData,
-        setArchiveData,
         loading,
         initialRegion,
         refreshing,
         onRefresh,
-        loadHistory,
+        loadHistory: refetch,
         expandedCountries,
         setExpandedCountries,
         deleteItem,

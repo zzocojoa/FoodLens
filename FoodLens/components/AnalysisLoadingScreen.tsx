@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { DEFAULT_IMAGE_URI, buildLoadingColors } from './analysisLoading/constants';
 import AnalysisLoadingCore from './analysisLoading/components/AnalysisLoadingCore';
 import AnalysisLoadingHud from './analysisLoading/components/AnalysisLoadingHud';
@@ -24,7 +25,11 @@ const AnalysisLoadingScreen: React.FC<AnalysisLoadingScreenProps> = ({
     return (
         <View style={styles.container}>
             <View style={styles.backgroundLayer}>
-                <Image source={{ uri: imageUri || DEFAULT_IMAGE_URI }} style={styles.backgroundImage} blurRadius={90} />
+                <Animated.Image 
+                    source={{ uri: imageUri || DEFAULT_IMAGE_URI }} 
+                    style={styles.backgroundImage} 
+                    blurRadius={90} 
+                />
                 <View style={styles.darkOverlay} />
             </View>
 

@@ -31,7 +31,12 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
         handleRegionChangeComplete,
         handleClusterPress,
         handleMapReady,
-    } = useHistoryMapState({ data, initialRegion, onReady, onRegionChange });
+    } = useHistoryMapState({
+        data,
+        initialRegion: resolvedInitialRegion,
+        onReady,
+        onRegionChange,
+    });
 
     return (
         <View style={styles.mapContainer}>

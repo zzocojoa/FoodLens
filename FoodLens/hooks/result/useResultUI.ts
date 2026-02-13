@@ -1,11 +1,9 @@
-import { useCallback, useState } from 'react';
 import { useResultScrollAnimations } from './resultUiUtils';
+import { useBreakdownState } from './useBreakdownState';
 
 export function useResultUI() {
   const { scrollY, scrollHandler, imageAnimatedStyle, headerOverlayStyle } = useResultScrollAnimations();
-  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
-  const openBreakdown = useCallback(() => setIsBreakdownOpen(true), []);
-  const closeBreakdown = useCallback(() => setIsBreakdownOpen(false), []);
+  const { isBreakdownOpen, openBreakdown, closeBreakdown } = useBreakdownState();
 
   return {
     scrollY,
@@ -13,7 +11,6 @@ export function useResultUI() {
     imageAnimatedStyle,
     headerOverlayStyle,
     isBreakdownOpen,
-    setIsBreakdownOpen,
     openBreakdown,
     closeBreakdown,
   };

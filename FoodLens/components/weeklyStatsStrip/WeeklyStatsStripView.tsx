@@ -1,12 +1,9 @@
 import React, { useRef } from 'react';
 import { ScrollView, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
-
-import { Colors } from '../../constants/theme';
-import { useColorScheme } from '../../hooks/use-color-scheme';
 import { SNAP_INTERVAL } from './constants';
 import { WeeklyDayItem } from './components/WeeklyDayItem';
 import { useWeeklyStripAutoScroll } from './hooks/useWeeklyStripAutoScroll';
+import { useWeeklyStatsStripModel } from './hooks/useWeeklyStatsStripModel';
 import { weeklyStatsStripStyles as styles } from './styles';
 import { WeeklyStatsStripProps } from './types';
 
@@ -16,8 +13,7 @@ export function WeeklyStatsStripView({
   onSelectDate,
 }: WeeklyStatsStripProps) {
   const scrollViewRef = useRef<ScrollView>(null);
-  const colorScheme = useColorScheme() ?? 'light';
-  const theme = Colors[colorScheme];
+  const { theme, handleSelectDate } = useWeeklyStatsStripModel(onSelectDate);
 
   useWeeklyStripAutoScroll({ scrollViewRef, weeklyData, selectedDate });
 
@@ -37,10 +33,7 @@ export function WeeklyStatsStripView({
             day={day}
             selectedDate={selectedDate}
             theme={theme}
-            onPress={(date) => {
-              Haptics.selectionAsync();
-              onSelectDate(date);
-            }}
+            onPress={handleSelectDate}
           />
         ))}
       </ScrollView>

@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Image, Dimensions } from 'react-native';
+import { useMemo } from 'react';
+import { Dimensions } from 'react-native';
 import {
     computeImageLayoutStyle,
     mapPinsToDisplayCoordinates,
     toBasePins,
 } from './pinLayoutUtils';
+import { useImageSize } from './useImageSize';
 
 const { width, height } = Dimensions.get('window');
-const HEADER_HEIGHT = height * 0.6;
+
+// Base height for the header container (Parallax area)
+const HEADER_HEIGHT = height * 0.6; 
 
 export function usePinLayout(
     ingredients: any[] | undefined, 
@@ -15,34 +18,26 @@ export function usePinLayout(
     showPins: boolean = true,
     overrideImageSize?: { width: number, height: number } | null
 ) {
-  const [imageSize, setImageSize] = useState<{width: number, height: number} | null>(overrideImageSize || null);
-
-  useEffect(() => {
-    if (overrideImageSize) {
-        setImageSize(overrideImageSize);
-        return;
-    }
-
-    if (imageUri) {
-      Image.getSize(imageUri, (w, h) => {
-        setImageSize({ width: w, height: h });
-      }, (err) => {
-        console.warn("[usePinLayout] Failed to load image size", err);
-      });
-    }
-  }, [imageUri, overrideImageSize]);
+  const shouldMeasureImage = showPins || !!overrideImageSize;
+  const imageSize = useImageSize(imageUri, overrideImageSize, shouldMeasureImage);
 
 
   const pins = useMemo(() => {
-    if (!ingredients) return { pins: [], layoutStyle: {} };
-
-    const layoutStyle = computeImageLayoutStyle(imageSize, width, HEADER_HEIGHT);
+    // Standard height for photos, but for barcodes we account for the 160px sheet overlap
+    // to ensure the illustration is centered in the visible area.
+    const effectiveHeight = !showPins ? (HEADER_HEIGHT - 160) : HEADER_HEIGHT;
+    const layoutStyle = computeImageLayoutStyle(imageSize, width, effectiveHeight);
 
     if (!showPins) {
-        return { pins: [], layoutStyle: undefined };
+        return { 
+            pins: [], 
+            layoutStyle: layoutStyle ?? undefined
+        };
     }
 
-    const basePins = toBasePins(ingredients);
+    if (!ingredients) return { pins: [], layoutStyle: layoutStyle ?? undefined };
+
+    const basePins = toBasePins(ingredients as any[]);
     const pinsWithDisplayCoordinates = mapPinsToDisplayCoordinates(
       basePins,
       imageSize,
@@ -54,7 +49,7 @@ export function usePinLayout(
       pins: pinsWithDisplayCoordinates,
       layoutStyle: layoutStyle ?? undefined,
     };
-  }, [ingredients, imageSize, showPins, overrideImageSize]);
+  }, [ingredients, imageSize, showPins]);
 
   // Return structure: { pins: [...], layoutStyle: {...}, imageSize: {...} }
   if (!ingredients) return { pins: [], layoutStyle: undefined, imageSize };

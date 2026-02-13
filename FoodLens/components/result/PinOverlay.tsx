@@ -1,14 +1,12 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { SpatialPin } from './SpatialPin';
 import { PinOverlayProps } from './types';
+import { usePinOverlayOpacity } from './hooks/usePinOverlayOpacity';
 
 export function PinOverlay({ pins, scrollY }: PinOverlayProps) {
-  const pinOpacityStyle = useAnimatedStyle(() => {
-     const opacity = interpolate(scrollY.value, [0, 100], [1, 0], Extrapolation.CLAMP);
-     return { opacity };
-  });
+  const pinOpacityStyle = usePinOverlayOpacity(scrollY);
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, pinOpacityStyle]}>

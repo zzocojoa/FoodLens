@@ -37,7 +37,7 @@ export function useResultScreen() {
     const { pins, layoutStyle } = usePinLayout(
         result?.ingredients, 
         displayImageUri, 
-        !(result?.isBarcode || params.isBarcode === 'true'), // Hide pins if barcode
+        !(result?.isBarcode || params['isBarcode'] === 'true'), // Hide pins if barcode
         imageDimensions
     );
 
@@ -47,7 +47,8 @@ export function useResultScreen() {
         imageAnimatedStyle,
         headerOverlayStyle,
         isBreakdownOpen,
-        setIsBreakdownOpen,
+        openBreakdown,
+        closeBreakdown,
     } = useResultUI();
 
     useNewResultHaptic(!!result);
@@ -75,7 +76,8 @@ export function useResultScreen() {
         imageAnimatedStyle,
         headerOverlayStyle,
         isBreakdownOpen,
-        setIsBreakdownOpen,
+        openBreakdown,
+        closeBreakdown,
         isError,
         errorInfo,
     };
