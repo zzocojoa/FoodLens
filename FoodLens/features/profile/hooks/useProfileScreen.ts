@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
-import { UserService } from '@/services/userService';
-import { TEST_EMAIL, TEST_UID } from '../constants/profile.constants';
 import { UseProfileScreenResult } from '../types/profile.types';
+import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
 import { addUniqueItem, removeStringItem, toggleStringItem } from '../utils/profileSelection';
 import { buildSuggestions } from '../utils/profileSuggestions';
 
@@ -20,7 +19,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const loadProfile = useCallback(async () => {
         setLoading(true);
         try {
-            const user = await UserService.getUserProfile(TEST_UID);
+            const user = await loadTestUserProfile();
             if (user) {
                 setAllergies(user.safetyProfile.allergies);
                 setOtherRestrictions(user.safetyProfile.dietaryRestrictions);
@@ -84,16 +83,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const saveProfile = useCallback(async () => {
         setLoading(true);
         try {
-            await UserService.CreateOrUpdateProfile(TEST_UID, TEST_EMAIL, {
-                safetyProfile: {
-                    allergies,
-                    dietaryRestrictions: otherRestrictions,
-                },
-                settings: {
-                    language: 'en',
-                    autoPlayAudio: false,
-                },
-            });
+            await saveTestUserProfile(allergies, otherRestrictions);
             Alert.alert('Updated', 'Your profile and preferences have been saved.');
         } catch {
             Alert.alert('Error', 'Failed to save.');

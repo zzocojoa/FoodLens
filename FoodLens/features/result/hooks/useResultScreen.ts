@@ -1,13 +1,11 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { AnalysisService } from '@/services/analysisService';
-import { HapticsService } from '@/services/haptics';
 import { useAnalysisData } from '@/hooks/result/useAnalysisData';
 import { useAutoSave } from '@/hooks/result/useAutoSave';
 import { usePinLayout } from '@/hooks/result/usePinLayout';
 import { useResultUI } from '@/hooks/result/useResultUI';
-import { TEST_UID } from '../constants/result.constants';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
+import { useDateUpdateAction, useNewResultHaptic } from './useResultSideEffects';
 
 export function useResultScreen() {
     const params = useLocalSearchParams();
@@ -32,18 +30,9 @@ export function useResultScreen() {
         setSavedRecordId(savedRecord.id);
     });
 
-    const handleDateUpdate = React.useCallback(
-        async (newDate: Date) => {
-            updateTimestamp(newDate);
-
-            if (savedRecordId) {
-                await AnalysisService.updateAnalysisTimestamp(TEST_UID, savedRecordId, newDate);
-                HapticsService.success();
-            }
-            setIsDateEditOpen(false);
-        },
-        [savedRecordId, updateTimestamp]
-    );
+    const handleDateUpdate = useDateUpdateAction(savedRecordId, updateTimestamp, () => {
+        setIsDateEditOpen(false);
+    });
 
     const { pins, layoutStyle } = usePinLayout(
         result?.ingredients, 
@@ -61,15 +50,7 @@ export function useResultScreen() {
         setIsBreakdownOpen,
     } = useResultUI();
 
-    React.useEffect(() => {
-        if (result && params.isNew === 'true') {
-            const timer = setTimeout(() => {
-                HapticsService.success();
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-        return undefined;
-    }, [result, params.isNew]);
+    useNewResultHaptic(!!result);
 
     const isError = isResultError(result?.foodName);
     const errorInfo = result ? getResultErrorInfo(result.foodName, result.raw_result || '') : null;

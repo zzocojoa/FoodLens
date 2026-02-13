@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { Alert, LayoutAnimation } from 'react-native';
+import { LayoutAnimation } from 'react-native';
 import { ArchiveMode } from '../types/history.types';
+import { confirmBulkDelete } from '../utils/historyDialogs';
 import { toggleInSet } from '../utils/historySelection';
 
 type UseHistoryScreenOptions = {
@@ -31,17 +32,10 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
     const handleBulkDelete = useCallback(() => {
         if (selectedItems.size === 0) return;
 
-        Alert.alert('Delete Items', `Are you sure you want to delete ${selectedItems.size} items?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                    await deleteMultipleItems(selectedItems);
-                    setIsEditMode(false);
-                },
-            },
-        ]);
+        confirmBulkDelete(selectedItems.size, async () => {
+            await deleteMultipleItems(selectedItems);
+            setIsEditMode(false);
+        });
     }, [deleteMultipleItems, selectedItems]);
 
     return {
@@ -55,4 +49,3 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         handleBulkDelete,
     };
 };
-
