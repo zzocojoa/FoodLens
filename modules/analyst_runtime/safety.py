@@ -1,11 +1,13 @@
 from vertexai.generative_models import HarmBlockThreshold, HarmCategory
 
+DEFAULT_THRESHOLD = HarmBlockThreshold.BLOCK_ONLY_HIGH
+DEFAULT_SAFETY_CATEGORIES = (
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    HarmCategory.HARM_CATEGORY_HARASSMENT,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+)
+
 
 def build_default_safety_settings() -> dict:
-    return {
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    }
-
+    return {category: DEFAULT_THRESHOLD for category in DEFAULT_SAFETY_CATEGORIES}

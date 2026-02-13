@@ -6,6 +6,30 @@ from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from vertexai.generative_models import GenerativeModel
 
 
+def _build_retry_error_handler(retry_stats: dict):
+    def on_retry_error(exception):
+        retry_stats["total_retries"] += 1
+        if "429" in str(exception) or "ResourceExhausted" in str(type(exception).__name__):
+            retry_stats["last_429_time"] = time.time()
+        print(f"[Internal Log] Retry triggered: {type(exception).__name__}")
+
+    return on_retry_error
+
+
+def _invoke_generation_with_retry(
+    retry_policy,
+    model,
+    contents,
+    generation_config,
+    safety_settings,
+):
+    return retry_policy(model.generate_content)(
+        contents,
+        generation_config=generation_config,
+        safety_settings=safety_settings,
+    )
+
+
 def generate_with_semaphore(model, contents, generation_config, safety_settings, semaphore):
     with semaphore:
         return model.generate_content(
@@ -16,19 +40,13 @@ def generate_with_semaphore(model, contents, generation_config, safety_settings,
 
 
 def build_retry_policy(retry_stats: dict):
-    def on_retry_error(exception):
-        retry_stats["total_retries"] += 1
-        if "429" in str(exception) or "ResourceExhausted" in str(type(exception).__name__):
-            retry_stats["last_429_time"] = time.time()
-        print(f"[Internal Log] Retry triggered: {type(exception).__name__}")
-
     return retry.Retry(
         predicate=retry.if_exception_type(ResourceExhausted, ServiceUnavailable),
         initial=2.0,
         maximum=30.0,
         multiplier=2.0,
         timeout=60.0,
-        on_error=on_retry_error,
+        on_error=_build_retry_error_handler(retry_stats),
     )
 
 
@@ -55,10 +73,12 @@ def generate_with_retry_and_fallback(
 
     with semaphore:
         try:
-            response = retry_policy(primary_model.generate_content)(
+            response = _invoke_generation_with_retry(
+                retry_policy,
+                primary_model,
                 contents,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
+                generation_config,
+                safety_settings,
             )
             print("[API Debug] ✓ Primary model response received")
             return response
@@ -68,9 +88,10 @@ def generate_with_retry_and_fallback(
             print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
 
             backup_model = GenerativeModel(fallback_model_name)
-            return retry_policy(backup_model.generate_content)(
+            return _invoke_generation_with_retry(
+                retry_policy,
+                backup_model,
                 contents,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
+                generation_config,
+                safety_settings,
             )
-
