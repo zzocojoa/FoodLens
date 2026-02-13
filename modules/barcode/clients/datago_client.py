@@ -1,6 +1,9 @@
 import aiohttp
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Final
+
+JSONDict = dict[str, Any]
+
 
 class DatagoClient:
     """
@@ -10,21 +13,28 @@ class DatagoClient:
     API Key: Provided in .env as DATAGO_API_KEY
     """
     
-    BASE_URL = "http://openapi.foodsafetykorea.go.kr/api"
+    BASE_URL: Final[str] = "http://openapi.foodsafetykorea.go.kr/api"
+    DEFAULT_DATA_TYPE: Final[str] = "json"
+    DEFAULT_START_INDEX: Final[int] = 1
+    DEFAULT_END_INDEX: Final[int] = 1
+    INFO_OK_CODE: Final[str] = "INFO-000"
+    BARCODE_SERVICE_ID: Final[str] = "C005"
+    REPORT_SERVICE_ID: Final[str] = "I2790"
+    RAW_MATERIAL_SERVICE_ID: Final[str] = "C002"
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.getenv("DATAGO_API_KEY")
         if not self.api_key:
             print("WARNING: DATAGO_API_KEY not found in environment variables.")
 
     @staticmethod
-    def _mask_api_key(url: str, api_key: Optional[str]) -> str:
+    def _mask_api_key(url: str, api_key: str | None) -> str:
         if not api_key:
             return url
         return url.replace(api_key, "API_KEY_MASKED")
 
     @staticmethod
-    def _extract_first_row(data: Dict[str, Any], service_id: str) -> Optional[Dict[str, Any]]:
+    def _extract_first_row(data: JSONDict, service_id: str) -> JSONDict | None:
         if service_id not in data:
             if "RESULT" in data:
                 print(
@@ -38,7 +48,7 @@ class DatagoClient:
         result_code = result.get("CODE")
         result_msg = result.get("MSG")
 
-        if result_code != "INFO-000":
+        if result_code != DatagoClient.INFO_OK_CODE:
             print(f"[Datago] {service_id} Info: {result_code} - {result_msg}")
             return None
 
@@ -48,7 +58,7 @@ class DatagoClient:
             return None
         return rows[0]
 
-    async def _request_service(self, url: str, service_id: str, log_prefix: str) -> Optional[Dict[str, Any]]:
+    async def _request_service(self, url: str, service_id: str, log_prefix: str) -> JSONDict | None:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
@@ -61,7 +71,7 @@ class DatagoClient:
             print(f"[Datago] {log_prefix}Request Failed: {error}")
             return None
 
-    async def get_product_by_barcode(self, barcode: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_barcode(self, barcode: str) -> JSONDict | None:
         """
         Fetches product info by barcode from C005 service.
         URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/BAR_CD={barcode}
@@ -69,20 +79,23 @@ class DatagoClient:
         if not self.api_key:
             return None
             
-        service_id = "C005" # Barcode Linked Product Info
+        service_id = self.BARCODE_SERVICE_ID  # Barcode Linked Product Info
         
         # Ensure clean barcode
         clean_barcode = barcode.strip()
         
         # URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/BAR_CD={barcode}
-        url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/1/1/BAR_CD={clean_barcode}"
+        url = (
+            f"{self.BASE_URL}/{self.api_key}/{service_id}/"
+            f"{self.DEFAULT_DATA_TYPE}/{self.DEFAULT_START_INDEX}/{self.DEFAULT_END_INDEX}/BAR_CD={clean_barcode}"
+        )
         
         # Debug Log (Masking API Key)
         safe_url = self._mask_api_key(url, self.api_key)
         print(f"[Datago] Requesting: {safe_url}")
         return await self._request_service(url, service_id, log_prefix="")
 
-    async def get_product_by_report_no(self, report_no: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_report_no(self, report_no: str) -> JSONDict | None:
         """
         Fetches product info by Report Number from I2790 service.
         URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/PRDLST_REPORT_NO={report_no}
@@ -99,17 +112,20 @@ class DatagoClient:
             print("[Datago] Error: No FoodSafetyKorea API Key found for I2790 service.")
             return None
             
-        service_id = "I2790" # Food Item Report Service
+        service_id = self.REPORT_SERVICE_ID  # Food Item Report Service
         clean_report_no = report_no.strip()
         
-        url = f"{self.BASE_URL}/{api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
+        url = (
+            f"{self.BASE_URL}/{api_key}/{service_id}/"
+            f"{self.DEFAULT_DATA_TYPE}/{self.DEFAULT_START_INDEX}/{self.DEFAULT_END_INDEX}/PRDLST_REPORT_NO={clean_report_no}"
+        )
         
         # Debug Log
         safe_url = self._mask_api_key(url, api_key)
         print(f"[Datago] Requesting I2790: {safe_url}")
         return await self._request_service(url, service_id, log_prefix="I2790 ")
 
-    async def get_food_item_raw_materials(self, report_no: str) -> Optional[Dict[str, Any]]:
+    async def get_food_item_raw_materials(self, report_no: str) -> JSONDict | None:
         """
         Fetches raw material info by Report Number from C002 service.
         URL Format: http://openapi.foodsafetykorea.go.kr/api/{keyId}/{serviceId}/{dataType}/{startIdx}/{endIdx}/PRDLST_REPORT_NO={report_no}
@@ -117,10 +133,13 @@ class DatagoClient:
         if not self.api_key or not report_no:
             return None
             
-        service_id = "C002" # Food Item Report (Raw Materials)
+        service_id = self.RAW_MATERIAL_SERVICE_ID  # Food Item Report (Raw Materials)
         clean_report_no = report_no.strip()
         
-        url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/1/1/PRDLST_REPORT_NO={clean_report_no}"
+        url = (
+            f"{self.BASE_URL}/{self.api_key}/{service_id}/"
+            f"{self.DEFAULT_DATA_TYPE}/{self.DEFAULT_START_INDEX}/{self.DEFAULT_END_INDEX}/PRDLST_REPORT_NO={clean_report_no}"
+        )
         
         # Debug Log
         safe_url = self._mask_api_key(url, self.api_key)

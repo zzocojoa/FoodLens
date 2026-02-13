@@ -1,23 +1,26 @@
 
 import aiohttp
-from typing import Optional, Dict, Any
+from typing import Any, Final
+
+JSONDict = dict[str, Any]
 
 class OpenFoodFactsClient:
     """
     Client for Open Food Facts API (World).
     """
     
-    BASE_URL = "https://world.openfoodfacts.org/api/v2/product"
-    USER_AGENT = "FoodLens - Android/iOS - Version 1.0 (contact@foodlens.app)"
+    BASE_URL: Final[str] = "https://world.openfoodfacts.org/api/v2/product"
+    USER_AGENT: Final[str] = "FoodLens - Android/iOS - Version 1.0 (contact@foodlens.app)"
+    REQUEST_HEADERS: Final[dict[str, str]] = {"User-Agent": USER_AGENT}
 
     @staticmethod
-    def _extract_product(data: Dict[str, Any], barcode: str) -> Optional[Dict[str, Any]]:
+    def _extract_product(data: JSONDict, barcode: str) -> JSONDict | None:
         if data.get("status") == 1:
             return data.get("product")
         print(f"[OFF] Product {barcode} not found (status {data.get('status')})")
         return None
     
-    async def get_product_by_barcode(self, barcode: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_barcode(self, barcode: str) -> JSONDict | None:
         """
         Fetches product info by barcode from Open Food Facts.
         """
@@ -26,8 +29,7 @@ class OpenFoodFactsClient:
         try:
             async with aiohttp.ClientSession() as session:
                 # User-Agent is required by OFF policy
-                headers = {"User-Agent": self.USER_AGENT}
-                async with session.get(url, headers=headers) as response:
+                async with session.get(url, headers=self.REQUEST_HEADERS) as response:
                     if response.status != 200:
                          print(f"[OFF] API Error: Status {response.status}")
                          return None
@@ -35,6 +37,6 @@ class OpenFoodFactsClient:
                     data = await response.json()
                     return self._extract_product(data, barcode)
                         
-        except Exception as e:
-            print(f"[OFF] Request Failed: {e}")
+        except Exception as error:
+            print(f"[OFF] Request Failed: {error}")
             return None
