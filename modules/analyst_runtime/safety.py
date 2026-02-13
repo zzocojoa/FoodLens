@@ -1,7 +1,9 @@
+from typing import Final
+
 from vertexai.generative_models import HarmBlockThreshold, HarmCategory
 
-DEFAULT_THRESHOLD = HarmBlockThreshold.BLOCK_ONLY_HIGH
-DEFAULT_SAFETY_CATEGORIES = (
+DEFAULT_THRESHOLD: Final[HarmBlockThreshold] = HarmBlockThreshold.BLOCK_ONLY_HIGH
+DEFAULT_SAFETY_CATEGORIES: Final[tuple[HarmCategory, ...]] = (
     HarmCategory.HARM_CATEGORY_HATE_SPEECH,
     HarmCategory.HARM_CATEGORY_HARASSMENT,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,

@@ -1,13 +1,23 @@
 import random
 import time
+from typing import Any, Callable
 
 from google.api_core import retry
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from vertexai.generative_models import GenerativeModel
 
+JITTER_MAX_MS = 500
+JITTER_DIVISOR = 1000
+MAX_CONCURRENT_SLOTS = 3
+RETRY_INITIAL_SECONDS = 2.0
+RETRY_MAX_SECONDS = 30.0
+RETRY_MULTIPLIER = 2.0
+RETRY_TIMEOUT_SECONDS = 60.0
+FALLBACK_MODEL_DISPLAY = "gemini-2.0-flash"
 
-def _build_retry_error_handler(retry_stats: dict):
-    def on_retry_error(exception):
+
+def _build_retry_error_handler(retry_stats: dict[str, Any]) -> Callable[[Exception], None]:
+    def on_retry_error(exception: Exception) -> None:
         retry_stats["total_retries"] += 1
         if "429" in str(exception) or "ResourceExhausted" in str(type(exception).__name__):
             retry_stats["last_429_time"] = time.time()
@@ -17,12 +27,12 @@ def _build_retry_error_handler(retry_stats: dict):
 
 
 def _invoke_generation_with_retry(
-    retry_policy,
-    model,
-    contents,
-    generation_config,
-    safety_settings,
-):
+    retry_policy: retry.Retry,
+    model: GenerativeModel,
+    contents: Any,
+    generation_config: dict[str, Any],
+    safety_settings: dict[str, Any],
+) -> Any:
     return retry_policy(model.generate_content)(
         contents,
         generation_config=generation_config,
@@ -30,7 +40,13 @@ def _invoke_generation_with_retry(
     )
 
 
-def generate_with_semaphore(model, contents, generation_config, safety_settings, semaphore):
+def generate_with_semaphore(
+    model: GenerativeModel,
+    contents: Any,
+    generation_config: dict[str, Any],
+    safety_settings: dict[str, Any],
+    semaphore: Any,
+) -> Any:
     with semaphore:
         return model.generate_content(
             contents,
@@ -39,13 +55,13 @@ def generate_with_semaphore(model, contents, generation_config, safety_settings,
         )
 
 
-def build_retry_policy(retry_stats: dict):
+def build_retry_policy(retry_stats: dict[str, Any]) -> retry.Retry:
     return retry.Retry(
         predicate=retry.if_exception_type(ResourceExhausted, ServiceUnavailable),
-        initial=2.0,
-        maximum=30.0,
-        multiplier=2.0,
-        timeout=60.0,
+        initial=RETRY_INITIAL_SECONDS,
+        maximum=RETRY_MAX_SECONDS,
+        multiplier=RETRY_MULTIPLIER,
+        timeout=RETRY_TIMEOUT_SECONDS,
         on_error=_build_retry_error_handler(retry_stats),
     )
 
@@ -54,18 +70,18 @@ def generate_with_retry_and_fallback(
     primary_model,
     primary_model_name: str,
     fallback_model_name: str,
-    contents,
-    generation_config,
-    safety_settings,
-    semaphore,
-    retry_stats: dict,
-):
-    jitter_s = random.uniform(0, 500) / 1000
+    contents: Any,
+    generation_config: dict[str, Any],
+    safety_settings: dict[str, Any],
+    semaphore: Any,
+    retry_stats: dict[str, Any],
+) -> Any:
+    jitter_s = random.uniform(0, JITTER_MAX_MS) / JITTER_DIVISOR
     time.sleep(jitter_s)
 
     retry_policy = build_retry_policy(retry_stats)
     print(
-        f"Vertex AI: Sending request (jitter={jitter_s:.3f}s, concurrent slots={semaphore._value}/3)..."
+        f"Vertex AI: Sending request (jitter={jitter_s:.3f}s, concurrent slots={semaphore._value}/{MAX_CONCURRENT_SLOTS})..."
     )
     print(f"[API Debug] Model name: {primary_model_name}")
     print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
@@ -85,7 +101,7 @@ def generate_with_retry_and_fallback(
         except Exception as primary_error:
             print(f"[Model Fallback] Primary model ({primary_model_name}) failed: {primary_error}")
             print(f"[Model Fallback] Error type: {type(primary_error).__name__}")
-            print("[Model Fallback] Switching to backup model: gemini-2.0-flash")
+            print(f"[Model Fallback] Switching to backup model: {FALLBACK_MODEL_DISPLAY}")
 
             backup_model = GenerativeModel(fallback_model_name)
             return _invoke_generation_with_retry(
