@@ -22,7 +22,7 @@
   "result.location.none": "위치 정보 없음",
   "result.meta.visualRecognition": "VISUAL RECOGNITION",
   "result.meta.breakdown": "성분 분석",
-  "result.meta.edit": "수정",
+  "result.meta.edit": "EDIT",
   "result.meta.confidence.matchSuffix": "% 일치",
   "result.ingredients.title": "성분",
   "result.ingredients.countSuffix": "개",
