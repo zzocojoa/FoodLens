@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const LOG_PREFIX = '[SafeStorage]';
+
 const logParseError = (key: string, error: unknown): void => {
-  console.error(`[SafeStorage] Error parsing key "${key}":`, error);
+  console.error(`${LOG_PREFIX} Error parsing key "${key}":`, error);
 };
 
 const logClearError = (key: string, error: unknown): void => {
-  console.error(`[SafeStorage] Failed to clear key "${key}":`, error);
+  console.error(`${LOG_PREFIX} Failed to clear key "${key}":`, error);
 };
 
 const parseStoredValue = <T>(jsonValue: string | null, fallback: T): T => {
@@ -33,7 +35,7 @@ export const SafeStorage = {
             // Self-healing: Remove corrupted data so app can recover on next launch/save
             try {
                 await AsyncStorage.removeItem(key);
-                console.log(`[SafeStorage] Corrupted key "${key}" cleared.`);
+                console.log(`${LOG_PREFIX} Corrupted key "${key}" cleared.`);
             } catch (e) {
                 logClearError(key, e);
             }
@@ -49,7 +51,7 @@ export const SafeStorage = {
             const jsonValue = JSON.stringify(value);
             await AsyncStorage.setItem(key, jsonValue);
         } catch (error) {
-            console.error(`[SafeStorage] Error saving key "${key}":`, error);
+            console.error(`${LOG_PREFIX} Error saving key "${key}":`, error);
             throw error;
         }
     },
@@ -61,7 +63,7 @@ export const SafeStorage = {
         try {
             await AsyncStorage.removeItem(key);
         } catch (error) {
-            console.error(`[SafeStorage] Error removing key "${key}":`, error);
+            console.error(`${LOG_PREFIX} Error removing key "${key}":`, error);
         }
     }
 };

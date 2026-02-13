@@ -1,9 +1,12 @@
 import { AnalyzedData } from './ai';
+import type { AnalysisRecord } from './analysis/types';
 import { SafeStorage } from './storage';
 
 const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
+const BACKUP_ERROR_LOG_PREFIX = '[AnalysisDataStore]';
 
-type DataStoreLocation = unknown;
+type DataStoreLocation = AnalysisRecord['location'] | Record<string, unknown> | null;
+const nowIso = (): string => new Date().toISOString();
 
 type DataStoreSnapshot = {
   result: AnalyzedData | null;
@@ -36,14 +39,19 @@ class AnalysisDataStore {
     return AnalysisDataStore.instance;
   }
 
-  public setData(result: AnalyzedData, location: DataStoreLocation, imageUri: string, timestamp?: string) {
+  public setData(
+    result: AnalyzedData,
+    location: DataStoreLocation,
+    imageUri: string,
+    timestamp?: string
+  ): void {
     this.currentResult = result;
     this.currentLocation = location;
     this.currentImageUri = imageUri;
-    this.currentTimestamp = timestamp || new Date().toISOString();
+    this.currentTimestamp = timestamp || nowIso();
     
     // Fire-and-forget backup
-    this.saveBackup().catch(e => console.warn("Failed to backup analysis data", e));
+    this.saveBackup().catch((error) => console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to backup analysis data`, error));
   }
 
   public getData(): DataStoreSnapshot {
@@ -76,7 +84,7 @@ class AnalysisDataStore {
       this.currentResult = backup.result;
       this.currentLocation = backup.location;
       this.currentImageUri = backup.imageUri;
-      this.currentTimestamp = backup.originalTimestamp || new Date().toISOString();
+      this.currentTimestamp = backup.originalTimestamp || nowIso();
   }
 
   public async restoreBackup(): Promise<boolean> {
@@ -88,19 +96,21 @@ class AnalysisDataStore {
               this.applyBackup(backup);
               return true;
           }
-      } catch (e) {
-          console.warn("Failed to restore backup", e);
+      } catch (error) {
+          console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to restore backup`, error);
       }
       return false;
   }
 
-  public updateTimestamp(newTimestamp: string) {
+  public updateTimestamp(newTimestamp: string): void {
       this.currentTimestamp = newTimestamp;
       // Update backup asynchronously
-      this.saveBackup().catch(e => console.warn("Failed to update backup timestamp", e));
+      this.saveBackup().catch((error) =>
+        console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to update backup timestamp`, error)
+      );
   }
 
-  public async clear() {
+  public async clear(): Promise<void> {
     this.currentResult = null;
     this.currentLocation = null;
     this.currentImageUri = null;

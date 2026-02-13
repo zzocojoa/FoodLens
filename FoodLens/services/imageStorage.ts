@@ -4,7 +4,6 @@ import {
   createManagedFilename,
   extractFilename,
   getManagedImageDirectory,
-  IMAGE_DIR,
   isLegacyAbsoluteUri,
   isManagedImageReference,
 } from './imageStorage.helpers';
@@ -28,6 +27,8 @@ const ensureDir = async (): Promise<void> => {
     }
 };
 
+const LOG_PREFIX = '[ImageStorage]';
+
 /**
  * Save an image permanently by copying from cache/temp to Documents.
  * Returns the filename only (not the full path).
@@ -39,7 +40,6 @@ export const saveImagePermanently = async (cacheUri: string): Promise<string | n
     if (!cacheUri) return null;
 
     // If already in our permanent directory, just extract the filename
-    const permanentDir = getManagedImageDirectory();
     if (isManagedImageReference(cacheUri)) {
         return extractFilename(cacheUri);
     }
@@ -49,13 +49,13 @@ export const saveImagePermanently = async (cacheUri: string): Promise<string | n
 
         // Generate a unique filename
         const filename = createManagedFilename(cacheUri);
-        const destUri = `${permanentDir}${filename}`;
+        const destUri = `${getManagedImageDirectory()}${filename}`;
 
         await FileSystem.copyAsync({ from: cacheUri, to: destUri });
-        console.log(`[ImageStorage] Saved: ${filename}`);
+        console.log(`${LOG_PREFIX} Saved: ${filename}`);
         return filename;
     } catch (error) {
-        console.error('[ImageStorage] Failed to copy image:', error);
+        console.error(`${LOG_PREFIX} Failed to copy image:`, error);
         return null;
     }
 };
@@ -96,9 +96,9 @@ export const deleteImage = async (stored: string | undefined | null): Promise<vo
         const info = await FileSystem.getInfoAsync(fullPath);
         if (info.exists) {
             await FileSystem.deleteAsync(fullPath, { idempotent: true });
-            console.log(`[ImageStorage] Deleted: ${stored}`);
+            console.log(`${LOG_PREFIX} Deleted: ${stored}`);
         }
     } catch (error) {
-        console.warn('[ImageStorage] Failed to delete:', error);
+        console.warn(`${LOG_PREFIX} Failed to delete:`, error);
     }
 };
