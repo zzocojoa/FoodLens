@@ -51,30 +51,28 @@
   - low confidence or ambiguous: CAUTION/UNKNOWN
   - matched allergen: DANGER
 
-## 5. API 계약 제안
+## 5. API 계약 (현재 구현)
 ### Endpoint
 - `POST /analyze/label`
 
 ### Request
-- `image`
-- `locale`
-- `allergy_profile`
-- `prompt_version`
+- `file` (multipart image, required)
+- `allergy_info` (form string, optional, default: `"None"`)
+- `iso_country_code` (form string, optional, default: `"US"`)
+- `locale` (form string, optional, example: `ko-KR`)
 
-### Response (고정 계약)
-- `status: ok | partial | failed`
+### Response (AnalysisResponseContract, backward compatible)
 - `request_id`
-- `qualityScore`
-- `extracted`
-  - `ingredients[]`
-  - `nutrition{}`
-  - `raw_text`
-- `allergenAssessment`
-  - `safetyStatus`
-  - `allergenMatches[]`
-  - `evidence[]`
-- `confidence`
-- `warnings[]`
+- `prompt_version`
+- `used_model`
+- `foodName`
+- `safetyStatus`
+- `ingredients[]`
+- `nutrition{}`
+- `raw_result`, `raw_result_en`, `raw_result_ko`
+
+비고:
+- `request_id`, `prompt_version`는 optional로 계약에 추가되어 기존 클라이언트와 호환된다.
 
 ## 6. 데이터/캐시 전략
 - 캐시 키:
@@ -217,19 +215,19 @@
 - 입력 컨텍스트: `{normalized_allergens}`, `{ingredients_str}`
 - 텍스트 전용 알러지 판정 JSON
 
-### 14.2 현재 코드와의 불일치/리스크
-1. 모델 정책 불일치
-- 문서 목표는 Gemini 2.5 Pro인데,
-- `analyze_label_json()`는 현재 하드코딩으로 `gemini-2.0-flash` 사용.
-- 또한 `result["used_model"] = "gemini-2.0-flash-ocr"`로 고정 표기.
+### 14.2 반영 현황 (코드 동기화)
+1. 모델 정책 통일 완료
+- `GEMINI_LABEL_MODEL_NAME` 기반 라벨 모델 선택 (default: `gemini-2.5-pro`)
+- 응답 `used_model`에 실제 사용 모델명 반영
 
-2. LABEL 프롬프트 컨텍스트 부족
-- LABEL 템플릿은 `locale`/`iso_current_country`를 프롬프트 입력으로 직접 사용하지 않음.
-- 다국어/지역 맥락 제어가 FOOD 대비 약함.
+2. LABEL 프롬프트 컨텍스트 반영 완료
+- `build_label_prompt(allergy_info, locale, iso_current_country)` 사용
+- locale/국가 맥락이 프롬프트에 직접 포함됨
 
-3. 응답 계약 표현 불명확
-- LABEL 템플릿은 `raw_result_en/raw_result_ko/raw_result`를 요구하지만
-- 실제 운영에서 strict schema와 템플릿 필드의 일치 검증이 필요.
+3. 계약/테스트 게이트 반영 완료
+- `/analyze/label` 계약 검증 테스트 추가
+- 최소 20개 라벨 회귀 scaffold(manifest) 추가
+- CI 게이트 스크립트(`backend/scripts/ci_label_contract_gate.sh`) 추가
 
 ### 14.3 즉시 반영 권고 (P0)
 1. `analyze_label_json()` 모델 선택을 환경변수 기반으로 통일
@@ -281,9 +279,26 @@
 - 파생 텍스트(OCR/정규화): TTL 90일
 - 요청 로그(request_id, latency, status): TTL 180일
 - 사용자 삭제 요청 시 request_id/user_id 연계 비동기 삭제 큐 실행
-## 16. 구현 우선순위 업데이트
-P0 항목을 다음과 같이 구체화한다.
-- 라벨 모델을 `gemini-2.5-pro` 기준으로 환경변수/코드 경로 통일.
-- LABEL prompt 입력 파라미터를 FOOD 수준으로 확장(locale, iso).
-- prompt-schema 계약 테스트 도입.
-- 단계별 latency/모델/프롬프트 버전 로깅 강제.
+## 16. 환경 변수/운영 명령 (현재 기준)
+### 16.1 환경 변수
+- `GEMINI_MODEL_NAME` (food 분석 기본 모델)
+- `GEMINI_LABEL_MODEL_NAME` (label 분석 모델, default: `gemini-2.5-pro`)
+
+### 16.2 테스트/게이트 명령
+- Mobile type check:
+  - `cd FoodLens && npx tsc --noEmit`
+- Backend 계약/회귀 게이트:
+  - `bash backend/scripts/ci_label_contract_gate.sh`
+- Backend 추가 회귀:
+  - `./.venv/bin/python -m unittest -v backend.tests.contracts.test_analysis_contract_snapshot backend.tests.runtime.test_label_model_policy`
+
+### 16.3 운영 스모크 명령
+- `/analyze/label` 메타 확인:
+  - `curl -sS -X POST "https://<render-url>/analyze/label" -F "file=@<path>" -F "allergy_info=None" -F "locale=ko-KR" | jq '{request_id,prompt_version,used_model,foodName,safetyStatus}'`
+
+## 17. 문서-코드 일치 체크리스트 (0건 목표)
+- [x] 라벨 모델 선택이 env(`GEMINI_LABEL_MODEL_NAME`)와 문서가 일치한다.
+- [x] `/analyze/label` 요청/응답 필드 정의가 실제 FastAPI 시그니처/계약과 일치한다.
+- [x] `request_id`, `prompt_version`, `used_model` 메타가 응답/로그에 반영됨을 문서에 명시했다.
+- [x] 단계별 latency(`preprocess/extract/assess/total`) 로그 정책이 문서와 일치한다.
+- [x] 계약/회귀 테스트 및 CI 게이트 명령이 실제 스크립트와 일치한다.
