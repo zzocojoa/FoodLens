@@ -45,12 +45,12 @@
 ## 파일 구조 (예상)
 
 - `main.py`: 통합 실행 스크립트.
-- `setup.sh`: 필요 라이브러리 설치 (SAM 2, Vertex AI SDK 등).
+- `backend/setup.sh`: 필요 라이브러리 설치 (SAM 2, Vertex AI SDK 등).
 - `backend/modules/analyst.py`: Gemini 분석 모듈.
 - `backend/modules/segmenter.py`: SAM 2 분할 모듈.
 
 ## 실행 계획
 
-1.  **환경 설정**: `google-genai`, `sam2`, `streamlit` 설치.
+1.  **환경 설정**: `bash backend/setup.sh` 실행 후 `source .venv/bin/activate`로 가상환경 활성화.
 2.  **모듈 개발**: Gemini 분석기 -> SAM 2 분할기 순서로 구현.
 3.  **통합 테스트**: 샘플 이미지로 전체 파이프라인 검증.

@@ -2,6 +2,13 @@
 
 Date: 2026-02-13
 
+## Current Standard (2026-02-14)
+- Python venv path: `.venv` (repo root)
+- Backend dependency file: `backend/requirements.txt`
+- Setup script path: `backend/setup.sh`
+- Backend run command: `python -m backend.server`
+- Canonical Docker build file: `backend/Dockerfile`
+
 ## Applied Moves (Batch A)
 - business_plan.md -> docs/plans/business_plan.md
 - implementation_plan.md -> docs/plans/implementation_plan.md
@@ -19,16 +26,17 @@ Date: 2026-02-13
 - requirements.txt -> backend/requirements.txt
 - setup.sh -> backend/setup.sh
 - Dockerfile -> backend/Dockerfile
-- Added root compatibility wrapper: requirements.txt
-- Added root compatibility wrapper: setup.sh
-- Added root compatibility wrapper: Dockerfile
+- Added root compatibility wrapper: requirements.txt (historical)
+- Added root compatibility wrapper: setup.sh (historical)
+- Added root compatibility wrapper: Dockerfile (historical)
+- Root compatibility wrappers are now removed to enforce single entrypoint.
 
 ## Keep As-Is (Runtime Stability)
-- server.py
+- `backend/server.py`
 
 ## Reason
-- Root entrypoint compatibility is preserved through `server.py` and `modules/__init__.py` shims.
-- Core runtime files remain reachable from both legacy and new paths.
+- Runtime entrypoint is fixed to `python -m backend.server`.
+- Core runtime files are managed under `backend/`.
 
 ## Phase B Candidates (Need import/path migration)
 - Normalize duplicate docs under docs/ root vs docs/plans/

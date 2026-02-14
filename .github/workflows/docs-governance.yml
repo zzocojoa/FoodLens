@@ -1,0 +1,27 @@
+name: Docs Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  architecture-overview-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate architecture overview doc
+        run: |
+          python docs/scripts/validate_architecture_overview.py
+
+      - name: Validate single entrypoint standard
+        run: |
+          python docs/scripts/validate_entrypoint_standard.py
