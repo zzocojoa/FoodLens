@@ -11,6 +11,8 @@ export type ResultTranslationCard = {
 
 export type ResultLocationData = {
     formattedAddress?: string | null;
+    subregion?: string | null;
+    district?: string | null;
     city?: string | null;
     country?: string | null;
     isoCountryCode?: string | null;

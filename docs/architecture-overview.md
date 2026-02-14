@@ -92,8 +92,10 @@ FoodLens-project/
 ### 핵심 로직 위치
 
 - **API 通信 및 데이터 모델**: `FoodLens/services/aiCore/endpoints.ts` (API 호출), `FoodLens/services/dataStore.ts` (분석 중 데이터 임시 보관).
-- **이미지 처리 및 AI 분석**: `backend/modules/analyst_core/` (Gemini 프롬프트 및 처리), `FoodLens/services/imageStorage.ts` (클라이언트 이미지 영구 저장).
+- **이미지 처리 및 AI 분석**: `backend/modules/analyst_core/` (Gemini 프롬프트 및 처리), `FoodLens/services/imageStorage.ts` (클라이언트 이미지 영구 저장), `backend/modules/server_bootstrap.py` (업로드 이미지 EXIF orientation 정규화).
+- **바코드 조회/캐시/추적**: `FoodLens/services/aiCore/internal/barcodeLookup.ts` (`X-Request-Id`/재시도/타임아웃 로깅), `FoodLens/services/aiCore/internal/barcodeCache.ts` (알러지 컨텍스트 기반 캐시 키), `backend/server.py` (`request_id` 단계별 elapsed 로깅).
 - **UI 및 화면 흐름**: `FoodLens/app/` 하위의 파일들이 실제 화면 경로(Expo Router)를 결정합니다.
+- **결과 주소 렌더링(i18n 순서 분기)**: `FoodLens/components/result/resultContent/utils/resultContentFormatters.ts` (KO/EN 주소 순서 및 구분자).
 
 ## 4. Data Flow (구조적 관점)
 
@@ -102,6 +104,11 @@ FoodLens-project/
 3. **Process**: 백엔드의 `analyst_core`가 Google Cloud AI와 연동하여 분석 결과를 JSON으로 반환합니다.
 4. **Persist**: 클라이언트는 결과를 받은 후 `analysisService`를 사용하여 영구적 이미지 저장 및 히스토리 데이터 기록(MMKV)을 완료합니다.
 5. **Render**: `features/result` 가 `useAnalysisData` 훅을 통해 데이터를 구독하고 UI를 렌더링합니다.
+
+추가 바코드 플로우:
+1. **Lookup**: `scanCameraBarcodeService`가 캐시를 먼저 조회합니다.
+2. **Cache Keying**: 캐시 키는 `barcode + allergy-context-hash`로 구성되어 사용자 알러지 변경 시 자동으로 캐시 분리됩니다.
+3. **Server Trace**: 클라이언트 `X-Request-Id`가 서버 `request_id`와 연결되어 lookup source / allergen analysis 단계별 소요시간을 추적합니다.
 
 ## 5. Installation/Run Path Standard
 
@@ -113,4 +120,4 @@ FoodLens-project/
 
 ---
 
-_Last Updated: 2026-02-14_
+_Last Updated: 2026-02-14 (updated)_ 

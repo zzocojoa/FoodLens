@@ -29,7 +29,8 @@ export const computeImageLayoutStyle = (
     return {
       width: '100%',
       height: renderedHeight,
-      marginTop: (containerHeight - renderedHeight) / 2,
+      // Landscape images are top-aligned to avoid losing the top region.
+      marginTop: 0,
       marginLeft: 0,
     };
   }

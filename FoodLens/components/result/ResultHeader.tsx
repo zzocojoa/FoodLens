@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SecureImage } from '../SecureImage';
@@ -18,6 +18,18 @@ export function ResultHeader({
   layoutStyle,
   isBarcode
 }: ResultHeaderProps) {
+  const didTraceRef = useRef(false);
+  useEffect(() => {
+    if (!__DEV__ || didTraceRef.current) return;
+    didTraceRef.current = true;
+    console.log('[ResultHeaderTrace] mounted', {
+      isBarcode: !!isBarcode,
+      hasLayoutStyle: !!layoutStyle,
+      layoutStyle,
+      resizeMode: isBarcode ? 'contain' : 'cover',
+    });
+  }, [isBarcode, layoutStyle]);
+
   return (
     <View style={styles.headerContainer}>
       <Animated.View style={[styles.imageWrapper, imageAnimatedStyle]}>
@@ -46,7 +58,7 @@ export function ResultHeader({
               <SecureImage 
                   source={imageSource} 
                   style={isBarcode ? ((layoutStyle as any) || StyleSheet.absoluteFill) : StyleSheet.absoluteFill} 
-                  resizeMode={isBarcode ? "contain" : (layoutStyle ? "cover" : "contain")} 
+                  resizeMode={isBarcode ? "contain" : "cover"} 
                   sharedTransitionTag={isBarcode ? undefined : "foodImage"}
               />
               )}

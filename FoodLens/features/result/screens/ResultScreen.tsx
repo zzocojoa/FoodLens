@@ -45,6 +45,13 @@ export default function ResultScreen() {
         errorInfo,
     } = useResultScreen();
 
+    React.useEffect(() => {
+        if (!__DEV__) return;
+        console.log('[ResultScreenTrace] constants', {
+            HEADER_HEIGHT,
+        });
+    }, []);
+
     if (isRestoring || (!loaded && !result)) {
         return <ResultLoadingState isRestoring={isRestoring} t={t} />;
     }

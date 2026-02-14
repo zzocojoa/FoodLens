@@ -3,7 +3,7 @@ import traceback
 from typing import Tuple
 
 from dotenv import load_dotenv
-from PIL import Image
+from PIL import Image, ImageOps
 
 from backend.modules.analyst_runtime.food_analyst import FoodAnalyst
 from backend.modules.barcode.service import BarcodeService
@@ -49,4 +49,16 @@ def initialize_services() -> Tuple[FoodAnalyst, BarcodeService, SmartRouter]:
 def decode_upload_to_image(contents: bytes) -> Image.Image:
     from io import BytesIO
 
-    return Image.open(BytesIO(contents))
+    image = Image.open(BytesIO(contents))
+
+    # Normalize EXIF orientation so portrait/landscape captures are analyzed consistently.
+    # Some mobile captures store rotation metadata instead of rotating raw pixels.
+    try:
+        normalized = ImageOps.exif_transpose(image)
+    except Exception:
+        normalized = image
+
+    if normalized.mode not in ("RGB", "RGBA"):
+        normalized = normalized.convert("RGB")
+
+    return normalized

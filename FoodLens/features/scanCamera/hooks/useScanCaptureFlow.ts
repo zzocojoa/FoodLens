@@ -34,6 +34,17 @@ export const useScanCaptureFlow = ({
       });
 
       if (!photo?.uri) return;
+      const orientation =
+        typeof photo.width === 'number' && typeof photo.height === 'number'
+          ? photo.width >= photo.height
+            ? 'landscape'
+            : 'portrait'
+          : 'unknown';
+      console.log('[ScanCapture] photo-orientation', {
+        orientation,
+        width: photo.width,
+        height: photo.height,
+      });
       const exifDate = photo.exif?.DateTimeOriginal || photo.exif?.DateTime || null;
 
       if (mode === 'BARCODE') {

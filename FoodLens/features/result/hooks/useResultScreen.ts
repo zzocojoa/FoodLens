@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
+import { Dimensions } from 'react-native';
 import { useAnalysisData } from '@/hooks/result/useAnalysisData';
 import { useAutoSave } from '@/hooks/result/useAutoSave';
 import { usePinLayout } from '@/hooks/result/usePinLayout';
@@ -8,6 +9,8 @@ import { useI18n } from '@/features/i18n';
 import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function useResultScreen() {
     const params = useLocalSearchParams<ResultSearchParams>();
@@ -38,12 +41,36 @@ export function useResultScreen() {
         setIsDateEditOpen(false);
     });
 
-    const { pins, layoutStyle } = usePinLayout(
+    const { pins, layoutStyle, imageSize } = usePinLayout(
         result?.ingredients, 
         displayImageUri, 
         !(result?.isBarcode || routeFlags.isBarcodeParam), // Hide pins if barcode
         imageDimensions
     );
+
+    const adjustedLayoutStyle = React.useMemo(() => {
+        if (!layoutStyle) return layoutStyle;
+
+        const isCameraLandscapePhoto =
+            routeFlags.sourceType === 'camera' &&
+            !result?.isBarcode &&
+            !routeFlags.isBarcodeParam &&
+            !!imageSize &&
+            imageSize.width > imageSize.height;
+
+        if (!isCameraLandscapePhoto) return layoutStyle;
+
+        const imageRatio = imageSize.width / imageSize.height;
+        const computedHeight = SCREEN_WIDTH / (imageRatio) * 1.5;
+
+        return {
+            ...layoutStyle,
+            height: computedHeight,
+            width: layoutStyle.width,
+            marginLeft: 0,
+            marginTop: 55,
+        };
+    }, [imageSize, layoutStyle, result?.isBarcode, routeFlags.isBarcodeParam, routeFlags.sourceType]);
 
     const {
         scrollY,
@@ -82,7 +109,7 @@ export function useResultScreen() {
         setIsDateEditOpen,
         handleDateUpdate,
         pins,
-        layoutStyle,
+        layoutStyle: adjustedLayoutStyle,
         scrollY,
         scrollHandler,
         imageAnimatedStyle,

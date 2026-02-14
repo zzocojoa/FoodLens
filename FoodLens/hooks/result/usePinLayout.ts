@@ -6,11 +6,9 @@ import {
     toBasePins,
 } from './pinLayoutUtils';
 import { useImageSize } from './useImageSize';
+import { HEADER_HEIGHT } from '@/features/result/constants/result.constants';
 
-const { width, height } = Dimensions.get('window');
-
-// Base height for the header container (Parallax area)
-const HEADER_HEIGHT = height * 0.6; 
+const { width } = Dimensions.get('window');
 
 export function usePinLayout(
     ingredients: any[] | undefined, 

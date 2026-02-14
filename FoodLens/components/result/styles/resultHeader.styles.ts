@@ -1,7 +1,7 @@
-import { Dimensions, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { HEADER_HEIGHT } from '@/features/result/constants/result.constants';
 
-const { height } = Dimensions.get('window');
-export const RESULT_HEADER_HEIGHT = height * 0.6;
+export const RESULT_HEADER_HEIGHT = HEADER_HEIGHT;
 
 export const resultHeaderStyles = StyleSheet.create({
   headerContainer: {

@@ -29,7 +29,11 @@ export const useResultContentModel = (
       ...ingredient,
       displayName: resolveLocalizedIngredientName(ingredient, locale),
     })),
-    locationText: getLocationText(locationData, t?.('result.location.none', 'No Location Info') ?? 'No Location Info'),
+    locationText: getLocationText(
+      locationData,
+      t?.('result.location.none', 'No Location Info') ?? 'No Location Info',
+      locale
+    ),
     formattedTimestamp: timestamp ? formatTimestamp(timestamp, locale) : null,
   };
 };
