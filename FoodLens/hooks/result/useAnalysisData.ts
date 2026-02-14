@@ -7,17 +7,13 @@ import {
 } from './analysisDataUtils';
 import type { LoadedAnalysisData } from './analysisDataService';
 import type { ImageSourcePropType } from 'react-native';
-
-type AnalysisParams = {
-  data?: string | string[];
-  location?: string | string[];
-  fromStore?: string | string[];
-  isBarcode?: string | string[];
-};
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 
 export function useAnalysisData() {
-  const { data, location, fromStore, isBarcode } = useLocalSearchParams<AnalysisParams>();
-  const fromStoreMode = fromStore === 'true';
+  const params = useLocalSearchParams<ResultSearchParams>();
+  const { data, location, fromStore, isBarcode } = params;
+  const routeFlags = parseResultRouteFlags(params);
+  const fromStoreMode = routeFlags.fromStoreMode;
   
   // State for restoring from backup (Crash Recovery)
   const [isRestoring, setIsRestoring] = useState(

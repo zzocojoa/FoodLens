@@ -1,5 +1,6 @@
 import { dataStore } from '@/services/dataStore';
 import type { AnalyzedData } from '@/services/ai';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import type { ImageSourcePropType } from 'react-native';
 import {
   getBarcodeImageSource,
@@ -95,14 +96,13 @@ const toLocationData = (value: unknown): AnalysisLocationData =>
   isObjectRecord(value) ? (value as AnalysisLocationData) : null;
 
 export const analysisDataService = {
-  async load(params: {
-    isRestoring: boolean;
-    fromStore: string | string[] | undefined;
-    data: string | string[] | undefined;
-    location: string | string[] | undefined;
-    isBarcode: string | string[] | undefined;
-  }) {
-    const fromStoreMode = params.fromStore === 'true';
+  async load(
+    params: ResultSearchParams & {
+      isRestoring: boolean;
+    }
+  ) {
+    const routeFlags = parseResultRouteFlags(params);
+    const fromStoreMode = routeFlags.fromStoreMode;
 
     if (params.isRestoring) {
       const success = await dataStore.restoreBackup();

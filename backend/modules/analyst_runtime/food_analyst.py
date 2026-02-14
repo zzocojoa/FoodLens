@@ -7,31 +7,31 @@ from PIL import Image
 import json
 import io
 import tempfile
-from modules.analyst_core.allergen_utils import (
+from backend.modules.analyst_core.allergen_utils import (
     format_allergens_for_prompt,
 )
-from modules.analyst_core.postprocess import enrich_with_nutrition
-from modules.analyst_core.prompts import (
+from backend.modules.analyst_core.postprocess import enrich_with_nutrition
+from backend.modules.analyst_core.prompts import (
     build_analysis_prompt,
     build_barcode_ingredients_prompt,
     build_label_prompt,
 )
-from modules.analyst_core.response_utils import (
+from backend.modules.analyst_core.response_utils import (
     get_safe_fallback_response,
     parse_ai_response,
     sanitize_response,
     strip_box2d,
 )
-from modules.analyst_core.schemas import (
+from backend.modules.analyst_core.schemas import (
     build_barcode_allergen_schema,
     build_food_response_schema,
     build_label_response_schema,
 )
-from modules.analyst_runtime.generation import (
+from backend.modules.analyst_runtime.generation import (
     generate_with_retry_and_fallback,
     generate_with_semaphore,
 )
-from modules.analyst_runtime.safety import build_default_safety_settings
+from backend.modules.analyst_runtime.safety import build_default_safety_settings
 import traceback
 
 class FoodAnalyst:

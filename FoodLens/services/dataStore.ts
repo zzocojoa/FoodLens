@@ -1,32 +1,20 @@
-import { AnalyzedData } from './ai';
-import type { AnalysisRecord } from './analysis/types';
 import { SafeStorage } from './storage';
+import type {
+  AnalysisStoreBackup,
+  AnalysisStoreLocation,
+  AnalysisStoreResult,
+  AnalysisStoreSnapshot,
+} from './contracts/analysisStore';
 
 const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
 const BACKUP_ERROR_LOG_PREFIX = '[AnalysisDataStore]';
 
-type DataStoreLocation = AnalysisRecord['location'] | Record<string, unknown> | null;
 const nowIso = (): string => new Date().toISOString();
-
-type DataStoreSnapshot = {
-  result: AnalyzedData | null;
-  location: DataStoreLocation | null;
-  imageUri: string | null;
-  timestamp: string | null;
-};
-
-type DataStoreBackup = {
-  result: AnalyzedData;
-  location: DataStoreLocation | null;
-  imageUri: string | null;
-  timestamp: number;
-  originalTimestamp: string | null;
-};
 
 class AnalysisDataStore {
   private static instance: AnalysisDataStore;
-  private currentResult: AnalyzedData | null = null;
-  private currentLocation: DataStoreLocation | null = null;
+  private currentResult: AnalysisStoreResult | null = null;
+  private currentLocation: AnalysisStoreLocation | null = null;
   private currentImageUri: string | null = null;
   private currentTimestamp: string | null = null;
 
@@ -40,8 +28,8 @@ class AnalysisDataStore {
   }
 
   public setData(
-    result: AnalyzedData,
-    location: DataStoreLocation,
+    result: AnalysisStoreResult,
+    location: AnalysisStoreLocation,
     imageUri: string,
     timestamp?: string
   ): void {
@@ -54,7 +42,7 @@ class AnalysisDataStore {
     this.saveBackup().catch((error) => console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to backup analysis data`, error));
   }
 
-  public getData(): DataStoreSnapshot {
+  public getData(): AnalysisStoreSnapshot {
     return {
       result: this.currentResult,
       location: this.currentLocation,
@@ -63,7 +51,7 @@ class AnalysisDataStore {
     };
   }
 
-  private buildBackupPayload(): DataStoreBackup | null {
+  private buildBackupPayload(): AnalysisStoreBackup | null {
     if (!this.currentResult) return null;
     return {
       result: this.currentResult,
@@ -80,7 +68,7 @@ class AnalysisDataStore {
       await SafeStorage.set(DATA_STORE_BACKUP_KEY, backupPayload);
   }
 
-  private applyBackup(backup: DataStoreBackup): void {
+  private applyBackup(backup: AnalysisStoreBackup): void {
       this.currentResult = backup.result;
       this.currentLocation = backup.location;
       this.currentImageUri = backup.imageUri;
@@ -89,7 +77,7 @@ class AnalysisDataStore {
 
   public async restoreBackup(): Promise<boolean> {
       try {
-          const backup = await SafeStorage.get<DataStoreBackup | null>(DATA_STORE_BACKUP_KEY, null);
+          const backup = await SafeStorage.get<AnalysisStoreBackup | null>(DATA_STORE_BACKUP_KEY, null);
           if (backup && backup.result) {
               // Optional: Check timestamp validity (e.g. 1 hour expiry)
               // For now, infinite validity for crash recovery

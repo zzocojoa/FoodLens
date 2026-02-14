@@ -1,6 +1,5 @@
 import { AnalysisRecord } from '../../../services/analysisService';
-import { dataStore } from '../../../services/dataStore';
-import { buildResultRoute } from '@/features/result/services/resultNavigationService';
+import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation';
 
 type RouterLike = {
   push: (route: any) => void;
@@ -27,6 +26,5 @@ export const navigateToAllergies = (router: RouterLike) => {
 };
 
 export const navigateToResultFromHome = (router: RouterLike, item: AnalysisRecord) => {
-  dataStore.setData(item, item.location, item.imageUri || '');
-  router.push(buildResultRoute({ isBarcode: !!item.isBarcode }));
+  navigateToStoredResult(router, item, { method: 'push' });
 };

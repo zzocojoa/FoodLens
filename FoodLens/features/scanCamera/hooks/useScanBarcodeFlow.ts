@@ -8,7 +8,7 @@ import { isBarcodeInCenteredRoi, evaluateScanConfidence } from '../utils/barcode
 import { createFallbackLocation } from '../utils/scanCameraMappers';
 import { dataStore } from '@/services/dataStore';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
-import { buildResultRoute } from '@/features/result/services/resultNavigationService';
+import { buildResultRoute } from '@/services/contracts/resultRoute';
 import { LocationData } from '@/services/utils/types';
 import { AnalyzedData } from '@/services/ai';
 

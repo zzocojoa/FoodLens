@@ -7,7 +7,7 @@ import { dataStore } from '../../../services/dataStore';
 import { normalizeTimestamp } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
 import { createFallbackLocation } from './scanCameraMappers';
-import { buildResultRoute } from '@/features/result/services/resultNavigationService';
+import { buildResultRoute } from '@/services/contracts/resultRoute';
 
 type LocationLike = {
     isoCountryCode?: string;

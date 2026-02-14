@@ -6,9 +6,9 @@ from typing import Tuple
 from dotenv import load_dotenv
 from PIL import Image
 
-from modules.analyst import FoodAnalyst
-from modules.barcode.service import BarcodeService
-from modules.smart_router import SmartRouter
+from backend.modules.analyst_runtime.food_analyst import FoodAnalyst
+from backend.modules.barcode.service import BarcodeService
+from backend.modules.analyst_runtime.router import SmartRouter
 
 
 def load_environment() -> None:
@@ -67,4 +67,3 @@ def decode_upload_to_image(contents: bytes) -> Image.Image:
     from io import BytesIO
 
     return Image.open(BytesIO(contents))
-

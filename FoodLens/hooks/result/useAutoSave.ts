@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { autoSaveService } from './autoSaveService';
 import { shouldAutoSaveResult } from './autoSaveUtils';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 
 export function useAutoSave(
     result: any, 
@@ -10,7 +11,8 @@ export function useAutoSave(
     timestamp?: string | null,
     onSave?: (savedRecord: any) => void
 ) {
-  const { isNew } = useLocalSearchParams();
+  const params = useLocalSearchParams<ResultSearchParams>();
+  const { isNew } = parseResultRouteFlags(params);
   const hasSaved = useRef(false);
 
   useEffect(() => {

@@ -1,28 +1,59 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
+import logging
 import os
-from modules.server_bootstrap import (
+from typing import Any
+
+from backend.modules.server_bootstrap import (
     decode_upload_to_image,
     initialize_services,
     load_environment,
     log_environment_debug,
 )
-from modules.contracts.analysis_response import AnalysisResponseContract
-from modules.contracts.barcode_response import BarcodeLookupResponseContract
+from backend.modules.runtime_guardrails import (
+    EndpointErrorPolicy,
+    ErrorCode,
+    raise_service_unavailable,
+    run_in_threadpool,
+    run_with_error_policy,
+)
+from backend.modules.contracts.analysis_response import AnalysisResponseContract
+from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 
 load_environment()
 log_environment_debug()
 
 app = FastAPI()
 
-# Initialize runtime services unless we're exporting OpenAPI only.
-if os.environ.get("OPENAPI_EXPORT_ONLY") == "1":
-    analyst = None
-    barcode_service = None
-    smart_router = None
-else:
-    # This uses the same logic as app.py (Vertex AI or Gemini API)
+logger = logging.getLogger("foodlens.api")
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+
+
+def _is_openapi_export_mode() -> bool:
+    return os.environ.get("OPENAPI_EXPORT_ONLY") == "1"
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    if _is_openapi_export_mode():
+        app.state.analyst = None
+        app.state.barcode_service = None
+        app.state.smart_router = None
+        logger.info("[Startup] OPENAPI_EXPORT_ONLY=1, runtime service initialization skipped.")
+        return
+
     analyst, barcode_service, smart_router = initialize_services()
+    app.state.analyst = analyst
+    app.state.barcode_service = barcode_service
+    app.state.smart_router = smart_router
+
+
+def _service(name: str) -> Any:
+    service = getattr(app.state, name, None)
+    if service is None:
+        raise raise_service_unavailable(name)
+    return service
 
 LOCALE_TO_ISO = {
     "ko-kr": "KR",
@@ -58,8 +89,7 @@ def health_check():
 @app.get("/debug/models")
 async def debug_models():
     """Trigger model listing debug."""
-    if analyst is None:
-        raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
+    analyst = _service("analyst")
     await analyst.debug_list_models()
     return {"status": "triggered", "message": "Check server logs for model list"}
 
@@ -70,27 +100,24 @@ async def analyze_food(
     iso_country_code: str = Form("US"),
     locale: str | None = Form(None),
 ):
-    try:
-        if analyst is None:
-            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
-        # Read image
+    async def _operation():
+        analyst = _service("analyst")
         contents = await file.read()
-        image = decode_upload_to_image(contents)
-        
-        # Analyze using JSON-specific method
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        image = await run_in_threadpool(decode_upload_to_image, contents)
 
-        data = analyst.analyze_food_json(
-            food_image=image, 
-            allergy_info=allergy_info,
-            iso_current_country=prompt_country_code
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        return await run_in_threadpool(
+            analyst.analyze_food_json,
+            image,
+            allergy_info,
+            prompt_country_code,
         )
-        return data
-        
-            
-    except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    return await run_with_error_policy(
+        endpoint="/analyze",
+        policy=EndpointErrorPolicy(code=ErrorCode.ANALYZE_FAILED, status_code=500, user_message="Analyze failed"),
+        operation=_operation,
+    )
 
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
@@ -102,25 +129,29 @@ async def analyze_label(
     """
     Perform OCR nutrition analysis on a label image.
     """
-    try:
-        if analyst is None:
-            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
-        print(f"[Server] Label analysis request received.")
+    async def _operation():
+        analyst = _service("analyst")
+        logger.info("[Server] Label analysis request received.")
         contents = await file.read()
-        image = decode_upload_to_image(contents)
-        
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        image = await run_in_threadpool(decode_upload_to_image, contents)
 
-        data = analyst.analyze_label_json(
-            label_image=image,
-            allergy_info=allergy_info,
-            iso_current_country=prompt_country_code
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        return await run_in_threadpool(
+            analyst.analyze_label_json,
+            image,
+            allergy_info,
+            prompt_country_code,
         )
-        return data
-        
-    except Exception as e:
-        print(f"[Server] Label Analysis Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    return await run_with_error_policy(
+        endpoint="/analyze/label",
+        policy=EndpointErrorPolicy(
+            code=ErrorCode.ANALYZE_LABEL_FAILED,
+            status_code=500,
+            user_message="Label analysis failed",
+        ),
+        operation=_operation,
+    )
 
 @app.post("/analyze/smart", response_model=AnalysisResponseContract)
 async def analyze_smart(
@@ -133,26 +164,28 @@ async def analyze_smart(
     Smart routing endpoint for Gallery uploads.
     Classifies image (Food vs Label) and routes to specific analysis.
     """
-    try:
-        if smart_router is None:
-            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
-        print(f"[Server] Smart analysis request received.")
+    async def _operation():
+        smart_router = _service("smart_router")
+        logger.info("[Server] Smart analysis request received.")
         contents = await file.read()
-        image = decode_upload_to_image(contents)
-        
-        # Delegate to SmartRouter
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        image = await run_in_threadpool(decode_upload_to_image, contents)
 
-        result = await smart_router.route_analysis(
+        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+        return await smart_router.route_analysis(
             image=image,
             allergy_info=allergy_info,
-            iso_country_code=prompt_country_code
+            iso_country_code=prompt_country_code,
         )
-        return result
-        
-    except Exception as e:
-        print(f"[Server] Smart Analysis Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    return await run_with_error_policy(
+        endpoint="/analyze/smart",
+        policy=EndpointErrorPolicy(
+            code=ErrorCode.ANALYZE_SMART_FAILED,
+            status_code=500,
+            user_message="Smart analysis failed",
+        ),
+        operation=_operation,
+    )
 
 @app.post("/lookup/barcode", response_model=BarcodeLookupResponseContract)
 async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("None")):
@@ -161,10 +194,15 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
     Full SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)
     If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
+    request_id = os.urandom(4).hex()
     try:
-        if barcode_service is None:
-            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
-        print(f"[Server] Lookup request for barcode: {barcode}, allergy_info: {allergy_info}")
+        barcode_service = _service("barcode_service")
+        logger.info(
+            "[Server] Lookup request request_id=%s barcode=%s allergy_info=%s",
+            request_id,
+            barcode,
+            allergy_info,
+        )
         result = await barcode_service.get_product_info(barcode)
         
         if not result:
@@ -172,12 +210,16 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
         
         # Run allergen analysis if ingredients exist and user has allergies
         if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
-            print(f"[Server] Running allergen analysis on {len(result['ingredients'])} ingredients...")
-            if analyst is None:
-                raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
-            allergen_result = analyst.analyze_barcode_ingredients(
-                ingredients=result["ingredients"],
-                allergy_info=allergy_info
+            logger.info(
+                "[Server] Running allergen analysis request_id=%s ingredient_count=%d",
+                request_id,
+                len(result["ingredients"]),
+            )
+            analyst = _service("analyst")
+            allergen_result = await run_in_threadpool(
+                analyst.analyze_barcode_ingredients,
+                result["ingredients"],
+                allergy_info,
             )
             
             # Merge allergen analysis into result
@@ -190,8 +232,13 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
         return {"found": True, "data": result}
         
     except Exception as e:
-        print(f"[Server] Barcode Lookup Error: {e}")
-        return {"found": False, "error": str(e)}
+        logger.exception(
+            "[Server] Barcode Lookup Error request_id=%s code=%s error=%s",
+            request_id,
+            ErrorCode.BARCODE_LOOKUP_FAILED,
+            e,
+        )
+        return {"found": False, "error": f"Barcode lookup failed (code={ErrorCode.BARCODE_LOOKUP_FAILED}, request_id={request_id})"}
 
 if __name__ == "__main__":
     import uvicorn

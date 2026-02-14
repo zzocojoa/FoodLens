@@ -47,9 +47,9 @@ FoodLens-project/
 ├── backend/                    # Python API Server (FastAPI)
 │   ├── modules/                # 비즈니스 로직 모듈
 │   │   ├── analyst_core/       # Gemini AI 프롬프트 설계 및 분석 수행부
+│   │   ├── analyst_runtime/    # AI 호출/재시도/라우팅 오케스트레이션
 │   │   ├── nutrition_core/     # 영양 성분 데이터 가공 및 표준화
 │   │   ├── barcode/            # 바코드를 통한 전세계 상품 DB 연동 서비스
-│   │   ├── smart_router.py     # 이미지 분류에 따른 최적 분석 경로 결정
 │   │   └── server_bootstrap.py # 서비스 초기화 및 서버 런타임 설정
 │   ├── scripts/                # 서버용 보조 스크립트 (이미지 처리 등)
 │   ├── server.py               # API 서버 엔트리 포인트

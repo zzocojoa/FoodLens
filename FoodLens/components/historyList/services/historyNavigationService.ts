@@ -1,8 +1,7 @@
 import { Router } from 'expo-router';
-import { dataStore } from '@/services/dataStore';
-import { buildResultRoute } from '@/features/result/services/resultNavigationService';
+import type { AnalysisStoreNavigableRecord } from '@/services/contracts/analysisStore';
+import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation';
 
-export const navigateToResultFromHistory = (router: Router, record: any) => {
-  dataStore.setData(record, record.location, record.imageUri || '');
-  router.push(buildResultRoute({ isBarcode: !!record?.isBarcode }));
+export const navigateToResultFromHistory = (router: Router, record: AnalysisStoreNavigableRecord) => {
+  navigateToStoredResult(router, record, { method: 'push' });
 };

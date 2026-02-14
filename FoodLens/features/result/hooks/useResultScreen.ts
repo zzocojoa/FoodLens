@@ -5,12 +5,14 @@ import { useAutoSave } from '@/hooks/result/useAutoSave';
 import { usePinLayout } from '@/hooks/result/usePinLayout';
 import { useResultUI } from '@/hooks/result/useResultUI';
 import { useI18n } from '@/features/i18n';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 
 export function useResultScreen() {
-    const params = useLocalSearchParams();
+    const params = useLocalSearchParams<ResultSearchParams>();
     const { t } = useI18n();
+    const routeFlags = parseResultRouteFlags(params);
 
     const {
         isRestoring,
@@ -39,7 +41,7 @@ export function useResultScreen() {
     const { pins, layoutStyle } = usePinLayout(
         result?.ingredients, 
         displayImageUri, 
-        !(result?.isBarcode || params['isBarcode'] === 'true'), // Hide pins if barcode
+        !(result?.isBarcode || routeFlags.isBarcodeParam), // Hide pins if barcode
         imageDimensions
     );
 
@@ -53,12 +55,12 @@ export function useResultScreen() {
         closeBreakdown,
     } = useResultUI();
 
-    useNewResultHaptic(!!result);
+    useNewResultHaptic(!!result, routeFlags.isNew);
     usePhotoLibraryAutoSave({
-        isNew: params['isNew'],
-        sourceType: params['sourceType'],
+        isNew: routeFlags.isNew,
+        sourceType: routeFlags.sourceType,
         imageUri: displayImageUri,
-        isBarcode: !!result?.isBarcode || params['isBarcode'] === 'true',
+        isBarcode: !!result?.isBarcode || routeFlags.isBarcodeParam,
         locationData,
         t,
     });

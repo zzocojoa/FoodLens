@@ -1,7 +1,7 @@
 """Post-processing helpers for analyst responses."""
 from typing import Any, Generator
 
-from modules.nutrition import lookup_nutrition
+from backend.modules.nutrition import lookup_nutrition
 
 NUTRIENT_KEYS = ("calories", "protein", "carbs", "fat", "fiber", "sodium", "sugar")
 ERROR_NAMES = {"Error Analyzing Food", "Not Food", "분석 오류"}

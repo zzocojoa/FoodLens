@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import httpx
 from typing import Optional, Dict, Any
-from modules.nutrition_core.constants import (
+from backend.modules.nutrition_core.constants import (
     API_CONNECT_TIMEOUT,
     API_TIMEOUT_FAST,
     API_TIMEOUT_SLOW,
@@ -18,7 +18,7 @@ from modules.nutrition_core.constants import (
     OPEN_FOOD_FACTS_API,
     USDA_API_BASE,
 )
-from modules.nutrition_core.names import normalize_food_name
+from backend.modules.nutrition_core.names import normalize_food_name
 
 
 class NutritionLookup:

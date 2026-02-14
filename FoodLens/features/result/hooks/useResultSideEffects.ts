@@ -1,9 +1,9 @@
 import React from 'react';
-import { useLocalSearchParams } from 'expo-router';
 
 import { AnalysisService } from '@/services/analysisService';
 import { HapticsService } from '@/services/haptics';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
+import type { ResultSourceType } from '@/services/contracts/resultRoute';
 import { photoLibraryService } from '../services/photoLibraryService';
 import { TEST_UID } from '../constants/result.constants';
 
@@ -27,18 +27,16 @@ export const useDateUpdateAction = (
     );
 };
 
-export const useNewResultHaptic = (resultExists: boolean) => {
-    const params = useLocalSearchParams();
-
+export const useNewResultHaptic = (resultExists: boolean, isNew: boolean) => {
     React.useEffect(() => {
-        if (resultExists && params['isNew'] === 'true') {
+        if (resultExists && isNew) {
             const timer = setTimeout(() => {
                 HapticsService.success();
             }, 300);
             return () => clearTimeout(timer);
         }
         return undefined;
-    }, [resultExists, params['isNew']]);
+    }, [resultExists, isNew]);
 };
 
 export const usePhotoLibraryAutoSave = ({
@@ -49,8 +47,8 @@ export const usePhotoLibraryAutoSave = ({
   locationData,
   t,
 }: {
-  isNew: string | string[] | undefined;
-  sourceType?: string | string[] | undefined;
+  isNew: boolean;
+  sourceType?: ResultSourceType;
   imageUri?: string;
   isBarcode?: boolean;
   locationData?: { latitude?: number | string; longitude?: number | string } | null;
@@ -59,7 +57,7 @@ export const usePhotoLibraryAutoSave = ({
   const processedImageRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (isNew !== 'true') return;
+    if (!isNew) return;
     if (sourceType === 'library') return;
     if (!imageUri) return;
     if (isBarcode) return;

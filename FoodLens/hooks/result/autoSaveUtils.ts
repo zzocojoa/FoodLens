@@ -5,5 +5,5 @@ export const TEST_UID = CURRENT_USER_ID;
 export const shouldAutoSaveResult = (
   hasResult: boolean,
   hasSaved: boolean,
-  isNew: string | string[] | undefined
-) => hasResult && !hasSaved && isNew === 'true';
+  isNew: boolean
+) => hasResult && !hasSaved && isNew;
