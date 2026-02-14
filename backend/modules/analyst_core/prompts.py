@@ -2,6 +2,7 @@
 from typing import Final
 
 LABEL_PROMPT_VERSION: Final[str] = "label-v1.1-locale-country"
+LABEL_2PASS_PROMPT_VERSION: Final[str] = "label-v1.2-2pass-locale-country"
 
 ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
         # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]
@@ -167,6 +168,26 @@ BARCODE_PROMPT_TEMPLATE: Final[str] = """
         Return JSON only.
         """
 
+LABEL_ASSESS_PROMPT_TEMPLATE: Final[str] = """
+        You are a strict allergen risk assessor for nutrition-label OCR output.
+
+        **Context**
+        - User Allergy Profile: {normalized_allergens}
+        - User Locale: {locale}
+        - User Country (ISO): {iso_current_country}
+        - Extracted Ingredients: [{ingredients_str}]
+
+        **Task**
+        1. Judge each extracted ingredient for allergen risk against the user profile.
+        2. Return `safetyStatus` as:
+           - DANGER: confirmed allergen match
+           - CAUTION: ambiguous or potentially related
+           - SAFE: no match
+        3. Keep reasoning concise and conservative.
+
+        Return JSON only.
+        """
+
 
 def _render_prompt(template: str, **kwargs) -> str:
     return template.format(**kwargs)
@@ -200,4 +221,19 @@ def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: lis
         BARCODE_PROMPT_TEMPLATE,
         normalized_allergens=normalized_allergens,
         ingredients_str=_format_ingredients_for_prompt(ingredients),
+    )
+
+
+def build_label_assess_prompt(
+    normalized_allergens: str,
+    ingredients: list[str],
+    locale: str,
+    iso_current_country: str,
+) -> str:
+    return _render_prompt(
+        LABEL_ASSESS_PROMPT_TEMPLATE,
+        normalized_allergens=normalized_allergens,
+        ingredients_str=_format_ingredients_for_prompt(ingredients),
+        locale=locale,
+        iso_current_country=iso_current_country,
     )

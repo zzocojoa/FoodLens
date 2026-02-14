@@ -1,0 +1,31 @@
+{
+  "foodName": "Chocolate Cereal",
+  "safetyStatus": "CAUTION",
+  "ingredients": [
+    {
+      "name": "wheat flour",
+      "name_en": "wheat flour",
+      "name_ko": "밀가루",
+      "isAllergen": true,
+      "riskReason": "Contains wheat"
+    },
+    {
+      "name": "sugar",
+      "name_en": "sugar",
+      "name_ko": "설탕",
+      "isAllergen": false
+    }
+  ],
+  "nutrition": {
+    "calories": 380,
+    "protein": 8,
+    "carbs": 72,
+    "fat": 6,
+    "fiber": 4,
+    "sodium": 220,
+    "sugar": 24,
+    "servingSize": "100g",
+    "dataSource": "Label OCR"
+  },
+  "raw_result": "Wheat allergen detected from label."
+}

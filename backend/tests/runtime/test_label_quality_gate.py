@@ -68,7 +68,7 @@ class LabelQualityGateTests(unittest.TestCase):
         payload = response.json()
         self.assertFalse(spy.called)
         self.assertIsNotNone(payload.get("request_id"))
-        self.assertEqual(payload.get("prompt_version"), "label-v1.1-locale-country")
+        self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
         self.assertEqual(payload.get("used_model"), "gemini-2.5-pro")
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
 

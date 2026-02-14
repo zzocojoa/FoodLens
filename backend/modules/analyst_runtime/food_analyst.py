@@ -13,9 +13,11 @@ from backend.modules.analyst_core.allergen_utils import (
 )
 from backend.modules.analyst_core.postprocess import enrich_with_nutrition
 from backend.modules.analyst_core.prompts import (
+    LABEL_2PASS_PROMPT_VERSION,
     LABEL_PROMPT_VERSION,
     build_analysis_prompt,
     build_barcode_ingredients_prompt,
+    build_label_assess_prompt,
     build_label_prompt,
 )
 from backend.modules.analyst_core.response_utils import (
@@ -196,12 +198,22 @@ class FoodAnalyst:
         """Constructs the nutrition label OCR prompt."""
         return build_label_prompt(allergy_info, locale, iso_current_country)
 
+    def _build_label_assess_prompt(
+        self,
+        normalized_allergens: str,
+        ingredients: list[str],
+        locale: str,
+        iso_current_country: str,
+    ) -> str:
+        return build_label_assess_prompt(normalized_allergens, ingredients, locale, iso_current_country)
+
     def analyze_label_json(
         self,
         label_image: Image.Image,
         allergy_info: str = "None",
         iso_current_country: str = "US",
         locale: str | None = None,
+        assess_enabled: bool = True,
     ):
         """
         Analyzes a nutrition label image using OCR and extracts nutritional info.
@@ -217,6 +229,12 @@ class FoodAnalyst:
             "temperature": 0.1, # Low temperature for OCR precision
             "response_mime_type": "application/json",
             "response_schema": response_schema,
+        }
+
+        assess_generation_config = {
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+            "response_schema": build_barcode_allergen_schema(),
         }
 
         safety_settings = build_default_safety_settings()
@@ -236,14 +254,96 @@ class FoodAnalyst:
             )
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             
-            result = self._parse_ai_response(response.text)
-            result = self._sanitize_response(result)
+            extract_result = self._parse_ai_response(response.text)
+            extract_result = self._sanitize_response(extract_result)
+
+            assess_elapsed_ms = 0
+            assess_failed = False
+            ingredients = extract_result.get("ingredients", [])
+            ingredient_names = [
+                str(item.get("name", "")).strip()
+                for item in ingredients
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            ]
+
+            if ingredient_names and assess_enabled:
+                assess_started_at = time.perf_counter()
+                try:
+                    assess_prompt = self._build_label_assess_prompt(
+                        normalized_allergens,
+                        ingredient_names,
+                        normalized_locale,
+                        iso_current_country,
+                    )
+                    assess_response = generate_with_semaphore(
+                        model=model,
+                        contents=[assess_prompt],
+                        generation_config=assess_generation_config,
+                        safety_settings=safety_settings,
+                        semaphore=FoodAnalyst._request_semaphore,
+                    )
+                    assess_result = self._parse_ai_response(assess_response.text)
+                    assess_result = self._sanitize_response(assess_result)
+
+                    assess_ingredients = assess_result.get("ingredients", [])
+                    assess_map = {}
+                    for assess_item in assess_ingredients:
+                        if not isinstance(assess_item, dict):
+                            continue
+                        key = str(assess_item.get("name", "")).strip().lower()
+                        if not key:
+                            continue
+                        assess_map[key] = assess_item
+
+                    merged_ingredients = []
+                    for ingredient in ingredients:
+                        if not isinstance(ingredient, dict):
+                            continue
+                        key = str(ingredient.get("name", "")).strip().lower()
+                        assess_item = assess_map.get(key)
+                        if assess_item:
+                            ingredient["isAllergen"] = bool(assess_item.get("isAllergen", False))
+                            ingredient["riskReason"] = assess_item.get("riskReason")
+                        else:
+                            ingredient["isAllergen"] = bool(ingredient.get("isAllergen", False))
+                        merged_ingredients.append(ingredient)
+
+                    extract_result["ingredients"] = merged_ingredients
+                    assess_status = assess_result.get("safetyStatus")
+                    if assess_status in ("SAFE", "CAUTION", "DANGER"):
+                        extract_result["safetyStatus"] = assess_status
+                    coach_message = assess_result.get("coachMessage")
+                    if coach_message and not extract_result.get("raw_result"):
+                        extract_result["raw_result"] = str(coach_message)
+
+                except Exception as assess_error:
+                    assess_failed = True
+                    print(f"[Label Assess Error] {assess_error}")
+                    extract_result["safetyStatus"] = "CAUTION"
+                    extract_result["raw_result"] = (
+                        str(extract_result.get("raw_result", "")).strip()
+                        + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
+                    ).strip()
+                finally:
+                    assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
+            elif not ingredient_names:
+                extract_result["safetyStatus"] = "CAUTION"
+                extract_result["raw_result"] = (
+                    str(extract_result.get("raw_result", "")).strip()
+                    + " 성분 추출이 충분하지 않아 주의(CAUTION)로 처리했습니다."
+                ).strip()
+            else:
+                extract_result["_label_degraded"] = True
+
+            result = extract_result
             result["used_model"] = self.label_model_name
-            result["prompt_version"] = LABEL_PROMPT_VERSION
+            result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             result["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,
-                "assess_ms": 0,  # Label v1 currently performs extraction only.
+                "assess_ms": assess_elapsed_ms,
             }
+            if assess_failed:
+                result["_label_partial"] = True
             
             return result
             
@@ -252,7 +352,7 @@ class FoodAnalyst:
             traceback.print_exc()
             fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
             fallback["used_model"] = self.label_model_name
-            fallback["prompt_version"] = LABEL_PROMPT_VERSION
+            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["_label_timings"] = {
                 "extract_ms": 0,
                 "assess_ms": 0,

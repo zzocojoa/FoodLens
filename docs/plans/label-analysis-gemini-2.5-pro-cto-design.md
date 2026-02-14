@@ -229,30 +229,37 @@
 - 최소 20개 라벨 회귀 scaffold(manifest) 추가
 - CI 게이트 스크립트(`backend/scripts/ci_label_contract_gate.sh`) 추가
 
-### 14.3 즉시 반영 권고 (P0)
-1. `analyze_label_json()` 모델 선택을 환경변수 기반으로 통일
-- 예: `GEMINI_LABEL_MODEL_NAME` 기본값을 `gemini-2.5-pro`로 설정.
+### 14.3 미완료 항목 리스트
+1. Quality Gate 실구현
+- blur/contrast/text-density/glare 측정 및 임계치 실패 시 재촬영 유도 반환.
 
-2. LABEL prompt 빌더 확장
-- `build_label_prompt(allergy_info, locale, iso_current_country)`로 확장.
+2. 2-pass 라벨 파이프라인
+- Pass A(추출) + Pass B(리스크 평가) 분리 실행.
+- 현재 `assess_ms`는 0 고정(v1 단일 패스)이며 실제 측정값으로 전환 필요.
 
-3. Prompt/Schema 동기화 테스트 추가
-- 템플릿 출력 요구 필드와 `build_label_response_schema()` 계약 정합성 테스트.
+3. 20개 회귀 샘플 실데이터화
+- 현재는 `scaffold_manifest.json` 기반 골격만 존재.
+- 실제 이미지 + 기대 결과(정답 기준) 회귀로 전환 필요.
 
-4. 결과 메타 표준화
-- `used_model`, `prompt_version`, `request_id`를 LABEL 응답에 공통 포함.
+4. 비용 가드레일 자동화
+- 예산 임계치(70/85/100%) 기반 경보/강등/폴백 자동 정책은 문서만 있고 코드 미구현.
 
-5. 갤러리 분기 정책 명시
-- `analyzeSmart` 자동 분류를 기본 정책으로 문서화하거나,
-- 모드 우선 분기(`LABEL -> analyzeLabel`)를 도입할 경우 라우팅 계약을 명확히 고정.
+5. 데이터 보존/삭제 자동화 (영속 어댑터 포함)
+- `backend/modules/ops/data_retention.py`
+  - `RetentionPolicyConfig`(env 기반), `RetentionCleanupJob`, `RetentionStore/Adapter` 인터페이스.
+  - `JsonFileRetentionStore`(파일 영속), `LocalFileRetentionCleanupAdapter`(허용 루트 내 실제 파일 삭제), `NoOpRetentionCleanupAdapter`.
+- `backend/modules/ops/deletion_queue.py`
+  - `DeletionQueueProducer/Consumer`, `DeletionQueueStorage` 인터페이스.
+  - `JsonFileDeletionQueueStorage`(파일 영속), `InMemory/NoOp` 구현.
+- 현재 한계: 외부 DB/메시지큐(Redis/SQS 등) 미연동.
 
-6. CI Gate 강제
-- 다음 조건 미충족 시 merge 차단:
-  - Prompt/Schema 계약 테스트 통과
-  - 라벨 회귀 샘플 테스트 통과(최소 20건)
-  - `/analyze/label` contract test 통과
-- 권장 게이트 명령:
-  - `bash backend/scripts/ci_label_contract_gate.sh`
+6. 롤아웃 자동화
+- 코드 레벨 트래픽 분기/게이트/자동 stage 전환 구현 완료:
+  - `backend/modules/ops/rollout_control.py`
+  - request_id 해시 버킷 기반 분기
+  - KPI gate 입력값 기반 판정 함수
+  - `LabelRolloutAutoManager` 기반 stage 자동 승격/즉시 롤백
+- 현재 한계: Render 외부 파이프라인 API 연동(예: 대시보드 자동 변경)은 미구현, 서버 내부 제어로 운영.
 
 ### 14.4 관측성 메타 (Step 5 반영)
 - `/analyze/label` 응답 메타:
@@ -275,14 +282,38 @@
 - `cost_per_request`, `tokens_per_request` 일 단위 집계.
 
 ### 15.2 데이터 보존/삭제 정책
-- 원본 이미지: 기본 비저장, 디버그 opt-in 샘플만 저장(TTL 30일)
-- 파생 텍스트(OCR/정규화): TTL 90일
-- 요청 로그(request_id, latency, status): TTL 180일
-- 사용자 삭제 요청 시 request_id/user_id 연계 비동기 삭제 큐 실행
+- 원본 이미지: 기본 비저장, 디버그 opt-in 샘플만 저장(TTL 기본 30일)
+- 파생 텍스트(OCR/정규화): TTL 기본 90일
+- 요청 로그(request_id, latency, status): TTL 기본 14일
+- 사용자 삭제 요청 시 request_id/user_id 연계 비동기 삭제 큐 스켈레톤 제공
+- 현재 한계:
+  - DB/Object Storage 네이티브 어댑터 미연동(현재는 LocalFile/No-op)
+  - 고가용성 메시지큐 미연동(현재는 JSON 파일/메모리)
+  - 후속 연동 포인트: `RetentionStore`, `RetentionCleanupAdapter`, `DeletionQueueStorage`, `DeletionHandler`
 ## 16. 환경 변수/운영 명령 (현재 기준)
 ### 16.1 환경 변수
 - `GEMINI_MODEL_NAME` (food 분석 기본 모델)
 - `GEMINI_LABEL_MODEL_NAME` (label 분석 모델, default: `gemini-2.5-pro`)
+- `RETENTION_ORIGINAL_TTL_DAYS` (default: `30`)
+- `RETENTION_DERIVED_TTL_DAYS` (default: `90`)
+- `RETENTION_LOG_TTL_DAYS` (default: `14`)
+- `RETENTION_STORE_BACKEND` (`memory`|`file`, default: `memory`)
+- `RETENTION_STORE_PATH` (default: `/tmp/foodlens_retention_store.json`, when `file`)
+- `RETENTION_DELETE_BACKEND` (`noop`|`local_file`, default: `noop`)
+- `RETENTION_DELETE_ROOTS` (comma-separated allowed roots, when `local_file`)
+- `DELETION_QUEUE_BACKEND` (`memory`|`file`, default: `memory`)
+- `DELETION_QUEUE_PATH` (default: `/tmp/foodlens_deletion_queue.json`, when `file`)
+- `LABEL_ROLLOUT_ENABLED` (`1`|`0`, default: `1`)
+- `LABEL_ROLLOUT_STAGE` (`shadow-10`|`canary-25`|`canary-50`|`general-100`|`rollback-0`, default: `general-100`)
+- `LABEL_ROLLOUT_PERCENTAGE` (0..100, optional override)
+- `LABEL_ROLLOUT_KPI_PARSE_SUCCESS` (default: `100.0`)
+- `LABEL_ROLLOUT_KPI_P95_MS` (default: `0`)
+- `LABEL_ROLLOUT_KPI_5XX_RATE` (default: `0.0`)
+- `LABEL_ROLLOUT_AUTO_ENABLED` (`1`|`0`, default: `0`)
+- `LABEL_ROLLOUT_PROMOTE_AFTER_PASSES` (default: `3`)
+- `LABEL_ROLLOUT_ROLLBACK_STAGE` (default: `rollback-0`)
+- `LABEL_ROLLOUT_STATE_BACKEND` (`file`|`memory`, default: `file`)
+- `LABEL_ROLLOUT_STATE_PATH` (default: `/tmp/foodlens_rollout_state.json`)
 
 ### 16.2 테스트/게이트 명령
 - Mobile type check:

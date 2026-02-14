@@ -11,8 +11,38 @@ from backend.modules.server_bootstrap import (
     load_environment,
     log_environment_debug,
 )
-from backend.modules.analyst_core.prompts import LABEL_PROMPT_VERSION
+from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
 from backend.modules.analyst_core.response_utils import get_safe_fallback_response
+from backend.modules.ops.cost_guardrail import (
+    CostGuardrailAction,
+    CostGuardrailService,
+    InMemoryMonthlyUsageStorage,
+)
+from backend.modules.ops.data_retention import (
+    InMemoryRetentionStore,
+    JsonFileRetentionStore,
+    LocalFileRetentionCleanupAdapter,
+    NoOpRetentionCleanupAdapter,
+    RetentionCleanupJob,
+    RetentionPolicyConfig,
+)
+from backend.modules.ops.deletion_queue import (
+    DeletionQueueConsumer,
+    DeletionQueueProducer,
+    InMemoryDeletionQueueStorage,
+    JsonFileDeletionQueueStorage,
+    NoOpDeletionHandler,
+)
+from backend.modules.ops.rollout_control import (
+    InMemoryRolloutStateStore,
+    JsonFileRolloutStateStore,
+    KpiThresholds,
+    LabelRolloutAutoManager,
+    LabelRolloutController,
+    RolloutConfig,
+    evaluate_kpi_gate,
+    load_kpi_input_from_env,
+)
 from backend.modules.quality.label_quality_gate import evaluate_label_image_quality
 from backend.modules.runtime_guardrails import (
     EndpointErrorPolicy,
@@ -38,6 +68,41 @@ def _is_openapi_export_mode() -> bool:
     return os.environ.get("OPENAPI_EXPORT_ONLY") == "1"
 
 
+def _is_label_cost_guardrail_enabled() -> bool:
+    return os.environ.get("LABEL_COST_GUARDRAIL_ENABLED", "0").strip() == "1"
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_str(name: str, default: str) -> str:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip() or default
+
+
+def _is_label_rollout_auto_enabled() -> bool:
+    return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     if _is_openapi_export_mode():
@@ -51,6 +116,53 @@ async def _startup() -> None:
     app.state.analyst = analyst
     app.state.barcode_service = barcode_service
     app.state.smart_router = smart_router
+    app.state.label_cost_guardrail = CostGuardrailService(
+        InMemoryMonthlyUsageStorage(),
+        monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+    )
+    app.state.label_rollout_controller = LabelRolloutController(RolloutConfig.from_env())
+    if _is_label_rollout_auto_enabled():
+        rollout_state_backend = _env_str("LABEL_ROLLOUT_STATE_BACKEND", "file").lower()
+        if rollout_state_backend == "memory":
+            rollout_state_store = InMemoryRolloutStateStore()
+        else:
+            rollout_state_store = JsonFileRolloutStateStore(
+                _env_str("LABEL_ROLLOUT_STATE_PATH", "/tmp/foodlens_rollout_state.json")
+            )
+        app.state.label_rollout_auto_manager = LabelRolloutAutoManager(
+            rollout_state_store,
+            promote_after_passes=max(1, _env_int("LABEL_ROLLOUT_PROMOTE_AFTER_PASSES", 3)),
+            rollback_stage=_env_str("LABEL_ROLLOUT_ROLLBACK_STAGE", "rollback-0"),
+        )
+    else:
+        app.state.label_rollout_auto_manager = None
+    app.state.label_rollout_kpi_thresholds = KpiThresholds()
+    app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
+    retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
+    if retention_store_backend == "file":
+        retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
+    else:
+        retention_store = InMemoryRetentionStore()
+
+    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
+    if retention_delete_backend == "local_file":
+        delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
+        cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
+    else:
+        cleanup_adapter = NoOpRetentionCleanupAdapter()
+
+    app.state.retention_cleanup_job = RetentionCleanupJob(
+        store=retention_store,
+        policy=app.state.retention_policy,
+        adapter=cleanup_adapter,
+    )
+    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
+    if deletion_queue_backend == "file":
+        deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
+    else:
+        deletion_storage = InMemoryDeletionQueueStorage()
+    app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
+    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, NoOpDeletionHandler())
 
 
 def _service(name: str) -> Any:
@@ -139,6 +251,10 @@ async def analyze_label(
 
     async def _operation():
         analyst = _service("analyst")
+        cost_guardrail = getattr(app.state, "label_cost_guardrail", None)
+        rollout_controller = getattr(app.state, "label_rollout_controller", None)
+        rollout_auto_manager = getattr(app.state, "label_rollout_auto_manager", None)
+        kpi_thresholds = getattr(app.state, "label_rollout_kpi_thresholds", KpiThresholds())
         logger.info(
             "[Server] Label analysis request received request_id=%s locale=%s",
             request_id,
@@ -167,7 +283,7 @@ async def analyze_label(
                 "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
             )
             fallback["request_id"] = request_id
-            fallback["prompt_version"] = LABEL_PROMPT_VERSION
+            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["used_model"] = analyst.label_model_name
             logger.info(
                 "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
@@ -181,6 +297,70 @@ async def analyze_label(
             )
             return fallback
 
+        kpi_input = load_kpi_input_from_env()
+        kpi_gate_passed = evaluate_kpi_gate(kpi_input, kpi_thresholds)
+        if rollout_controller and rollout_auto_manager:
+            auto_config = rollout_auto_manager.reconcile(rollout_controller.config, kpi_gate_passed=kpi_gate_passed)
+            rollout_controller = LabelRolloutController(auto_config)
+            app.state.label_rollout_controller = rollout_controller
+        rollout_decision = (
+            rollout_controller.decide(request_id, kpi_gate_passed=kpi_gate_passed)
+            if rollout_controller
+            else None
+        )
+        assess_enabled = rollout_decision.route_to_new if rollout_decision else True
+        if rollout_decision:
+            logger.info(
+                "[Server] Label rollout decision request_id=%s stage=%s percentage=%d bucket=%d kpi_gate_passed=%s route_to_new=%s",
+                request_id,
+                rollout_decision.stage,
+                rollout_decision.percentage,
+                rollout_decision.bucket,
+                rollout_decision.kpi_gate_passed,
+                rollout_decision.route_to_new,
+            )
+
+        estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+        estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+        if _is_label_cost_guardrail_enabled() and cost_guardrail:
+            decision = cost_guardrail.evaluate(projected_cost_usd=estimated_cost)
+            logger.info(
+                "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+                request_id,
+                decision.action,
+                decision.ratio,
+                decision.projected_total_cost_usd,
+            )
+            if decision.action == CostGuardrailAction.WARN:
+                logger.warning(
+                    "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
+                    request_id,
+                    decision.ratio,
+                )
+            elif decision.action == CostGuardrailAction.DEGRADE:
+                assess_enabled = False
+                estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
+                estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
+            elif decision.action == CostGuardrailAction.FALLBACK:
+                total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+                fallback = get_safe_fallback_response(
+                    "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+                )
+                fallback["request_id"] = request_id
+                fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+                fallback["used_model"] = analyst.label_model_name
+                logger.warning(
+                    "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+                    request_id,
+                    fallback.get("prompt_version"),
+                    fallback.get("used_model"),
+                    preprocess_elapsed_ms,
+                    0,
+                    0,
+                    total_elapsed_ms,
+                )
+                return fallback
+
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
         result = await run_in_threadpool(
             analyst.analyze_label_json,
@@ -188,6 +368,7 @@ async def analyze_label(
             allergy_info,
             prompt_country_code,
             locale,
+            assess_enabled,
         )
         label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
         extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
@@ -205,6 +386,15 @@ async def analyze_label(
             assess_elapsed_ms,
             total_elapsed_ms,
         )
+        if _is_label_cost_guardrail_enabled() and cost_guardrail:
+            usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
+            logger.info(
+                "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
         return result
 
     return await run_with_error_policy(
