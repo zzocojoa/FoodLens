@@ -11,6 +11,9 @@ from backend.modules.server_bootstrap import (
     load_environment,
     log_environment_debug,
 )
+from backend.modules.analyst_core.prompts import LABEL_PROMPT_VERSION
+from backend.modules.analyst_core.response_utils import get_safe_fallback_response
+from backend.modules.quality.label_quality_gate import evaluate_label_image_quality
 from backend.modules.runtime_guardrails import (
     EndpointErrorPolicy,
     ErrorCode,
@@ -145,6 +148,38 @@ async def analyze_label(
         contents = await file.read()
         image = await run_in_threadpool(decode_upload_to_image, contents)
         preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
+
+        quality = evaluate_label_image_quality(image)
+        logger.info(
+            "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
+            request_id,
+            quality.passed,
+            quality.failed_checks,
+            quality.metrics.blur_score,
+            quality.metrics.contrast_score,
+            quality.metrics.text_density_score,
+            quality.metrics.glare_ratio,
+        )
+
+        if not quality.passed:
+            total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+            fallback = get_safe_fallback_response(
+                "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
+            )
+            fallback["request_id"] = request_id
+            fallback["prompt_version"] = LABEL_PROMPT_VERSION
+            fallback["used_model"] = analyst.label_model_name
+            logger.info(
+                "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+                request_id,
+                fallback.get("prompt_version"),
+                fallback.get("used_model"),
+                preprocess_elapsed_ms,
+                0,
+                0,
+                total_elapsed_ms,
+            )
+            return fallback
 
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
         result = await run_in_threadpool(
