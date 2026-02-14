@@ -1,0 +1,125 @@
+name: Contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  openapi-contracts:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps for OpenAPI export
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Require committed OpenAPI snapshot
+        run: |
+          if ! test -f backend/contracts/openapi.json; then
+            echo "Missing required snapshot: backend/contracts/openapi.json"
+            echo "Run: python -m backend.scripts.export_openapi --out backend/contracts/openapi.json"
+            exit 1
+          fi
+
+      - name: Export OpenAPI snapshot
+        run: |
+          python -m backend.scripts.export_openapi --out backend/contracts/openapi.json
+
+      - name: Verify OpenAPI snapshot is up-to-date
+        run: |
+          git diff --exit-code -- backend/contracts/openapi.json
+
+      - name: Detect OpenAPI snapshot file change in PR
+        id: detect_openapi_change
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -Fxq "backend/contracts/openapi.json"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enforce contract-change label and minimum app version note
+        if: github.event_name == 'pull_request' && steps.detect_openapi_change.outputs.changed == 'true'
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as fp:
+              event = json.load(fp)
+
+          pr = event.get("pull_request") or {}
+          labels = {item.get("name", "") for item in (pr.get("labels") or [])}
+          body = pr.get("body") or ""
+
+          if "contract-change-approved" not in labels:
+              print("Missing required PR label: contract-change-approved")
+              sys.exit(1)
+
+          if not re.search(r"Minimum App Version:\s*\S+", body, flags=re.IGNORECASE):
+              print("PR body must include: Minimum App Version: <version>")
+              sys.exit(1)
+
+          print("Contract change label and minimum app version note verified.")
+          PY
+
+  backend-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal backend test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pydantic>=2,<3"
+
+      - name: Run backend contract snapshot tests
+        run: |
+          python -m unittest backend.tests.contracts.test_analysis_contract_snapshot
+          python -m unittest backend.tests.contracts.test_barcode_contract_snapshot
+
+  frontend-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run frontend contract tests
+        run: npx jest services/aiCore/__tests__/contracts.test.ts --runInBand

@@ -1,0 +1,25 @@
+{
+  "foodName": "Pad Thai",
+  "safetyStatus": "DANGER",
+  "ingredients": [
+    {
+      "name": "peanut",
+      "name_en": "peanut",
+      "name_ko": "땅콩",
+      "isAllergen": true,
+      "riskReason": "Contains peanut"
+    },
+    {
+      "name": "rice noodle",
+      "name_en": "rice noodle",
+      "name_ko": "쌀국수",
+      "isAllergen": false
+    }
+  ],
+  "foodName_en": "Pad Thai",
+  "foodName_ko": "팟타이",
+  "confidence": 92,
+  "raw_result": "Peanut detected. Avoid this dish.",
+  "raw_result_en": "Peanut detected. Avoid this dish.",
+  "raw_result_ko": "땅콩이 감지되었습니다. 이 음식을 피하세요."
+}

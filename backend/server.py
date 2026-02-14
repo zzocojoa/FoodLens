@@ -7,15 +7,22 @@ from modules.server_bootstrap import (
     load_environment,
     log_environment_debug,
 )
+from modules.contracts.analysis_response import AnalysisResponseContract
+from modules.contracts.barcode_response import BarcodeLookupResponseContract
 
 load_environment()
 log_environment_debug()
 
 app = FastAPI()
 
-# Initialize Analyst
-# This uses the same logic as app.py (Vertex AI or Gemini API)
-analyst, barcode_service, smart_router = initialize_services()
+# Initialize runtime services unless we're exporting OpenAPI only.
+if os.environ.get("OPENAPI_EXPORT_ONLY") == "1":
+    analyst = None
+    barcode_service = None
+    smart_router = None
+else:
+    # This uses the same logic as app.py (Vertex AI or Gemini API)
+    analyst, barcode_service, smart_router = initialize_services()
 
 LOCALE_TO_ISO = {
     "ko-kr": "KR",
@@ -51,10 +58,12 @@ def health_check():
 @app.get("/debug/models")
 async def debug_models():
     """Trigger model listing debug."""
+    if analyst is None:
+        raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
     await analyst.debug_list_models()
     return {"status": "triggered", "message": "Check server logs for model list"}
 
-@app.post("/analyze")
+@app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(
     file: UploadFile = File(...), 
     allergy_info: str = Form("None"),
@@ -62,6 +71,8 @@ async def analyze_food(
     locale: str | None = Form(None),
 ):
     try:
+        if analyst is None:
+            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
         # Read image
         contents = await file.read()
         image = decode_upload_to_image(contents)
@@ -81,7 +92,7 @@ async def analyze_food(
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/analyze/label")
+@app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
@@ -92,6 +103,8 @@ async def analyze_label(
     Perform OCR nutrition analysis on a label image.
     """
     try:
+        if analyst is None:
+            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
         print(f"[Server] Label analysis request received.")
         contents = await file.read()
         image = decode_upload_to_image(contents)
@@ -109,7 +122,7 @@ async def analyze_label(
         print(f"[Server] Label Analysis Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/analyze/smart")
+@app.post("/analyze/smart", response_model=AnalysisResponseContract)
 async def analyze_smart(
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
@@ -121,6 +134,8 @@ async def analyze_smart(
     Classifies image (Food vs Label) and routes to specific analysis.
     """
     try:
+        if smart_router is None:
+            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
         print(f"[Server] Smart analysis request received.")
         contents = await file.read()
         image = decode_upload_to_image(contents)
@@ -139,7 +154,7 @@ async def analyze_smart(
         print(f"[Server] Smart Analysis Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/lookup/barcode")
+@app.post("/lookup/barcode", response_model=BarcodeLookupResponseContract)
 async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("None")):
     """
     Lookup product by barcode.
@@ -147,6 +162,8 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
     If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
     try:
+        if barcode_service is None:
+            raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
         print(f"[Server] Lookup request for barcode: {barcode}, allergy_info: {allergy_info}")
         result = await barcode_service.get_product_info(barcode)
         
@@ -156,6 +173,8 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
         # Run allergen analysis if ingredients exist and user has allergies
         if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
             print(f"[Server] Running allergen analysis on {len(result['ingredients'])} ingredients...")
+            if analyst is None:
+                raise HTTPException(status_code=503, detail="Service unavailable in OpenAPI export mode")
             allergen_result = analyst.analyze_barcode_ingredients(
                 ingredients=result["ingredients"],
                 allergy_info=allergy_info

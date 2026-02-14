@@ -4,6 +4,7 @@ import { getAllergyString } from '../allergy';
 import { uploadWithRetry } from '../upload';
 import { ServerConfig } from '../serverConfig';
 import { resolveRequestLocale } from './requestLocale';
+import { assertAnalysisResponseContract } from '../contracts';
 
 type ProgressCallback = (progress: number) => void;
 
@@ -19,7 +20,7 @@ export const performMultipartAnalysisUpload = async ({
   imageUri,
   isoCountryCode,
   onProgress,
-}: AnalyzeUploadParams): Promise<any> => {
+}: AnalyzeUploadParams): Promise<unknown> => {
   const activeServerUrl = await ServerConfig.getServerUrl();
   const allergyString = await getAllergyString();
   const locale = await resolveRequestLocale();
@@ -41,7 +42,9 @@ export const performMultipartAnalysisUpload = async ({
     onProgress,
   );
 
-  return JSON.parse(uploadResult.body);
+  const parsed = JSON.parse(uploadResult.body) as unknown;
+  assertAnalysisResponseContract(parsed, endpointPath);
+  return parsed;
 };
 
 export const rethrowTimeoutAsColdStartMessage = (

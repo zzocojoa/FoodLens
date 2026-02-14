@@ -1,0 +1,29 @@
+{
+  "foodName": "Kimchi Fried Rice",
+  "safetyStatus": "SAFE",
+  "ingredients": [
+    {
+      "name": "rice",
+      "name_en": "rice",
+      "name_ko": "쌀",
+      "isAllergen": false
+    },
+    {
+      "name": "egg",
+      "name_en": "egg",
+      "name_ko": "계란",
+      "isAllergen": true,
+      "riskReason": "Contains egg"
+    }
+  ],
+  "foodName_en": "Kimchi Fried Rice",
+  "foodName_ko": "김치볶음밥",
+  "raw_result": "Potential egg allergen detected.",
+  "raw_result_en": "Potential egg allergen detected.",
+  "raw_result_ko": "계란 알러지 가능성이 있습니다.",
+  "translationCard": {
+    "language": "en-US",
+    "text": "No egg, please.",
+    "audio_query": "No egg, please."
+  }
+}

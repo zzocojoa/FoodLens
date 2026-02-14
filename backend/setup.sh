@@ -26,5 +26,8 @@ pip install git+https://github.com/facebookresearch/sam2.git
 echo "▶️ Run backend server:"
 echo "   source .venv/bin/activate"
 echo "   python -m backend.server"
+echo ""
+echo "▶️ Validate OpenAPI contract snapshot:"
+echo "   python -m backend.scripts.export_openapi --out backend/contracts/openapi.json"
 
 echo "✅ Environment setup complete (.venv)."

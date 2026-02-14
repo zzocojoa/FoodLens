@@ -3,6 +3,7 @@ import { mapBarcodeToAnalyzedData } from '../mappers';
 import { ServerConfig } from '../serverConfig';
 import { BarcodeLookupResult } from '../types';
 import { resolveRequestLocale } from './requestLocale';
+import { assertBarcodeLookupContract } from '../contracts';
 
 export const lookupBarcodeWithAllergyContext = async (
   barcode: string,
@@ -26,7 +27,7 @@ export const lookupBarcodeWithAllergyContext = async (
     throw new Error(`Server returned ${response.status}`);
   }
 
-  const result = await response.json();
+  const result = assertBarcodeLookupContract(await response.json());
   if (result.found && result.data) {
     result.data = mapBarcodeToAnalyzedData(result.data);
     result.data.isBarcode = true;

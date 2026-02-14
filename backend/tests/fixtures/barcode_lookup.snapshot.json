@@ -1,0 +1,20 @@
+{
+  "found": true,
+  "data": {
+    "food_name": "Sample Protein Bar",
+    "food_name_en": "Sample Protein Bar",
+    "food_name_ko": "샘플 단백질바",
+    "safetyStatus": "SAFE",
+    "ingredients": [
+      "oats",
+      "whey protein",
+      "almond"
+    ],
+    "calories": 250,
+    "protein": 20,
+    "carbs": 18,
+    "fat": 10,
+    "servingSize": "1 bar",
+    "source": "OFF"
+  }
+}
