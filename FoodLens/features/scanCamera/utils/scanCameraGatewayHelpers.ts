@@ -65,6 +65,7 @@ export const persistAndNavigateAnalysisResult = async ({
     timestamp,
     imageUri,
     fallbackAddress,
+    sourceType,
     router,
 }: {
     analysisResult: AnalyzedData;
@@ -73,6 +74,7 @@ export const persistAndNavigateAnalysisResult = async ({
     timestamp?: string | null;
     imageUri: string;
     fallbackAddress?: string;
+    sourceType?: 'camera' | 'library';
     router: RouterLike;
 }) => {
     const locationContext =
@@ -85,5 +87,5 @@ export const persistAndNavigateAnalysisResult = async ({
 
     dataStore.setData(analysisResult, locationContext, savedFilename, finalTimestamp);
 
-    router.replace(buildResultRoute({ isNew: true }));
+    router.replace(buildResultRoute({ isNew: true, sourceType: sourceType || 'camera' }));
 };

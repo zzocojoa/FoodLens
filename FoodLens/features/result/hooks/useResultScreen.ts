@@ -56,6 +56,7 @@ export function useResultScreen() {
     useNewResultHaptic(!!result);
     usePhotoLibraryAutoSave({
         isNew: params['isNew'],
+        sourceType: params['sourceType'],
         imageUri: displayImageUri,
         isBarcode: !!result?.isBarcode || params['isBarcode'] === 'true',
         locationData,

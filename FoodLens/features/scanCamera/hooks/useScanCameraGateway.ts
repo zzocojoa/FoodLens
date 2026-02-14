@@ -128,6 +128,7 @@ export const useScanCameraGateway = () => {
     const runFlow = useCallback(
         async (params: {
             uri: string;
+            sourceType?: 'camera' | 'library';
             timestamp?: string | null;
             customLocation?: LocationData | null;
             fallbackAddress?: string;
@@ -136,6 +137,7 @@ export const useScanCameraGateway = () => {
         }) => {
             await runAnalysisFlow({
                 uri: params.uri,
+                sourceType: params.sourceType,
                 timestamp: params.timestamp,
                 customLocation: params.customLocation,
                 fallbackAddress: params.fallbackAddress,
@@ -165,9 +167,9 @@ export const useScanCameraGateway = () => {
             customTimestamp?: string | null,
             customLocation?: LocationData | null
         ) => {
-            void customSourceType;
             await runFlow({
                 uri,
+                sourceType: customSourceType,
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',
@@ -182,6 +184,7 @@ export const useScanCameraGateway = () => {
         async (uri: string, customTimestamp?: string | null) => {
             await runFlow({
                 uri,
+                sourceType: 'camera',
                 timestamp: customTimestamp,
                 needsFileValidation: false,
                 analyzer: analyzeLabel,
@@ -198,6 +201,7 @@ export const useScanCameraGateway = () => {
         ) => {
             await runFlow({
                 uri,
+                sourceType: 'library',
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',

@@ -21,7 +21,7 @@ export default function CameraScreen() {
         params,
         isConnected: !!isConnected,
         onExit: () => router.replace('/'),
-        onSuccess: () => router.replace(buildResultRoute({ isNew: true })),
+        onSuccess: () => router.replace(buildResultRoute({ isNew: true, sourceType: 'camera' })),
     });
 
     if (!camera.permission) {

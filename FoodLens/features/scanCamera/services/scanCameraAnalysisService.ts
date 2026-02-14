@@ -21,6 +21,7 @@ type AnalysisExecutor = (
 
 type RunAnalysisFlowParams = {
   uri: string;
+  sourceType?: 'camera' | 'library';
   timestamp?: string | null;
   customLocation?: LocationData | null;
   fallbackAddress?: string;
@@ -75,6 +76,7 @@ const isOfflineAndReset = ({
 
 export const runAnalysisFlow = async ({
   uri,
+  sourceType,
   timestamp,
   customLocation,
   fallbackAddress,
@@ -140,6 +142,7 @@ export const runAnalysisFlow = async ({
       timestamp,
       imageUri: uri,
       fallbackAddress,
+      sourceType,
       router: { replace },
     });
 

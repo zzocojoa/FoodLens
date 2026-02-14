@@ -43,12 +43,14 @@ export const useNewResultHaptic = (resultExists: boolean) => {
 
 export const usePhotoLibraryAutoSave = ({
   isNew,
+  sourceType,
   imageUri,
   isBarcode,
   locationData,
   t,
 }: {
   isNew: string | string[] | undefined;
+  sourceType?: string | string[] | undefined;
   imageUri?: string;
   isBarcode?: boolean;
   locationData?: { latitude?: number | string; longitude?: number | string } | null;
@@ -58,6 +60,7 @@ export const usePhotoLibraryAutoSave = ({
 
   React.useEffect(() => {
     if (isNew !== 'true') return;
+    if (sourceType === 'library') return;
     if (!imageUri) return;
     if (isBarcode) return;
 
@@ -94,5 +97,5 @@ export const usePhotoLibraryAutoSave = ({
     return () => {
       cancelled = true;
     };
-  }, [imageUri, isBarcode, isNew, locationData, t]);
+  }, [imageUri, isBarcode, isNew, locationData, sourceType, t]);
 };

@@ -82,7 +82,7 @@ export const useScanBarcodeFlow = ({
           const finalTimestamp = new Date().toISOString();
 
           dataStore.setData(product, locationData, getRawImageUrl(product) || '', finalTimestamp);
-          replace(buildResultRoute({ isNew: true, isBarcode: true }));
+          replace(buildResultRoute({ isNew: true, isBarcode: true, sourceType: 'camera' }));
           resetState();
           return;
         }
