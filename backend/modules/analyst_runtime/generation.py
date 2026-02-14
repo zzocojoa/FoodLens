@@ -14,6 +14,8 @@ RETRY_MAX_SECONDS = 30.0
 RETRY_MULTIPLIER = 2.0
 RETRY_TIMEOUT_SECONDS = 60.0
 FALLBACK_MODEL_DISPLAY = "gemini-2.0-flash"
+LABEL_429_BACKOFF_INITIAL_SECONDS = 0.5
+LABEL_429_BACKOFF_MULTIPLIER = 2.0
 
 
 def _build_retry_error_handler(retry_stats: dict[str, Any]) -> Callable[[Exception], None]:
@@ -53,6 +55,47 @@ def generate_with_semaphore(
             generation_config=generation_config,
             safety_settings=safety_settings,
         )
+
+
+def generate_with_429_backoff(
+    model: GenerativeModel,
+    contents: Any,
+    generation_config: dict[str, Any],
+    safety_settings: dict[str, Any],
+    semaphore: Any,
+    *,
+    max_attempts: int = 3,
+    initial_delay_s: float = LABEL_429_BACKOFF_INITIAL_SECONDS,
+) -> Any:
+    """
+    Retry only for 429(ResourceExhausted) with exponential backoff.
+    """
+    delay = max(0.0, initial_delay_s)
+    attempts = max(1, max_attempts)
+    last_error: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            with semaphore:
+                return model.generate_content(
+                    contents,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                )
+        except ResourceExhausted as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            sleep_s = delay + random.uniform(0, JITTER_MAX_MS) / JITTER_DIVISOR
+            print(f"[Label Retry] 429 backoff attempt={attempt} sleep_s={sleep_s:.2f}")
+            time.sleep(sleep_s)
+            delay = max(delay * LABEL_429_BACKOFF_MULTIPLIER, LABEL_429_BACKOFF_INITIAL_SECONDS)
+        except Exception:
+            raise
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("Label generation failed without explicit error")
 
 
 def build_retry_policy(retry_stats: dict[str, Any]) -> retry.Retry:

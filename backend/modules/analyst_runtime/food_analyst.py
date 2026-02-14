@@ -2,6 +2,7 @@ import os
 import atexit
 import threading
 import time
+from google.api_core.exceptions import ResourceExhausted
 import vertexai
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
@@ -32,6 +33,7 @@ from backend.modules.analyst_core.schemas import (
     build_label_response_schema,
 )
 from backend.modules.analyst_runtime.generation import (
+    generate_with_429_backoff,
     generate_with_retry_and_fallback,
     generate_with_semaphore,
 )
@@ -245,12 +247,13 @@ class FoodAnalyst:
             # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
             model = GenerativeModel(self.label_model_name)
             extract_started_at = time.perf_counter()
-            response = generate_with_semaphore(
+            response = generate_with_429_backoff(
                 model=model,
                 contents=[prompt, vertex_image],
                 generation_config=generation_config,
                 safety_settings=safety_settings,
                 semaphore=FoodAnalyst._request_semaphore,
+                max_attempts=3,
             )
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             
@@ -275,12 +278,13 @@ class FoodAnalyst:
                         normalized_locale,
                         iso_current_country,
                     )
-                    assess_response = generate_with_semaphore(
+                    assess_response = generate_with_429_backoff(
                         model=model,
                         contents=[assess_prompt],
                         generation_config=assess_generation_config,
                         safety_settings=safety_settings,
                         semaphore=FoodAnalyst._request_semaphore,
+                        max_attempts=3,
                     )
                     assess_result = self._parse_ai_response(assess_response.text)
                     assess_result = self._sanitize_response(assess_result)
@@ -324,6 +328,7 @@ class FoodAnalyst:
                         str(extract_result.get("raw_result", "")).strip()
                         + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
                     ).strip()
+                    extract_result["_label_chargeable"] = False
                 finally:
                     assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
             elif not ingredient_names:
@@ -342,11 +347,25 @@ class FoodAnalyst:
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,
             }
+            result["_label_chargeable"] = bool(not assess_failed)
             if assess_failed:
                 result["_label_partial"] = True
             
             return result
             
+        except ResourceExhausted as e:
+            print(f"[Label OCR Error] {e}")
+            traceback.print_exc()
+            fallback = self._get_safe_fallback_response("요청이 많아 라벨 분석이 지연되고 있습니다. 잠시 후 다시 시도해주세요.")
+            fallback["used_model"] = self.label_model_name
+            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            fallback["_label_timings"] = {
+                "extract_ms": 0,
+                "assess_ms": 0,
+            }
+            fallback["_label_chargeable"] = False
+            fallback["_label_error_type"] = "quota_exhausted_429"
+            return fallback
         except Exception as e:
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
@@ -357,6 +376,7 @@ class FoodAnalyst:
                 "extract_ms": 0,
                 "assess_ms": 0,
             }
+            fallback["_label_chargeable"] = False
             return fallback
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):

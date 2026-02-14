@@ -103,6 +103,10 @@ def _is_label_rollout_auto_enabled() -> bool:
     return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
 
 
+def _is_label_429_returns_503_enabled() -> bool:
+    return os.environ.get("LABEL_429_RETURNS_503_ENABLED", "0").strip() == "1"
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     if _is_openapi_export_mode():
@@ -370,11 +374,31 @@ async def analyze_label(
             locale,
             assess_enabled,
         )
+        label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
+        label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
         label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
         extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
         assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
         result["request_id"] = request_id
+
+        if label_error_type == "quota_exhausted_429" and _is_label_429_returns_503_enabled():
+            logger.warning(
+                "[Server] Label analysis quota-429 request_id=%s returning=503 elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+                request_id,
+                preprocess_elapsed_ms,
+                extract_elapsed_ms,
+                assess_elapsed_ms,
+                total_elapsed_ms,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "Label analysis is temporarily rate-limited. Please retry shortly.",
+                    "code": ErrorCode.ANALYZE_LABEL_FAILED,
+                    "request_id": request_id,
+                },
+            )
 
         logger.info(
             "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
@@ -386,7 +410,7 @@ async def analyze_label(
             assess_elapsed_ms,
             total_elapsed_ms,
         )
-        if _is_label_cost_guardrail_enabled() and cost_guardrail:
+        if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
             usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
             logger.info(
                 "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
@@ -394,6 +418,11 @@ async def analyze_label(
                 usage.period_key,
                 usage.total_cost_usd,
                 usage.total_tokens,
+            )
+        elif _is_label_cost_guardrail_enabled() and cost_guardrail:
+            logger.info(
+                "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
+                request_id,
             )
         return result
 

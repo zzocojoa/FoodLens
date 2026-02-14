@@ -17,7 +17,7 @@ class LabelModelPolicyTests(unittest.TestCase):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
             patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
-            patch("backend.modules.analyst_runtime.food_analyst.generate_with_semaphore") as mock_generate,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
             patch.dict(os.environ, {"GEMINI_LABEL_MODEL_NAME": "gemini-2.5-pro"}, clear=False),
         ):
             mock_model_cls.return_value = object()
@@ -50,7 +50,7 @@ class LabelModelPolicyTests(unittest.TestCase):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
             patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
-            patch("backend.modules.analyst_runtime.food_analyst.generate_with_semaphore") as mock_generate,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
             patch.dict(os.environ, {"GEMINI_LABEL_MODEL_NAME": "gemini-2.5-pro"}, clear=False),
         ):
             mock_model_cls.return_value = object()
