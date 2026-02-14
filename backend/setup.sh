@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$REPO_ROOT/.venv"
 REQ_FILE="$REPO_ROOT/backend/requirements.txt"
+DEV_REQ_FILE="$REPO_ROOT/backend/requirements-dev.txt"
 
 if [[ ! -f "$REQ_FILE" ]]; then
   echo "❌ requirements not found: $REQ_FILE"
@@ -22,6 +23,11 @@ pip install -r "$REQ_FILE"
 # or use a known git install.
 # Checking if we can install from git directly:
 pip install git+https://github.com/facebookresearch/sam2.git
+
+if [[ -f "$DEV_REQ_FILE" ]]; then
+  echo "▶️ Optional: install dev/data extras"
+  echo "   pip install -r $DEV_REQ_FILE"
+fi
 
 echo "▶️ Run backend server:"
 echo "   source .venv/bin/activate"

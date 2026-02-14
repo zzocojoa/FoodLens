@@ -149,6 +149,7 @@ export const resolveImageUri = (stored: string | undefined | null): string | nul
     // New format: filename → reconstruct full path
     return buildManagedImageUri(stored);
 };
+export const getBarcodeImageUri = (): string => 'barcode://pattern';
 
 /**
  * Delete a permanently stored image.

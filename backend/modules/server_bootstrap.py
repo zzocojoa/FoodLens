@@ -1,4 +1,3 @@
-import json
 import os
 import traceback
 from typing import Tuple
@@ -28,23 +27,7 @@ def log_environment_debug() -> None:
     print(f"KOREAN_FDA_API_KEY: {'[SET]' if os.getenv('KOREAN_FDA_API_KEY') else '[MISSING]'}")
 
     sa_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON", "")
-    print(f"GCP_SERVICE_ACCOUNT_JSON Raw Length: {len(sa_json)}")
-    if sa_json:
-        try:
-            if sa_json.strip().startswith("{") and sa_json.strip().endswith("}"):
-                parsed_sa = json.loads(sa_json)
-                print(
-                    f"[Startup] ✓ GCP_SERVICE_ACCOUNT_JSON parsed successfully. Project: {parsed_sa.get('project_id')}"
-                )
-            else:
-                print("[Startup] ⚠️ WARNING: GCP_SERVICE_ACCOUNT_JSON is incomplete or improperly formatted.")
-                print(f"[Startup] Text starts with: {repr(sa_json[:30])}")
-                print(f"[Startup] Text ends with: {repr(sa_json[-30:])}")
-                if sa_json.strip().startswith("{") and not sa_json.strip().endswith("}"):
-                    print("[Startup] 🛑 ERROR: JSON is truncated!")
-        except Exception as error:
-            print(f"[Startup] ✗ Error parsing GCP_SERVICE_ACCOUNT_JSON: {error}")
-            print(f"[Startup] Raw content sample: {repr(sa_json[:100])}...")
+    print(f"GCP_SERVICE_ACCOUNT_JSON: {'[SET]' if bool(sa_json) else '[MISSING]'}")
 
 
 def initialize_services() -> Tuple[FoodAnalyst, BarcodeService, SmartRouter]:

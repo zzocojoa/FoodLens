@@ -40,7 +40,8 @@ export default {
       googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
       infoPlist: {
         NSAppTransportSecurity: {
-          NSAllowsArbitraryLoads: true,
+          NSAllowsArbitraryLoads: false,
+          NSAllowsLocalNetworking: true,
         },
       },
     },

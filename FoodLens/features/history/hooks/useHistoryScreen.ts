@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { LayoutAnimation } from 'react-native';
 import { ArchiveMode } from '../types/history.types';
 import { confirmBulkDelete } from '../utils/historyDialogs';
@@ -40,7 +40,7 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         }, t);
     }, [deleteMultipleItems, selectedItems, t]);
 
-    return {
+    return useMemo(() => ({
         archiveMode,
         isEditMode,
         selectedItems,
@@ -49,5 +49,14 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         toggleEditMode,
         toggleSelectItem,
         handleBulkDelete,
-    };
+    }), [
+        archiveMode,
+        isEditMode,
+        selectedItems,
+        savedMapRegionRef,
+        handleSwitchMode,
+        toggleEditMode,
+        toggleSelectItem,
+        handleBulkDelete,
+    ]);
 };

@@ -1,6 +1,6 @@
 import { CountryData } from '../models/History';
 import { AnalysisRecord } from '../services/analysisService';
-import { resolveImageUri } from '../services/imageStorage';
+import { getBarcodeImageUri, resolveImageUri } from '../services/imageStorage';
 import { getEmoji } from '../services/utils';
 import { getLocalizedFoodName } from '../features/home/utils/localizedFoodName';
 export { flattenHistoryData } from './historyDataFlatten';
@@ -62,7 +62,7 @@ export const aggregateHistoryByCountry = (records: AnalysisRecord[], locale?: st
       type: toSafetyType(record.safetyStatus),
       timestamp: record.timestamp,
       emoji: getEmoji(localizedFoodName),
-      imageUri: resolveImageUri(record.imageUri) || undefined,
+      imageUri: record.isBarcode ? getBarcodeImageUri() : (resolveImageUri(record.imageUri) || undefined),
       originalRecord: record,
     };
 

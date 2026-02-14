@@ -6,7 +6,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { FoodThumbnail } from '../../../components/FoodThumbnail';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import { AnalysisRecord } from '../../../services/analysisService';
-import { resolveImageUri } from '../../../services/imageStorage';
+import { getBarcodeImageUri, resolveImageUri } from '../../../services/imageStorage';
 import { formatDate, getEmoji } from '../../../services/utils';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { formatHomeSectionTitle, getHomeScanStatusBadge } from '../utils/homeUi';
@@ -96,7 +96,7 @@ export default function HomeScansSection({
                     <View style={styles.scanInfo}>
                       <View style={[styles.scanEmojiBox, { backgroundColor: theme.surface }]}>
                         <FoodThumbnail
-                          uri={resolveImageUri(item.imageUri) || undefined}
+                          uri={item.isBarcode ? getBarcodeImageUri() : (resolveImageUri(item.imageUri) || undefined)}
                           emoji={getEmoji(localizedFoodName)}
                           style={{
                             width: '100%',

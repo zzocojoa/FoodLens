@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,10 +41,19 @@ export default function HistoryScreen() {
 
     const ui = useHistoryScreen({ deleteMultipleItems });
 
-    const handleToggleCountry = (countryName: string) => {
+    const handleToggleCountry = useCallback((countryName: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setExpandedCountries((prev) => toggleCountryExpanded(prev, countryName));
-    };
+    }, [setExpandedCountries]);
+
+    const handleMarkerPress = useCallback((id: string) => {
+        ui.handleSwitchMode('list');
+        setExpandedCountries(new Set([id]));
+    }, [ui.handleSwitchMode, setExpandedCountries]);
+
+    const handleRegionChange = useCallback((region: any) => {
+        ui.savedMapRegionRef.current = region;
+    }, [ui.savedMapRegionRef]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -64,13 +73,8 @@ export default function HistoryScreen() {
                     <HistoryMap
                         data={archiveData}
                         initialRegion={ui.savedMapRegionRef.current || initialRegion}
-                        onMarkerPress={(id) => {
-                            ui.handleSwitchMode('list');
-                            setExpandedCountries(new Set([id]));
-                        }}
-                        onRegionChange={(region) => {
-                            ui.savedMapRegionRef.current = region;
-                        }}
+                        onMarkerPress={handleMarkerPress}
+                        onRegionChange={handleRegionChange}
                     />
                 ) : (
                     <HistoryList

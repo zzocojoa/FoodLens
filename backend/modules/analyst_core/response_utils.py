@@ -1,6 +1,7 @@
 """Response parsing, fallback, and sanitization helpers."""
 
 import json
+import os
 import re
 from typing import Any, Final
 
@@ -23,35 +24,45 @@ MARKDOWN_PREFIX: Final[str] = "```"
 DANGEROUS_REPLACEMENT: Final[str] = "[링크 제거됨]"
 BLOCKLIST_REPLACEMENT: Final[str] = "[내용 필터링됨]"
 FALLBACK_PARSE_ERROR_MESSAGE: Final[str] = "AI 응답을 처리할 수 없습니다. 다시 시도해주세요."
+PARSE_DEBUG_ENV_KEY: Final[str] = "FOODLENS_PARSE_DEBUG"
 DANGEROUS_REGEX = re.compile("|".join(DANGEROUS_PATTERNS), re.IGNORECASE | re.DOTALL)
 BLOCKLIST_REGEX = re.compile("|".join(BLOCKLIST_PATTERNS), re.IGNORECASE)
+
+
+def _is_parse_debug_enabled() -> bool:
+    return os.getenv(PARSE_DEBUG_ENV_KEY, "").strip() == "1"
+
+
+def _debug_log(message: str) -> None:
+    if _is_parse_debug_enabled():
+        print(message)
 
 
 def _strip_markdown_fence(text: str) -> str:
     original_text = text
     if text.startswith(MARKDOWN_JSON_PREFIX):
         text = text[7:]
-        print("[PARSE DEBUG] Stripped ```json prefix")
+        _debug_log("[PARSE DEBUG] Stripped ```json prefix")
     if text.startswith(MARKDOWN_PREFIX):
         text = text[3:]
-        print("[PARSE DEBUG] Stripped ``` prefix")
+        _debug_log("[PARSE DEBUG] Stripped ``` prefix")
     if text.endswith(MARKDOWN_PREFIX):
         text = text[:-3]
-        print("[PARSE DEBUG] Stripped ``` suffix")
+        _debug_log("[PARSE DEBUG] Stripped ``` suffix")
     text = text.strip()
     if text != original_text:
-        print(f"[PARSE DEBUG] After markdown cleanup: {repr(text[:200])}")
+        _debug_log(f"[PARSE DEBUG] After markdown cleanup: {repr(text[:200])}")
     return text
 
 
 def _try_json_parse(text: str) -> dict[str, Any] | None:
     try:
         result = json.loads(text)
-        print("[PARSE DEBUG] ✓ Standard JSON parse SUCCESS")
+        _debug_log("[PARSE DEBUG] ✓ Standard JSON parse SUCCESS")
         return result
     except json.JSONDecodeError as error:
-        print(f"[PARSE DEBUG] ✗ Standard JSON parse FAILED: {error}")
-        print(f"[PARSE DEBUG] Error at position {error.pos}: {repr(text[max(0,error.pos-20):error.pos+20])}")
+        _debug_log(f"[PARSE DEBUG] ✗ Standard JSON parse FAILED: {error}")
+        _debug_log(f"[PARSE DEBUG] Error at position {error.pos}: {repr(text[max(0,error.pos-20):error.pos+20])}")
         return None
 
 
@@ -60,18 +71,18 @@ def _try_brace_recovery(text: str) -> dict[str, Any] | None:
     try:
         first_brace = text.find("{")
         last_brace = text.rfind("}")
-        print(f"[PARSE DEBUG] Brace positions: first={first_brace}, last={last_brace}")
+        _debug_log(f"[PARSE DEBUG] Brace positions: first={first_brace}, last={last_brace}")
 
         if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
             extracted = text[first_brace : last_brace + 1]
-            print(f"[PARSE DEBUG] Extracted content length: {len(extracted)}")
-            print(f"[PARSE DEBUG] Extracted first 200: {repr(extracted[:200])}")
+            _debug_log(f"[PARSE DEBUG] Extracted content length: {len(extracted)}")
+            _debug_log(f"[PARSE DEBUG] Extracted first 200: {repr(extracted[:200])}")
             result = json.loads(extracted)
-            print("[PARSE DEBUG] ✓ Brace extraction recovery SUCCESS")
+            _debug_log("[PARSE DEBUG] ✓ Brace extraction recovery SUCCESS")
             return result
     except json.JSONDecodeError as error:
-        print(f"[PARSE DEBUG] ✗ Brace extraction recovery FAILED: {error}")
-        print(f"[PARSE DEBUG] Error at position {error.pos}: {repr(extracted[max(0,error.pos-30):error.pos+30])}")
+        _debug_log(f"[PARSE DEBUG] ✗ Brace extraction recovery FAILED: {error}")
+        _debug_log(f"[PARSE DEBUG] Error at position {error.pos}: {repr(extracted[max(0,error.pos-30):error.pos+30])}")
     return None
 
 
@@ -81,14 +92,14 @@ def _sanitize_text(text: str, max_length: int = MAX_TEXT_LENGTH) -> str:
 
     if len(text) > max_length:
         text = text[:max_length] + "..."
-        print(f"[Internal Log] Text truncated to {max_length} chars.")
+        _debug_log(f"[Internal Log] Text truncated to {max_length} chars.")
 
     if DANGEROUS_REGEX.search(text):
-        print("[Internal Log] Dangerous pattern detected, sanitizing.")
+        _debug_log("[Internal Log] Dangerous pattern detected, sanitizing.")
         text = DANGEROUS_REGEX.sub(DANGEROUS_REPLACEMENT, text)
 
     if BLOCKLIST_REGEX.search(text):
-        print("[Internal Log] Blocklist pattern detected, sanitizing.")
+        _debug_log("[Internal Log] Blocklist pattern detected, sanitizing.")
         return BLOCKLIST_REPLACEMENT
 
     return text
@@ -112,13 +123,13 @@ def get_safe_fallback_response(user_message: str) -> dict[str, Any]:
 
 
 def parse_ai_response(response_text: str) -> dict[str, Any]:
-    print(f"\n{PARSE_DEBUG_DIVIDER}")
-    print(f"[PARSE DEBUG] Raw response length: {len(response_text)} chars")
-    print(f"[PARSE DEBUG] First 200 chars: {repr(response_text[:200])}")
-    print(
+    _debug_log(f"\n{PARSE_DEBUG_DIVIDER}")
+    _debug_log(f"[PARSE DEBUG] Raw response length: {len(response_text)} chars")
+    _debug_log(f"[PARSE DEBUG] First 200 chars: {repr(response_text[:200])}")
+    _debug_log(
         f"[PARSE DEBUG] Last 100 chars: {repr(response_text[-100:] if len(response_text) > 100 else response_text)}"
     )
-    print(PARSE_DEBUG_DIVIDER)
+    _debug_log(PARSE_DEBUG_DIVIDER)
 
     text = _strip_markdown_fence(response_text.strip())
 
@@ -130,9 +141,9 @@ def parse_ai_response(response_text: str) -> dict[str, Any]:
     if result is not None:
         return result
 
-    print("[PARSE DEBUG] ✗✗ ALL PARSING ATTEMPTS FAILED")
-    print(f"[PARSE DEBUG] Full raw response:\n{response_text}")
-    print(f"{PARSE_DEBUG_DIVIDER}\n")
+    _debug_log("[PARSE DEBUG] ✗✗ ALL PARSING ATTEMPTS FAILED")
+    _debug_log(f"[PARSE DEBUG] Full raw response:\n{response_text}")
+    _debug_log(f"{PARSE_DEBUG_DIVIDER}\n")
     return get_safe_fallback_response(FALLBACK_PARSE_ERROR_MESSAGE)
 
 

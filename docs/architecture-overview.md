@@ -10,55 +10,76 @@
 
 ```tree
 FoodLens-project/
-├── FoodLens/                   # Mobile Application (Expo/React Native)
-│   ├── app/                    # Expo Router 파이 기반 라우팅 레이어
-│   │   ├── (tabs)/             # 메인 탭 네비게이션 (홈, 검색, 프로필 등)
-│   │   ├── scan/               # 카메라 및 스캔 기능 진입점
-│   │   ├── _layout.tsx         # 전역 레이아웃 및 Provider 설정
-│   │   └── result.tsx          # 분석 결과 화면 라우팅
-│   ├── features/               # 도메인 주도 기능 모듈 (핵심 비즈니스 로직)
-│   │   ├── scanCamera/         # 카메라 제어, 바코드 스캔, 갤러리 연동 엔진
-│   │   ├── result/             # 분석 데이터 렌더링 및 편집 로직
-│   │   ├── home/               # 대시보드 및 최근 스캔 내역 요약
-│   │   ├── history/            # 전체 스캔 기록 관리 및 필터링
-│   │   ├── profile/            # 사용자 정보 및 알러지 정보 설정
-│   │   ├── allergies/          # 알러지 성분 데이터 및 매칭 로직
-│   │   ├── i18n/               # 다국어 리소스 및 번역 서비스
-│   │   ├── emojiPicker/        # 음식 아이콘 선택기
-│   │   └── tripStats/          # 여행지별 식사 통계 및 분석
-│   ├── services/               # 공공 인프라 및 공유 서비스 레이어
-│   │   ├── aiCore/             # 백엔드 API 통신 및 데이터 매핑 (endpoints, mappers)
-│   │   ├── analysis/           # 분석 데이터 영구 저장 처리 (hooks, storage)
-│   │   ├── imageStorage.ts     # 로컬 파일 시스템 이미지 관리 (Atomic Save 기반)
-│   │   ├── storage.ts          # MMKV 기반 고성능 로컬 데이터베이스
-│   │   ├── dataStore.ts        # 분석 프로세스 중 인메모리 데이터 전송 관리
-│   │   ├── userService.ts      # 사용자 프로필 및 상태 관리
-│   │   └── haptics.ts          # 햅틱 피드백 유틸리티
-│   ├── components/             # 재사용 가능한 UI 컴포넌트 (# 디자인 시스템 공통)
-│   │   ├── result/             # 결과 화면 전용 컴포넌트군
-│   │   ├── historyList/        # 히스토리 목록 UI 컴포넌트군
-│   │   └── ui/                 # Button, Card 등 저수준 공통 UI
-│   ├── assets/                 # 이미지, 아이콘, Lottie 애니메이션 리소스
-│   ├── hooks/                  # 전역 공통 훅 (Navigation, NetworkStatus 등)
-│   ├── utils/                  # 범용 데이터 처리 유틸리티 (Date, Location 등)
-│   ├── android/ & ios/         # 플랫폼별 네이티브 프로젝트 설정 및 설정 파일
-│   └── scripts/                # 번역 체크 및 프로젝트 환경 설정용 스크립트
+├── FoodLens/                         # Mobile Application (Expo/React Native)
+│   ├── app/                          # Expo Router 파일 기반 라우팅
+│   │   ├── (tabs)/                   # 홈/히스토리 등 탭 진입 라우트
+│   │   ├── scan/                     # 스캔 카메라 흐름 라우트
+│   │   ├── _layout.tsx               # 전역 Provider/네비게이션 레이아웃
+│   │   └── result.tsx                # 분석 결과 화면 라우트
+│   ├── features/                     # 도메인 기능 모듈
+│   │   ├── allergies/                # 알러지 설정/조회 기능
+│   │   ├── camera/                   # 촬영 후 분석 요청 흐름
+│   │   ├── emojiPicker/              # 사용자 이모지 선택 기능
+│   │   ├── history/                  # 분석 이력 조회/필터링
+│   │   ├── home/                     # 대시보드/최근 스캔 요약
+│   │   ├── i18n/                     # 다국어 리소스/번역 도메인
+│   │   ├── profile/                  # 사용자 프로필/설정
+│   │   ├── result/                   # 결과 화면 렌더링/상호작용
+│   │   ├── scanCamera/               # 바코드 스캔 전용 흐름
+│   │   └── tripStats/                # 여행 통계/집계 기능
+│   ├── components/                   # 재사용 UI/섹션 컴포넌트
+│   │   ├── historyList/              # 히스토리 리스트 UI 묶음
+│   │   ├── historyMap/               # 지도 기반 히스토리 UI
+│   │   ├── result/                   # 결과 페이지 공통 UI 블록
+│   │   ├── travelerAllergyCard/      # 여행자 알러지 카드 컴포넌트
+│   │   └── ui/                       # 버튼/텍스트 등 저수준 공통 UI
+│   ├── services/                     # 공유 인프라/도메인 서비스
+│   │   ├── ai/                       # AI 응답 타입/도메인 인터페이스
+│   │   ├── aiCore/                   # API 호출/계약 검증/매핑
+│   │   ├── analysis/                 # 분석 결과 저장/로드 유틸
+│   │   ├── contracts/                # 공통 타입/라우트 계약(resultRoute, analysisStore)
+│   │   ├── i18n/                     # 언어 해석/문구 변환 서비스
+│   │   ├── navigation/               # 공통 화면 이동 계층(resultEntryNavigation)
+│   │   ├── permissions/              # 권한 요청/상태 처리 로직
+│   │   ├── user/                     # 사용자 데이터 접근 계층
+│   │   └── utils/                    # 서비스 공통 유틸
+│   ├── hooks/                        # 공통 훅 모음
+│   │   └── result/                   # 결과 화면 전용 훅
+│   ├── contexts/                     # 전역 컨텍스트(theme 등)
+│   ├── assets/                       # 이미지/애니메이션 에셋
+│   ├── constants/                    # 상수 정의
+│   ├── data/                         # 정적 데이터셋
+│   ├── models/                       # 앱 모델 정의
+│   ├── types/                        # 공통 TS 타입
+│   ├── utils/                        # 범용 유틸리티
+│   ├── scripts/                      # 개발 보조 스크립트
+│   ├── android/                      # Android 네이티브 프로젝트
+│   └── ios/                          # iOS 네이티브 프로젝트
 │
-├── backend/                    # Python API Server (FastAPI)
-│   ├── modules/                # 비즈니스 로직 모듈
-│   │   ├── analyst_core/       # Gemini AI 프롬프트 설계 및 분석 수행부
-│   │   ├── analyst_runtime/    # AI 호출/재시도/라우팅 오케스트레이션
-│   │   ├── nutrition_core/     # 영양 성분 데이터 가공 및 표준화
-│   │   ├── barcode/            # 바코드를 통한 전세계 상품 DB 연동 서비스
-│   │   └── server_bootstrap.py # 서비스 초기화 및 서버 런타임 설정
-│   ├── scripts/                # 서버용 보조 스크립트 (이미지 처리 등)
-│   ├── server.py               # API 서버 엔트리 포인트
-│   └── requirements.txt        # 서버 의존성 라이브러리 목록
+├── backend/                          # Python API Server (FastAPI)
+│   ├── server.py                     # FastAPI 엔트리포인트/라우트
+│   ├── requirements.txt              # 서버 의존성 목록
+│   ├── contracts/
+│   │   └── openapi.json              # API 계약 스냅샷
+│   ├── modules/
+│   │   ├── analyst_core/             # 프롬프트/파싱/응답 정규화
+│   │   ├── analyst_runtime/          # Vertex 호출/재시도/라우팅
+│   │   ├── barcode/                  # 바코드 조회 서비스
+│   │   ├── contracts/                # Pydantic API contract 모델
+│   │   ├── nutrition_core/           # 영양 데이터 정규화 로직
+│   │   ├── nutrition.py              # 영양 도메인 진입 모듈
+│   │   ├── runtime_guardrails.py     # P4 공통 에러코드/로깅/오프로드
+│   │   └── server_bootstrap.py       # 서비스 초기화/환경 로더
+│   ├── scripts/                      # OpenAPI export 등 운영 스크립트
+│   └── tests/                        # 계약/회귀 테스트
+│       ├── contracts/                # API contract 테스트
+│       └── fixtures/                 # snapshot fixture
 │
-└── docs/                       # 프로젝트 기술 문서 및 레퍼런스
-    ├── plans/                  # 기능 구현 및 배포 계획서
-    ├── refactoring/            # 코드 품질 개선 및 리팩토링 목표 문서
-    └── architecture-overview.md# [현재 문서] 시스템 구조 및 아키텍처 지도
+└── docs/                             # 프로젝트 기술 문서
+    ├── plans/                        # 단계별 구현/운영 계획
+    ├── refactoring/                  # 리팩토링 결과/가이드
+    ├── architecture-improvement-phases.md # P1~P5 단계 문서
+    └── architecture-overview.md      # [현재 문서]
 ```
 
 ## 3. 주요 패턴 및 핵심 구성 요소

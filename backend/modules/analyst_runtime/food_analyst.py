@@ -116,18 +116,14 @@ class FoodAnalyst:
         print(f"[Credential Debug] GCP_PROJECT_ID: {project_id}")
         print(f"[Credential Debug] GCP_LOCATION: {location}")
         print(f"[Credential Debug] GCP_SERVICE_ACCOUNT_JSON exists: {bool(service_account_json)}")
-        if service_account_json:
-            print(f"[Credential Debug] JSON length: {len(service_account_json)} chars")
-            print(f"[Credential Debug] JSON starts with: {service_account_json[:50]}...")
-            print(f"[Credential Debug] Contains 'private_key': {'private_key' in service_account_json}")
         # === END DEBUG ===
 
         if service_account_json:
             try:
                 # Validate JSON format before writing
                 import json
-                parsed = json.loads(service_account_json)
-                print(f"[Credential Debug] ✓ JSON parsing successful, keys: {list(parsed.keys())}")
+                json.loads(service_account_json)
+                print("[Credential Debug] ✓ Service account JSON parsing successful")
                 
                 # For Render/Cloud deployment where file upload is difficult
                 # Write JSON content to a temporary file
@@ -145,7 +141,6 @@ class FoodAnalyst:
                 
             except json.JSONDecodeError as e:
                 print(f"[Credential Debug] ✗ JSON parsing FAILED: {e}")
-                print(f"[Credential Debug] First 100 chars: {repr(service_account_json[:100])}")
             except Exception as e:
                 print(f"[Credential Debug] ✗ Credential setup FAILED: {e}")
         else:
