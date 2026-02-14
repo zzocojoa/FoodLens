@@ -94,12 +94,17 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
         3.  **Cross-Check Allergens**: Check the extracted ingredients against the user's allergy profile: `{allergy_info}`.
         4.  **Identify Product**: Inferred product name from the label if visible.
 
+        **CONTEXT DATA**
+        -   **User Locale**: `{locale}`
+        -   **User Country (ISO)**: `{iso_current_country}`
+
         **CRITICAL RULES**
         -   **Accuracy First**: Do not hallucinate numbers. If a value is missing, use null or 0.
         -   **Unit Normalization**: Extract values as numbers (e.g., "15g" -> 15).
         -   **Allergen Detection**: Be extremely strict with `{allergy_info}`.
         -   **Multilingual Names**: Always provide `foodName_en`, `foodName_ko`, and for each ingredient `name_en`, `name_ko`.
         -   Provide both `raw_result_en` and `raw_result_ko` as short summary.
+        -   Use `{locale}` for natural phrasing in `raw_result` and keep regional naming aligned to `{iso_current_country}`.
         -   **JSON Format**: Return only raw JSON.
 
         **OUTPUT FORMAT**
@@ -179,8 +184,13 @@ def build_analysis_prompt(allergy_info: str, iso_current_country: str) -> str:
     )
 
 
-def build_label_prompt(allergy_info: str) -> str:
-    return _render_prompt(LABEL_PROMPT_TEMPLATE, allergy_info=allergy_info)
+def build_label_prompt(allergy_info: str, locale: str, iso_current_country: str) -> str:
+    return _render_prompt(
+        LABEL_PROMPT_TEMPLATE,
+        allergy_info=allergy_info,
+        locale=locale,
+        iso_current_country=iso_current_country,
+    )
 
 
 def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: list[str]) -> str:

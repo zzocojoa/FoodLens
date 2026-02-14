@@ -76,10 +76,13 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+        self.label_model_name = os.getenv("GEMINI_LABEL_MODEL_NAME") or "gemini-2.5-pro"
         
         # [DEBUG] Log model initialization details
         print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
         print(f"[Model Debug] Using model: {self.model_name}")
+        print(f"[Model Debug] GEMINI_LABEL_MODEL_NAME env: {os.getenv('GEMINI_LABEL_MODEL_NAME')}")
+        print(f"[Model Debug] Using label model: {self.label_model_name}")
         
         try:
             self.model = GenerativeModel(self.model_name)
@@ -187,16 +190,23 @@ class FoodAnalyst:
     def _sanitize_response(self, result: dict) -> dict:
         return sanitize_response(result)
 
-    def _build_label_prompt(self, allergy_info: str) -> str:
+    def _build_label_prompt(self, allergy_info: str, locale: str, iso_current_country: str) -> str:
         """Constructs the nutrition label OCR prompt."""
-        return build_label_prompt(allergy_info)
+        return build_label_prompt(allergy_info, locale, iso_current_country)
 
-    def analyze_label_json(self, label_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
+    def analyze_label_json(
+        self,
+        label_image: Image.Image,
+        allergy_info: str = "None",
+        iso_current_country: str = "US",
+        locale: str | None = None,
+    ):
         """
         Analyzes a nutrition label image using OCR and extracts nutritional info.
         """
         normalized_allergens = format_allergens_for_prompt(allergy_info)
-        prompt = self._build_label_prompt(normalized_allergens)
+        normalized_locale = (locale or "en-US").strip() or "en-US"
+        prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
         
         # Schema for OCR (similar to food but focused on nutrition)
         response_schema = build_label_response_schema()
@@ -212,8 +222,8 @@ class FoodAnalyst:
         try:
             vertex_image = self._prepare_vertex_image(label_image)
 
-            # Using 2.0 Flash for speed and OCR capability
-            model = GenerativeModel("gemini-2.0-flash")
+            # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
+            model = GenerativeModel(self.label_model_name)
             response = generate_with_semaphore(
                 model=model,
                 contents=[prompt, vertex_image],
@@ -224,7 +234,7 @@ class FoodAnalyst:
             
             result = self._parse_ai_response(response.text)
             result = self._sanitize_response(result)
-            result["used_model"] = "gemini-2.0-flash-ocr"
+            result["used_model"] = self.label_model_name
             
             return result
             

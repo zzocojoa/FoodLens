@@ -137,12 +137,15 @@ async def analyze_label(
         image = await run_in_threadpool(decode_upload_to_image, contents)
 
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             analyst.analyze_label_json,
             image,
             allergy_info,
             prompt_country_code,
+            locale,
         )
+        logger.info("[Server] Label analysis completed. used_model=%s", result.get("used_model"))
+        return result
 
     return await run_with_error_policy(
         endpoint="/analyze/label",
@@ -176,6 +179,7 @@ async def analyze_smart(
             image=image,
             allergy_info=allergy_info,
             iso_country_code=prompt_country_code,
+            locale=locale,
         )
 
     return await run_with_error_policy(

@@ -48,7 +48,13 @@ class SmartRouter:
         { "category": "CATEGORY_NAME", "confidence": 0.0-1.0 }
         """
 
-    async def route_analysis(self, image: Image.Image, allergy_info: str = "None", iso_country_code: str = "US") -> Dict[str, Any]:
+    async def route_analysis(
+        self,
+        image: Image.Image,
+        allergy_info: str = "None",
+        iso_country_code: str = "US",
+        locale: str | None = None,
+    ) -> Dict[str, Any]:
         """
         Classifies the image and executes the corresponding analysis method.
         """
@@ -85,7 +91,7 @@ class SmartRouter:
                 print("[SmartRouter] Routing to -> Label Analysis")
                 result = await asyncio.to_thread(
                     self.analyst.analyze_label_json,
-                    image, allergy_info, iso_country_code
+                    image, allergy_info, iso_country_code, locale
                 )
                 result["router_category"] = category
                 return result
