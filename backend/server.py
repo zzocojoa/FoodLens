@@ -1,7 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 import logging
 import os
+import time
 from typing import Any
 
 from backend.modules.server_bootstrap import (
@@ -188,24 +189,43 @@ async def analyze_smart(
     )
 
 @app.post("/lookup/barcode", response_model=BarcodeLookupResponseContract)
-async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("None")):
+async def lookup_barcode(
+    request: Request,
+    barcode: str = Form(...),
+    allergy_info: str = Form("None"),
+    locale: str | None = Form(None),
+):
     """
     Lookup product by barcode.
     Full SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)
     If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
-    request_id = os.urandom(4).hex()
+    request_id = request.headers.get("X-Request-Id") or os.urandom(4).hex()
+    started_at = time.perf_counter()
     try:
         barcode_service = _service("barcode_service")
         logger.info(
-            "[Server] Lookup request request_id=%s barcode=%s allergy_info=%s",
+            "[Server] Lookup request request_id=%s barcode=%s allergy_info=%s locale=%s",
             request_id,
             barcode,
             allergy_info,
+            locale,
         )
+        lookup_started_at = time.perf_counter()
         result = await barcode_service.get_product_info(barcode)
+        logger.info(
+            "[Server] Barcode source lookup done request_id=%s elapsed_ms=%d found=%s",
+            request_id,
+            int((time.perf_counter() - lookup_started_at) * 1000),
+            bool(result),
+        )
         
         if not result:
+            logger.info(
+                "[Server] Lookup complete request_id=%s elapsed_ms=%d found=false",
+                request_id,
+                int((time.perf_counter() - started_at) * 1000),
+            )
             return {"found": False, "message": "Product not found in any database"}
         
         # Run allergen analysis if ingredients exist and user has allergies
@@ -216,10 +236,16 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
                 len(result["ingredients"]),
             )
             analyst = _service("analyst")
+            analysis_started_at = time.perf_counter()
             allergen_result = await run_in_threadpool(
                 analyst.analyze_barcode_ingredients,
                 result["ingredients"],
                 allergy_info,
+            )
+            logger.info(
+                "[Server] Allergen analysis done request_id=%s elapsed_ms=%d",
+                request_id,
+                int((time.perf_counter() - analysis_started_at) * 1000),
             )
             
             # Merge allergen analysis into result
@@ -228,9 +254,15 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
             
             # Replace simple string list with enriched ingredient objects
             result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
-        
+        logger.info(
+            "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true",
+            request_id,
+            int((time.perf_counter() - started_at) * 1000),
+        )
         return {"found": True, "data": result}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(
             "[Server] Barcode Lookup Error request_id=%s code=%s error=%s",
@@ -238,7 +270,14 @@ async def lookup_barcode(barcode: str = Form(...), allergy_info: str = Form("Non
             ErrorCode.BARCODE_LOOKUP_FAILED,
             e,
         )
-        return {"found": False, "error": f"Barcode lookup failed (code={ErrorCode.BARCODE_LOOKUP_FAILED}, request_id={request_id})"}
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Barcode lookup failed",
+                "code": ErrorCode.BARCODE_LOOKUP_FAILED,
+                "request_id": request_id,
+            },
+        ) from e
 
 if __name__ == "__main__":
     import uvicorn

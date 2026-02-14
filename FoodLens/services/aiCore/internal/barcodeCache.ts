@@ -9,12 +9,33 @@ interface CachedBarcode {
   timestamp: number;
 }
 
+const normalizeCacheContext = (context?: string): string => {
+  if (!context) return 'default';
+  const normalized = context.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : 'default';
+};
+
+// Lightweight non-crypto hash to avoid storing raw allergy strings in cache keys.
+const hashContext = (input: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+};
+
+const buildBarcodeCacheKey = (barcode: string, context?: string): string => {
+  const contextHash = hashContext(normalizeCacheContext(context));
+  return `${BARCODE_CACHE_KEY_PREFIX}${barcode}_${contextHash}`;
+};
+
 export const BarcodeCache = {
   /**
    * Get cached result for a barcode
    */
-  async get(barcode: string): Promise<BarcodeLookupResult | null> {
-    const key = `${BARCODE_CACHE_KEY_PREFIX}${barcode}`;
+  async get(barcode: string, context?: string): Promise<BarcodeLookupResult | null> {
+    const key = buildBarcodeCacheKey(barcode, context);
     const cached = await SafeStorage.get<CachedBarcode | null>(key, null);
     
     if (cached) {
@@ -32,10 +53,10 @@ export const BarcodeCache = {
   /**
    * Save result to cache
    */
-  async set(barcode: string, result: BarcodeLookupResult): Promise<void> {
+  async set(barcode: string, result: BarcodeLookupResult, context?: string): Promise<void> {
     if (!result.found) return; // Don't cache negative results
     
-    const key = `${BARCODE_CACHE_KEY_PREFIX}${barcode}`;
+    const key = buildBarcodeCacheKey(barcode, context);
     await SafeStorage.set(key, {
       result,
       timestamp: Date.now(),

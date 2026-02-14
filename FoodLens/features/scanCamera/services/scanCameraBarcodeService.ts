@@ -1,8 +1,10 @@
 import { lookupBarcode } from '../../../services/ai';
+import { getAllergyString } from '../../../services/aiCore/allergy';
 
 export const lookupBarcodeWithCache = async (barcode: string) => {
   const { BarcodeCache } = await import('../../../services/aiCore/internal/barcodeCache');
-  const cachedResult = await BarcodeCache.get(barcode);
+  const allergyContext = await getAllergyString();
+  const cachedResult = await BarcodeCache.get(barcode, allergyContext);
 
   if (cachedResult) {
     console.log('[AI] Barcode found in cache:', barcode);
@@ -11,7 +13,7 @@ export const lookupBarcodeWithCache = async (barcode: string) => {
 
   const result = await lookupBarcode(barcode);
   if (result.found) {
-    await BarcodeCache.set(barcode, result);
+    await BarcodeCache.set(barcode, result, allergyContext);
   }
   return result;
 };
