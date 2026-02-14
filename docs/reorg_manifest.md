@@ -29,7 +29,8 @@ Date: 2026-02-13
 - Added root compatibility wrapper: requirements.txt (historical)
 - Added root compatibility wrapper: setup.sh (historical)
 - Added root compatibility wrapper: Dockerfile (historical)
-- Root compatibility wrappers are now removed to enforce single entrypoint.
+- Root compatibility wrappers(`server.py`, `setup.sh`, `requirements.txt`) are removed.
+- Root `Dockerfile` is retained for Render default deploy compatibility.
 
 ## Keep As-Is (Runtime Stability)
 - `backend/server.py`

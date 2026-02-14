@@ -18,7 +18,6 @@ FORBIDDEN_PATHS = [
     "requirements.txt",
     "modules",
     "scripts/remove_bg.py",
-    "Dockerfile",
 ]
 
 
