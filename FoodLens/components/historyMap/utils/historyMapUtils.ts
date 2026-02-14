@@ -1,4 +1,5 @@
 import { Region } from 'react-native-maps';
+import * as FileSystem from 'expo-file-system/legacy';
 import { CountryData } from '@/models/History';
 import { resolveImageUri } from '@/services/imageStorage';
 import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM } from '../constants';
@@ -9,6 +10,101 @@ export const debugLog = (...args: unknown[]) => {
     if (ENABLE_MAP_DEBUG_LOGS) {
         console.log(...args);
     }
+};
+
+const TRACE_FILE_NAME = 'map_trace.txt';
+const TRACE_DIR = FileSystem.cacheDirectory || '';
+const TRACE_FILE_URI = TRACE_DIR ? `${TRACE_DIR}${TRACE_FILE_NAME}` : '';
+const TRACE_EXPORT_URI = FileSystem.documentDirectory
+    ? `${FileSystem.documentDirectory}${TRACE_FILE_NAME}`
+    : '';
+let traceFileInitialized = false;
+let traceWriteQueue: Promise<void> = Promise.resolve();
+let traceFlushScheduled = false;
+let tracePathLogged = false;
+
+const safeSerialize = (value: unknown) => {
+    if (typeof value === 'string') return value;
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
+const MAX_TRACE_LINES = 1000;
+let traceLines: string[] = [`${new Date().toLocaleString()} --- LOG INITIALIZED (APP START) ---`];
+
+const initializeTraceFile = async () => {
+    try {
+        await FileSystem.writeAsStringAsync(TRACE_FILE_URI, traceLines.join('\n') + '\n', {
+            encoding: FileSystem.EncodingType.UTF8,
+        });
+        if (TRACE_EXPORT_URI) {
+            await FileSystem.writeAsStringAsync(TRACE_EXPORT_URI, traceLines.join('\n') + '\n', {
+                encoding: FileSystem.EncodingType.UTF8,
+            });
+        }
+        traceFileInitialized = true;
+    } catch (e) {
+        // Fallback or ignore if path is strictly forbidden by sandbox
+        console.error('[MapTrace] Initialization failed', e);
+    }
+};
+void initializeTraceFile();
+
+const appendHistoryMapTraceFile = (level: 'LOG' | 'WARN', args: unknown[]) => {
+    if (!TRACE_FILE_URI) return;
+    if (!tracePathLogged) {
+        tracePathLogged = true;
+        console.log('[HistoryMapTrace] trace-file-uri', TRACE_FILE_URI);
+        if (TRACE_EXPORT_URI) {
+            console.log('[HistoryMapTrace] trace-export-uri', TRACE_EXPORT_URI);
+        }
+    }
+    const line = `${new Date().toLocaleTimeString()} [${level}] ${args.map(safeSerialize).join(' ')}`;
+    traceLines.push(line);
+    
+    if (traceLines.length > MAX_TRACE_LINES) {
+        traceLines = traceLines.slice(-MAX_TRACE_LINES);
+    }
+
+    if (traceFlushScheduled) return;
+    traceFlushScheduled = true;
+    setTimeout(() => {
+        traceFlushScheduled = false;
+        const snapshot = traceLines.join('\n');
+        
+        traceWriteQueue = traceWriteQueue
+            .then(async () => {
+                try {
+                    await FileSystem.writeAsStringAsync(TRACE_FILE_URI, snapshot, {
+                        encoding: FileSystem.EncodingType.UTF8,
+                    });
+                    if (TRACE_EXPORT_URI) {
+                        await FileSystem.writeAsStringAsync(TRACE_EXPORT_URI, snapshot, {
+                            encoding: FileSystem.EncodingType.UTF8,
+                        });
+                    }
+                } catch (e) {
+                    console.error('[MapFileLogger] Write failed', e);
+                }
+            })
+            .catch(() => {});
+    }, 200); // 200ms flush interval to capture data as close to a crash as possible
+};
+
+export const getHistoryMapTraceFileUri = () => TRACE_FILE_URI;
+export const getHistoryMapTraceExportUri = () => TRACE_EXPORT_URI;
+
+export const mapTraceLog = (...args: unknown[]) => {
+    console.log('[HistoryMapTrace]', ...args);
+    appendHistoryMapTraceFile('LOG', args);
+};
+
+export const mapTraceWarn = (...args: unknown[]) => {
+    console.warn('[HistoryMapTrace]', ...args);
+    appendHistoryMapTraceFile('WARN', args);
 };
 
 export const metricsLog = (...args: unknown[]) => {
