@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { MutableRefObject } from 'react';
 import { analyzeImage } from '../../../services/ai';
 import { dataStore } from '../../../services/dataStore';
@@ -9,6 +8,8 @@ import {
   assertImageFileReady,
   resolveIsoCodeFromContext,
 } from '../utils/cameraGatewayHelpers';
+import { showAlert } from '@/services/ui/uiAlerts';
+import { logger } from '@/services/logger';
 
 type RunCameraImageAnalysisParams = {
   uri: string;
@@ -27,6 +28,79 @@ type RunCameraImageAnalysisParams = {
   offlineAlertMessage: string;
 };
 
+const beginCameraAnalysis = ({
+  uri,
+  isCancelled,
+  setIsAnalyzing,
+  setCapturedImage,
+  setActiveStep,
+}: {
+  uri: string;
+  isCancelled: MutableRefObject<boolean>;
+  setIsAnalyzing: (value: boolean) => void;
+  setCapturedImage: (value: string | null) => void;
+  setActiveStep: (value: number | undefined) => void;
+}) => {
+  isCancelled.current = false;
+  setIsAnalyzing(true);
+  setCapturedImage(uri);
+  setActiveStep(0);
+};
+
+const resolveLocationContext = async (
+  cachedLocation: MutableRefObject<LocationContext | null | undefined>
+) => {
+  let locationData = cachedLocation.current;
+
+  if (locationData === undefined) {
+    try {
+      locationData = await getLocationData();
+    } catch (error) {
+      logger.warn('Location fetch failed, defaulting to US context', error, 'CameraAnalysis');
+    }
+  }
+
+  return locationData;
+};
+
+const createUploadProgressHandler = ({
+  isCancelled,
+  setUploadProgress,
+  setActiveStep,
+}: {
+  isCancelled: MutableRefObject<boolean>;
+  setUploadProgress: (value: number | undefined) => void;
+  setActiveStep: (value: number | undefined) => void;
+}) => {
+  return (progress: number) => {
+    if (isCancelled.current) return;
+    setUploadProgress(progress);
+    if (progress >= 1) {
+      setActiveStep(2);
+    }
+  };
+};
+
+const handleOfflineCase = ({
+  isConnectedRef,
+  offlineAlertTitle,
+  offlineAlertMessage,
+  resetState,
+  onExit,
+}: {
+  isConnectedRef: MutableRefObject<boolean>;
+  offlineAlertTitle: string;
+  offlineAlertMessage: string;
+  resetState: () => void;
+  onExit: () => void;
+}) => {
+  if (isConnectedRef.current) return false;
+  showAlert(offlineAlertTitle, offlineAlertMessage);
+  resetState();
+  onExit();
+  return true;
+};
+
 export const runCameraImageAnalysis = async ({
   uri,
   photoTimestamp,
@@ -43,27 +117,27 @@ export const runCameraImageAnalysis = async ({
   offlineAlertTitle,
   offlineAlertMessage,
 }: RunCameraImageAnalysisParams) => {
-  isCancelled.current = false;
-  setIsAnalyzing(true);
-  setCapturedImage(uri);
-  setActiveStep(0);
+  beginCameraAnalysis({
+    uri,
+    isCancelled,
+    setIsAnalyzing,
+    setCapturedImage,
+    setActiveStep,
+  });
 
-  let locationData = cachedLocation.current;
-
-  if (locationData === undefined) {
-    try {
-      locationData = await getLocationData();
-    } catch (error) {
-      console.warn('Location fetch failed, defaulting to US context', error);
-    }
-  }
+  const locationData = await resolveLocationContext(cachedLocation);
 
   if (isCancelled.current) return;
 
-  if (!isConnectedRef.current) {
-    Alert.alert(offlineAlertTitle, offlineAlertMessage);
-    resetState();
-    onExit();
+  if (
+    handleOfflineCase({
+      isConnectedRef,
+      offlineAlertTitle,
+      offlineAlertMessage,
+      resetState,
+      onExit,
+    })
+  ) {
     return;
   }
 
@@ -73,13 +147,11 @@ export const runCameraImageAnalysis = async ({
   setActiveStep(1);
   setUploadProgress(0);
 
-  const analysisResult = await analyzeImage(uri, isoCode, (progress) => {
-    if (isCancelled.current) return;
-    setUploadProgress(progress);
-    if (progress >= 1) {
-      setActiveStep(2);
-    }
-  });
+  const analysisResult = await analyzeImage(
+    uri,
+    isoCode,
+    createUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
+  );
 
   if (isCancelled.current) return;
 

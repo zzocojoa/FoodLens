@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import AnalysisLoadingScreen from '../../../components/AnalysisLoadingScreen';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
@@ -8,6 +8,8 @@ import { useCameraGateway } from '../hooks/useCameraGateway';
 import { cameraStyles as styles } from '../styles/cameraStyles';
 import { CameraRouteParams } from '../types/camera.types';
 import { useI18n } from '@/features/i18n';
+import { openAppSettings } from '@/services/ui/permissionDialogs';
+import { buildResultRoute } from '@/features/result/services/resultNavigationService';
 
 export default function CameraScreen() {
     const router = useRouter();
@@ -19,11 +21,7 @@ export default function CameraScreen() {
         params,
         isConnected: !!isConnected,
         onExit: () => router.replace('/'),
-        onSuccess: () =>
-            router.replace({
-                pathname: '/result',
-                params: { fromStore: 'true', isNew: 'true' },
-            }),
+        onSuccess: () => router.replace(buildResultRoute({ isNew: true })),
     });
 
     if (!camera.permission) {
@@ -38,7 +36,7 @@ export default function CameraScreen() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <CameraPermissionGate onOpenSettings={() => Linking.openSettings()} />
+                <CameraPermissionGate onOpenSettings={openAppSettings} />
             </>
         );
     }

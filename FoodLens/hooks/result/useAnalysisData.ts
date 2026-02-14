@@ -5,19 +5,29 @@ import { analysisDataService } from './analysisDataService';
 import {
   toDisplayImageUri,
 } from './analysisDataUtils';
+import type { LoadedAnalysisData } from './analysisDataService';
+import type { ImageSourcePropType } from 'react-native';
+
+type AnalysisParams = {
+  data?: string | string[];
+  location?: string | string[];
+  fromStore?: string | string[];
+  isBarcode?: string | string[];
+};
 
 export function useAnalysisData() {
-  const { data, location, fromStore, isBarcode } = useLocalSearchParams();
+  const { data, location, fromStore, isBarcode } = useLocalSearchParams<AnalysisParams>();
+  const fromStoreMode = fromStore === 'true';
   
   // State for restoring from backup (Crash Recovery)
   const [isRestoring, setIsRestoring] = useState(
-    fromStore === 'true' && !dataStore.getData().result
+    fromStoreMode && !dataStore.getData().result
   );
   
   // Data holders
-  const [result, setResult] = useState<any>(null);
-  const [locationData, setLocationData] = useState<any>(null);
-  const [imageSource, setImageSource] = useState<any>(null);
+  const [result, setResult] = useState<LoadedAnalysisData['result']>(null);
+  const [locationData, setLocationData] = useState<LoadedAnalysisData['locationData']>(null);
+  const [imageSource, setImageSource] = useState<ImageSourcePropType | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
   
   // Stored image reference (filename only — for persistence)
@@ -59,16 +69,16 @@ export function useAnalysisData() {
 
   // Reactive timestamp state
   const [timestamp, setTimestamp] = useState<string | undefined>(
-    isRestoring || fromStore === 'true' ? dataStore.getData().timestamp || undefined : undefined
+    isRestoring || fromStoreMode ? dataStore.getData().timestamp || undefined : undefined
   );
 
   // Sync with dataStore if we are in store mode
   useEffect(() => {
-    if (loaded && (isRestoring || fromStore === 'true')) {
+    if (loaded && (isRestoring || fromStoreMode)) {
         const stored = dataStore.getData();
         setTimestamp(stored.timestamp || undefined);
     }
-  }, [loaded, isRestoring, fromStore]);
+  }, [loaded, isRestoring, fromStoreMode]);
 
   const updateTimestamp = (newDate: Date) => {
       const isoString = newDate.toISOString();

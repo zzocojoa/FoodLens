@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage } from '../services/storage';
+import { cleanupOrphanedImages } from '../services/imageStorage';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -42,6 +43,8 @@ function LayoutContent() {
     (async () => {
         await initializeSafeStorage();
         await initializeDeviceId();
+        // Professional background cleanup
+        cleanupOrphanedImages().catch(() => {});
     })();
   }, []);
 

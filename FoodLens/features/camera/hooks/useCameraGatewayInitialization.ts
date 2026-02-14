@@ -1,9 +1,9 @@
 import { MutableRefObject, useEffect } from 'react';
-import { Alert } from 'react-native';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraSourceType, LocationContext } from '../types/camera.types';
 import { resolveInitialLocationContext } from '../utils/cameraGatewayHelpers';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type UseCameraGatewayInitializationParams = {
   photoLat?: string;
@@ -38,10 +38,12 @@ export const useCameraGatewayInitialization = ({
 
       if (!resolvedLocation && sourceType === 'camera') {
         setTimeout(() => {
-          Alert.alert(
-            t('camera.alert.locationUnavailableTitle', 'Location Unavailable'),
-            messages.locationUnavailable
-          );
+          showTranslatedAlert(t, {
+            titleKey: 'camera.alert.locationUnavailableTitle',
+            titleFallback: 'Location Unavailable',
+            messageKey: 'camera.error.locationUnavailable',
+            messageFallback: messages.locationUnavailable,
+          });
         }, 500);
       }
 

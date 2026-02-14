@@ -1,5 +1,5 @@
-import { Alert } from 'react-native';
 import { MutableRefObject } from 'react';
+import { Href } from 'expo-router';
 import { AnalyzedData } from '../../../services/ai';
 import { getLocationData } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
@@ -10,6 +10,8 @@ import {
   getIsoCode,
   persistAndNavigateAnalysisResult,
 } from '../utils/scanCameraGatewayHelpers';
+import { showAlert } from '@/services/ui/uiAlerts';
+import { logger } from '@/services/logger';
 
 type AnalysisExecutor = (
   uri: string,
@@ -33,9 +35,42 @@ type RunAnalysisFlowParams = {
   setCapturedImage: (value: string | null) => void;
   setActiveStep: (value: number | undefined) => void;
   setUploadProgress: (value: number | undefined) => void;
-  replace: (route: any) => void;
+  replace: (route: Href) => void;
   resetState: () => void;
-  handleError: (error: any) => void;
+  handleError: (error: unknown) => void;
+};
+
+const resolveLocationForAnalysis = async ({
+  customLocation,
+  cachedLocation,
+}: Pick<RunAnalysisFlowParams, 'customLocation' | 'cachedLocation'>) => {
+  let locationData = customLocation ?? cachedLocation.current ?? null;
+
+  if (!locationData) {
+    try {
+      locationData = await getLocationData();
+      if (locationData) cachedLocation.current = locationData;
+    } catch (error) {
+      logger.warn('Location fetch failed', error, 'ScanAnalysis');
+    }
+  }
+
+  return locationData;
+};
+
+const isOfflineAndReset = ({
+  isConnectedRef,
+  offlineAlertTitle,
+  offlineAlertMessage,
+  resetState,
+}: Pick<
+  RunAnalysisFlowParams,
+  'isConnectedRef' | 'offlineAlertTitle' | 'offlineAlertMessage' | 'resetState'
+>) => {
+  if (isConnectedRef.current) return false;
+  showAlert(offlineAlertTitle, offlineAlertMessage);
+  resetState();
+  return true;
 };
 
 export const runAnalysisFlow = async ({
@@ -60,23 +95,23 @@ export const runAnalysisFlow = async ({
 }: RunAnalysisFlowParams) => {
   try {
     isCancelled.current = false;
-    beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep: setActiveStep as (value: number) => void });
+    beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
 
-    let locationData = customLocation ?? cachedLocation.current ?? null;
-    if (!locationData) {
-      try {
-        locationData = await getLocationData();
-        if (locationData) cachedLocation.current = locationData;
-      } catch (error) {
-        console.warn('Location fetch failed', error);
-      }
-    }
+    const locationData = await resolveLocationForAnalysis({
+      customLocation,
+      cachedLocation,
+    });
 
     if (isCancelled.current) return;
 
-    if (!isConnectedRef.current) {
-      Alert.alert(offlineAlertTitle, offlineAlertMessage);
-      resetState();
+    if (
+      isOfflineAndReset({
+        isConnectedRef,
+        offlineAlertTitle,
+        offlineAlertMessage,
+        resetState,
+      })
+    ) {
       return;
     }
 
@@ -92,7 +127,7 @@ export const runAnalysisFlow = async ({
     const analysisResult = await analyzer(
       uri,
       isoCode,
-      createProgressHandler({ isCancelled, setUploadProgress: setUploadProgress as (value: number) => void, setActiveStep: setActiveStep as (value: number) => void })
+      createProgressHandler({ isCancelled, setUploadProgress: (value: number) => setUploadProgress(value), setActiveStep: (value: number) => setActiveStep(value) })
     );
 
     if (isCancelled.current) return;
@@ -109,7 +144,7 @@ export const runAnalysisFlow = async ({
     });
 
     resetState();
-  } catch (error: any) {
+  } catch (error) {
     if (isCancelled.current) return;
     handleError(error);
   }

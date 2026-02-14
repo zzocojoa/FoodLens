@@ -3,6 +3,7 @@ import type { LocationGeocodedAddress } from 'expo-location';
 import { validateCoordinates } from './coordinates';
 import { LocationData } from './types';
 import { mapPlaceToLocationData } from './locationMapper';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 const LOCATION_TIMEOUT_MS = 3000;
 const EXIF_DEFAULT_ISO = 'US';
@@ -54,11 +55,8 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | nul
  */
 export const getLocationData = async (): Promise<LocationData | null> => {
   try {
-    const { status } = await Location.getForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
-      if (newStatus !== 'granted') return null;
-    }
+    const permission = await ensureForegroundLocationPermission();
+    if (!permission.granted) return null;
 
     const locationResult = await withTimeout(
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),

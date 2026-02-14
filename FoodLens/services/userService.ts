@@ -3,6 +3,7 @@ import { SafeStorage } from './storage';
 import { USER_STORAGE_KEY } from './user/constants';
 import { buildDefaultProfile } from './user/profileFactory';
 import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage';
+import { logger } from './logger';
 
 export const UserService = {
   /**
@@ -17,18 +18,18 @@ export const UserService = {
       const resolvedProfile = validated.profile;
       const isValidImage = validated.isValidImage;
 
-      console.log(`[UserService] Loaded profile:`, { 
+      logger.debug(`Loaded profile`, { 
         uid: resolvedProfile.uid, 
         hasImage: !!resolvedProfile.profileImage, 
         imageLen: resolvedProfile.profileImage?.length 
-      });
+      }, 'UserService');
 
       if (!isValidImage) {
         resolvedProfile.profileImage = '';
       }
       const hydrated = await ensureProfileImageExists(uid, resolvedProfile);
       if (isValidImage && hydrated.profileImage) {
-        console.log('[UserService] Profile has valid image:', hydrated.profileImage);
+        logger.debug('Profile has valid image', hydrated.profileImage, 'UserService');
       }
       return hydrated;
     }
@@ -71,7 +72,7 @@ export const UserService = {
       await SafeStorage.set(USER_STORAGE_KEY, newProfile);
       return newProfile;
     } catch (error) {
-      console.error("Error saving user profile:", error);
+      logger.error('Error saving user profile', error, 'UserService');
       throw error;
     }
   },

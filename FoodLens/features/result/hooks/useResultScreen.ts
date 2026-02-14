@@ -4,11 +4,13 @@ import { useAnalysisData } from '@/hooks/result/useAnalysisData';
 import { useAutoSave } from '@/hooks/result/useAutoSave';
 import { usePinLayout } from '@/hooks/result/usePinLayout';
 import { useResultUI } from '@/hooks/result/useResultUI';
+import { useI18n } from '@/features/i18n';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
-import { useDateUpdateAction, useNewResultHaptic } from './useResultSideEffects';
+import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 
 export function useResultScreen() {
     const params = useLocalSearchParams();
+    const { t } = useI18n();
 
     const {
         isRestoring,
@@ -52,6 +54,13 @@ export function useResultScreen() {
     } = useResultUI();
 
     useNewResultHaptic(!!result);
+    usePhotoLibraryAutoSave({
+        isNew: params['isNew'],
+        imageUri: displayImageUri,
+        isBarcode: !!result?.isBarcode || params['isBarcode'] === 'true',
+        locationData,
+        t,
+    });
 
     const isError = isResultError(result?.foodName);
     const errorInfo = result ? getResultErrorInfo(result.foodName, result.raw_result || '') : null;

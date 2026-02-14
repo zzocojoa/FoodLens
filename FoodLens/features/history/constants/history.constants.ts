@@ -1,3 +1,4 @@
-export const TEST_UID = 'test-user-v1';
-export const HISTORY_TITLE = 'Food Passport';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
 
+export const TEST_UID = CURRENT_USER_ID;
+export const HISTORY_TITLE = 'Food Passport';

@@ -1,11 +1,11 @@
-import { Alert } from 'react-native';
+import { showAlert } from '@/services/ui/uiAlerts';
 
 export const confirmBulkDelete = (
     count: number,
     onConfirm: () => void,
     t: (key: string, fallback?: string) => string
 ) => {
-    Alert.alert(
+    showAlert(
         t('history.alert.deleteItemsTitle', 'Delete Items'),
         t('history.alert.deleteItemsMessageTemplate', 'Are you sure you want to delete {count} items?').replace(
             '{count}',

@@ -1,4 +1,6 @@
-export const TEST_UID = 'test-user-v1';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
+
+export const TEST_UID = CURRENT_USER_ID;
 
 export const ALLERGIES_TITLE = 'My Allergies';
 
@@ -9,4 +11,3 @@ export const ALLERGIES_EMPTY_TITLE = 'All Clear!';
 export const ALLERGIES_EMPTY_DESCRIPTION = '등록된 알레르기 정보가 없습니다.';
 
 export const TRAVELER_CARD_PREVIEW_TITLE = 'Traveler Card Preview';
-

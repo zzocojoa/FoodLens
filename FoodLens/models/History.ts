@@ -9,6 +9,7 @@ export interface RegionItem {
     type: SafetyType;
     timestamp: Date;
     emoji: string;
+    imageUri?: string;
     originalRecord: AnalysisRecord;
 }
 

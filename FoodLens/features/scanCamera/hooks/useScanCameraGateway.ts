@@ -1,28 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Alert } from 'react-native';
 import {
     CameraView,
     CameraType,
     FlashMode,
     useCameraPermissions,
-    BarcodeScanningResult,
 } from 'expo-camera';
 import { useAppNavigation } from '../../../hooks/use-app-navigation';
-import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
 import { analyzeImage, analyzeLabel, analyzeSmart } from '../../../services/ai';
-import { dataStore } from '../../../services/dataStore';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
-import { createFallbackLocation } from '../utils/scanCameraMappers';
-import { resolveGalleryMetadata } from '../utils/galleryMetadata';
 import { useScanCameraLaserAnimation } from './useScanCameraLaserAnimation';
-import { lookupBarcodeWithCache, normalizeBarcodeIngredients } from '../services/scanCameraBarcodeService';
-import { isBarcodeInCenteredRoi, evaluateScanConfidence } from '../utils/barcodeScannerUtils';
 import { runAnalysisFlow } from '../services/scanCameraAnalysisService';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { LocationData } from '@/services/utils/types';
+import { useScanPermissionFlow } from './useScanPermissionFlow';
+import { useScanBarcodeFlow } from './useScanBarcodeFlow';
+import { useScanCaptureFlow } from './useScanCaptureFlow';
+import { useScanGalleryFlow } from './useScanGalleryFlow';
 
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
@@ -44,10 +42,7 @@ export const useScanCameraGateway = () => {
 
     const isCancelled = useRef(false);
     const isProcessingRef = useRef(false);
-    const cachedLocation = useRef<any>(undefined);
-    const processImageRef = useRef<
-        (uri: string, customSourceType?: 'camera' | 'library', customTimestamp?: string | null, customLocation?: any) => Promise<void>
-    >(async () => {});
+    const cachedLocation = useRef<LocationData | null | undefined>(undefined);
 
     const { isConnected } = useNetworkStatus();
     const isConnectedRef = useRef(true);
@@ -105,133 +100,62 @@ export const useScanCameraGateway = () => {
     };
 
     const handleError = useCallback(
-        (error: any) => {
+        (error: unknown) => {
             console.error(error);
             resetState();
 
-            const errorMessage = error?.message?.toLowerCase() || '';
+            const errorMessage =
+                error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
             if (errorMessage.includes('status 5') || errorMessage.includes('status 500')) {
-                Alert.alert(
-                    t('camera.alert.serverErrorTitle', 'Server Error'),
-                    t('scan.alert.serverTemporary', 'A temporary server issue occurred.')
-                );
+                showTranslatedAlert(t, {
+                    titleKey: 'camera.alert.serverErrorTitle',
+                    titleFallback: 'Server Error',
+                    messageKey: 'scan.alert.serverTemporary',
+                    messageFallback: 'A temporary server issue occurred.',
+                });
             } else {
-                Alert.alert(
-                    t('camera.alert.analysisFailedTitle', 'Analysis Failed'),
-                    t('scan.alert.analysisFailed', 'Something went wrong. Please try again.')
-                );
+                showTranslatedAlert(t, {
+                    titleKey: 'camera.alert.analysisFailedTitle',
+                    titleFallback: 'Analysis Failed',
+                    messageKey: 'scan.alert.analysisFailed',
+                    messageFallback: 'Something went wrong. Please try again.',
+                });
             }
         },
         [resetState, t]
     );
 
-    const [consecutiveScans, setConsecutiveScans] = useState(0);
-    const lastScannedData = useRef<string | null>(null);
-
-    const processBarcode = useCallback(
-        async (barcode: string) => {
-            try {
-                setIsAnalyzing(true);
-                setActiveStep(0);
-
-                if (!isConnectedRef.current) {
-                    Alert.alert(
-                        t('camera.alert.offlineTitle', 'Offline'),
-                        t('camera.error.offline', 'Please check your internet connection.')
-                    );
-                    resetState();
-                    return;
-                }
-
-                const result = await lookupBarcodeWithCache(barcode);
-
-                if (result.found && result.data) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    const product = normalizeBarcodeIngredients(result.data);
-
-                    const locationData = cachedLocation.current || createFallbackLocation(0, 0, 'US');
-                    const finalTimestamp = new Date().toISOString();
-
-                    dataStore.setData(
-                        product,
-                        locationData,
-                        (product.raw_data as any)?.image_url || null,
-                        finalTimestamp
-                    );
-
-                    replace({
-                        pathname: '/result',
-                        params: { fromStore: 'true', isNew: 'true', isBarcode: 'true' },
-                    });
-
-                    resetState();
-                } else {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                    setIsAnalyzing(false);
-
-                    Alert.alert(
-                        t('scan.alert.productNotFoundTitle', 'Product Not Found'),
-                        t(
-                            'scan.alert.productNotFoundMessage',
-                            'This barcode is not registered.\nWould you like to analyze the label with a photo?'
-                        ),
-                        [
-                        {
-                            text: t('common.cancel', 'Cancel'),
-                            style: 'cancel',
-                            onPress: () => {
-                                setScanned(false);
-                                isProcessingRef.current = false;
-                                setConsecutiveScans(0);
-                            },
-                        },
-                        {
-                            text: t('scan.alert.takePhoto', 'Take Photo'),
-                            onPress: () => {
-                                setMode('LABEL');
-                                setScanned(false);
-                                isProcessingRef.current = false;
-                                setConsecutiveScans(0);
-                            },
-                        },
-                        ]
-                    );
-                }
-            } catch (e: any) {
-                console.error('Barcode Error:', e);
-                Alert.alert(
-                    t('camera.alert.errorTitle', 'Error'),
-                    t('scan.alert.barcodeLookupFailed', 'There was a problem looking up the barcode.')
-                );
-                resetState();
-            }
-        },
-        [resetState, replace, t]
-    );
-
-    const handleBarcodeScanned = useCallback(
-        (scanningResult: BarcodeScanningResult) => {
-            if (mode !== 'BARCODE' || scanned || isAnalyzing || isProcessingRef.current) return;
-
-            if (!isBarcodeInCenteredRoi(scanningResult, 280)) return;
-
-            const confidence = evaluateScanConfidence({
-                currentData: scanningResult.data,
-                lastData: lastScannedData.current,
-                consecutiveScans,
-                requiredMatches: 3,
+    const runFlow = useCallback(
+        async (params: {
+            uri: string;
+            timestamp?: string | null;
+            customLocation?: LocationData | null;
+            fallbackAddress?: string;
+            needsFileValidation: boolean;
+            analyzer: typeof analyzeImage;
+        }) => {
+            await runAnalysisFlow({
+                uri: params.uri,
+                timestamp: params.timestamp,
+                customLocation: params.customLocation,
+                fallbackAddress: params.fallbackAddress,
+                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
+                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
+                needsFileValidation: params.needsFileValidation,
+                analyzer: params.analyzer,
+                isCancelled,
+                isConnectedRef,
+                cachedLocation,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                replace,
+                resetState,
+                handleError,
             });
-
-            lastScannedData.current = confidence.nextLastData;
-            setConsecutiveScans(confidence.nextCount);
-
-            if (confidence.action === 'accept') {
-                isProcessingRef.current = true;
-                setScanned(true);
-                processBarcode(scanningResult.data);
-            }
         },
-        [isAnalyzing, mode, processBarcode, scanned, consecutiveScans]
+        [handleError, resetState, replace, t]
     );
 
     const processImage = useCallback(
@@ -239,167 +163,86 @@ export const useScanCameraGateway = () => {
             uri: string,
             customSourceType: 'camera' | 'library' = 'camera',
             customTimestamp?: string | null,
-            customLocation?: any
+            customLocation?: LocationData | null
         ) => {
             void customSourceType;
-            await runAnalysisFlow({
+            await runFlow({
                 uri,
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',
-                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
-                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 needsFileValidation: true,
                 analyzer: analyzeImage,
-                isCancelled,
-                isConnectedRef,
-                cachedLocation,
-                setIsAnalyzing,
-                setCapturedImage,
-                setActiveStep,
-                setUploadProgress,
-                replace,
-                resetState,
-                handleError,
             });
         },
-        [handleError, resetState, replace, t]
+        [runFlow]
     );
-
-    useEffect(() => {
-        processImageRef.current = processImage;
-    }, [processImage]);
 
     const processLabel = useCallback(
         async (uri: string, customTimestamp?: string | null) => {
-            await runAnalysisFlow({
+            await runFlow({
                 uri,
                 timestamp: customTimestamp,
                 needsFileValidation: false,
-                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
-                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 analyzer: analyzeLabel,
-                isCancelled,
-                isConnectedRef,
-                cachedLocation,
-                setIsAnalyzing,
-                setCapturedImage,
-                setActiveStep,
-                setUploadProgress,
-                replace,
-                resetState,
-                handleError,
             });
         },
-        [handleError, resetState, replace, t]
+        [runFlow]
     );
 
     const processSmart = useCallback(
         async (
             uri: string,
             customTimestamp?: string | null,
-            customLocation?: any
+            customLocation?: LocationData | null
         ) => {
-            await runAnalysisFlow({
+            await runFlow({
                 uri,
                 timestamp: customTimestamp,
                 customLocation,
                 fallbackAddress: 'Location Unavailable',
-                offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
-                offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 needsFileValidation: true,
                 analyzer: analyzeSmart,
-                isCancelled,
-                isConnectedRef,
-                cachedLocation,
-                setIsAnalyzing,
-                setCapturedImage,
-                setActiveStep,
-                setUploadProgress,
-                replace,
-                resetState,
-                handleError,
             });
         },
-        [handleError, resetState, replace, t]
+        [runFlow]
     );
 
 
 
-    const handleCapture = async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-        if (cameraRef.current) {
-            try {
-                const photo = await cameraRef.current.takePictureAsync({
-                    quality: 0.5,
-                    base64: false,
-                    exif: true,
-                });
-
-                if (photo && photo.uri) {
-                    const exifDate = photo.exif?.DateTimeOriginal || photo.exif?.DateTime || null;
-
-                    if (mode === 'BARCODE') {
-                        Alert.alert(
-                            t('scan.alert.noticeTitle', 'Notice'),
-                            t('scan.alert.aimBarcode', 'Please point the barcode at the camera.')
-                        );
-                    } else if (mode === 'LABEL') {
-                        processLabel(photo.uri, exifDate);
-                    } else {
-                        processImage(photo.uri, 'camera', exifDate);
-                    }
-                }
-            } catch (e) {
-                console.error(e);
-                Alert.alert(
-                    t('camera.alert.errorTitle', 'Error'),
-                    t('scan.alert.captureFailed', 'Failed to capture photo.')
-                );
-            }
-        }
-    };
-
-    const handleGallery = async () => {
-        Haptics.selectionAsync();
-
-        try {
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                quality: 0.8,
-                exif: true,
-            });
-
-            if (!result.canceled && result.assets[0].uri) {
-                const asset = result.assets[0];
-                const uri = asset.uri;
-
-                const { timestamp: finalDate, exifLocation } = await resolveGalleryMetadata(asset);
-
-                if (mode === 'LABEL') {
-                    // Legacy manual mode override (optional, but SmartRouter handles label too)
-                    // Let's decide to force Smart Router for Gallery to be "Smart"
-                    processSmart(uri, finalDate, exifLocation);
-                } else {
-                     processSmart(uri, finalDate, exifLocation);
-                }
-            }
-        } catch (e) {
-            console.error(e);
-            Alert.alert(
-                t('camera.alert.errorTitle', 'Error'),
-                t('scan.alert.galleryOpenFailed', 'Unable to open gallery.')
-            );
-        }
-    };
+    const requestCameraPermission = useScanPermissionFlow({ requestPermission, t });
+    const { handleBarcodeScanned } = useScanBarcodeFlow({
+        mode,
+        scanned,
+        isAnalyzing,
+        isConnectedRef,
+        isProcessingRef,
+        cachedLocation,
+        resetState,
+        replace,
+        setScanned,
+        setIsAnalyzing,
+        setActiveStep,
+        setMode,
+        t,
+    });
+    const handleCapture = useScanCaptureFlow({
+        cameraRef,
+        mode,
+        processImage,
+        processLabel,
+        t,
+    });
+    const handleGallery = useScanGalleryFlow({
+        processSmart,
+        t,
+    });
 
     return {
         cameraRef,
         isFocused,
         permission,
-        requestPermission,
+        requestPermission: requestCameraPermission,
         mode,
         setMode,
         facing,

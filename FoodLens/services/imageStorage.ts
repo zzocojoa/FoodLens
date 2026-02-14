@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { getStoredAnalyses } from './analysis/storage';
 import {
   buildManagedImageUri,
   createManagedFilename,
@@ -28,6 +29,20 @@ const ensureDir = async (): Promise<void> => {
 };
 
 const LOG_PREFIX = '[ImageStorage]';
+const MIN_REQUIRED_SPACE = 50 * 1024 * 1024; // 50MB
+
+/**
+ * Check if there is enough disk space for saving a new image.
+ */
+export const hasSufficientSpace = async (): Promise<boolean> => {
+    try {
+        const freeSpace = await FileSystem.getFreeDiskStorageAsync();
+        return freeSpace > MIN_REQUIRED_SPACE;
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} Failed to check free disk storage:`, error);
+        return true; // Fallback to true to avoid blocking usage if check fails
+    }
+};
 
 /**
  * Save an image permanently by copying from cache/temp to Documents.
@@ -45,6 +60,13 @@ export const saveImagePermanently = async (cacheUri: string): Promise<string | n
     }
 
     try {
+        // Professional check: Ensure sufficient space
+        const spaceOk = await hasSufficientSpace();
+        if (!spaceOk) {
+            console.error(`${LOG_PREFIX} Insufficient disk space to save image.`);
+            return null;
+        }
+
         await ensureDir();
 
         // Generate a unique filename
@@ -57,6 +79,55 @@ export const saveImagePermanently = async (cacheUri: string): Promise<string | n
     } catch (error) {
         console.error(`${LOG_PREFIX} Failed to copy image:`, error);
         return null;
+    }
+};
+
+/**
+ * Save image permanently and throw when persistence fails.
+ */
+export const saveImagePermanentlyOrThrow = async (
+    cacheUri: string,
+    errorMessage: string
+): Promise<string> => {
+    const savedFilename = await saveImagePermanently(cacheUri);
+    if (!savedFilename) {
+        throw new Error(errorMessage);
+    }
+    return savedFilename;
+};
+
+/**
+ * Clean up images that are no longer referenced in the history.
+ */
+export const cleanupOrphanedImages = async (): Promise<void> => {
+    try {
+        const dir = getManagedImageDirectory();
+        const dirInfo = await FileSystem.getInfoAsync(dir);
+        if (!dirInfo.exists) return;
+
+        const files = await FileSystem.readDirectoryAsync(dir);
+        const analyses = await getStoredAnalyses();
+        
+        // Extract all referenced filenames from history
+        const referencedFiles = new Set(
+            analyses
+                .map(a => a.imageUri)
+                .filter(uri => uri && !isLegacyAbsoluteUri(uri))
+        );
+
+        let count = 0;
+        for (const file of files) {
+            if (!referencedFiles.has(file)) {
+                await FileSystem.deleteAsync(`${dir}${file}`, { idempotent: true });
+                count++;
+            }
+        }
+
+        if (count > 0) {
+            console.log(`${LOG_PREFIX} Cleaned up ${count} orphaned images.`);
+        }
+    } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to cleanup orphaned images:`, error);
     }
 };
 

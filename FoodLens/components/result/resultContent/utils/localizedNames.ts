@@ -1,33 +1,40 @@
 import { ResultContentData, ResultIngredient } from '../types';
-
-const isKoreanLocale = (locale?: string) => (locale || '').toLowerCase().startsWith('ko');
+import { resolveLocalizedOptionalText, resolveLocalizedText } from '@/services/i18n/nameResolver';
 
 export const resolveLocalizedFoodName = (
   result: ResultContentData,
   locale?: string
 ): string => {
-  if (isKoreanLocale(locale)) {
-    return result.foodName_ko || result.foodName_en || result.foodName;
-  }
-  return result.foodName_en || result.foodName || result.foodName_ko || 'Analyzed Food';
+  return resolveLocalizedText({
+    locale,
+    ko: result.foodName_ko,
+    en: result.foodName_en,
+    fallback: result.foodName,
+    defaultValue: 'Analyzed Food',
+  });
 };
 
 export const resolveLocalizedIngredientName = (
   ingredient: ResultIngredient,
   locale?: string
 ): string => {
-  if (isKoreanLocale(locale)) {
-    return ingredient.name_ko || ingredient.name_en || ingredient.name;
-  }
-  return ingredient.name_en || ingredient.name || ingredient.name_ko || 'Unknown';
+  return resolveLocalizedText({
+    locale,
+    ko: ingredient.name_ko,
+    en: ingredient.name_en,
+    fallback: ingredient.name,
+    defaultValue: 'Unknown',
+  });
 };
 
 export const resolveLocalizedSummary = (
   result: ResultContentData,
   locale?: string
 ): string | undefined => {
-  if (isKoreanLocale(locale)) {
-    return result.raw_result_ko || result.raw_result_en || result.raw_result;
-  }
-  return result.raw_result_en || result.raw_result || result.raw_result_ko;
+  return resolveLocalizedOptionalText({
+    locale,
+    ko: result.raw_result_ko,
+    en: result.raw_result_en,
+    fallback: result.raw_result,
+  });
 };

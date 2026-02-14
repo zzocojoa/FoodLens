@@ -3,6 +3,7 @@ import { deleteImage } from './imageStorage';
 import { generateId, resolveRecordTimestamp } from './analysis/helpers';
 import { getStoredAnalyses, saveAnalyses } from './analysis/storage';
 import { AnalysisRecord } from './analysis/types';
+import { logger } from './logger';
 
 export type { AnalysisRecord } from './analysis/types';
 
@@ -37,10 +38,10 @@ export const AnalysisService = {
             // If the user wants a timeline view later, we can sort.
             
             await saveAnalyses(analyses);
-            console.log('Analysis saved successfully with date:', finalDate.toISOString());
+            logger.info('Analysis saved successfully with date', finalDate.toISOString(), 'AnalysisService');
             return newRecord;
         } catch (error) {
-            console.error('Error saving analysis:', error);
+            logger.error('Error saving analysis', error, 'AnalysisService');
             throw error;
         }
     },
@@ -53,7 +54,7 @@ export const AnalysisService = {
             const analyses = await getStoredAnalyses();
             return analyses.slice(0, limitCount);
         } catch (error) {
-            console.error('Error fetching recent analyses:', error);
+            logger.error('Error fetching recent analyses', error, 'AnalysisService');
             return [];
         }
     },
@@ -65,7 +66,7 @@ export const AnalysisService = {
         try {
             return await getStoredAnalyses();
         } catch (error) {
-            console.error('Error fetching all analyses:', error);
+            logger.error('Error fetching all analyses', error, 'AnalysisService');
             return [];
         }
     },
@@ -95,10 +96,14 @@ export const AnalysisService = {
             
             if (filtered.length !== analyses.length) {
                 await saveAnalyses(filtered);
-                console.log(`[DELETE] Batch Success: ${analysisIds.length} items requested, ${analyses.length - filtered.length} deleted`);
+                logger.info(
+                  `[DELETE] Batch Success: ${analysisIds.length} items requested, ${analyses.length - filtered.length} deleted`,
+                  undefined,
+                  'AnalysisService'
+                );
             }
         } catch (error) {
-            console.error('Error deleting analyses:', error);
+            logger.error('Error deleting analyses', error, 'AnalysisService');
             throw error;
         }
     },
@@ -115,12 +120,16 @@ export const AnalysisService = {
                 analyses[index].timestamp = newTimestamp;
                 // Optional: Re-sort if strictly chronological
                 await saveAnalyses(analyses);
-                console.log(`[UPDATE] Updated timestamp for ${analysisId} to ${newTimestamp.toISOString()}`);
+                logger.info(
+                  `[UPDATE] Updated timestamp for ${analysisId} to ${newTimestamp.toISOString()}`,
+                  undefined,
+                  'AnalysisService'
+                );
                 return true;
             }
             return false;
         } catch (error) {
-            console.error('Error updating analysis timestamp:', error);
+            logger.error('Error updating analysis timestamp', error, 'AnalysisService');
             return false;
         }
     }

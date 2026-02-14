@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
 import { PermissionResponse } from 'expo-image-picker';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type UseCameraPermissionEffectsParams = {
   permission: PermissionResponse | null;
@@ -29,10 +29,12 @@ export const useCameraPermissionEffects = ({
   useEffect(() => {
     if (permission?.granted && !externalImageUri) {
       const timer = setTimeout(() => {
-        Alert.alert(
-          t('camera.alert.errorTitle', 'Error'),
-          messages.missingImage
-        );
+        showTranslatedAlert(t, {
+          titleKey: 'camera.alert.errorTitle',
+          titleFallback: 'Error',
+          messageKey: 'camera.error.missingImage',
+          messageFallback: messages.missingImage,
+        });
         onExit();
       }, 500);
       return () => clearTimeout(timer);

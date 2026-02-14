@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, InteractionManager } from 'react-native';
+import { InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
@@ -9,8 +9,10 @@ import { HomeModalType } from '../types/home.types';
 import { filterScansByDate } from '../utils/homeDashboard';
 import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
 
-const TEST_UID = 'test-user-v1';
+const TEST_UID = CURRENT_USER_ID;
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
@@ -84,10 +86,12 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       } catch (error) {
         console.error('Home delete failed:', error);
         setRecentScans(previousScans);
-        Alert.alert(
-          t('home.alert.errorTitle', 'Error'),
-          t('home.alert.deleteFailedRestore', 'Failed to delete item. Restoring data.')
-        );
+        showTranslatedAlert(t, {
+          titleKey: 'home.alert.errorTitle',
+          titleFallback: 'Error',
+          messageKey: 'home.alert.deleteFailedRestore',
+          messageFallback: 'Failed to delete item. Restoring data.',
+        });
       }
     },
     [loadDashboardData, recentScans, t],

@@ -10,10 +10,10 @@ export type ResultTranslationCard = {
 };
 
 export type ResultLocationData = {
-    formattedAddress?: string;
-    city?: string;
-    country?: string;
-    isoCountryCode?: string;
+    formattedAddress?: string | null;
+    city?: string | null;
+    country?: string | null;
+    isoCountryCode?: string | null;
 } | null;
 
 export type ResultIngredient = {

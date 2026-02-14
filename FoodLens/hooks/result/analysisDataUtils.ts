@@ -1,23 +1,26 @@
 import { Image } from 'react-native';
 import { resolveImageUri } from '../../services/imageStorage';
+import type { ImageSourcePropType } from 'react-native';
+import type { AnalyzedData } from '@/services/ai';
 
-type AnyObject = any;
+type ResultLike = (AnalyzedData & { raw_data?: Record<string, unknown> }) | null | undefined;
+const EMPTY_IMAGE_RESOLUTION = {
+  imageSource: null,
+  imageDimensions: null,
+};
 
-export const isBarcodeResult = (result: AnyObject, isBarcodeParam: string | string[] | undefined) =>
+export const isBarcodeResult = (result: ResultLike, isBarcodeParam: string | string[] | undefined) =>
   result?.isBarcode === true ||
-  result?.raw_data?.isBarcode === true ||
+  result?.raw_data?.['isBarcode'] === true ||
   isBarcodeParam === 'true';
 
 export const getBarcodeImageSource = () => {
-  return {
-    imageSource: null,
-    imageDimensions: null,
-  };
+  return EMPTY_IMAGE_RESOLUTION;
 };
 
 export const getResolvedImageSource = (storedImageRef: string | null | undefined) => {
   if (!storedImageRef) {
-    return { imageSource: null, imageDimensions: null };
+    return EMPTY_IMAGE_RESOLUTION;
   }
   const resolvedUri = resolveImageUri(storedImageRef);
   return {
@@ -31,9 +34,13 @@ export const parseSearchParamObject = (value: string | string[] | undefined) => 
   return JSON.parse(value);
 };
 
-export const toDisplayImageUri = (imageSource: any): string | undefined => {
+export const toDisplayImageUri = (imageSource: ImageSourcePropType | null): string | undefined => {
   if (typeof imageSource === 'number' && imageSource) {
     return Image.resolveAssetSource(imageSource).uri;
   }
-  return imageSource?.uri;
+  if (imageSource && typeof imageSource === 'object' && 'uri' in imageSource) {
+    const uri = imageSource.uri;
+    return typeof uri === 'string' ? uri : undefined;
+  }
+  return undefined;
 };

@@ -1,6 +1,7 @@
 import { AllergenOption } from '../types/profile.types';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
 
-export const TEST_UID = 'test-user-v1';
+export const TEST_UID = CURRENT_USER_ID;
 export const TEST_EMAIL = 'test@example.com';
 
 const ALLERGEN_IMAGES = {

@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import { AnalysisService } from '@/services/analysisService';
 import { UserService } from '@/services/userService';
 import { buildLocationLabel } from '../utils/tripStatsCalculations';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 type Coordinates = { latitude: number; longitude: number };
 
@@ -16,8 +17,8 @@ export const tripStatsService = {
   },
 
   async resolveCurrentLocation() {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
+    const permission = await ensureForegroundLocationPermission();
+    if (!permission.granted) {
       return { ok: false as const, reason: 'permission_denied' as const };
     }
 

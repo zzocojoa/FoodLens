@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
-import { isFileError, isRetryableServerError } from '../utils/cameraMappers';
 import { runCameraImageAnalysis } from '../services/cameraAnalysisService';
 import { useCameraPermissionEffects } from './useCameraPermissionEffects';
 import { useCameraGatewayInitialization } from './useCameraGatewayInitialization';
 import { useI18n } from '@/features/i18n';
+import { useCameraGatewayErrorHandler } from './useCameraGatewayErrorHandler';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -63,42 +62,13 @@ export const useCameraGateway = ({
         onExit();
     }, [onExit, resetState]);
 
-    const handleError = useCallback(
-        (error: any, uri: string) => {
-            console.error(error);
-            resetState();
-
-            const errorMessage = error?.message?.toLowerCase() || '';
-
-            if (isRetryableServerError(errorMessage)) {
-                Alert.alert(
-                    t('camera.alert.serverErrorTitle', 'Server Error'),
-                    t('camera.alert.serverRetryMessage', 'A temporary server issue occurred.\nWould you like to try again?'),
-                    [
-                    { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => onExit() },
-                    {
-                        text: t('common.retry', 'Retry'),
-                        onPress: () => {
-                            if (uri) {
-                                processImageRef.current(uri);
-                            }
-                        },
-                    },
-                    ]
-                );
-                return;
-            }
-
-            if (isFileError(errorMessage)) {
-                Alert.alert(t('camera.alert.fileErrorTitle', 'File Error'), messages.file);
-            } else {
-                Alert.alert(t('camera.alert.analysisFailedTitle', 'Analysis Failed'), messages.analysis);
-            }
-
-            onExit();
-        },
-        [onExit, resetState]
-    );
+    const handleError = useCameraGatewayErrorHandler({
+        t,
+        messages,
+        onExit,
+        resetState,
+        processImageRef,
+    });
 
     const processImage = useCallback(
         async (uri: string) => {
@@ -119,7 +89,7 @@ export const useCameraGateway = ({
                     offlineAlertTitle: t('camera.alert.offlineTitle', 'Offline'),
                     offlineAlertMessage: messages.offline,
                 });
-            } catch (error: any) {
+            } catch (error) {
                 if (isCancelled.current) return;
                 handleError(error, uri);
             }

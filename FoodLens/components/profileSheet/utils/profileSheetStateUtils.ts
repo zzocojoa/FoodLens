@@ -1,22 +1,30 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { Alert } from 'react-native';
-import { saveImagePermanently } from '@/services/imageStorage';
+import { saveImagePermanentlyOrThrow } from '@/services/imageStorage';
+import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
+
+type CameraPermissionDialogTexts = {
+  title: string;
+  message: string;
+  cancelLabel: string;
+  settingsLabel: string;
+};
 
 export const persistProfileImageIfNeeded = async (image: string): Promise<string> => {
   if (!image.startsWith('file://')) return image;
-  const filename = await saveImagePermanently(image);
-  if (!filename) throw new Error('이미지 저장에 실패했습니다.');
-  return filename;
+  return saveImagePermanentlyOrThrow(image, '이미지 저장에 실패했습니다.');
 };
 
-export const pickProfileImageUri = async (useCamera: boolean): Promise<string | null> => {
+export const pickProfileImageUri = async (
+  useCamera: boolean,
+  cameraPermissionDialogTexts: CameraPermissionDialogTexts
+): Promise<string | null> => {
   let result: ImagePicker.ImagePickerResult;
 
   if (useCamera) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission Needed', 'Camera access is required.');
+      showOpenSettingsAlert(cameraPermissionDialogTexts);
       return null;
     }
     result = await ImagePicker.launchCameraAsync({

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { UserService } from '@/services/userService';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
 
-const TEST_UID = 'test-user-v1';
+const TEST_UID = CURRENT_USER_ID;
 
 export const useTravelerCardTargetLanguage = () => {
   const [targetLanguage, setTargetLanguage] = useState<string | undefined>(undefined);

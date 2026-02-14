@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { TEST_UID } from '../constants/tripStats.constants';
 import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
 import { useTripStartToast } from './useTripStartToast';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 export function useTripStatsScreen(insetsTop: number) {
     const { t } = useI18n();
@@ -43,13 +43,12 @@ export function useTripStatsScreen(insetsTop: number) {
         try {
             const result = await startTripFromCurrentLocation(TEST_UID);
             if (!result.ok) {
-                Alert.alert(
-                    t('tripStats.alert.permissionDeniedTitle', 'Permission Denied'),
-                    t(
-                        'tripStats.alert.permissionDeniedMessage',
-                        'Location access is needed to tag your trip. Please enable it in settings.'
-                    )
-                );
+                showTranslatedAlert(t, {
+                    titleKey: 'tripStats.alert.permissionDeniedTitle',
+                    titleFallback: 'Permission Denied',
+                    messageKey: 'tripStats.alert.permissionDeniedMessage',
+                    messageFallback: 'Location access is needed to tag your trip. Please enable it in settings.',
+                });
                 setIsLocating(false);
                 return;
             }
@@ -60,10 +59,12 @@ export function useTripStatsScreen(insetsTop: number) {
             triggerToast();
         } catch (e) {
             console.error(e);
-            Alert.alert(
-                t('camera.alert.errorTitle', 'Error'),
-                t('tripStats.alert.failedToGetLocation', 'Failed to get location. Please try again.')
-            );
+            showTranslatedAlert(t, {
+                titleKey: 'camera.alert.errorTitle',
+                titleFallback: 'Error',
+                messageKey: 'tripStats.alert.failedToGetLocation',
+                messageFallback: 'Failed to get location. Please try again.',
+            });
         } finally {
             setIsLocating(false);
         }

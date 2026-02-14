@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { UseProfileScreenResult } from '../types/profile.types';
 import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
@@ -55,15 +56,19 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setLoading(true);
         try {
             await saveTestUserProfile(allergies, otherRestrictions);
-            Alert.alert(
-                t('profile.alert.updatedTitle', 'Updated'),
-                t('profile.alert.updatedMessage', 'Your profile and preferences have been saved.')
-            );
+            showTranslatedAlert(t, {
+                titleKey: 'profile.alert.updatedTitle',
+                titleFallback: 'Updated',
+                messageKey: 'profile.alert.updatedMessage',
+                messageFallback: 'Your profile and preferences have been saved.',
+            });
         } catch {
-            Alert.alert(
-                t('profile.alert.errorTitle', 'Error'),
-                t('profile.alert.saveFailed', 'Failed to save.')
-            );
+            showTranslatedAlert(t, {
+                titleKey: 'profile.alert.errorTitle',
+                titleFallback: 'Error',
+                messageKey: 'profile.alert.saveFailed',
+                messageFallback: 'Failed to save.',
+            });
         } finally {
             setLoading(false);
         }

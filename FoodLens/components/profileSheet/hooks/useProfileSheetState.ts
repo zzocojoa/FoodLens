@@ -1,13 +1,15 @@
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
 import { DEFAULT_AVATARS } from '@/models/User';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
 import { CanonicalLocale } from '@/features/i18n';
+import { useI18n } from '@/features/i18n';
 import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 export const useProfileSheetState = (userId: string) => {
+    const { t } = useI18n();
     const [name, setName] = useState(DEFAULT_NAME);
     const [image, setImage] = useState(DEFAULT_IMAGE);
     const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(undefined);
@@ -41,22 +43,40 @@ export const useProfileSheetState = (userId: string) => {
                 onClose();
             } catch (error) {
                 console.error("Profile update failed:", error);
-                Alert.alert('오류', '프로필 업데이트에 실패했습니다.');
+                showTranslatedAlert(t, {
+                    titleKey: 'profile.alert.errorTitle',
+                    titleFallback: 'Error',
+                    messageKey: 'profile.alert.saveFailed',
+                    messageFallback: 'Failed to save.',
+                });
             } finally {
                 setLoading(false);
             }
         },
-        [image, travelerLanguage, name, uiLanguage, userId]
+        [image, travelerLanguage, name, uiLanguage, userId, t]
     );
 
     const pickImage = useCallback(async (useCamera: boolean) => {
         try {
-            const uri = await pickProfileImageUri(useCamera);
+            const uri = await pickProfileImageUri(useCamera, {
+                title: t('profile.permission.cameraRequiredTitle', 'Camera Permission Required'),
+                message: t(
+                    'profile.permission.cameraRequiredMessage',
+                    'Camera access is required to take a profile photo.'
+                ),
+                cancelLabel: t('common.cancel', 'Cancel'),
+                settingsLabel: t('scan.permission.openSettings', 'Open Settings'),
+            });
             if (uri) setImage(uri);
         } catch {
-            Alert.alert('Error', 'Failed to pick image');
+            showTranslatedAlert(t, {
+                titleKey: 'profile.alert.errorTitle',
+                titleFallback: 'Error',
+                messageKey: 'profile.alert.imagePickFailed',
+                messageFallback: 'Failed to pick image.',
+            });
         }
-    }, []);
+    }, [t]);
 
     return {
         name,

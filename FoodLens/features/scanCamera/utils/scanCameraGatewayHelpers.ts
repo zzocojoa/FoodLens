@@ -2,25 +2,26 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Href } from 'expo-router';
 
 import { AnalyzedData } from '../../../services/ai';
-import { saveImagePermanently } from '../../../services/imageStorage';
+import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage';
 import { dataStore } from '../../../services/dataStore';
 import { normalizeTimestamp } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
 import { createFallbackLocation } from './scanCameraMappers';
+import { buildResultRoute } from '@/features/result/services/resultNavigationService';
 
 type LocationLike = {
     isoCountryCode?: string;
 } | null;
 
 type RouterLike = {
-    replace: (route: any) => void;
+    replace: (route: Href) => void;
 };
 
 type BeginParams = {
     uri: string;
     setIsAnalyzing: (value: boolean) => void;
     setCapturedImage: (value: string) => void;
-    setActiveStep: (value: number) => void;
+    setActiveStep: (value: number | undefined) => void;
 };
 
 export const beginAnalysis = ({ uri, setIsAnalyzing, setCapturedImage, setActiveStep }: BeginParams) => {
@@ -77,12 +78,12 @@ export const persistAndNavigateAnalysisResult = async ({
     const locationContext =
         locationData || createFallbackLocation(0, 0, isoCode, fallbackAddress ?? 'Location Unavailable');
     const finalTimestamp = normalizeTimestamp(timestamp);
-    const savedFilename = await saveImagePermanently(imageUri);
+    const savedFilename = await saveImagePermanentlyOrThrow(
+        imageUri,
+        'STORAGE_ERROR: Failed to save image permanently. Check disk space.'
+    );
 
-    dataStore.setData(analysisResult, locationContext, savedFilename || imageUri, finalTimestamp);
+    dataStore.setData(analysisResult, locationContext, savedFilename, finalTimestamp);
 
-    router.replace({
-        pathname: '/result',
-        params: { fromStore: 'true', isNew: 'true' },
-    });
+    router.replace(buildResultRoute({ isNew: true }));
 };

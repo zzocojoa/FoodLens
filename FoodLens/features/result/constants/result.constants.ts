@@ -1,6 +1,7 @@
 import { Dimensions } from 'react-native';
+import { CURRENT_USER_ID } from '@/services/auth/currentUser';
 
 const { height } = Dimensions.get('window');
 
 export const HEADER_HEIGHT = height * 0.6;
-export const TEST_UID = 'test-user-v1';
+export const TEST_UID = CURRENT_USER_ID;
