@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "Scaffold-only label regression manifest. Replace scaffold paths with real samples incrementally.",
+  "samples": [
+    { "id": "label_sample_001", "image_path": "scaffold/label_sample_001.jpg", "status": "scaffold" },
+    { "id": "label_sample_002", "image_path": "scaffold/label_sample_002.jpg", "status": "scaffold" },
+    { "id": "label_sample_003", "image_path": "scaffold/label_sample_003.jpg", "status": "scaffold" },
+    { "id": "label_sample_004", "image_path": "scaffold/label_sample_004.jpg", "status": "scaffold" },
+    { "id": "label_sample_005", "image_path": "scaffold/label_sample_005.jpg", "status": "scaffold" },
+    { "id": "label_sample_006", "image_path": "scaffold/label_sample_006.jpg", "status": "scaffold" },
+    { "id": "label_sample_007", "image_path": "scaffold/label_sample_007.jpg", "status": "scaffold" },
+    { "id": "label_sample_008", "image_path": "scaffold/label_sample_008.jpg", "status": "scaffold" },
+    { "id": "label_sample_009", "image_path": "scaffold/label_sample_009.jpg", "status": "scaffold" },
+    { "id": "label_sample_010", "image_path": "scaffold/label_sample_010.jpg", "status": "scaffold" },
+    { "id": "label_sample_011", "image_path": "scaffold/label_sample_011.jpg", "status": "scaffold" },
+    { "id": "label_sample_012", "image_path": "scaffold/label_sample_012.jpg", "status": "scaffold" },
+    { "id": "label_sample_013", "image_path": "scaffold/label_sample_013.jpg", "status": "scaffold" },
+    { "id": "label_sample_014", "image_path": "scaffold/label_sample_014.jpg", "status": "scaffold" },
+    { "id": "label_sample_015", "image_path": "scaffold/label_sample_015.jpg", "status": "scaffold" },
+    { "id": "label_sample_016", "image_path": "scaffold/label_sample_016.jpg", "status": "scaffold" },
+    { "id": "label_sample_017", "image_path": "scaffold/label_sample_017.jpg", "status": "scaffold" },
+    { "id": "label_sample_018", "image_path": "scaffold/label_sample_018.jpg", "status": "scaffold" },
+    { "id": "label_sample_019", "image_path": "scaffold/label_sample_019.jpg", "status": "scaffold" },
+    { "id": "label_sample_020", "image_path": "scaffold/label_sample_020.jpg", "status": "scaffold" }
+  ]
+}

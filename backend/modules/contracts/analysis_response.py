@@ -49,4 +49,6 @@ class AnalysisResponseContract(BaseModel):
     raw_result: Optional[str] = None
     raw_result_en: Optional[str] = None
     raw_result_ko: Optional[str] = None
+    request_id: Optional[str] = None
+    prompt_version: Optional[str] = None
     used_model: Optional[str] = None

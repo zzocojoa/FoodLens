@@ -122,6 +122,7 @@ async def analyze_food(
 
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
+    request: Request,
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
     iso_country_code: str = Form("US"),
@@ -130,11 +131,20 @@ async def analyze_label(
     """
     Perform OCR nutrition analysis on a label image.
     """
+    request_id = request.headers.get("X-Request-Id") or os.urandom(4).hex()
+    total_started_at = time.perf_counter()
+
     async def _operation():
         analyst = _service("analyst")
-        logger.info("[Server] Label analysis request received.")
+        logger.info(
+            "[Server] Label analysis request received request_id=%s locale=%s",
+            request_id,
+            locale,
+        )
+        preprocess_started_at = time.perf_counter()
         contents = await file.read()
         image = await run_in_threadpool(decode_upload_to_image, contents)
+        preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
         result = await run_in_threadpool(
@@ -144,7 +154,22 @@ async def analyze_label(
             prompt_country_code,
             locale,
         )
-        logger.info("[Server] Label analysis completed. used_model=%s", result.get("used_model"))
+        label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
+        extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
+        assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        result["request_id"] = request_id
+
+        logger.info(
+            "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            result.get("prompt_version"),
+            result.get("used_model"),
+            preprocess_elapsed_ms,
+            extract_elapsed_ms,
+            assess_elapsed_ms,
+            total_elapsed_ms,
+        )
         return result
 
     return await run_with_error_policy(

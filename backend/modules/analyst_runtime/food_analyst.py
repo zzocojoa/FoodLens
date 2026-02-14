@@ -1,6 +1,7 @@
 import os
 import atexit
 import threading
+import time
 import vertexai
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
@@ -12,6 +13,7 @@ from backend.modules.analyst_core.allergen_utils import (
 )
 from backend.modules.analyst_core.postprocess import enrich_with_nutrition
 from backend.modules.analyst_core.prompts import (
+    LABEL_PROMPT_VERSION,
     build_analysis_prompt,
     build_barcode_ingredients_prompt,
     build_label_prompt,
@@ -224,6 +226,7 @@ class FoodAnalyst:
 
             # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
             model = GenerativeModel(self.label_model_name)
+            extract_started_at = time.perf_counter()
             response = generate_with_semaphore(
                 model=model,
                 contents=[prompt, vertex_image],
@@ -231,17 +234,30 @@ class FoodAnalyst:
                 safety_settings=safety_settings,
                 semaphore=FoodAnalyst._request_semaphore,
             )
+            extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             
             result = self._parse_ai_response(response.text)
             result = self._sanitize_response(result)
             result["used_model"] = self.label_model_name
+            result["prompt_version"] = LABEL_PROMPT_VERSION
+            result["_label_timings"] = {
+                "extract_ms": extract_elapsed_ms,
+                "assess_ms": 0,  # Label v1 currently performs extraction only.
+            }
             
             return result
             
         except Exception as e:
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
-            return self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
+            fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
+            fallback["used_model"] = self.label_model_name
+            fallback["prompt_version"] = LABEL_PROMPT_VERSION
+            fallback["_label_timings"] = {
+                "extract_ms": 0,
+                "assess_ms": 0,
+            }
+            return fallback
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
         """

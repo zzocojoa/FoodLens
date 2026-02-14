@@ -1,6 +1,8 @@
 """Prompt builders for analyst workflows."""
 from typing import Final
 
+LABEL_PROMPT_VERSION: Final[str] = "label-v1.1-locale-country"
+
 ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
         # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]
 
