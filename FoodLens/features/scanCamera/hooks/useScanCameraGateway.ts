@@ -239,9 +239,7 @@ export const useScanCameraGateway = () => {
         t,
     });
     const handleGallery = useScanGalleryFlow({
-        mode,
         processSmart,
-        processLabel,
         t,
     });
 

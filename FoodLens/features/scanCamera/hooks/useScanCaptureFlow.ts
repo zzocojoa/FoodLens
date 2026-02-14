@@ -48,6 +48,7 @@ export const useScanCaptureFlow = ({
       const exifDate = photo.exif?.DateTimeOriginal || photo.exif?.DateTime || null;
 
       if (mode === 'BARCODE') {
+        console.log('[ScanCapture] route:BARCODE');
         showTranslatedAlert(t, {
           titleKey: 'scan.alert.noticeTitle',
           titleFallback: 'Notice',
@@ -58,10 +59,12 @@ export const useScanCaptureFlow = ({
       }
 
       if (mode === 'LABEL') {
+        console.log('[ScanCapture] route:LABEL -> analyzeLabel');
         await processLabel(photo.uri, exifDate);
         return;
       }
 
+      console.log('[ScanCapture] route:FOOD -> analyzeImage');
       await processImage(photo.uri, 'camera', exifDate);
     } catch {
       showTranslatedAlert(t, {

@@ -31,6 +31,7 @@ export const useScanGalleryFlow = ({ processSmart, t }: UseScanGalleryFlowParams
       if (result.canceled || !result.assets[0]?.uri) return;
       const asset = result.assets[0];
       const { timestamp: finalDate, exifLocation } = await resolveGalleryMetadata(asset);
+      // Gallery input keeps Auto-first policy: backend decides FOOD vs LABEL route.
       await processSmart(asset.uri, finalDate, exifLocation);
     } catch {
       showTranslatedAlert(t, {
