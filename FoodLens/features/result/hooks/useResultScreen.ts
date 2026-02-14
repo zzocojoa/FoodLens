@@ -3,14 +3,45 @@ import { useLocalSearchParams } from 'expo-router';
 import { Dimensions } from 'react-native';
 import { useAnalysisData } from '@/hooks/result/useAnalysisData';
 import { useAutoSave } from '@/hooks/result/useAutoSave';
-import { usePinLayout } from '@/hooks/result/usePinLayout';
+import { useImageSize } from '@/hooks/result/useImageSize';
 import { useResultUI } from '@/hooks/result/useResultUI';
 import { useI18n } from '@/features/i18n';
 import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
+import { HEADER_HEIGHT } from '../constants/result.constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CONTENT_OVERLAY_OFFSET = 160;
+
+const computeResultImageLayoutStyle = (
+    imageSize: { width: number; height: number } | null,
+    containerWidth: number,
+    containerHeight: number
+) => {
+    if (!imageSize || imageSize.width <= 0 || imageSize.height <= 0) return undefined;
+
+    const imageRatio = imageSize.width / imageSize.height;
+    const containerRatio = containerWidth / containerHeight;
+
+    if (imageRatio > containerRatio) {
+        const renderedHeight = containerWidth / imageRatio;
+        return {
+            width: '100%' as const,
+            height: renderedHeight,
+            marginTop: 0,
+            marginLeft: 0,
+        };
+    }
+
+    const renderedWidth = Math.min(containerWidth, containerHeight * imageRatio);
+    return {
+        width: renderedWidth,
+        height: containerHeight,
+        marginTop: 0,
+        marginLeft: (containerWidth - renderedWidth) / 2,
+    };
+};
 
 export function useResultScreen() {
     const params = useLocalSearchParams<ResultSearchParams>();
@@ -41,15 +72,17 @@ export function useResultScreen() {
         setIsDateEditOpen(false);
     });
 
-    const { pins, layoutStyle, imageSize } = usePinLayout(
-        result?.ingredients, 
-        displayImageUri, 
-        !(result?.isBarcode || routeFlags.isBarcodeParam), // Hide pins if barcode
-        imageDimensions
-    );
+    const imageSize = useImageSize(displayImageUri, imageDimensions, true);
+    const baseLayoutStyle = React.useMemo(() => {
+        const effectiveHeight =
+            result?.isBarcode || routeFlags.isBarcodeParam
+                ? HEADER_HEIGHT - CONTENT_OVERLAY_OFFSET
+                : HEADER_HEIGHT;
+        return computeResultImageLayoutStyle(imageSize, SCREEN_WIDTH, effectiveHeight);
+    }, [imageSize, result?.isBarcode, routeFlags.isBarcodeParam]);
 
     const adjustedLayoutStyle = React.useMemo(() => {
-        if (!layoutStyle) return layoutStyle;
+        if (!baseLayoutStyle) return baseLayoutStyle;
 
         const isCameraLandscapePhoto =
             routeFlags.sourceType === 'camera' &&
@@ -58,19 +91,19 @@ export function useResultScreen() {
             !!imageSize &&
             imageSize.width > imageSize.height;
 
-        if (!isCameraLandscapePhoto) return layoutStyle;
+        if (!isCameraLandscapePhoto) return baseLayoutStyle;
 
         const imageRatio = imageSize.width / imageSize.height;
         const computedHeight = SCREEN_WIDTH / (imageRatio) * 1.5;
 
         return {
-            ...layoutStyle,
+            ...baseLayoutStyle,
             height: computedHeight,
-            width: layoutStyle.width,
+            width: baseLayoutStyle.width,
             marginLeft: 0,
             marginTop: 55,
         };
-    }, [imageSize, layoutStyle, result?.isBarcode, routeFlags.isBarcodeParam, routeFlags.sourceType]);
+    }, [baseLayoutStyle, imageSize, result?.isBarcode, routeFlags.isBarcodeParam, routeFlags.sourceType]);
 
     const {
         scrollY,
@@ -108,9 +141,7 @@ export function useResultScreen() {
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
-        pins,
         layoutStyle: adjustedLayoutStyle,
-        scrollY,
         scrollHandler,
         imageAnimatedStyle,
         headerOverlayStyle,

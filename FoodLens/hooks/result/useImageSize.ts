@@ -32,7 +32,7 @@ export function useImageSize(
         setImageSize({ width, height });
       },
       (error) => {
-        console.warn('[usePinLayout] Failed to load image size', error);
+        console.warn('[useImageSize] Failed to load image size', error);
       }
     );
   }, [imageUri, overrideImageSize, shouldMeasure]);

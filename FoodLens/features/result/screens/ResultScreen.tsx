@@ -32,9 +32,7 @@ export default function ResultScreen() {
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
-        pins,
         layoutStyle,
-        scrollY,
         scrollHandler,
         imageAnimatedStyle,
         headerOverlayStyle,
@@ -105,8 +103,6 @@ export default function ResultScreen() {
                 imageSource={imageSource}
                 imageAnimatedStyle={imageAnimatedStyle}
                 headerOverlayStyle={headerOverlayStyle}
-                pins={pins}
-                scrollY={scrollY}
                 layoutStyle={layoutStyle}
                 isBarcode={result?.isBarcode}
             />

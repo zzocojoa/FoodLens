@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SecureImage } from '../SecureImage';
-import { PinOverlay } from './PinOverlay';
 import { LinearGradient } from 'expo-linear-gradient';
 import { resultHeaderStyles as styles } from './styles/resultHeader.styles';
 import { ResultHeaderProps } from './types';
@@ -13,8 +12,6 @@ export function ResultHeader({
   imageSource,
   imageAnimatedStyle,
   headerOverlayStyle,
-  pins,
-  scrollY,
   layoutStyle,
   isBarcode
 }: ResultHeaderProps) {
@@ -70,8 +67,6 @@ export function ResultHeader({
               )}
             </View>
          )}
-         
-         <PinOverlay pins={pins} scrollY={scrollY} />
       </Animated.View>
       
       {/* Blur Overlay on Scroll */}

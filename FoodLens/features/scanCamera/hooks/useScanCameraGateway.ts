@@ -186,7 +186,8 @@ export const useScanCameraGateway = () => {
                 uri,
                 sourceType: 'camera',
                 timestamp: customTimestamp,
-                needsFileValidation: false,
+                fallbackAddress: 'Location Unavailable',
+                needsFileValidation: true,
                 analyzer: analyzeLabel,
             });
         },
@@ -238,7 +239,9 @@ export const useScanCameraGateway = () => {
         t,
     });
     const handleGallery = useScanGalleryFlow({
+        mode,
         processSmart,
+        processLabel,
         t,
     });
 
