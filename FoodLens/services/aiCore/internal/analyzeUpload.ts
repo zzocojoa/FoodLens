@@ -5,6 +5,7 @@ import { uploadWithRetry } from '../upload';
 import { ServerConfig } from '../serverConfig';
 import { resolveRequestLocale } from './requestLocale';
 import { assertAnalysisResponseContract } from '../contracts';
+import { compressForUpload } from './imageCompress';
 
 type ProgressCallback = (progress: number) => void;
 
@@ -25,9 +26,12 @@ export const performMultipartAnalysisUpload = async ({
   const allergyString = await getAllergyString();
   const locale = await resolveRequestLocale();
 
+  // Compress image before upload (resizes to 1536px, JPEG 80%)
+  const compressedUri = await compressForUpload(imageUri);
+
   const uploadResult = await uploadWithRetry(
     `${activeServerUrl}${endpointPath}`,
-    imageUri,
+    compressedUri,
     {
       httpMethod: 'POST',
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,

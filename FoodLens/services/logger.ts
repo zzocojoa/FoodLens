@@ -1,3 +1,5 @@
+import { captureError, captureWarning } from '@/services/sentry';
+
 type LogMeta = unknown;
 
 const formatTag = (tag?: string): string => (tag ? `[${tag}]` : '');
@@ -27,17 +29,21 @@ export const logger = {
     const prefix = formatTag(tag);
     if (meta !== undefined) {
       console.warn(prefix, message, meta);
-      return;
+    } else {
+      console.warn(prefix, message);
     }
-    console.warn(prefix, message);
+    // Send warning as Sentry breadcrumb (production only)
+    captureWarning(`${formatTag(tag)} ${message}`, meta as Record<string, unknown>);
   },
 
   error(message: string, meta?: LogMeta, tag?: string) {
     const prefix = formatTag(tag);
     if (meta !== undefined) {
       console.error(prefix, message, meta);
-      return;
+    } else {
+      console.error(prefix, message);
     }
-    console.error(prefix, message);
+    // Send error to Sentry (production only)
+    captureError(new Error(`${formatTag(tag)} ${message}`), meta as Record<string, unknown>);
   },
 };

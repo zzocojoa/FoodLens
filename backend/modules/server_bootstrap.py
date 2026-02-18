@@ -2,12 +2,26 @@ import os
 import traceback
 from typing import Tuple
 
+import sentry_sdk
 from dotenv import load_dotenv
 from PIL import Image, ImageOps
 
 from backend.modules.analyst_runtime.food_analyst import FoodAnalyst
 from backend.modules.barcode.service import BarcodeService
 from backend.modules.analyst_runtime.router import SmartRouter
+
+
+def _init_sentry() -> None:
+    dsn = os.getenv("SENTRY_DSN", "")
+    if not dsn:
+        print("[Sentry] No DSN configured. Error tracking disabled.")
+        return
+    sentry_sdk.init(
+        dsn=dsn,
+        traces_sample_rate=0.2,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+    )
+    print("[Sentry] Initialized")
 
 
 def load_environment() -> None:
@@ -18,6 +32,7 @@ def load_environment() -> None:
         print(f"[Startup] Loaded .env from {dotenv_path}")
     else:
         print(f"[Startup] Warning: .env not found at {dotenv_path}. Using environment variables.")
+    _init_sentry()
 
 
 def log_environment_debug() -> None:

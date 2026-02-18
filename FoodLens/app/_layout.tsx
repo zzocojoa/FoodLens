@@ -11,6 +11,7 @@ import { cleanupOrphanedImages } from '../services/imageStorage';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { initSentry, setUser } from '../services/sentry';
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
 
@@ -41,8 +42,10 @@ function LayoutContent() {
 
   useEffect(() => {
     (async () => {
+        initSentry();
         await initializeSafeStorage();
-        await initializeDeviceId();
+        const deviceId = await initializeDeviceId();
+        setUser(deviceId);
         // Professional background cleanup
         cleanupOrphanedImages().catch(() => {});
     })();
