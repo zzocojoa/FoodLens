@@ -8,6 +8,9 @@ import {
   isLegacyAbsoluteUri,
   isManagedImageReference,
 } from './imageStorage.helpers';
+import { SafeStorage } from './storage';
+import { USER_STORAGE_KEY } from './user/constants';
+import { UserProfile } from '../models/User';
 
 /**
  * ImageStorage Utility
@@ -114,6 +117,20 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
                 .map(a => a.imageUri)
                 .filter(uri => uri && !isLegacyAbsoluteUri(uri))
         );
+
+        // Preserve current profile image as well (it is not part of analysis history).
+        const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+        const profileImage = profile?.profileImage;
+        if (profileImage) {
+            if (isManagedImageReference(profileImage)) {
+                const profileFilename = extractFilename(profileImage);
+                if (profileFilename) {
+                    referencedFiles.add(profileFilename);
+                }
+            } else if (!isLegacyAbsoluteUri(profileImage)) {
+                referencedFiles.add(profileImage);
+            }
+        }
 
         let count = 0;
         for (const file of files) {

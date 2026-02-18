@@ -14,9 +14,13 @@ export const resolveAndValidateProfileImage = async (
   }
 
   let isValidImage = true;
-  if (profile.profileImage?.startsWith('file://')) {
+  const imageUri = profile.profileImage || '';
+  const isFilePathLike = imageUri.startsWith('file://') || imageUri.startsWith('/');
+  const isPhotoLibraryUri = imageUri.startsWith('ph://') || imageUri.startsWith('assets-library://');
+
+  if (isFilePathLike) {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(profile.profileImage);
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
       if (!fileInfo.exists) {
         console.warn('[UserService] Saved profile image file does not exist. Resetting.');
         isValidImage = false;
@@ -25,6 +29,10 @@ export const resolveAndValidateProfileImage = async (
       console.warn('Failed to validate local image file', error);
       isValidImage = false;
     }
+  } else if (isPhotoLibraryUri) {
+    // iOS photo-library URIs are not regular file paths and cannot be validated via getInfoAsync.
+    // Keep as valid to avoid unintended profile image reset in release builds.
+    isValidImage = true;
   }
 
   return { profile, isValidImage };
@@ -46,4 +54,3 @@ export const ensureProfileImageExists = async (uid: string, profile: UserProfile
 
   return profile;
 };
-

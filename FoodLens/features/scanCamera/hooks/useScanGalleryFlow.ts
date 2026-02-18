@@ -8,6 +8,14 @@ import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 type Translate = (key: string, fallback?: string) => string;
 
 type UseScanGalleryFlowParams = {
+  mode: 'LABEL' | 'FOOD' | 'BARCODE';
+  processImage: (
+    uri: string,
+    source: 'camera' | 'library',
+    timestamp?: string | null,
+    customLocation?: LocationData | null
+  ) => Promise<void>;
+  processLabel: (uri: string, timestamp?: string | null) => Promise<void>;
   processSmart: (
     uri: string,
     timestamp?: string | null,
@@ -16,7 +24,13 @@ type UseScanGalleryFlowParams = {
   t: Translate;
 };
 
-export const useScanGalleryFlow = ({ processSmart, t }: UseScanGalleryFlowParams) => {
+export const useScanGalleryFlow = ({
+  mode,
+  processImage,
+  processLabel,
+  processSmart,
+  t,
+}: UseScanGalleryFlowParams) => {
   return useCallback(async () => {
     Haptics.selectionAsync();
 
@@ -31,7 +45,18 @@ export const useScanGalleryFlow = ({ processSmart, t }: UseScanGalleryFlowParams
       if (result.canceled || !result.assets[0]?.uri) return;
       const asset = result.assets[0];
       const { timestamp: finalDate, exifLocation } = await resolveGalleryMetadata(asset);
-      // Gallery input keeps Auto-first policy: backend decides FOOD vs LABEL route.
+      if (mode === 'LABEL') {
+        console.log('[ScanGallery] route:LABEL -> analyzeLabel');
+        await processLabel(asset.uri, finalDate);
+        return;
+      }
+      if (mode === 'FOOD') {
+        console.log('[ScanGallery] route:FOOD -> analyzeImage');
+        await processImage(asset.uri, 'library', finalDate, exifLocation);
+        return;
+      }
+      // BARCODE mode keeps smart routing for gallery images.
+      console.log('[ScanGallery] route:BARCODE -> analyzeSmart');
       await processSmart(asset.uri, finalDate, exifLocation);
     } catch {
       showTranslatedAlert(t, {
@@ -41,5 +66,5 @@ export const useScanGalleryFlow = ({ processSmart, t }: UseScanGalleryFlowParams
         messageFallback: 'Unable to open gallery.',
       });
     }
-  }, [processSmart, t]);
+  }, [mode, processImage, processLabel, processSmart, t]);
 };

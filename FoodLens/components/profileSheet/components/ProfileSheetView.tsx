@@ -44,6 +44,7 @@ type ProfileSheetViewProps = {
     setTravelerLangModalVisible: (value: boolean) => void;
     setUiLangModalVisible: (value: boolean) => void;
     pickImage: (useCamera: boolean) => Promise<void>;
+    handleUpdate: (onUpdate: () => void | Promise<void>, onClose: () => void) => Promise<void>;
   };
   profilePanY: RNAnimated.Value;
   profilePanHandlers: any;

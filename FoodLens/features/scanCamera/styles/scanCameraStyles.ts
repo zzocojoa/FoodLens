@@ -44,6 +44,14 @@ export const scanCameraStyles = StyleSheet.create({
         paddingTop: 10,
         zIndex: 10,
     },
+    guideTextTopContainer: {
+        position: 'absolute',
+        top: 130,
+        left: 16,
+        right: 16,
+        zIndex: 9,
+        alignItems: 'center',
+    },
     topCenterControls: {
         flexDirection: 'row',
         gap: 20,
@@ -224,7 +232,6 @@ export const scanCameraStyles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         textAlign: 'center',
-        marginTop: 20,
         textShadowColor: 'rgba(0, 0, 0, 0.75)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 3,

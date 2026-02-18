@@ -29,7 +29,7 @@ export const useProfileSheetState = (userId: string) => {
     }, [userId]);
 
     const handleUpdate = useCallback(
-        async (onUpdate: () => void, onClose: () => void) => {
+        async (onUpdate: () => void | Promise<void>, onClose: () => void) => {
             setLoading(true);
             try {
                 await profileSheetService.updateProfile({
@@ -39,7 +39,7 @@ export const useProfileSheetState = (userId: string) => {
                     travelerLanguage,
                     uiLanguage,
                 });
-                onUpdate();
+                await Promise.resolve(onUpdate());
                 onClose();
             } catch (error) {
                 console.error("Profile update failed:", error);

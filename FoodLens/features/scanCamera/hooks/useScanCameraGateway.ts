@@ -181,10 +181,14 @@ export const useScanCameraGateway = () => {
     );
 
     const processLabel = useCallback(
-        async (uri: string, customTimestamp?: string | null) => {
+        async (
+            uri: string,
+            customTimestamp?: string | null,
+            customSourceType: 'camera' | 'library' = 'camera'
+        ) => {
             await runFlow({
                 uri,
-                sourceType: 'camera',
+                sourceType: customSourceType,
                 timestamp: customTimestamp,
                 fallbackAddress: 'Location Unavailable',
                 needsFileValidation: true,
@@ -239,6 +243,9 @@ export const useScanCameraGateway = () => {
         t,
     });
     const handleGallery = useScanGalleryFlow({
+        mode,
+        processImage,
+        processLabel: async (uri, timestamp) => processLabel(uri, timestamp, 'library'),
         processSmart,
         t,
     });

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodLens App Dashboard - Refined</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-color: #F0F4F8;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --accent-blue: #3B82F6;
+            --accent-blue-dark: #2563EB;
+            --card-bg: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.4);
+            --safe-bg: #DCFCE7;
+            --safe-text: #166534;
+            --danger-bg: #FFE4E6;
+            --danger-text: #E11D48;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .iphone-frame {
+            width: 390px;
+            height: 844px;
+            background: #fff;
+            border-radius: 44px;
+            box-shadow: 0 50px 100px rgba(0,0,0,0.1), 0 0 0 12px #1e293b;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #334155;
+        }
+
+        /* Top Notch */
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 160px;
+            height: 30px;
+            background: #1e293b;
+            border-bottom-left-radius: 18px;
+            border-bottom-right-radius: 18px;
+            z-index: 1000;
+        }
+
+        .phone-content {
+            height: 100%;
+            overflow-y: auto;
+            padding: 60px 0 120px 0;
+            scrollbar-width: none;
+        }
+        .phone-content::-webkit-scrollbar { display: none; }
+
+        .px-24 { padding-left: 24px; padding-right: 24px; }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .avatar-container {
+            width: 48px; height: 48px; border-radius: 24px;
+            background: #DBEAFE; border: 2px solid #fff;
+            overflow: hidden;
+        }
+        .avatar { width: 100%; height: 100%; object-fit: cover; }
+        .welcome-text { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+        .user-name { font-size: 18px; font-weight: 700; }
+
+        /* Hero */
+        .hero-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(8px);
+            border-radius: 32px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid var(--glass-border);
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-glow {
+            position: absolute; top: -40px; right: -40px;
+            width: 160px; height: 160px; border-radius: 80px;
+            background: rgba(96, 165, 250, 0.2);
+        }
+        .hero-emoji { font-size: 64px; margin-bottom: 16px; display: block; }
+        .hero-title { font-size: 30px; font-weight: 900; letter-spacing: -0.5px; }
+
+        /* Stats Grid */
+        .stats-grid { display: flex; gap: 16px; margin-bottom: 24px; }
+        .stat-card {
+            flex: 1; padding: 20px; border-radius: 28px;
+            background: rgba(255,255,255,0.5); backdrop-filter: blur(8px);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .stat-icon-box {
+            width: 40px; height: 40px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: center; margin-bottom: 8px;
+        }
+        .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+        .stat-value { font-size: 20px; font-weight: 700; }
+
+        /* Weekly Stats Strip */
+        .weekly-stats {
+            display: flex; overflow-x: auto; gap: 12px;
+            padding-bottom: 16px; margin-bottom: 8px;
+            scrollbar-width: none;
+        }
+        .weekly-stats::-webkit-scrollbar { display: none; }
+        .day-item {
+            min-width: 54px; height: 84px; border-radius: 22px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.4); border: 1px solid var(--glass-border);
+        }
+        .day-item.selected {
+            background: var(--text-primary); border-color: var(--text-primary);
+        }
+        .day-name { font-size: 10px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; }
+        .day-date { font-size: 16px; font-weight: 800; }
+        .day-item.selected .day-name { color: rgba(255,255,255,0.6); }
+        .day-item.selected .day-date { color: #fff; }
+
+        /* Scans Section */
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-title { font-size: 18px; font-weight: 700; }
+        .see-all { font-size: 14px; font-weight: 600; color: var(--accent-blue-dark); text-decoration: none; }
+
+        .scan-item {
+            background: rgba(255,255,255,0.6); border: 1px solid var(--glass-border);
+            border-radius: 24px; padding: 16px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px;
+        }
+        .scan-emoji-box {
+            width: 48px; height: 48px; border-radius: 16px; background: #fff;
+            display: flex; align-items: center; justify-content: center; font-size: 24px;
+        }
+        .scan-name { font-size: 16px; font-weight: 700; }
+        .scan-date { font-size: 12px; color: #94A3B8; }
+        .badge { padding: 4px 10px; border-radius: 100px; font-size: 10px; font-weight: 900; }
+
+        /* FAB */
+        .fab-container {
+            position: absolute; bottom: 40px; left: 0; right: 0;
+            display: flex; justify-content: center; pointer-events: none;
+        }
+        .camera-button-shadow {
+            box-shadow: 0 8px 12px rgba(37, 99, 235, 0.4); border-radius: 36px;
+        }
+        .camera-button {
+            width: 72px; height: 72px; border-radius: 36px;
+            background: linear-gradient(to bottom, #3B82F6, #2563EB);
+            border: 4px solid #fff; display: flex; align-items: center; justify-content: center;
+            color: #fff; pointer-events: auto; cursor: pointer;
+        }
+
+        .home-indicator {
+            position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+            width: 140px; height: 5px; background: #000; border-radius: 10px; opacity: 0.1;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="iphone-frame">
+        <div class="notch"></div>
+        <div class="phone-content">
+            <header class="px-24">
+                <div class="user-info">
+                    <div class="avatar-container">
+                        <img src="https://api.dicebear.com/7.x/avataaars/png?seed=Felix" class="avatar">
+                    </div>
+                    <div>
+                        <p class="welcome-text">Welcome back,</p>
+                        <h2 class="user-name">Traveler Joy ✈️</h2>
+                    </div>
+                </div>
+                <i data-lucide="smile" size="24" color="#0F172A"></i>
+            </header>
+
+            <div class="px-24">
+                <div class="hero-card">
+                    <div class="hero-glow"></div>
+                    <span class="hero-emoji">🍎</span>
+                    <h1 class="hero-title">Food Lens</h1>
+                    <p class="welcome-text" style="font-size: 16px; margin-top: 4px;">Travel Safe, Eat Smart</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon-box" style="background: #DCFCE7;">
+                            <i data-lucide="shield-check" color="#166534" size="22"></i>
+                        </div>
+                        <p class="stat-label">Safe Items</p>
+                        <p class="stat-value">24</p>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon-box" style="background: #FFE4E6;">
+                            <i data-lucide="heart" color="#E11D48" size="22"></i>
+                        </div>
+                        <p class="stat-label">Allergies</p>
+                        <p class="stat-value">3</p>
+                    </div>
+                </div>
+
+                <div class="weekly-stats">
+                    <div class="day-item"> <p class="day-name">MON</p> <p class="day-date">10</p> </div>
+                    <div class="day-item"> <p class="day-name">TUE</p> <p class="day-date">11</p> </div>
+                    <div class="day-item"> <p class="day-name">WED</p> <p class="day-date">12</p> </div>
+                    <div class="day-item"> <p class="day-name">THU</p> <p class="day-date">13</p> </div>
+                    <div class="day-item"> <p class="day-name">FRI</p> <p class="day-date">14</p> </div>
+                    <div class="day-item selected"> <p class="day-name">SAT</p> <p class="day-date">15</p> </div>
+                    <div class="day-item"> <p class="day-name">SUN</p> <p class="day-date">16</p> </div>
+                </div>
+
+                <div class="section-header">
+                    <h3 class="section-title">Today</h3>
+                    <a href="#" class="see-all">See All</a>
+                </div>
+
+                <div class="scan-list">
+                    <div class="scan-item">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div class="scan-emoji-box">🍣</div>
+                            <div>
+                                <p class="scan-name">Sushi Roll</p>
+                                <p class="scan-date">12:45 PM</p>
+                            </div>
+                        </div>
+                        <div class="badge" style="background: #DCFCE7; color: #166534;">SAFE</div>
+                    </div>
+                    <div class="scan-item">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div class="scan-emoji-box">🥐</div>
+                            <div>
+                                <p class="scan-name">Croissant</p>
+                                <p class="scan-date">09:30 AM</p>
+                            </div>
+                        </div>
+                        <div class="badge" style="background: #FFE4E6; color: #E11D48;">DANGER</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="fab-container">
+            <div class="camera-button-shadow">
+                <div class="camera-button">
+                    <i data-lucide="camera" size="32"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="home-indicator"></div>
+    </div>
+    <script> lucide.createIcons(); </script>
+</body>
+</html>

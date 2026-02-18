@@ -53,6 +53,12 @@ npx expo start --tunnel --go
 npx expo prebuild --clean
 ```
 
+### 3. 🚨 문제 해결 (Troubleshooting)
+
+iOS 빌드 실패 시 (인증서 만료, Hermes 에러 등) 아래 가이드를 참고하세요:
+
+- [🔴 iOS 빌드 트러블슈팅 가이드](file:///Users/beatlefeed/Documents/FoodLens-project/docs/ios_troubleshooting.md)
+
 ---
 
 ## 🌍 외부 사용 (배포)

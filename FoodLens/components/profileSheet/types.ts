@@ -2,7 +2,7 @@ export interface ProfileSheetProps {
     isOpen: boolean;
     onClose: () => void;
     userId: string;
-    onUpdate: () => void;
+    onUpdate: () => void | Promise<void>;
 }
 
 export type LanguageOption = {

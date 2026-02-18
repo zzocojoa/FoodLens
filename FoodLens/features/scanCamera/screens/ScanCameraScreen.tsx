@@ -75,10 +75,14 @@ export default function ScanCameraScreen() {
                     </>
                 )}
                 <View style={styles.viewfinderContainer}>
-                    <View style={[styles.corner, styles.tl]} />
-                    <View style={[styles.corner, styles.tr]} />
-                    <View style={[styles.corner, styles.bl]} />
-                    <View style={[styles.corner, styles.br]} />
+                    {camera.mode !== 'LABEL' && (
+                        <>
+                            <View style={[styles.corner, styles.tl]} />
+                            <View style={[styles.corner, styles.tr]} />
+                            <View style={[styles.corner, styles.bl]} />
+                            <View style={[styles.corner, styles.br]} />
+                        </>
+                    )}
 
                     {camera.mode === 'BARCODE' && (
                         <Animated.View
@@ -111,14 +115,6 @@ export default function ScanCameraScreen() {
                             />
                         </Animated.View>
                     )}
-
-                    <Text style={styles.guideText}>
-                        {camera.mode === 'FOOD'
-                            ? t('scan.guide.food', 'Center the food in frame')
-                            : camera.mode === 'LABEL'
-                              ? t('scan.guide.label', 'Fill the frame with the nutrition label')
-                              : t('scan.guide.barcode', 'Scan the barcode')}
-                    </Text>
                 </View>
             </View>
 
@@ -142,6 +138,16 @@ export default function ScanCameraScreen() {
                 <TouchableOpacity onPress={camera.handleClose} style={styles.iconButton}>
                     <X size={28} color="white" />
                 </TouchableOpacity>
+            </View>
+
+            <View style={styles.guideTextTopContainer} pointerEvents="none">
+                <Text style={styles.guideText}>
+                    {camera.mode === 'FOOD'
+                        ? t('scan.guide.food', 'Center the food in frame')
+                        : camera.mode === 'LABEL'
+                          ? t('scan.guide.label', 'Fill the frame with the nutrition label')
+                          : t('scan.guide.barcode', 'Scan the barcode')}
+                </Text>
             </View>
 
             <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)', 'black']} style={styles.bottomBar}>
