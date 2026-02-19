@@ -140,6 +140,18 @@ export const profileStyles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
     },
+    logoutButton: {
+        marginTop: 12,
+        borderRadius: 20,
+        paddingVertical: 14,
+        alignItems: 'center',
+        borderWidth: 1,
+        backgroundColor: 'transparent',
+    },
+    logoutButtonText: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
     suggestionsDropdown: {
         marginTop: 8,
         backgroundColor: 'white',
@@ -164,4 +176,3 @@ export const profileStyles = StyleSheet.create({
         fontSize: 16,
     },
 });
-

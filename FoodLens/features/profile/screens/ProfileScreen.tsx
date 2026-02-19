@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     KeyboardAvoidingView,
     Linking,
@@ -19,6 +19,10 @@ import SaveProfileFooter from '../components/SaveProfileFooter';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
 import { useI18n } from '@/features/i18n';
+import { AuthApi } from '@/services/auth/authApi';
+import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
+import { clearSession } from '@/services/auth/sessionManager';
+import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -26,6 +30,7 @@ export default function ProfileScreen() {
     const { colorScheme } = useTheme();
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
+    const [logoutLoading, setLogoutLoading] = useState(false);
 
     const {
         loading,
@@ -49,6 +54,56 @@ export default function ProfileScreen() {
 
     const handleOpenTermsOfService = () => {
         Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service/');
+    };
+
+    const handleLogout = async () => {
+        if (logoutLoading) {
+            return;
+        }
+
+        const requestId = `auth-logout-${Date.now().toString(36)}`;
+        setLogoutLoading(true);
+
+        let provider: string | undefined;
+        let userId = 'unknown';
+        try {
+            const storedSession = await AuthSecureSessionStore.read();
+            provider = storedSession?.user?.provider;
+            userId = storedSession?.user?.id ?? 'unknown';
+
+            if (storedSession) {
+                try {
+                    await AuthApi.logout({
+                        accessToken: storedSession.accessToken,
+                        refreshToken: storedSession.refreshToken,
+                    });
+                } catch (error) {
+                    console.warn('[AuthSession] Backend logout failed', {
+                        request_id: requestId,
+                        user_id: userId,
+                        provider: provider ?? 'none',
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+
+            await clearSession();
+
+            try {
+                await logoutFromOAuthProvider(provider);
+            } catch (error) {
+                console.warn('[AuthSession] Provider logout failed', {
+                    request_id: requestId,
+                    user_id: userId,
+                    provider: provider ?? 'none',
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+
+            router.replace('/login');
+        } finally {
+            setLogoutLoading(false);
+        }
     };
 
     return (
@@ -126,7 +181,14 @@ export default function ProfileScreen() {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <SaveProfileFooter theme={theme} loading={loading} onSave={saveProfile} t={t} />
+            <SaveProfileFooter
+                theme={theme}
+                loading={loading}
+                logoutLoading={logoutLoading}
+                onSave={saveProfile}
+                onLogout={handleLogout}
+                t={t}
+            />
         </SafeAreaView>
     );
 }

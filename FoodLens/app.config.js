@@ -62,6 +62,7 @@ export default {
     },
     plugins: [
       "expo-router",
+      "expo-secure-store",
       "@sentry/react-native",
       [
         "expo-splash-screen",

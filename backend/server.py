@@ -1,9 +1,14 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
+import base64
 import logging
 import os
 import time
+from urllib.parse import urlencode
 from typing import Any
+import requests
+from pydantic import BaseModel
 
 from backend.modules.server_bootstrap import (
     decode_upload_to_image,
@@ -53,6 +58,7 @@ from backend.modules.runtime_guardrails import (
 )
 from backend.modules.contracts.analysis_response import AnalysisResponseContract
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
+from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService
 
 load_environment()
 log_environment_debug()
@@ -109,6 +115,8 @@ def _is_label_429_returns_503_enabled() -> bool:
 
 @app.on_event("startup")
 async def _startup() -> None:
+    app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
+
     if _is_openapi_export_mode():
         app.state.analyst = None
         app.state.barcode_service = None
@@ -184,6 +192,346 @@ LOCALE_TO_ISO = {
     "vi-vn": "VN",
 }
 
+OAUTH_PROVIDER_CONFIG = {
+    "google": {
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "client_id_env": "AUTH_GOOGLE_CLIENT_ID",
+        "scope_env": "AUTH_GOOGLE_OAUTH_SCOPE",
+        "scope_default": "openid email profile",
+        "default_app_redirect_uri": "foodlens://oauth/google-callback",
+        "callback_path": "/auth/google/callback",
+    },
+    "kakao": {
+        "authorize_url": "https://kauth.kakao.com/oauth/authorize",
+        "client_id_env": "AUTH_KAKAO_CLIENT_ID",
+        "scope_env": "AUTH_KAKAO_OAUTH_SCOPE",
+        "scope_default": "",
+        "default_app_redirect_uri": "foodlens://oauth/kakao-callback",
+        "callback_path": "/auth/kakao/callback",
+    },
+}
+
+DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
+DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
+
+
+def _oauth_provider_config(provider: str) -> dict[str, str]:
+    config = OAUTH_PROVIDER_CONFIG.get(provider)
+    if not config:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_UNSUPPORTED",
+            message="Unsupported provider.",
+            status_code=400,
+        )
+    return config
+
+
+def _parse_csv(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _allowed_app_redirect_uris() -> set[str]:
+    configured = _parse_csv(os.environ.get("AUTH_APP_ALLOWED_REDIRECT_URIS"))
+    if configured:
+        return configured
+    return {
+        str(config["default_app_redirect_uri"])
+        for config in OAUTH_PROVIDER_CONFIG.values()
+    }
+
+
+def _resolve_app_redirect_uri(*, provider: str, requested_uri: str | None) -> str:
+    config = _oauth_provider_config(provider)
+    candidate = (requested_uri or "").strip() or str(config["default_app_redirect_uri"])
+    allowed = _allowed_app_redirect_uris()
+    if candidate not in allowed:
+        raise AuthServiceError(
+            code="AUTH_REDIRECT_URI_MISMATCH",
+            message="Redirect URI mismatch.",
+            status_code=400,
+        )
+    return candidate
+
+
+def _allowed_app_logout_redirect_uris() -> set[str]:
+    configured = _parse_csv(os.environ.get("AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS"))
+    if configured:
+        return configured
+    return {DEFAULT_APP_LOGOUT_REDIRECT_URI}
+
+
+def _resolve_app_logout_redirect_uri(*, requested_uri: str | None) -> str:
+    candidate = (requested_uri or "").strip() or DEFAULT_APP_LOGOUT_REDIRECT_URI
+    allowed = _allowed_app_logout_redirect_uris()
+    if candidate not in allowed:
+        raise AuthServiceError(
+            code="AUTH_REDIRECT_URI_MISMATCH",
+            message="Redirect URI mismatch.",
+            status_code=400,
+        )
+    return candidate
+
+
+def _resolve_public_base_url(request: Request) -> str:
+    configured = os.environ.get("AUTH_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    return str(request.base_url).rstrip("/")
+
+
+def _resolve_provider_callback_uri(*, request: Request, provider: str) -> str:
+    config = _oauth_provider_config(provider)
+    base_url = _resolve_public_base_url(request)
+    return f"{base_url}{config['callback_path']}"
+
+
+def _resolve_provider_logout_callback_uri(
+    *,
+    request: Request,
+    provider: str,
+    app_redirect_uri: str,
+) -> str:
+    base_url = _resolve_public_base_url(request)
+    callback_path = f"/auth/{provider}/logout/callback"
+    callback_uri = f"{base_url}{callback_path}"
+    return _append_query_params(callback_uri, {"app_redirect_uri": app_redirect_uri})
+
+
+def _pack_oauth_state(*, state: str, app_redirect_uri: str) -> str:
+    encoded = base64.urlsafe_b64encode(app_redirect_uri.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{state}.{encoded}"
+
+
+def _extract_app_redirect_uri_from_state(state: str | None) -> str | None:
+    if not state or "." not in state:
+        return None
+
+    encoded = state.rsplit(".", 1)[1]
+    padding = "=" * (-len(encoded) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(f"{encoded}{padding}").decode("utf-8").strip()
+    except Exception:
+        return None
+    return decoded or None
+
+
+def _build_oauth_authorize_url(
+    *,
+    provider: str,
+    callback_uri: str,
+    packed_state: str,
+) -> str:
+    config = _oauth_provider_config(provider)
+    client_id_env = str(config["client_id_env"])
+    client_id = os.environ.get(client_id_env, "").strip()
+    if not client_id:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_MISCONFIGURED",
+            message=f"{provider} OAuth client is not configured.",
+            status_code=500,
+        )
+
+    params: dict[str, str] = {
+        "client_id": client_id,
+        "redirect_uri": callback_uri,
+        "response_type": "code",
+        "state": packed_state,
+    }
+
+    scope = os.environ.get(str(config["scope_env"]), str(config["scope_default"])).strip()
+    if scope:
+        params["scope"] = scope
+
+    if provider == "google":
+        params["access_type"] = "offline"
+        params["include_granted_scopes"] = "true"
+        prompt = os.environ.get("AUTH_GOOGLE_OAUTH_PROMPT", "consent").strip()
+        if prompt:
+            params["prompt"] = prompt
+
+    return f"{config['authorize_url']}?{urlencode(params)}"
+
+
+def _append_query_params(base_url: str, params: dict[str, str]) -> str:
+    delimiter = "&" if "?" in base_url else "?"
+    return f"{base_url}{delimiter}{urlencode(params)}"
+
+
+def _build_provider_logout_url(*, provider: str, provider_logout_callback_uri: str) -> str:
+    if provider == "google":
+        # Google does not provide a first-party OAuth logout redirect endpoint,
+        # so we use the common logout+continue pattern.
+        appengine_continue = _append_query_params(
+            "https://appengine.google.com/_ah/logout",
+            {"continue": provider_logout_callback_uri},
+        )
+        return _append_query_params(
+            "https://accounts.google.com/Logout",
+            {"continue": appengine_continue},
+        )
+
+    if provider == "kakao":
+        client_id = os.environ.get("AUTH_KAKAO_CLIENT_ID", "").strip()
+        if not client_id:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_MISCONFIGURED",
+                message="kakao OAuth client is not configured.",
+                status_code=500,
+            )
+        return _append_query_params(
+            "https://kauth.kakao.com/oauth/logout",
+            {
+                "client_id": client_id,
+                "logout_redirect_uri": provider_logout_callback_uri,
+            },
+        )
+
+    raise AuthServiceError(
+        code="AUTH_PROVIDER_UNSUPPORTED",
+        message="Unsupported provider.",
+        status_code=400,
+    )
+
+
+def _is_kakao_code_verification_enabled() -> bool:
+    return os.environ.get("AUTH_KAKAO_CODE_VERIFY_ENABLED", "0").strip() == "1"
+
+
+def _provider_timeout_seconds() -> float:
+    raw_value = (os.environ.get("AUTH_PROVIDER_TIMEOUT_SECONDS") or "").strip()
+    if not raw_value:
+        return DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        return DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS
+    return parsed if parsed > 0 else DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS
+
+
+def _verify_kakao_identity(*, request: Request, code: str) -> tuple[str, str | None]:
+    client_id = os.environ.get("AUTH_KAKAO_CLIENT_ID", "").strip()
+    if not client_id:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_MISCONFIGURED",
+            message="kakao OAuth client is not configured.",
+            status_code=500,
+        )
+
+    token_request_data = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "redirect_uri": _resolve_provider_callback_uri(request=request, provider="kakao"),
+        "code": code.strip(),
+    }
+    client_secret = os.environ.get("AUTH_KAKAO_CLIENT_SECRET", "").strip()
+    if client_secret:
+        token_request_data["client_secret"] = client_secret
+
+    timeout_seconds = _provider_timeout_seconds()
+    try:
+        token_response = requests.post(
+            "https://kauth.kakao.com/oauth/token",
+            data=token_request_data,
+            timeout=timeout_seconds,
+        )
+    except requests.Timeout as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_TIMEOUT",
+            message="Provider request timed out.",
+            status_code=504,
+        ) from error
+    except requests.RequestException as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_UNAVAILABLE",
+            message="Provider request failed.",
+            status_code=502,
+        ) from error
+
+    try:
+        token_payload = token_response.json()
+    except ValueError as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        ) from error
+
+    if token_response.status_code >= 400:
+        provider_error = str(token_payload.get("error", "")).strip().lower()
+        if provider_error in {"invalid_grant", "invalid_request"}:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_CODE",
+                message="Missing or invalid authorization code.",
+                status_code=400,
+            )
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    access_token = str(token_payload.get("access_token", "")).strip()
+    if not access_token:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    try:
+        profile_response = requests.get(
+            "https://kapi.kakao.com/v2/user/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=timeout_seconds,
+        )
+    except requests.Timeout as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_TIMEOUT",
+            message="Provider request timed out.",
+            status_code=504,
+        ) from error
+    except requests.RequestException as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_UNAVAILABLE",
+            message="Provider request failed.",
+            status_code=502,
+        ) from error
+
+    try:
+        profile_payload = profile_response.json()
+    except ValueError as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        ) from error
+
+    if profile_response.status_code >= 400:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    provider_user_id = str(profile_payload.get("id", "")).strip()
+    if not provider_user_id:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    email: str | None = None
+    kakao_account = profile_payload.get("kakao_account")
+    if isinstance(kakao_account, dict):
+        raw_email = kakao_account.get("email")
+        if isinstance(raw_email, str):
+            email = raw_email.strip() or None
+
+    return provider_user_id, email
+
 
 def resolve_prompt_country_code(iso_country_code: str, locale: str | None) -> str:
     """
@@ -202,6 +550,117 @@ def resolve_prompt_country_code(iso_country_code: str, locale: str | None) -> st
 
     return "US"
 
+
+class EmailSignupRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str | None = None
+    locale: str = "ko-KR"
+    device_id: str | None = None
+
+
+class EmailLoginRequest(BaseModel):
+    email: str
+    password: str
+    device_id: str | None = None
+
+
+class OAuthProviderRequest(BaseModel):
+    code: str | None = None
+    state: str | None = None
+    redirect_uri: str | None = None
+    error: str | None = None
+    provider_user_id: str | None = None
+    email: str | None = None
+    device_id: str | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = None
+    locale: str | None = None
+    timezone: str | None = None
+
+
+def _request_id(request: Request) -> str:
+    return request.headers.get("X-Request-Id") or os.urandom(6).hex()
+
+
+def _auth_error_to_http_exception(error: AuthServiceError, request_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=error.status_code,
+        detail={
+            "message": error.message,
+            "code": error.code,
+            "request_id": request_id,
+        },
+    )
+
+
+def _log_auth_failure(
+    *,
+    request_id: str,
+    user_id: str | None,
+    provider: str | None,
+    code: str,
+) -> None:
+    logger.warning(
+        "[Auth] request failed request_id=%s user_id=%s provider=%s code=%s",
+        request_id,
+        user_id or "unknown",
+        provider or "none",
+        code,
+    )
+
+
+def _extract_bearer_token(request: Request) -> str | None:
+    header = request.headers.get("Authorization")
+    if not header:
+        return None
+    prefix = "Bearer "
+    if not header.startswith(prefix):
+        return None
+    token = header[len(prefix) :].strip()
+    return token or None
+
+
+def _resolve_authenticated_user(request: Request, request_id: str):
+    auth_service = _service("auth_service")
+    access_token = _extract_bearer_token(request)
+    if not access_token:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=None,
+            provider=None,
+            code="AUTH_TOKEN_MISSING",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "message": "Missing bearer token.",
+                "code": "AUTH_TOKEN_MISSING",
+                "request_id": request_id,
+            },
+        )
+
+    try:
+        return auth_service.authenticate_access_token(access_token=access_token)
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
@@ -212,6 +671,444 @@ async def debug_models():
     analyst = _service("analyst")
     await analyst.debug_list_models()
     return {"status": "triggered", "message": "Check server logs for model list"}
+
+
+@app.post("/auth/email/signup")
+async def auth_email_signup(payload: EmailSignupRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.signup_email(
+            email=payload.email,
+            password=payload.password,
+            display_name=payload.display_name,
+            locale=payload.locale,
+            device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/email/login")
+async def auth_email_login(payload: EmailLoginRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.login_email(
+            email=payload.email,
+            password=payload.password,
+            device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/auth/google/start")
+async def auth_google_start(
+    request: Request,
+    redirect_uri: str | None = None,
+    state: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_redirect_uri(provider="google", requested_uri=redirect_uri)
+        packed_state = _pack_oauth_state(
+            state=(state or os.urandom(8).hex()).strip(),
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_callback_uri = _resolve_provider_callback_uri(request=request, provider="google")
+        authorize_url = _build_oauth_authorize_url(
+            provider="google",
+            callback_uri=provider_callback_uri,
+            packed_state=packed_state,
+        )
+        return RedirectResponse(url=authorize_url, status_code=302)
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="google",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+    redirect_uri: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
+        app_redirect_uri = _resolve_app_redirect_uri(provider="google", requested_uri=requested_redirect)
+        params: dict[str, str] = {"request_id": request_id}
+        if code:
+            params["code"] = code
+        if state:
+            params["state"] = state
+        if error:
+            params["error"] = error
+        if error_description:
+            params["error_description"] = error_description
+
+        return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
+    except AuthServiceError as auth_error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=auth_error.user_id,
+            provider="google",
+            code=auth_error.code,
+        )
+        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+
+
+@app.get("/auth/kakao/start")
+async def auth_kakao_start(
+    request: Request,
+    redirect_uri: str | None = None,
+    state: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_redirect_uri(provider="kakao", requested_uri=redirect_uri)
+        packed_state = _pack_oauth_state(
+            state=(state or os.urandom(8).hex()).strip(),
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_callback_uri = _resolve_provider_callback_uri(request=request, provider="kakao")
+        authorize_url = _build_oauth_authorize_url(
+            provider="kakao",
+            callback_uri=provider_callback_uri,
+            packed_state=packed_state,
+        )
+        return RedirectResponse(url=authorize_url, status_code=302)
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="kakao",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/auth/kakao/callback")
+async def auth_kakao_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+    redirect_uri: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
+        app_redirect_uri = _resolve_app_redirect_uri(provider="kakao", requested_uri=requested_redirect)
+        params: dict[str, str] = {"request_id": request_id}
+        if code:
+            params["code"] = code
+        if state:
+            params["state"] = state
+        if error:
+            params["error"] = error
+        if error_description:
+            params["error_description"] = error_description
+
+        return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
+    except AuthServiceError as auth_error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=auth_error.user_id,
+            provider="kakao",
+            code=auth_error.code,
+        )
+        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+
+
+@app.get("/auth/google/logout/start")
+async def auth_google_logout_start(
+    request: Request,
+    redirect_uri: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_logout_redirect_uri(requested_uri=redirect_uri)
+        provider_logout_callback_uri = _resolve_provider_logout_callback_uri(
+            request=request,
+            provider="google",
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_logout_url = _build_provider_logout_url(
+            provider="google",
+            provider_logout_callback_uri=provider_logout_callback_uri,
+        )
+        return RedirectResponse(url=provider_logout_url, status_code=302)
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="google",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/auth/google/logout/callback")
+async def auth_google_logout_callback(
+    request: Request,
+    app_redirect_uri: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        redirect_target = _resolve_app_logout_redirect_uri(requested_uri=app_redirect_uri)
+        return RedirectResponse(
+            url=_append_query_params(
+                redirect_target,
+                {
+                    "request_id": request_id,
+                    "provider": "google",
+                    "logout": "ok",
+                },
+            ),
+            status_code=302,
+        )
+    except AuthServiceError as auth_error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=auth_error.user_id,
+            provider="google",
+            code=auth_error.code,
+        )
+        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+
+
+@app.get("/auth/kakao/logout/start")
+async def auth_kakao_logout_start(
+    request: Request,
+    redirect_uri: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_logout_redirect_uri(requested_uri=redirect_uri)
+        provider_logout_callback_uri = _resolve_provider_logout_callback_uri(
+            request=request,
+            provider="kakao",
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_logout_url = _build_provider_logout_url(
+            provider="kakao",
+            provider_logout_callback_uri=provider_logout_callback_uri,
+        )
+        return RedirectResponse(url=provider_logout_url, status_code=302)
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="kakao",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/auth/kakao/logout/callback")
+async def auth_kakao_logout_callback(
+    request: Request,
+    app_redirect_uri: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    request_id = _request_id(request)
+    try:
+        redirect_target = _resolve_app_logout_redirect_uri(requested_uri=app_redirect_uri)
+        params: dict[str, str] = {
+            "request_id": request_id,
+            "provider": "kakao",
+        }
+        if error:
+            params["error"] = error
+            if error_description:
+                params["error_description"] = error_description
+        else:
+            params["logout"] = "ok"
+
+        return RedirectResponse(
+            url=_append_query_params(redirect_target, params),
+            status_code=302,
+        )
+    except AuthServiceError as auth_error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=auth_error.user_id,
+            provider="kakao",
+            code=auth_error.code,
+        )
+        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+
+
+@app.post("/auth/google")
+async def auth_google(payload: OAuthProviderRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.oauth_login(
+            provider="google",
+            code=payload.code,
+            state=payload.state,
+            redirect_uri=payload.redirect_uri,
+            error=payload.error,
+            provider_user_id=payload.provider_user_id,
+            email=payload.email,
+            device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="google",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/kakao")
+async def auth_kakao(payload: OAuthProviderRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        provider_user_id = payload.provider_user_id
+        email = payload.email
+        if _is_kakao_code_verification_enabled() and payload.code and not payload.error:
+            provider_user_id, verified_email = _verify_kakao_identity(request=request, code=payload.code)
+            if verified_email:
+                email = verified_email
+
+        result = auth_service.oauth_login(
+            provider="kakao",
+            code=payload.code,
+            state=payload.state,
+            redirect_uri=payload.redirect_uri,
+            error=payload.error,
+            provider_user_id=provider_user_id,
+            email=email,
+            device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="kakao",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/refresh")
+async def auth_refresh(payload: RefreshRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.refresh(refresh_token=payload.refresh_token)
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/logout")
+async def auth_logout(payload: LogoutRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        revoked_count = auth_service.logout(
+            access_token=_extract_bearer_token(request),
+            refresh_token=payload.refresh_token,
+        )
+        return {
+            "ok": True,
+            "revoked_sessions": revoked_count,
+            "request_id": request_id,
+        }
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/me/profile")
+async def get_me_profile(request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        profile = auth_service.get_profile(user_id=user.user_id)
+        return {"profile": profile, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.put("/me/profile")
+async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        profile = auth_service.update_profile(
+            user_id=user.user_id,
+            display_name=payload.display_name,
+            locale=payload.locale,
+            timezone_name=payload.timezone,
+        )
+        return {"profile": profile, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
 
 @app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(

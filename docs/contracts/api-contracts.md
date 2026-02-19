@@ -52,11 +52,19 @@
 - 비개발자 설명:
   - 바코드 번호로 공공/사내 데이터와 AI를 조합해 결과를 반환합니다.
 
-## 4) 곧 추가할 API 계약 (로그인/개인화)
+## 4) Phase 1 인증/세션 API 계약 (활성화)
 
 ### A. 인증(Auth)
 - `POST /auth/google`
 - `POST /auth/kakao`
+- `GET /auth/google/start`
+- `GET /auth/google/callback`
+- `GET /auth/kakao/start`
+- `GET /auth/kakao/callback`
+- `GET /auth/google/logout/start`
+- `GET /auth/google/logout/callback`
+- `GET /auth/kakao/logout/start`
+- `GET /auth/kakao/logout/callback`
 - `POST /auth/email/login`
 - `POST /auth/email/signup`
 - `POST /auth/refresh`
@@ -64,10 +72,32 @@
 
 필수 출력(공통):
 - `access_token`, `refresh_token`, `expires_in`, `user`
+- `request_id`
+
+요청 요약:
+- `POST /auth/email/signup`: `email`, `password`, `display_name?`, `locale?`, `device_id?`
+- `POST /auth/email/login`: `email`, `password`, `device_id?`
+- `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `device_id?`
+- `GET /auth/google|kakao/start`: `redirect_uri?`(앱 콜백), `state?`(없으면 서버 생성)
+- `GET /auth/google|kakao/callback`: provider redirect 수신 후 앱 콜백 URI로 `code/state/error` 전달
+- `GET /auth/google|kakao/logout/start`: provider 계정 로그아웃 브라우저 리다이렉트 시작
+- `GET /auth/google|kakao/logout/callback`: provider 로그아웃 후 앱 콜백 URI로 완료/에러 전달
+- `POST /auth/refresh`: `refresh_token`
+- `POST /auth/logout`: `refresh_token?` + `Authorization: Bearer <access_token>`
+
+에러 코드(핵심):
+- `AUTH_INVALID_CREDENTIALS`
+- `AUTH_TOKEN_EXPIRED`
+- `AUTH_REFRESH_EXPIRED`
+- `AUTH_REFRESH_REUSED` (재사용 탐지 시 세션 패밀리 전체 무효화)
+- `AUTH_PROVIDER_CANCELLED`
+- `AUTH_PROVIDER_INVALID_CODE`
+- `AUTH_REDIRECT_URI_MISMATCH`
 
 비개발자 설명:
 - 로그인 성공 시 앱은 "사용자 본인 식별값(user_id)"을 받습니다.
 - 이후 모든 저장/조회는 이 user_id 소유 데이터로만 처리해야 합니다.
+- refresh token은 단일 사용(one-time)이며 재사용되면 보안 이벤트로 처리됩니다.
 
 ### B. 사용자 데이터(Profile/Settings/History)
 - `GET /me/profile`, `PUT /me/profile`
@@ -107,6 +137,6 @@
 
 ---
 
-문서 버전: v1.0  
+문서 버전: v1.1  
 소유: Backend Lead + Mobile Lead  
 최종 수정: 2026-02-19

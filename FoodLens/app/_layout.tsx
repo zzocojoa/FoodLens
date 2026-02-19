@@ -1,15 +1,15 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, router as appRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage, hasSeenOnboarding } from '../services/storage';
 import { cleanupOrphanedImages } from '../services/imageStorage';
-import { getCurrentUserId, hydrateCurrentUserId } from '../services/auth/currentUser';
+import { clearSession, restoreSession } from '../services/auth/sessionManager';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -43,28 +43,56 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
-  const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+
+    const bootstrap = async () => {
+      let nextRoute: '/login' | '/onboarding' | null = null;
+      try {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
-        await hydrateCurrentUserId(deviceId);
-        setUser(deviceId);
-        // Professional background cleanup
-        cleanupOrphanedImages().catch(() => {});
+        const restoredSession = await restoreSession();
 
-        // Check onboarding status
-        const seen = await hasSeenOnboarding(getCurrentUserId());
-        setIsReady(true);
-        await SplashScreen.hideAsync();
+        if (!active) return;
+        if (!restoredSession) {
+          setUser(deviceId);
+          nextRoute = '/login';
+        } else {
+          setUser(restoredSession.user.id);
+          // Professional background cleanup
+          cleanupOrphanedImages().catch(() => {});
 
-        if (!seen) {
-          router.replace('/onboarding');
+          // Check onboarding status
+          const seen = await hasSeenOnboarding(restoredSession.user.id);
+          if (!seen) {
+            nextRoute = '/onboarding';
+          }
         }
-    })();
+      } catch (error) {
+        console.error('[Auth] Session bootstrap failed', {
+          request_id: `auth-layout-${Date.now().toString(36)}`,
+          user_id: 'unknown',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await clearSession().catch(() => {});
+        if (!active) return;
+        nextRoute = '/login';
+      } finally {
+        if (!active) return;
+        await SplashScreen.hideAsync();
+        if (nextRoute) {
+          appRouter.replace(nextRoute);
+        }
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -72,6 +100,7 @@ function LayoutContent() {
       <ErrorBoundary>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
             <Stack.Screen name="camera" options={{ animation: 'none' }} />
