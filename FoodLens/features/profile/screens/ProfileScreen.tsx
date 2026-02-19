@@ -1,6 +1,7 @@
 import React from 'react';
 import {
     KeyboardAvoidingView,
+    Linking,
     Platform,
     ScrollView,
     Text,
@@ -41,6 +42,14 @@ export default function ProfileScreen() {
         selectSuggestion,
         saveProfile,
     } = useProfileScreen();
+
+    const handleOpenPrivacyPolicy = () => {
+        Linking.openURL('https://beatlefeed.github.io/FoodLens-project/docs/privacy-policy');
+    };
+
+    const handleOpenTermsOfService = () => {
+        Linking.openURL('https://beatlefeed.github.io/FoodLens-project/docs/terms-of-service');
+    };
 
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
@@ -94,6 +103,26 @@ export default function ProfileScreen() {
                     />
 
                     <RestrictionTags theme={theme} items={otherRestrictions} onRemove={removeRestriction} />
+
+                    <View style={{ marginTop: 40, paddingBottom: 20 }}>
+                        <Text style={[styles.sectionHeader, { color: theme.textPrimary, marginBottom: 12 }]}>
+                            {t('profile.section.legal', 'Legal')}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                            <Text
+                                style={{ color: theme.tint, fontSize: 14, textDecorationLine: 'underline' }}
+                                onPress={handleOpenPrivacyPolicy}
+                            >
+                                {t('profile.legal.privacy', 'Privacy Policy')}
+                            </Text>
+                            <Text
+                                style={{ color: theme.tint, fontSize: 14, textDecorationLine: 'underline' }}
+                                onPress={handleOpenTermsOfService}
+                            >
+                                {t('profile.legal.terms', 'Terms of Service')}
+                            </Text>
+                        </View>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
 
