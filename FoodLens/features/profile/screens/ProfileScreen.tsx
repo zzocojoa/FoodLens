@@ -44,11 +44,11 @@ export default function ProfileScreen() {
     } = useProfileScreen();
 
     const handleOpenPrivacyPolicy = () => {
-        Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/privacy-policy');
+        Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/privacy-policy/');
     };
 
     const handleOpenTermsOfService = () => {
-        Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service');
+        Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service/');
     };
 
     return (
