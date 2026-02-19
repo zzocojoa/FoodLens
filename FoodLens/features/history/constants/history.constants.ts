@@ -1,4 +1,4 @@
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
-export const TEST_UID = CURRENT_USER_ID;
+export const getHistoryUserId = (): string => getCurrentUserId();
 export const HISTORY_TITLE = 'Food Passport';

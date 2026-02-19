@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Auth Session"
+  short_description: "Implement FoodLens auth and session security"
+  default_prompt: "Use $foodlens-auth-session-implementation to implement Phase 1 auth endpoints, secure token storage, and refresh rotation."

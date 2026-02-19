@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FoodLens - Onboarding Complete</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#3c83f6",
+                        "background-light": "#f5f7f8",
+                        "background-dark": "#101722",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Manrope', sans-serif;
+        }
+        .bento-card-bg {
+            background-color: rgba(60, 131, 246, 0.08);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark min-h-screen flex items-center justify-center p-0 m-0 overflow-hidden">
+<div class="relative flex h-full max-h-[900px] w-full max-w-[430px] flex-col overflow-y-auto bg-background-light dark:bg-background-dark shadow-2xl mx-auto border-x border-slate-200 dark:border-slate-800">
+<!-- Progress Indicators (5/5 Complete) -->
+<div class="flex w-full flex-row items-center justify-center gap-2 py-6 px-6">
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+</div>
+<!-- Hero Section -->
+<div class="flex flex-col items-center justify-center px-6 pt-4 pb-2">
+<!-- 3D Checkmark Image -->
+<div class="relative w-48 h-48 mb-6 flex items-center justify-center">
+<div class="absolute inset-0 bg-primary/20 blur-[50px] rounded-full"></div>
+<img alt="Success Checkmark" class="relative w-full h-full object-contain drop-shadow-2xl z-10" data-alt="3D checkmark icon with confetti bursting around it" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVSn1OBvHX07v091DeF68kUUoFCslQozbggNK4-ibDfr15plH5v69sjU4W94vPxcYKB7DM0VxZFS02XJnPrzPMoAKuekcaBkV7FQD1gfxTccMlcCGp84Z3myk_b0XeqKEv7Zu_Dmal_nTCrZdGaUZuibq1NQeyeIuDYQXTgGXsi7sZUbtT6PYQPg53X_Y8vg4cUICFXD0zPEBI81bmYTxj0hQkK28a94L2dTWPwM4sFJdIICDGecf3i6DSAuCI_d_RAn511EX80uU"/>
+</div>
+<h1 class="text-slate-900 dark:text-slate-50 tracking-tight text-[32px] font-extrabold leading-tight text-center">
+                You're all set!
+            </h1>
+<p class="text-slate-500 dark:text-slate-400 text-base font-medium leading-relaxed mt-3 text-center px-4">
+                Your personalized allergen shield is ready. We've calibrated FoodLens to your specific needs.
+            </p>
+</div>
+<!-- Bento Grid Summary -->
+<div class="flex-1 px-5 py-6 flex flex-col gap-4">
+<!-- Top Row: Profile & Score (Example) -->
+<div class="grid grid-cols-2 gap-4">
+<!-- Profile Block -->
+<div class="flex flex-col justify-between rounded-2xl p-5 bg-white dark:bg-[#1e2736] border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-start justify-between mb-2">
+<span class="material-symbols-outlined text-primary text-3xl">account_circle</span>
+</div>
+<div>
+<p class="text-slate-400 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Profile</p>
+<p class="text-slate-900 dark:text-slate-100 text-xl font-bold">Male, 28</p>
+</div>
+</div>
+<!-- Mild Sensitivities Block -->
+<div class="flex flex-col justify-between rounded-2xl p-5 bg-white dark:bg-[#1e2736] border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-start justify-between mb-2">
+<div class="h-8 w-8 rounded-full bg-yellow-500/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-yellow-500 text-lg">warning</span>
+</div>
+</div>
+<div>
+<p class="text-slate-400 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Mild Risk</p>
+<div class="flex flex-wrap gap-1">
+<span class="text-slate-900 dark:text-slate-100 text-lg font-bold">Dairy</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Full Width: Severe Allergens Block -->
+<div class="flex flex-col rounded-2xl p-6 bg-white dark:bg-[#1e2736] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+<!-- Decorative background blob -->
+<div class="absolute -right-10 -top-10 w-32 h-32 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-colors duration-500"></div>
+<div class="flex items-center gap-3 mb-4 z-10">
+<div class="h-10 w-10 rounded-full bg-red-500/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-red-500 text-xl">gpp_maybe</span>
+</div>
+<p class="text-slate-400 dark:text-slate-400 text-sm font-semibold uppercase tracking-wider">Severe Allergens</p>
+</div>
+<div class="flex flex-wrap gap-2 z-10">
+<div class="px-4 py-2 rounded-full bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-500/20 flex items-center gap-2">
+<div class="h-2 w-2 rounded-full bg-red-500"></div>
+<span class="text-slate-900 dark:text-red-100 font-bold">Peanuts</span>
+</div>
+<div class="px-4 py-2 rounded-full bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-500/20 flex items-center gap-2">
+<div class="h-2 w-2 rounded-full bg-red-500"></div>
+<span class="text-slate-900 dark:text-red-100 font-bold">Shellfish</span>
+</div>
+</div>
+</div>
+<!-- "Did you know?" mini insight (Optional filler for modern look) -->
+<div class="rounded-xl p-4 bg-primary/5 border border-primary/10 flex items-start gap-3">
+<span class="material-symbols-outlined text-primary mt-0.5">smart_toy</span>
+<p class="text-sm text-slate-600 dark:text-slate-300">
+<span class="font-bold text-primary">AI Ready:</span> FoodLens will now auto-scan labels for your specific triggers.
+                </p>
+</div>
+</div>
+<!-- Sticky Bottom Button -->
+<div class="mt-auto w-full p-6 bg-background-light dark:bg-background-dark/95 backdrop-blur-sm sticky bottom-0">
+<button class="w-full h-14 bg-primary hover:bg-blue-600 active:scale-[0.98] transition-all rounded-full flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 group">
+<span class="text-white text-lg font-bold tracking-wide">Start Using FoodLens</span>
+<span class="material-symbols-outlined text-white transition-transform group-hover:translate-x-1">arrow_forward</span>
+</button>
+</div>
+</div>
+</body></html>

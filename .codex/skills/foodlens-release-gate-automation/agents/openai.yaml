@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Release Gate Automation"
+  short_description: "Automate FoodLens release quality gates"
+  default_prompt: "Use $foodlens-release-gate-automation to enforce Phase 6 CI gates, staged rollout checks, and rollback readiness."

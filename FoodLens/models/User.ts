@@ -5,12 +5,16 @@
  * 단순 개인정보뿐만 아니라, AI 분석의 기준이 되는 '알레르기 프로필'이 핵심입니다.
  */
 
+import { Gender, AllergySeverity } from '@/features/profile/types/profile.types';
+
 export interface UserProfile {
   uid: string;           // Firebase Auth User ID
   email: string;
   name?: string;         // Display Name
   profileImage?: string; // Avatar URL
   photoURL?: string;     // Legacy support
+  gender?: Gender;       // 성별
+  birthYear?: number;    // 출생연도 (데이터 최소화 원칙)
   
   // 핵심: AI 분석의 기준이 되는 개인화 정보
   safetyProfile: UserSafetyProfile;
@@ -29,6 +33,7 @@ export interface UserProfile {
 
 export interface UserSafetyProfile {
   allergies: string[]; // 예: ['peanut', 'shellfish', 'egg']
+  severityMap?: Record<string, AllergySeverity>; // 예: { peanut: 'severe', egg: 'mild' }
   dietaryRestrictions: string[]; // 예: ['vegan', 'halal', 'gluten-free']
   dislikedIngredients?: string[]; // (선택) 오이, 고수 등 기호 식품
 }

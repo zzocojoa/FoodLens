@@ -25,7 +25,7 @@ import HomeScansSection from '../components/HomeScansSection';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { useI18n } from '@/features/i18n';
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 export default function HomeScreen() {
   const { t, locale } = useI18n();
@@ -215,7 +215,7 @@ export default function HomeScreen() {
         <ProfileSheet
           isOpen={activeModal === 'PROFILE'}
           onClose={() => setActiveModal('NONE')}
-          userId={CURRENT_USER_ID}
+          userId={getCurrentUserId()}
           onUpdate={loadDashboardData}
         />
       </SafeAreaView>

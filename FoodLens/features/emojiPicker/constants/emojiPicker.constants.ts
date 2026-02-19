@@ -1,6 +1,6 @@
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
-export const TEST_UID = CURRENT_USER_ID;
+export const getEmojiPickerUserId = (): string => getCurrentUserId();
 export const DEFAULT_EMOJI = '🍎';
 
 export const EMOJI_OPTIONS = [

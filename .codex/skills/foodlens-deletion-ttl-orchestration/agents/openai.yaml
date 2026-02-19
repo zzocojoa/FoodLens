@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Deletion TTL Ops"
+  short_description: "Implement deletion queue and TTL retention jobs"
+  default_prompt: "Use $foodlens-deletion-ttl-orchestration to implement Phase 5 account deletion flow, queue consumers, TTL cleanup, and audit logs."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Rollout Control"
+  short_description: "Manage staged rollout and feature flag kill switch"
+  default_prompt: "Use $foodlens-feature-flag-rollout-control to run staged rollout gates, KPI checks, and emergency feature kill-switch actions."

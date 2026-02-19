@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens OAuth Integration"
+  short_description: "Implement Google Kakao Email OAuth flows"
+  default_prompt: "Use $foodlens-oauth-provider-integration to implement and validate Google, Kakao, and Email auth provider flows for Phase 1."

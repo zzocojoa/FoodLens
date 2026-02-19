@@ -129,5 +129,51 @@ export const SafeStorage = {
         } catch (error) {
             console.error(`${LOG_PREFIX} Error removing key "${key}":`, error);
         }
+    },
+
+    async clearAll(): Promise<void> {
+        try {
+            if (storage) {
+                storage.clearAll();
+            } else {
+                await AsyncStorage.clear();
+            }
+            console.log(`${LOG_PREFIX} All data cleared.`);
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Error clearing all data:`, error);
+        }
     }
+};
+
+// Onboarding helpers
+const ONBOARDING_KEY = '@foodlens_onboarding_complete';
+const ONBOARDING_KEY_BY_USER_PREFIX = '@foodlens_onboarding_complete:';
+
+const onboardingKeyByUser = (userId: string) => `${ONBOARDING_KEY_BY_USER_PREFIX}${userId}`;
+
+export const hasSeenOnboarding = async (userId?: string): Promise<boolean> => {
+    if (!userId) {
+        return SafeStorage.get<boolean>(ONBOARDING_KEY, false);
+    }
+
+    const scopedKey = onboardingKeyByUser(userId);
+    const scopedSeen = await SafeStorage.get<boolean>(scopedKey, false);
+    if (scopedSeen) return true;
+
+    // Backward compatibility: migrate legacy global onboarding flag once.
+    const legacySeen = await SafeStorage.get<boolean>(ONBOARDING_KEY, false);
+    if (!legacySeen) return false;
+
+    await SafeStorage.set(scopedKey, true);
+    await SafeStorage.remove(ONBOARDING_KEY);
+    return true;
+};
+
+export const setOnboardingComplete = async (userId?: string): Promise<void> => {
+    if (!userId) {
+        await SafeStorage.set(ONBOARDING_KEY, true);
+        return;
+    }
+
+    await SafeStorage.set(onboardingKeyByUser(userId), true);
 };

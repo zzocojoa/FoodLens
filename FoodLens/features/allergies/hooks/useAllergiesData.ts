@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { UserService } from '../../../services/userService';
-import { TEST_UID } from '../constants/allergies.constants';
+import { getAllergiesUserId } from '../constants/allergies.constants';
 import { mergeAllergyTerms } from '../utils/mergeAllergyTerms';
 import { AllergiesState } from '../types/allergies.types';
 
@@ -13,7 +13,7 @@ export const useAllergiesData = (): AllergiesState => {
 
         const loadAllergies = async () => {
             try {
-                const profile = await UserService.getUserProfile(TEST_UID);
+                const profile = await UserService.getUserProfile(getAllergiesUserId());
                 if (!mounted || !profile) return;
 
                 const combined = mergeAllergyTerms(
@@ -39,4 +39,3 @@ export const useAllergiesData = (): AllergiesState => {
 
     return { allergies, loading };
 };
-

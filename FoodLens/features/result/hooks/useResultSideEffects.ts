@@ -5,7 +5,7 @@ import { HapticsService } from '@/services/haptics';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 import type { ResultSourceType } from '@/services/contracts/resultRoute';
 import { photoLibraryService } from '../services/photoLibraryService';
-import { TEST_UID } from '../constants/result.constants';
+import { getResultUserId } from '../constants/result.constants';
 
 export const useDateUpdateAction = (
     savedRecordId: string | null,
@@ -17,7 +17,7 @@ export const useDateUpdateAction = (
             updateTimestamp(newDate);
 
             if (savedRecordId) {
-                await AnalysisService.updateAnalysisTimestamp(TEST_UID, savedRecordId, newDate);
+                await AnalysisService.updateAnalysisTimestamp(getResultUserId(), savedRecordId, newDate);
                 HapticsService.success();
             }
 

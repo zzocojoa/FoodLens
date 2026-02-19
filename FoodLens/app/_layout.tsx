@@ -1,17 +1,21 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../services/queryClient';
-import { SafeStorage, initializeSafeStorage } from '../services/storage';
+import { SafeStorage, initializeSafeStorage, hasSeenOnboarding } from '../services/storage';
 import { cleanupOrphanedImages } from '../services/imageStorage';
+import { getCurrentUserId, hydrateCurrentUserId } from '../services/auth/currentUser';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initSentry, setUser } from '../services/sentry';
+
+SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
 
@@ -39,15 +43,27 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
+  const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     (async () => {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
+        await hydrateCurrentUserId(deviceId);
         setUser(deviceId);
         // Professional background cleanup
         cleanupOrphanedImages().catch(() => {});
+
+        // Check onboarding status
+        const seen = await hasSeenOnboarding(getCurrentUserId());
+        setIsReady(true);
+        await SplashScreen.hideAsync();
+
+        if (!seen) {
+          router.replace('/onboarding');
+        }
     })();
   }, []);
 
@@ -57,6 +73,7 @@ function LayoutContent() {
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
             <Stack.Screen name="camera" options={{ animation: 'none' }} />
             <Stack.Screen name="result" options={{ animation: 'fade_from_bottom' }} />
             <Stack.Screen name="profile" />

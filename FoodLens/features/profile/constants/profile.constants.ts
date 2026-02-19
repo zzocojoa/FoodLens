@@ -1,7 +1,7 @@
-import { AllergenOption } from '../types/profile.types';
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
+import { AllergenOption, AllergySeverity, Gender } from '../types/profile.types';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
-export const TEST_UID = CURRENT_USER_ID;
+export const getProfileUserId = (): string => getCurrentUserId();
 export const TEST_EMAIL = 'test@example.com';
 
 const ALLERGEN_IMAGES = {
@@ -13,6 +13,7 @@ const ALLERGEN_IMAGES = {
     soy: require('../../../assets/images/allergens/soy.png'),
     treenut: require('../../../assets/images/allergens/treenut.png'),
     fish: require('../../../assets/images/allergens/fish.png'),
+    sesame: require('../../../assets/images/allergens/sesame.png'),
 };
 
 export const COMMON_ALLERGENS: AllergenOption[] = [
@@ -24,4 +25,16 @@ export const COMMON_ALLERGENS: AllergenOption[] = [
     { id: 'soy', label: 'Soy', image: ALLERGEN_IMAGES.soy },
     { id: 'treenut', label: 'Tree Nuts', image: ALLERGEN_IMAGES.treenut },
     { id: 'fish', label: 'Fish', image: ALLERGEN_IMAGES.fish },
+    { id: 'sesame', label: 'Sesame', image: ALLERGEN_IMAGES.sesame },
+];
+
+export const SEVERITY_LEVELS: { key: AllergySeverity; label: string; emoji: string; color: string }[] = [
+    { key: 'mild', label: 'Mild', emoji: '⚠️', color: '#F59E0B' },
+    { key: 'moderate', label: 'Moderate', emoji: '🔶', color: '#F97316' },
+    { key: 'severe', label: 'Severe', emoji: '🔴', color: '#EF4444' },
+];
+
+export const GENDER_OPTIONS: { key: Gender; label: string; icon: string }[] = [
+    { key: 'male', label: 'Male', icon: '👨' },
+    { key: 'female', label: 'Female', icon: '👩' },
 ];

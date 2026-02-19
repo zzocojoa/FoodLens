@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Token Rotation"
+  short_description: "Harden refresh token rotation and replay defense"
+  default_prompt: "Use $foodlens-refresh-token-rotation-hardening to enforce single-use refresh tokens, replay detection, and safe session invalidation."

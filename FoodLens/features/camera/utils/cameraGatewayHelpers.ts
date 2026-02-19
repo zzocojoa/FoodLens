@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 
 import { getLocationData, validateCoordinates } from '../../../services/utils';
 import { UserService } from '../../../services/userService';
-import { DEFAULT_ISO_CODE, TEST_UID } from '../constants/camera.constants';
+import { DEFAULT_ISO_CODE, getCameraUserId } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from './cameraMappers';
 import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage';
@@ -23,7 +23,7 @@ export const resolveIsoCodeFromContext = async (
     let targetLanguage: string | undefined;
     if (!photoCountryCode) {
         try {
-            const user = await UserService.getUserProfile(TEST_UID);
+            const user = await UserService.getUserProfile(getCameraUserId());
             if (user && user.settings.targetLanguage) {
                 targetLanguage = user.settings.targetLanguage;
             }

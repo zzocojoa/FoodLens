@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Sync Conflict Policy"
+  short_description: "Implement LWW and manual merge conflict rules"
+  default_prompt: "Use $foodlens-sync-conflict-policy to implement Phase 3 LWW conflict handling, manual merge paths, and idempotent write safety."

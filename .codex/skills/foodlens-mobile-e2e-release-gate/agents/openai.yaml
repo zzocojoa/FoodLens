@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Mobile E2E Gate"
+  short_description: "Automate core mobile release regression flows"
+  default_prompt: "Use $foodlens-mobile-e2e-release-gate to automate release-blocking mobile E2E tests for login, scan, result, and history flows."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens API Edge Guard"
+  short_description: "Apply CORS and rate-limit protection controls"
+  default_prompt: "Use $foodlens-api-rate-limit-cors-guard to apply backend CORS policy, per-client rate limits, and consistent 429 responses."

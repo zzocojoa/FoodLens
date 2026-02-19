@@ -5,6 +5,15 @@ import { ImageSourcePropType } from 'react-native';
 
 export type ProfileTheme = typeof Colors.light;
 
+export type AllergySeverity = 'mild' | 'moderate' | 'severe';
+
+export type AllergyEntry = {
+    id: string;
+    severity: AllergySeverity;
+};
+
+export type Gender = 'male' | 'female';
+
 export type AllergenOption = {
     id: string;
     label: string;

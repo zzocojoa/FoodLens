@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { TEST_UID } from '../constants/tripStats.constants';
+import { getTripStatsUserId } from '../constants/tripStats.constants';
 import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
 import { useTripStartToast } from './useTripStartToast';
 import { useI18n } from '@/features/i18n';
@@ -20,7 +20,7 @@ export function useTripStatsScreen(insetsTop: number) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const snapshot = await loadTripStatsSnapshot(TEST_UID);
+            const snapshot = await loadTripStatsSnapshot(getTripStatsUserId());
             setTotalCount(snapshot.totalCount);
             setSafeCount(snapshot.safeCount);
             setTripStartDate(snapshot.tripStartDate);
@@ -41,7 +41,7 @@ export function useTripStatsScreen(insetsTop: number) {
     const handleStartNewTrip = useCallback(async () => {
         setIsLocating(true);
         try {
-            const result = await startTripFromCurrentLocation(TEST_UID);
+            const result = await startTripFromCurrentLocation(getTripStatsUserId());
             if (!result.ok) {
                 showTranslatedAlert(t, {
                     titleKey: 'tripStats.alert.permissionDeniedTitle',

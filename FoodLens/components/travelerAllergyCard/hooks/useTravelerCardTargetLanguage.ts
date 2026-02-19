@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { UserService } from '@/services/userService';
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
-
-const TEST_UID = CURRENT_USER_ID;
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 export const useTravelerCardTargetLanguage = () => {
   const [targetLanguage, setTargetLanguage] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    UserService.getUserProfile(TEST_UID)
+    UserService.getUserProfile(getCurrentUserId())
       .then((profile) => {
         if (!profile) return;
         setTargetLanguage(profile.settings?.targetLanguage);

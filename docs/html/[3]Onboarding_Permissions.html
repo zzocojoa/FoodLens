@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FoodLens - Permissions</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+            extend: {
+                colors: {
+                    "primary": "#3c83f6",
+                    "background-light": "#f5f7f8",
+                    "background-dark": "#020617", /* Slate-950 as requested */
+                    "surface-dark": "#0f172a", /* Slate-900 for cards */
+                },
+                fontFamily: {
+                    "display": ["Manrope", "sans-serif"]
+                },
+                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+            },
+            },
+        }
+    </script>
+<style>
+        /* Custom Utilities */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .glow-effect {
+            box-shadow: 0 0 60px -10px rgba(60, 131, 246, 0.3);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display min-h-screen flex flex-col items-center justify-center antialiased overflow-hidden relative">
+<!-- Background Ambient Effects -->
+<div class="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[100px] pointer-events-none z-0"></div>
+<div class="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-primary/10 rounded-full blur-[80px] pointer-events-none z-0"></div>
+<main class="w-full max-w-md h-full min-h-screen flex flex-col relative z-10 px-6 py-8">
+<!-- Progress Indicators -->
+<div class="flex w-full flex-row items-center justify-center gap-3 py-5">
+<div class="h-1.5 w-1.5 rounded-full bg-slate-700 dark:bg-slate-700"></div>
+<div class="h-1.5 w-1.5 rounded-full bg-slate-700 dark:bg-slate-700"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-1.5 rounded-full bg-slate-700 dark:bg-slate-700"></div>
+<div class="h-1.5 w-1.5 rounded-full bg-slate-700 dark:bg-slate-700"></div>
+</div>
+<!-- Hero Section -->
+<div class="flex-1 flex flex-col items-center justify-center text-center mt-4">
+<!-- 3D Icon Visualization -->
+<div class="relative w-full aspect-[4/3] flex items-center justify-center mb-8">
+<!-- Glowing Backdrop -->
+<div class="absolute w-40 h-40 bg-primary/40 rounded-full blur-[60px] animate-pulse"></div>
+<!-- Icons container -->
+<div class="relative flex items-center justify-center gap-6">
+<!-- Camera Icon -->
+<div class="flex flex-col items-center gap-4 transform translate-y-4">
+<div class="w-24 h-24 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 shadow-2xl flex items-center justify-center glow-effect relative overflow-hidden group">
+<div class="absolute inset-0 bg-gradient-to-tr from-primary/20 to-transparent opacity-50"></div>
+<span class="material-symbols-outlined text-primary text-[48px] drop-shadow-[0_0_10px_rgba(60,131,246,0.6)]">photo_camera</span>
+</div>
+</div>
+<!-- Gallery Icon -->
+<div class="flex flex-col items-center gap-4 transform -translate-y-4">
+<div class="w-24 h-24 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 shadow-2xl flex items-center justify-center glow-effect relative overflow-hidden group">
+<div class="absolute inset-0 bg-gradient-to-bl from-primary/20 to-transparent opacity-50"></div>
+<span class="material-symbols-outlined text-white text-[48px]">photo_library</span>
+</div>
+</div>
+</div>
+</div>
+<h1 class="text-slate-900 dark:text-white tracking-tight text-[32px] font-bold leading-tight px-2 pb-3">
+                Let's set up your lens
+            </h1>
+<p class="text-slate-500 dark:text-slate-400 text-base font-medium leading-relaxed px-4">
+                To protect you from allergens, our AI needs to see what you eat.
+            </p>
+</div>
+<!-- Permission Cards -->
+<div class="w-full flex flex-col gap-4 mb-8">
+<!-- Camera Permission -->
+<div class="glass-card flex items-center justify-between p-4 rounded-xl">
+<div class="flex items-center gap-4">
+<div class="flex items-center justify-center rounded-full bg-slate-800/80 shrink-0 h-12 w-12 border border-slate-700/50 text-primary">
+<span class="material-symbols-outlined">videocam</span>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-slate-900 dark:text-white text-base font-semibold leading-snug">Camera Access</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal leading-snug">To scan real-time meals</p>
+</div>
+</div>
+<div class="shrink-0">
+<label class="relative flex h-[30px] w-[50px] cursor-pointer items-center rounded-full border-none bg-slate-700 p-1 has-[:checked]:bg-primary transition-colors duration-200">
+<input checked="" class="peer invisible absolute" type="checkbox"/>
+<div class="h-[22px] w-[22px] rounded-full bg-white shadow-sm transition-all duration-200 peer-checked:translate-x-[20px]"></div>
+</label>
+</div>
+</div>
+<!-- Photo Library Permission -->
+<div class="glass-card flex items-center justify-between p-4 rounded-xl">
+<div class="flex items-center gap-4">
+<div class="flex items-center justify-center rounded-full bg-slate-800/80 shrink-0 h-12 w-12 border border-slate-700/50 text-slate-300">
+<span class="material-symbols-outlined">image</span>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-slate-900 dark:text-white text-base font-semibold leading-snug">Photo Library</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal leading-snug">To analyze saved menus</p>
+</div>
+</div>
+<div class="shrink-0">
+<label class="relative flex h-[30px] w-[50px] cursor-pointer items-center rounded-full border-none bg-slate-700 p-1 has-[:checked]:bg-primary transition-colors duration-200">
+<input class="peer invisible absolute" type="checkbox"/>
+<div class="h-[22px] w-[22px] rounded-full bg-white shadow-sm transition-all duration-200 peer-checked:translate-x-[20px]"></div>
+</label>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex flex-col gap-4 mb-4">
+<button class="w-full bg-primary hover:bg-blue-600 text-white font-bold text-lg h-14 rounded-full transition-all duration-200 shadow-lg shadow-blue-500/20 active:scale-[0.98]">
+                Allow Access
+            </button>
+<button class="w-full bg-transparent text-slate-500 dark:text-slate-400 font-medium text-sm hover:text-white transition-colors duration-200">
+                Maybe Later
+            </button>
+</div>
+</main>
+<!-- Background Image for context (Subtle) -->
+<!-- Not visible but semantically present for screen readers/bots if needed, or used as a very subtle overlay -->
+<div class="absolute inset-0 z-0 opacity-[0.03] mix-blend-overlay pointer-events-none" data-alt="Abstract subtle texture of digital network" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuByIoLixSsiQok40j9LJ8cHnc6k8kTDnGZvilWosPSBYVzr8qcoEsJnPVAXkrpGp99MtHfKFEY0a4TSUU_n0-FSbRC7p-zEav3CP9HutedB9LN1Zg_OJdVPQJPQzyzVTEfyI5lsgWhDmbwcK1xYk4rQYSqJ9e7DNw4FjWl7fxYy2gWqPPWa-rJK7e82ISYPYHgZxR41P7BgFZ0ezabZ-_bDObxGGog3FC44yvWrjw_oeVbOA4HpslqVdVyeXwdfqYkqYG7TWEGXtpo'); background-size: cover; background-position: center;"></div>
+</body></html>

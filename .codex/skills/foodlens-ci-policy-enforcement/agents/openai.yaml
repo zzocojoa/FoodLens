@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens CI Policy"
+  short_description: "Enforce mandatory CI quality gate policy"
+  default_prompt: "Use $foodlens-ci-policy-enforcement to enforce mandatory CI checks and merge blocking policy for quality and contract safety."

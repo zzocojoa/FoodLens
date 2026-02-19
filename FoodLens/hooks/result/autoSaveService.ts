@@ -1,5 +1,5 @@
 import { AnalysisService } from '@/services/analysisService';
-import { TEST_UID } from './autoSaveUtils';
+import { getAutoSaveUserId } from './autoSaveUtils';
 
 export const autoSaveService = {
   save(params: {
@@ -9,7 +9,7 @@ export const autoSaveService = {
     timestamp?: string | null;
   }) {
     return AnalysisService.saveAnalysis(
-      TEST_UID,
+      getAutoSaveUserId(),
       params.result,
       params.rawImageUri,
       params.locationData,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Offline First Sync"
+  short_description: "Migrate FoodLens to offline-first synced data"
+  default_prompt: "Use $foodlens-offline-first-sync to implement Phase 2-3 cache-first sync queue, idempotency, and conflict handling."

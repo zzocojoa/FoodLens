@@ -8,7 +8,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
-import { TEST_UID } from '../constants/history.constants';
+import { getHistoryUserId } from '../constants/history.constants';
 import { useHistoryScreen } from '../hooks/useHistoryScreen';
 import { historyStyles as styles } from '../styles/historyStyles';
 import { toggleCountryExpanded } from '../utils/historySelection';
@@ -35,7 +35,7 @@ export default function HistoryScreen() {
         setExpandedCountries,
         deleteItem,
         deleteMultipleItems,
-    } = useHistoryData(TEST_UID);
+    } = useHistoryData(getHistoryUserId());
 
     const { archiveFilter, setArchiveFilter, matchesFilter, isAllowedItemType } = useHistoryFilter();
 

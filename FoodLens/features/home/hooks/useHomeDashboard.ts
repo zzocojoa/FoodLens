@@ -10,9 +10,7 @@ import { filterScansByDate } from '../utils/homeDashboard';
 import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
-import { CURRENT_USER_ID } from '@/services/auth/currentUser';
-
-const TEST_UID = CURRENT_USER_ID;
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
@@ -46,7 +44,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
 
   const loadDashboardData = useCallback(async () => {
     try {
-      const snapshot = await fetchHomeDashboardData(TEST_UID);
+      const snapshot = await fetchHomeDashboardData(getCurrentUserId());
       const { recentData: fetchedRecent, allHistory, profile, weeklyStats, safeCount } = snapshot;
 
       console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
@@ -81,7 +79,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setRecentScans((prev) => prev.filter((item) => item.id !== itemId));
-        await AnalysisService.deleteAnalysis(TEST_UID, itemId);
+        await AnalysisService.deleteAnalysis(getCurrentUserId(), itemId);
         loadDashboardData();
       } catch (error) {
         console.error('Home delete failed:', error);

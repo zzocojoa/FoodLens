@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Observability"
+  short_description: "Add tracing metrics and Sentry observability"
+  default_prompt: "Use $foodlens-observability-otel-sentry to instrument request tracing, latency metrics, and error reporting for backend and mobile."

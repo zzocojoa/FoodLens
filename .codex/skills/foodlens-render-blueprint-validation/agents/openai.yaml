@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Render Blueprint"
+  short_description: "Validate Render blueprint and deployment config"
+  default_prompt: "Use $foodlens-render-blueprint-validation to validate render.yaml, environment consistency, and rollback-safe Render deployment configuration."

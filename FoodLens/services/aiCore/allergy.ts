@@ -1,11 +1,11 @@
 import { UserService } from '@/services/userService';
-import { TEST_UID } from './constants';
+import { getAiUserId } from './constants';
 
 export const getAllergyString = async (): Promise<string> => {
     let allergyString = 'None';
 
     try {
-        const user = await UserService.getUserProfile(TEST_UID);
+        const user = await UserService.getUserProfile(getAiUserId());
         if (user) {
             const items = [...user.safetyProfile.allergies, ...user.safetyProfile.dietaryRestrictions];
             if (items.length > 0) {

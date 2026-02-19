@@ -1,10 +1,10 @@
 import { UserService } from '@/services/userService';
-import { TEST_EMAIL, TEST_UID } from '../constants/profile.constants';
+import { TEST_EMAIL, getProfileUserId } from '../constants/profile.constants';
 
-export const loadTestUserProfile = () => UserService.getUserProfile(TEST_UID);
+export const loadTestUserProfile = () => UserService.getUserProfile(getProfileUserId());
 
 export const saveTestUserProfile = async (allergies: string[], otherRestrictions: string[]) => {
-    await UserService.CreateOrUpdateProfile(TEST_UID, TEST_EMAIL, {
+    await UserService.CreateOrUpdateProfile(getProfileUserId(), TEST_EMAIL, {
         safetyProfile: {
             allergies,
             dietaryRestrictions: otherRestrictions,
@@ -15,4 +15,3 @@ export const saveTestUserProfile = async (allergies: string[], otherRestrictions
         },
     });
 };
-
