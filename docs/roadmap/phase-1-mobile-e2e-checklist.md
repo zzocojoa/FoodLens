@@ -39,6 +39,10 @@ This artifact is the Phase 1 mobile acceptance evidence for:
 - 2026-02-19 (automated/runtime evidence):
   - Phase 1 auth runtime gate: Pass
   - Live provider bridge smoke: Pass
+  - GitHub Actions run: `22186871201`
+  - Run URL: https://github.com/zzocojoa/FoodLens/actions/runs/22186871201
+  - Logs API (archived by Actions): `302` confirmed
+  - Artifacts: none (workflow stores logs only)
   - Backend request_id evidence:
     - signup: `36228b13ef97`
     - login: `e3d09b9d4e6b`
