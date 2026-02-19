@@ -112,5 +112,5 @@
 ---
 
 문서 버전: v1.0  
-연결 문서: [Master Plan](./master-plan.md), [API 계약 기준서](../contracts/api-contracts.md)  
+연결 문서: [Master Plan](./master-plan.md), [API 계약 기준서](../contracts/api-contracts.md), [Phase 1 Mobile E2E Checklist](./phase-1-mobile-e2e-checklist.md)  
 최종 수정: 2026-02-19

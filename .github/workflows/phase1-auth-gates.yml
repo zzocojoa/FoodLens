@@ -1,0 +1,60 @@
+name: Phase1 Auth Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend-auth-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Phase 1 auth runtime gate
+        run: bash backend/scripts/ci_auth_phase1_gate.sh
+
+  mobile-auth-runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Auth unit tests
+        run: |
+          npm run test -- \
+            services/auth/__tests__/providerLogout.test.ts \
+            services/auth/__tests__/oauthProvider.test.ts \
+            services/auth/__tests__/sessionManager.test.ts \
+            --runInBand

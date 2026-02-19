@@ -138,6 +138,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 os.environ,
                 {
                     "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
                 },
                 clear=False,
             ),
