@@ -16,6 +16,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run live provider smoke checks
+        id: smoke
         env:
           AUTH_PUBLIC_BASE_URL: ${{ inputs.auth_public_base_url }}
-        run: bash backend/scripts/ci_auth_live_provider_smoke.sh
+        run: |
+          mkdir -p artifacts
+          bash backend/scripts/ci_auth_live_provider_smoke.sh 2>&1 | tee artifacts/phase1-live-provider-smoke.log
+
+      - name: Upload smoke log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-live-provider-smoke-log
+          path: artifacts/phase1-live-provider-smoke.log
+          if-no-files-found: error
+          retention-days: 14
