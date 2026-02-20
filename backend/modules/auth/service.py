@@ -235,29 +235,33 @@ class InMemoryAuthSessionService:
                 return self._create_session_bundle(user=user, provider="email", device_id=device_id)
 
             verification_record, verification_code = self._issue_email_verification(user=user)
-            try:
-                self._email_verification_sender.send_verification_code(
-                    email=user.email,
-                    code=verification_code,
-                    expires_in_seconds=max(1, int((verification_record.expires_at - _utc_now()).total_seconds())),
-                    user_id=user.user_id,
-                )
-            except EmailVerificationDeliveryError as error:
-                self._rollback_unverified_user(user)
-                raise AuthServiceError(
-                    code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",
-                    message="Failed to deliver verification email.",
-                    status_code=503,
-                    user_id=user.user_id,
-                ) from error
-
             challenge_payload = self._serialize_email_verification_challenge(
                 user=user,
                 record=verification_record,
             )
             if self.email_verification_debug_code_enabled:
                 challenge_payload["verification_debug_code"] = verification_code
-            return challenge_payload
+
+        try:
+            self._email_verification_sender.send_verification_code(
+                email=user.email,
+                code=verification_code,
+                expires_in_seconds=max(1, int((verification_record.expires_at - _utc_now()).total_seconds())),
+                user_id=user.user_id,
+            )
+        except EmailVerificationDeliveryError as error:
+            with self._lock:
+                pending_user = self._users_by_id.get(user.user_id)
+                if pending_user and pending_user.email_verified_at is None:
+                    self._rollback_unverified_user(pending_user)
+            raise AuthServiceError(
+                code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",
+                message="Failed to deliver verification email.",
+                status_code=503,
+                user_id=user.user_id,
+            ) from error
+
+        return challenge_payload
 
     def login_email(self, *, email: str, password: str, device_id: str | None) -> dict[str, object]:
         normalized_email = self._normalize_email(email)

@@ -684,7 +684,8 @@ async def auth_email_signup(payload: EmailSignupRequest, request: Request):
     request_id = _request_id(request)
     auth_service = _service("auth_service")
     try:
-        result = auth_service.signup_email(
+        result = await run_in_threadpool(
+            auth_service.signup_email,
             email=payload.email,
             password=payload.password,
             display_name=payload.display_name,
