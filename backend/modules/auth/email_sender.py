@@ -5,6 +5,8 @@ import os
 import smtplib
 import ssl
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Callable, Literal
@@ -93,6 +95,7 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
     password: str | None = None
     from_name: str = "FoodLens"
     timeout_seconds: float = DEFAULT_EMAIL_TIMEOUT_SECONDS
+    max_attempts: int = MAX_EMAIL_SEND_ATTEMPTS
     use_starttls: bool = True
     use_ssl: bool = False
     subject: str = "FoodLens verification code"
@@ -109,9 +112,10 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
         message = self._build_message(email=email, code=code, expires_in_seconds=expires_in_seconds)
         last_error: Exception | None = None
 
-        for attempt in range(1, MAX_EMAIL_SEND_ATTEMPTS + 1):
+        max_attempts = max(1, int(self.max_attempts))
+        for attempt in range(1, max_attempts + 1):
             try:
-                self._send_message(message)
+                self._send_message_with_timeout(message)
                 logger.info(
                     "[AuthEmail] verification email delivered mode=%s user_id=%s email=%s attempt=%s",
                     self.mode,
@@ -120,9 +124,9 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
                     attempt,
                 )
                 return
-            except (smtplib.SMTPException, OSError) as error:
+            except (smtplib.SMTPException, OSError, TimeoutError) as error:
                 last_error = error
-                if attempt >= MAX_EMAIL_SEND_ATTEMPTS:
+                if attempt >= max_attempts:
                     break
                 time.sleep(0.2 * (2 ** (attempt - 1)))
 
@@ -170,6 +174,18 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
             self._authenticate(smtp)
             smtp.send_message(message)
 
+    def _send_message_with_timeout(self, message: EmailMessage) -> None:
+        # Guard against DNS/connect stalls that can exceed smtplib socket timeout.
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="foodlens-auth-email")
+        future = executor.submit(self._send_message, message)
+        try:
+            future.result(timeout=max(1.0, float(self.timeout_seconds) + 0.5))
+        except FutureTimeoutError as error:
+            future.cancel()
+            raise TimeoutError("SMTP send operation timed out.") from error
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
     def _authenticate(self, smtp: smtplib.SMTP) -> None:
         if not self.username:
             return
@@ -212,6 +228,7 @@ def build_email_verification_sender_from_env(
         get_env("AUTH_EMAIL_SMTP_TIMEOUT_SECONDS", str(DEFAULT_EMAIL_TIMEOUT_SECONDS)),
         DEFAULT_EMAIL_TIMEOUT_SECONDS,
     )
+    max_attempts = _safe_int(get_env("AUTH_EMAIL_SMTP_MAX_ATTEMPTS", str(MAX_EMAIL_SEND_ATTEMPTS)), MAX_EMAIL_SEND_ATTEMPTS)
     use_starttls = (get_env("AUTH_EMAIL_SMTP_STARTTLS", "1") or "1").strip() != "0"
     use_ssl = (get_env("AUTH_EMAIL_SMTP_SSL", "0") or "0").strip() == "1"
     username = (get_env("AUTH_EMAIL_SMTP_USERNAME", "") or "").strip() or None
@@ -227,6 +244,7 @@ def build_email_verification_sender_from_env(
         password=password,
         from_name=from_name,
         timeout_seconds=max(1.0, timeout_seconds),
+        max_attempts=max(1, max_attempts),
         use_starttls=use_starttls,
         use_ssl=use_ssl,
         subject=subject,
