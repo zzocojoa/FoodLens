@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
+os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
+os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError  # noqa: E402
@@ -20,28 +22,70 @@ def _auth_headers(access_token: str) -> dict[str, str]:
 
 
 class AuthPhase1RuntimeTests(unittest.TestCase):
+    def _signup_email(self, client: TestClient, **payload):
+        response = client.post("/auth/email/signup", json=payload)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("request_id", body)
+        self.assertTrue(body.get("verification_required"))
+        self.assertIn("verification_debug_code", body)
+        return body
+
+    def _verify_email(
+        self,
+        client: TestClient,
+        *,
+        email: str,
+        code: str,
+        device_id: str | None = None,
+    ):
+        response = client.post(
+            "/auth/email/verify",
+            json={
+                "email": email,
+                "code": code,
+                "device_id": device_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("request_id", body)
+        self.assertIn("access_token", body)
+        self.assertIn("refresh_token", body)
+        return body
+
+    def _signup_and_verify(self, client: TestClient, *, email: str, password: str, display_name: str, locale: str = "ko-KR", device_id: str | None = None):
+        signup_body = self._signup_email(
+            client,
+            email=email,
+            password=password,
+            display_name=display_name,
+            locale=locale,
+            device_id=device_id,
+        )
+        session_body = self._verify_email(
+            client,
+            email=email,
+            code=signup_body["verification_debug_code"],
+            device_id=device_id,
+        )
+        return signup_body, session_body
+
     def test_email_signup_refresh_and_profile_roundtrip(self):
         with TestClient(app) as client:
-            signup_response = client.post(
-                "/auth/email/signup",
-                json={
-                    "email": "alpha@example.com",
-                    "password": "Passw0rd!",
-                    "display_name": "Alpha",
-                    "locale": "en-US",
-                    "device_id": "ios-alpha",
-                },
+            signup_body, session_body = self._signup_and_verify(
+                client,
+                email="alpha@example.com",
+                password="Passw0rd!",
+                display_name="Alpha",
+                locale="en-US",
+                device_id="ios-alpha",
             )
 
-            self.assertEqual(signup_response.status_code, 200)
-            signup_body = signup_response.json()
-            self.assertIn("request_id", signup_body)
-            self.assertIn("access_token", signup_body)
-            self.assertIn("refresh_token", signup_body)
             self.assertEqual(signup_body["user"]["email"], "alpha@example.com")
-            user_id = signup_body["user"]["id"]
+            user_id = session_body["user"]["id"]
 
-            profile_response = client.get("/me/profile", headers=_auth_headers(signup_body["access_token"]))
+            profile_response = client.get("/me/profile", headers=_auth_headers(session_body["access_token"]))
             self.assertEqual(profile_response.status_code, 200)
             self.assertEqual(profile_response.json()["profile"]["user_id"], user_id)
             self.assertEqual(profile_response.json()["profile"]["display_name"], "Alpha")
@@ -49,7 +93,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             update_response = client.put(
                 "/me/profile",
                 json={"display_name": "Alpha Prime", "timezone": "Asia/Seoul"},
-                headers=_auth_headers(signup_body["access_token"]),
+                headers=_auth_headers(session_body["access_token"]),
             )
             self.assertEqual(update_response.status_code, 200)
             updated_profile = update_response.json()["profile"]
@@ -58,22 +102,52 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
 
             refresh_response = client.post(
                 "/auth/refresh",
-                json={"refresh_token": signup_body["refresh_token"]},
+                json={"refresh_token": session_body["refresh_token"]},
             )
             self.assertEqual(refresh_response.status_code, 200)
             refresh_body = refresh_response.json()
-            self.assertNotEqual(refresh_body["refresh_token"], signup_body["refresh_token"])
+            self.assertNotEqual(refresh_body["refresh_token"], session_body["refresh_token"])
+
+    def test_email_login_rejected_before_verification(self):
+        with TestClient(app) as client:
+            self._signup_email(
+                client,
+                email="pending@example.com",
+                password="Passw0rd!",
+                display_name="Pending",
+            )
+
+            login_response = client.post(
+                "/auth/email/login",
+                json={"email": "pending@example.com", "password": "Passw0rd!"},
+            )
+            self.assertEqual(login_response.status_code, 403)
+            self.assertEqual(login_response.json()["detail"]["code"], "AUTH_EMAIL_NOT_VERIFIED")
+
+    def test_email_verification_rejects_invalid_code(self):
+        with TestClient(app) as client:
+            self._signup_email(
+                client,
+                email="invalid-code@example.com",
+                password="Passw0rd!",
+                display_name="Invalid Code",
+            )
+
+            verify_response = client.post(
+                "/auth/email/verify",
+                json={"email": "invalid-code@example.com", "code": "000000"},
+            )
+            self.assertEqual(verify_response.status_code, 400)
+            self.assertEqual(verify_response.json()["detail"]["code"], "AUTH_EMAIL_VERIFICATION_INVALID")
 
     def test_refresh_reuse_detection_revokes_session_family(self):
         with TestClient(app) as client:
-            signup = client.post(
-                "/auth/email/signup",
-                json={
-                    "email": "reuse@example.com",
-                    "password": "Passw0rd!",
-                    "display_name": "Reuse",
-                },
-            ).json()
+            _, signup = self._signup_and_verify(
+                client,
+                email="reuse@example.com",
+                password="Passw0rd!",
+                display_name="Reuse",
+            )
 
             first_refresh = client.post("/auth/refresh", json={"refresh_token": signup["refresh_token"]})
             self.assertEqual(first_refresh.status_code, 200)
@@ -93,11 +167,17 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
     def test_refresh_race_only_allows_single_winner(self):
         with TestClient(app):
             service = app.state.auth_service
-            issued = service.signup_email(
+            pending = service.signup_email(
                 email="race@example.com",
                 password="Passw0rd!",
                 display_name="Race",
                 locale="ko-KR",
+                device_id="ios-race",
+            )
+            self.assertTrue(pending["verification_required"])
+            issued = service.verify_email(
+                email="race@example.com",
+                code=pending["verification_debug_code"],
                 device_id="ios-race",
             )
             base_refresh = issued["refresh_token"]
@@ -441,14 +521,18 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
 
     def test_account_switch_keeps_profiles_isolated(self):
         with TestClient(app) as client:
-            account_a = client.post(
-                "/auth/email/signup",
-                json={"email": "a@example.com", "password": "Passw0rd!", "display_name": "A"},
-            ).json()
-            account_b = client.post(
-                "/auth/email/signup",
-                json={"email": "b@example.com", "password": "Passw0rd!", "display_name": "B"},
-            ).json()
+            _, account_a = self._signup_and_verify(
+                client,
+                email="a@example.com",
+                password="Passw0rd!",
+                display_name="A",
+            )
+            _, account_b = self._signup_and_verify(
+                client,
+                email="b@example.com",
+                password="Passw0rd!",
+                display_name="B",
+            )
 
             self.assertNotEqual(account_a["user"]["id"], account_b["user"]["id"])
 
@@ -473,10 +557,12 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
 
     def test_logout_revokes_tokens(self):
         with TestClient(app) as client:
-            signup = client.post(
-                "/auth/email/signup",
-                json={"email": "logout@example.com", "password": "Passw0rd!", "display_name": "Logout"},
-            ).json()
+            _, signup = self._signup_and_verify(
+                client,
+                email="logout@example.com",
+                password="Passw0rd!",
+                display_name="Logout",
+            )
 
             logout_response = client.post(
                 "/auth/logout",

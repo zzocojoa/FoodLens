@@ -15,7 +15,7 @@ assert_redirect() {
   local label="$3"
 
   local headers
-  headers="$(curl -sS -D - -o /dev/null "$url")"
+  headers="$(curl -sS --connect-timeout 15 --max-time 15 --retry 3 --retry-delay 1 --retry-all-errors -D - -o /dev/null "$url")"
   local status
   status="$(printf '%s\n' "$headers" | awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}')"
   local location

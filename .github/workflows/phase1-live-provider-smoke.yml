@@ -20,6 +20,7 @@ jobs:
         env:
           AUTH_PUBLIC_BASE_URL: ${{ inputs.auth_public_base_url }}
         run: |
+          set -o pipefail
           mkdir -p artifacts
           bash backend/scripts/ci_auth_live_provider_smoke.sh 2>&1 | tee artifacts/phase1-live-provider-smoke.log
 

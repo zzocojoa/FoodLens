@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
     KeyboardAvoidingView,
     Linking,
     Platform,
     ScrollView,
     Text,
+    TouchableOpacity,
     View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,15 +15,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
 import RestrictionInput from '../components/RestrictionInput';
-import RestrictionTags from '../components/RestrictionTags';
 import SaveProfileFooter from '../components/SaveProfileFooter';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { SEVERITY_LEVELS } from '../constants/profile.constants';
 import { useI18n } from '@/features/i18n';
-import { AuthApi } from '@/services/auth/authApi';
-import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
-import { clearSession } from '@/services/auth/sessionManager';
-import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -30,21 +27,19 @@ export default function ProfileScreen() {
     const { colorScheme } = useTheme();
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
-    const [logoutLoading, setLogoutLoading] = useState(false);
+    const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);
 
     const {
         loading,
-        inputValue,
+        customAllergenInputValue,
         allergies,
-        otherRestrictions,
-        suggestions,
+        severityMap,
+        customAllergenSuggestions,
         scrollViewRef,
-        shouldScrollRef,
         toggleAllergen,
-        handleInputChange,
-        addOtherRestriction,
-        removeRestriction,
-        selectSuggestion,
+        cycleSeverity,
+        handleCustomAllergenInputChange,
+        addCustomAllergen,
         saveProfile,
     } = useProfileScreen();
 
@@ -56,56 +51,6 @@ export default function ProfileScreen() {
         Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service/');
     };
 
-    const handleLogout = async () => {
-        if (logoutLoading) {
-            return;
-        }
-
-        const requestId = `auth-logout-${Date.now().toString(36)}`;
-        setLogoutLoading(true);
-
-        let provider: string | undefined;
-        let userId = 'unknown';
-        try {
-            const storedSession = await AuthSecureSessionStore.read();
-            provider = storedSession?.user?.provider;
-            userId = storedSession?.user?.id ?? 'unknown';
-
-            if (storedSession) {
-                try {
-                    await AuthApi.logout({
-                        accessToken: storedSession.accessToken,
-                        refreshToken: storedSession.refreshToken,
-                    });
-                } catch (error) {
-                    console.warn('[AuthSession] Backend logout failed', {
-                        request_id: requestId,
-                        user_id: userId,
-                        provider: provider ?? 'none',
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                }
-            }
-
-            await clearSession();
-
-            try {
-                await logoutFromOAuthProvider(provider);
-            } catch (error) {
-                console.warn('[AuthSession] Provider logout failed', {
-                    request_id: requestId,
-                    user_id: userId,
-                    provider: provider ?? 'none',
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            }
-
-            router.replace('/login');
-        } finally {
-            setLogoutLoading(false);
-        }
-    };
-
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
             <ProfileHeader theme={theme} onBack={() => router.back()} />
@@ -115,15 +60,9 @@ export default function ProfileScreen() {
                     ref={scrollViewRef}
                     style={styles.container}
                     contentContainerStyle={{
-                        paddingBottom: otherRestrictions.length === 0 ? insets.bottom + 40 : insets.bottom + 150,
+                        paddingBottom: insets.bottom + 120,
                     }}
                     keyboardShouldPersistTaps="handled"
-                    onContentSizeChange={() => {
-                        if (shouldScrollRef.current) {
-                            scrollViewRef.current?.scrollToEnd({ animated: true });
-                            shouldScrollRef.current = false;
-                        }
-                    }}
                 >
                     <View style={styles.heroSection}>
                         <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>
@@ -144,20 +83,86 @@ export default function ProfileScreen() {
                         t={t}
                     />
 
-                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
-                        {t('profile.section.otherRestrictions', 'Other Restrictions')}
-                    </Text>
-                    <RestrictionInput
-                        theme={theme}
-                        inputValue={inputValue}
-                        suggestions={suggestions}
-                        onChangeText={handleInputChange}
-                        onSubmit={addOtherRestriction}
-                        onSelectSuggestion={selectSuggestion}
-                        t={t}
-                    />
+                    <View style={{ marginTop: 24, paddingBottom: 8 }}>
+                        {!showCustomAllergenSearch ? (
+                            <TouchableOpacity
+                                style={styles.searchToggleButton}
+                                onPress={() => setShowCustomAllergenSearch(true)}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('onboarding.allergies.notFound', 'Not finding yours?')}
+                                accessibilityHint={t(
+                                    'onboarding.accessibility.searchAllergenHint',
+                                    'Open search to add a custom allergen',
+                                )}
+                            >
+                                <Text style={[styles.searchToggleText, { color: theme.tint }]}>
+                                    {t('onboarding.allergies.notFound', 'Not finding yours?')}
+                                </Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <View>
+                                <Text style={[styles.sectionHeader, { color: theme.textPrimary, fontSize: 16 }]}>
+                                    {t('onboarding.allergies.searchTitle', 'Search additional allergens')}
+                                </Text>
+                                <RestrictionInput
+                                    theme={theme}
+                                    inputValue={customAllergenInputValue}
+                                    suggestions={customAllergenSuggestions}
+                                    onChangeText={handleCustomAllergenInputChange}
+                                    onSubmit={() => addCustomAllergen(customAllergenInputValue)}
+                                    onSelectSuggestion={addCustomAllergen}
+                                    t={t}
+                                />
+                            </View>
+                        )}
+                    </View>
 
-                    <RestrictionTags theme={theme} items={otherRestrictions} onRemove={removeRestriction} />
+                    {allergies.length > 0 && (
+                        <View style={{ marginTop: 8, marginBottom: 8 }}>
+                            <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
+                                {t('onboarding.allergies.severityTitle', 'Set Severity Level')}
+                            </Text>
+                            <Text style={[styles.severityHint, { color: theme.textSecondary }]}>
+                                {t('onboarding.allergies.severityHint', 'Tap to cycle: Mild → Moderate → Severe')}
+                            </Text>
+                            {allergies.map((id) => {
+                                const severity = severityMap[id] || 'moderate';
+                                const level = SEVERITY_LEVELS.find((entry) => entry.key === severity)!;
+                                return (
+                                    <TouchableOpacity
+                                        key={id}
+                                        style={[
+                                            styles.severityRow,
+                                            { backgroundColor: theme.surface, borderColor: `${level.color}40` },
+                                        ]}
+                                        onPress={() => cycleSeverity(id)}
+                                        activeOpacity={0.7}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`${t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
+                                        accessibilityHint={t(
+                                            'onboarding.accessibility.severityCycleHint',
+                                            'Tap to cycle severity level',
+                                        )}
+                                    >
+                                        <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
+                                            {t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)}
+                                        </Text>
+                                        <View
+                                            style={[
+                                                styles.severityBadge,
+                                                { backgroundColor: `${level.color}20`, borderColor: level.color },
+                                            ]}
+                                        >
+                                            <Text style={{ fontSize: 14 }}>{level.emoji}</Text>
+                                            <Text style={[styles.severityBadgeText, { color: level.color }]}>
+                                                {t(`onboarding.severity.${level.key}`, level.label)}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    )}
 
                     <View style={{ marginTop: 40, paddingBottom: 20 }}>
                         <Text style={[styles.sectionHeader, { color: theme.textPrimary, marginBottom: 12 }]}>
@@ -184,9 +189,7 @@ export default function ProfileScreen() {
             <SaveProfileFooter
                 theme={theme}
                 loading={loading}
-                logoutLoading={logoutLoading}
                 onSave={saveProfile}
-                onLogout={handleLogout}
                 t={t}
             />
         </SafeAreaView>

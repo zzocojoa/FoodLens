@@ -41,6 +41,45 @@ export const profileStyles = StyleSheet.create({
         marginBottom: 15,
         marginTop: 10,
     },
+    searchToggleButton: {
+        alignSelf: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+    },
+    searchToggleText: {
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    severityHint: {
+        fontSize: 13,
+        marginBottom: 12,
+    },
+    severityRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 14,
+        borderRadius: 14,
+        marginBottom: 8,
+        borderWidth: 1,
+    },
+    severityAllergenName: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    severityBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        gap: 4,
+    },
+    severityBadgeText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
     grid: {
         flexDirection: 'row',
         flexWrap: 'wrap',

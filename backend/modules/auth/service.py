@@ -5,11 +5,18 @@ import hashlib
 import hmac
 import os
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import RLock
-from typing import Callable, Literal
+from typing import Literal
 from uuid import uuid4
+from .email_sender import (
+    EmailVerificationDeliveryError,
+    EmailVerificationSender,
+    LoggingEmailVerificationSender,
+    build_email_verification_sender_from_env,
+)
 
 RefreshStatus = Literal["active", "used", "revoked", "expired"]
 
@@ -57,6 +64,7 @@ class AuthUser:
     updated_at: datetime = field(default_factory=_utc_now)
     password_salt: str | None = None
     password_hash: str | None = None
+    email_verified_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -105,6 +113,18 @@ class RefreshTokenRecord:
     replaced_by: str | None = None
 
 
+@dataclass(slots=True)
+class EmailVerificationRecord:
+    verification_id: str
+    user_id: str
+    email: str
+    code_hash: str
+    expires_at: datetime
+    created_at: datetime = field(default_factory=_utc_now)
+    consumed_at: datetime | None = None
+    failed_attempts: int = 0
+
+
 class InMemoryAuthSessionService:
     def __init__(
         self,
@@ -112,11 +132,21 @@ class InMemoryAuthSessionService:
         access_ttl_seconds: int = 900,
         refresh_ttl_days: int = 30,
         password_iterations: int = 390_000,
+        email_verification_required: bool = True,
+        email_verification_code_ttl_seconds: int = 600,
+        email_verification_max_attempts: int = 5,
+        email_verification_debug_code_enabled: bool = False,
+        email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
     ):
         self.access_ttl_seconds = max(60, access_ttl_seconds)
         self.refresh_ttl_seconds = max(24 * 60 * 60, refresh_ttl_days * 24 * 60 * 60)
         self.password_iterations = max(120_000, password_iterations)
+        self.email_verification_required = email_verification_required
+        self.email_verification_code_ttl_seconds = max(60, email_verification_code_ttl_seconds)
+        self.email_verification_max_attempts = max(1, email_verification_max_attempts)
+        self.email_verification_debug_code_enabled = email_verification_debug_code_enabled
+        self._email_verification_sender = email_verification_sender or LoggingEmailVerificationSender()
         self.allowed_redirects_by_provider = {
             key: set(value)
             for key, value in (allowed_redirects_by_provider or {}).items()
@@ -133,6 +163,7 @@ class InMemoryAuthSessionService:
         self._refresh_tokens: dict[str, RefreshTokenRecord] = {}
         self._access_tokens_by_session: dict[str, set[str]] = {}
         self._refresh_tokens_by_session: dict[str, set[str]] = {}
+        self._email_verifications_by_user_id: dict[str, EmailVerificationRecord] = {}
 
         self._lock = RLock()
 
@@ -141,6 +172,19 @@ class InMemoryAuthSessionService:
         access_ttl_seconds = int((get_env("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900") or "900").strip())
         refresh_ttl_days = int((get_env("AUTH_REFRESH_TOKEN_TTL_DAYS", "30") or "30").strip())
         password_iterations = int((get_env("AUTH_PASSWORD_ITERATIONS", "390000") or "390000").strip())
+        email_verification_required = (get_env("AUTH_EMAIL_VERIFICATION_REQUIRED", "1") or "1").strip() != "0"
+        email_verification_code_ttl_seconds = int(
+            (get_env("AUTH_EMAIL_VERIFICATION_CODE_TTL_SECONDS", "600") or "600").strip()
+        )
+        email_verification_max_attempts = int(
+            (get_env("AUTH_EMAIL_VERIFICATION_MAX_ATTEMPTS", "5") or "5").strip()
+        )
+        email_verification_debug_code_enabled = (
+            get_env("AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED", "0") or "0"
+        ).strip() == "1"
+        email_verification_sender, email_delivery_mode = build_email_verification_sender_from_env(get_env=get_env)
+        if email_delivery_mode == "smtp" and email_verification_debug_code_enabled:
+            email_verification_debug_code_enabled = False
         allowed_redirects_by_provider = {
             "google": _parse_csv(get_env("AUTH_GOOGLE_ALLOWED_REDIRECT_URIS", None)),
             "kakao": _parse_csv(get_env("AUTH_KAKAO_ALLOWED_REDIRECT_URIS", None)),
@@ -149,6 +193,11 @@ class InMemoryAuthSessionService:
             access_ttl_seconds=access_ttl_seconds,
             refresh_ttl_days=refresh_ttl_days,
             password_iterations=password_iterations,
+            email_verification_required=email_verification_required,
+            email_verification_code_ttl_seconds=email_verification_code_ttl_seconds,
+            email_verification_max_attempts=email_verification_max_attempts,
+            email_verification_debug_code_enabled=email_verification_debug_code_enabled,
+            email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
         )
 
@@ -180,8 +229,35 @@ class InMemoryAuthSessionService:
                 provider_subject=None,
                 locale=locale,
                 password=password,
+                email_verified_at=None if self.email_verification_required else _utc_now(),
             )
-            return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+            if not self.email_verification_required:
+                return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+
+            verification_record, verification_code = self._issue_email_verification(user=user)
+            try:
+                self._email_verification_sender.send_verification_code(
+                    email=user.email,
+                    code=verification_code,
+                    expires_in_seconds=max(1, int((verification_record.expires_at - _utc_now()).total_seconds())),
+                    user_id=user.user_id,
+                )
+            except EmailVerificationDeliveryError as error:
+                self._rollback_unverified_user(user)
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",
+                    message="Failed to deliver verification email.",
+                    status_code=503,
+                    user_id=user.user_id,
+                ) from error
+
+            challenge_payload = self._serialize_email_verification_challenge(
+                user=user,
+                record=verification_record,
+            )
+            if self.email_verification_debug_code_enabled:
+                challenge_payload["verification_debug_code"] = verification_code
+            return challenge_payload
 
     def login_email(self, *, email: str, password: str, device_id: str | None) -> dict[str, object]:
         normalized_email = self._normalize_email(email)
@@ -209,7 +285,92 @@ class InMemoryAuthSessionService:
                     status_code=401,
                     user_id=user.user_id,
                 )
+            if self.email_verification_required and user.email_verified_at is None:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_NOT_VERIFIED",
+                    message="Email verification is required before login.",
+                    status_code=403,
+                    user_id=user.user_id,
+                )
 
+            return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+
+    def verify_email(
+        self,
+        *,
+        email: str,
+        code: str,
+        device_id: str | None,
+    ) -> dict[str, object]:
+        normalized_email = self._normalize_email(email)
+        normalized_code = code.strip()
+        if not normalized_code:
+            raise AuthServiceError(
+                code="AUTH_EMAIL_VERIFICATION_INVALID",
+                message="Invalid verification code.",
+                status_code=400,
+            )
+
+        now = _utc_now()
+        with self._lock:
+            user_id = self._user_id_by_email.get(normalized_email)
+            if not user_id:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_VERIFICATION_NOT_FOUND",
+                    message="Verification request not found.",
+                    status_code=404,
+                )
+
+            user = self._users_by_id[user_id]
+            if user.provider != "email":
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_UNSUPPORTED",
+                    message="Unsupported provider.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            if user.email_verified_at is not None:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_ALREADY_VERIFIED",
+                    message="Email is already verified.",
+                    status_code=409,
+                    user_id=user.user_id,
+                )
+
+            record = self._email_verifications_by_user_id.get(user.user_id)
+            if record is None or record.consumed_at is not None or record.expires_at <= now:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_VERIFICATION_EXPIRED",
+                    message="Verification code expired. Please sign up again.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            expected_hash = self._hash_email_verification_code(
+                user_id=user.user_id,
+                code=normalized_code,
+            )
+            if not hmac.compare_digest(record.code_hash, expected_hash):
+                record.failed_attempts += 1
+                if record.failed_attempts >= self.email_verification_max_attempts:
+                    record.consumed_at = now
+                    raise AuthServiceError(
+                        code="AUTH_EMAIL_VERIFICATION_LOCKED",
+                        message="Too many invalid verification attempts.",
+                        status_code=429,
+                        user_id=user.user_id,
+                    )
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_VERIFICATION_INVALID",
+                    message="Invalid verification code.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            record.consumed_at = now
+            user.email_verified_at = now
+            user.updated_at = now
             return self._create_session_bundle(user=user, provider="email", device_id=device_id)
 
     def oauth_login(
@@ -289,8 +450,12 @@ class InMemoryAuthSessionService:
                         provider_subject=subject,
                         locale="ko-KR",
                         password=None,
+                        email_verified_at=_utc_now(),
                     )
                 self._provider_subject_to_user_id[provider_key] = user.user_id
+
+            if user.email_verified_at is None:
+                user.email_verified_at = _utc_now()
 
             return self._create_session_bundle(user=user, provider=provider_normalized, device_id=device_id)
 
@@ -468,6 +633,7 @@ class InMemoryAuthSessionService:
         provider_subject: str | None,
         locale: str,
         password: str | None,
+        email_verified_at: datetime | None,
     ) -> AuthUser:
         password_salt: str | None = None
         password_hash: str | None = None
@@ -484,6 +650,7 @@ class InMemoryAuthSessionService:
             locale=locale or "ko-KR",
             password_salt=password_salt,
             password_hash=password_hash,
+            email_verified_at=email_verified_at,
         )
         self._users_by_id[user.user_id] = user
         self._user_id_by_email[email] = user.user_id
@@ -509,6 +676,13 @@ class InMemoryAuthSessionService:
         self._sessions[session.session_id] = session
         self._session_ids_by_family.setdefault(family_id, set()).add(session.session_id)
         return self._issue_tokens(user=user, session=session)
+
+    def _rollback_unverified_user(self, user: AuthUser) -> None:
+        self._email_verifications_by_user_id.pop(user.user_id, None)
+        self._profiles_by_user_id.pop(user.user_id, None)
+        self._users_by_id.pop(user.user_id, None)
+        if self._user_id_by_email.get(user.email) == user.user_id:
+            self._user_id_by_email.pop(user.email, None)
 
     def _issue_tokens(self, *, user: AuthUser, session: SessionRecord) -> dict[str, object]:
         now = _utc_now()
@@ -568,6 +742,38 @@ class InMemoryAuthSessionService:
             "name": user.display_name,
             "locale": user.locale,
             "provider": user.provider,
+            "email_verified": user.email_verified_at is not None,
+            "email_verified_at": _to_iso8601(user.email_verified_at) if user.email_verified_at else None,
+        }
+
+    def _issue_email_verification(self, *, user: AuthUser) -> tuple[EmailVerificationRecord, str]:
+        verification_code = f"{secrets.randbelow(1_000_000):06d}"
+        now = _utc_now()
+        record = EmailVerificationRecord(
+            verification_id=_random_id("evr"),
+            user_id=user.user_id,
+            email=user.email,
+            code_hash=self._hash_email_verification_code(user_id=user.user_id, code=verification_code),
+            expires_at=now + timedelta(seconds=self.email_verification_code_ttl_seconds),
+        )
+        self._email_verifications_by_user_id[user.user_id] = record
+        return record, verification_code
+
+    def _serialize_email_verification_challenge(
+        self,
+        *,
+        user: AuthUser,
+        record: EmailVerificationRecord,
+    ) -> dict[str, object]:
+        now = _utc_now()
+        expires_in = max(0, int((record.expires_at - now).total_seconds()))
+        return {
+            "verification_required": True,
+            "verification_method": "email_code",
+            "verification_channel": "email",
+            "verification_expires_in": expires_in,
+            "verification_id": record.verification_id,
+            "user": self._serialize_user(user),
         }
 
     def _serialize_profile(self, profile: UserProfile) -> dict[str, object]:
@@ -599,6 +805,10 @@ class InMemoryAuthSessionService:
 
     def _normalize_email(self, email: str) -> str:
         return email.strip().lower()
+
+    def _hash_email_verification_code(self, *, user_id: str, code: str) -> str:
+        payload = f"{user_id}:{code}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
 
     def _hash_password(self, password: str, salt: str) -> str:
         digest = hashlib.pbkdf2_hmac(

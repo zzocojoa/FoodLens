@@ -20,19 +20,17 @@ jest.mock('../authApi', () => ({
 
 jest.mock('expo-linking', () => ({
   createURL: jest.fn(),
-  parse: jest.fn(),
 }));
 
 jest.mock('expo-web-browser', () => ({
-  openAuthSessionAsync: jest.fn(),
+  openBrowserAsync: jest.fn(),
 }));
 
 const mockedLinking = Linking as unknown as {
   createURL: jest.Mock;
-  parse: jest.Mock;
 };
 const mockedWebBrowser = WebBrowser as unknown as {
-  openAuthSessionAsync: jest.Mock;
+  openBrowserAsync: jest.Mock;
 };
 
 const ORIGINAL_ENV = process.env;
@@ -52,7 +50,7 @@ afterAll(() => {
 describe('providerLogout', () => {
   it('skips provider logout for non-social providers', async () => {
     await logoutFromOAuthProvider('email');
-    expect(mockedWebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
   });
 
   it('throws when google logout start URL is missing', async () => {
@@ -61,44 +59,29 @@ describe('providerLogout', () => {
     });
   });
 
-  it('opens google logout bridge and resolves on success callback', async () => {
+  it('opens google logout bridge in browser', async () => {
     process.env['EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL'] =
       'https://foodlens-2-w1xu.onrender.com/auth/google/logout/start';
-    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({
-      type: 'success',
-      url: 'foodlens://oauth/logout-complete?provider=google&logout=ok',
-    });
-    mockedLinking.parse.mockReturnValue({
-      queryParams: {
-        provider: 'google',
-        logout: 'ok',
-      },
+    mockedWebBrowser.openBrowserAsync.mockResolvedValue({
+      type: 'opened',
     });
 
     await logoutFromOAuthProvider('google');
 
-    expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
-      'https://foodlens-2-w1xu.onrender.com/auth/google/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete',
-      'foodlens://oauth/logout-complete'
+    expect(mockedWebBrowser.openBrowserAsync).toHaveBeenCalledWith(
+      'https://foodlens-2-w1xu.onrender.com/auth/google/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete'
     );
   });
 
-  it('propagates provider error returned from callback', async () => {
+  it('throws cancelled when browser is dismissed', async () => {
     process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
       'https://foodlens-2-w1xu.onrender.com/auth/kakao/logout/start';
-    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({
-      type: 'success',
-      url: 'foodlens://oauth/logout-complete?error=access_denied&error_description=denied',
-    });
-    mockedLinking.parse.mockReturnValue({
-      queryParams: {
-        error: 'access_denied',
-        error_description: 'denied',
-      },
+    mockedWebBrowser.openBrowserAsync.mockResolvedValue({
+      type: 'dismiss',
     });
 
     await expect(logoutFromOAuthProvider('kakao')).rejects.toMatchObject({
-      code: 'AUTH_PROVIDER_REJECTED',
+      code: 'AUTH_PROVIDER_CANCELLED',
     });
   });
 });

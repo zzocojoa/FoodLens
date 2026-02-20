@@ -42,7 +42,10 @@ This artifact is the Phase 1 mobile acceptance evidence for:
   - GitHub Actions run: `22186871201`
   - Run URL: https://github.com/zzocojoa/FoodLens/actions/runs/22186871201
   - Logs API (archived by Actions): `302` confirmed
-  - Artifacts: none (workflow stores logs only)
+  - Artifact: `phase1-live-provider-smoke-log`
+- 2026-02-21 (automation update):
+  - Workflow `Phase1 Auth Gates` now uploads `phase1-mobile-auth-smoke-log`
+  - Included smoke suite: `useLoginScreen` signup->verify flow, auth/session manager tests, login UI snapshots
   - Backend request_id evidence:
     - signup: `36228b13ef97`
     - login: `e3d09b9d4e6b`

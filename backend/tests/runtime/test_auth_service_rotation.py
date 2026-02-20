@@ -6,7 +6,7 @@ from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService
 
 class AuthServiceRotationTests(unittest.TestCase):
     def setUp(self):
-        self.service = InMemoryAuthSessionService()
+        self.service = InMemoryAuthSessionService(email_verification_required=False)
 
     def test_refresh_reuse_revokes_family(self):
         bundle = self.service.signup_email(

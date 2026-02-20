@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Globe, User, Zap } from 'lucide-react-native';
+import { Globe, LogOut, User, Zap } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import AnimatedThemeToggle from './AnimatedThemeToggle';
 import LanguageSelectorModal from './LanguageSelectorModal';
@@ -24,6 +24,8 @@ type ProfileSheetViewProps = {
   closeProfile: () => void;
   onPressManageProfile: () => void;
   onPressUpdate: () => void;
+  onPressLogout: () => void;
+  logoutLoading: boolean;
   currentTheme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   colorScheme: string;
@@ -64,6 +66,8 @@ export default function ProfileSheetView({
   closeProfile,
   onPressManageProfile,
   onPressUpdate,
+  onPressLogout,
+  logoutLoading,
   currentTheme,
   setTheme,
   colorScheme,
@@ -160,6 +164,15 @@ export default function ProfileSheetView({
                 title="Remove Ads"
                 subtitle="Premium benefits"
                 iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
+                theme={theme}
+              />
+
+              <ProfileMenuItem
+                icon={<LogOut size={20} color="#DC2626" />}
+                title="Log out"
+                subtitle={logoutLoading ? 'Signing out...' : 'End session on this device'}
+                iconBgColor={colorScheme === 'dark' ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2'}
+                onPress={onPressLogout}
                 theme={theme}
               />
             </View>

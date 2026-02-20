@@ -565,6 +565,12 @@ class EmailLoginRequest(BaseModel):
     device_id: str | None = None
 
 
+class EmailVerifyRequest(BaseModel):
+    email: str
+    code: str
+    device_id: str | None = None
+
+
 class OAuthProviderRequest(BaseModel):
     code: str | None = None
     state: str | None = None
@@ -685,6 +691,15 @@ async def auth_email_signup(payload: EmailSignupRequest, request: Request):
             locale=payload.locale,
             device_id=payload.device_id,
         )
+        if result.get("verification_required") is True:
+            user = result.get("user") if isinstance(result.get("user"), dict) else {}
+            logger.info(
+                "[Auth] email verification issued request_id=%s user_id=%s email=%s verification_id=%s",
+                request_id,
+                user.get("id", "unknown"),
+                user.get("email", "unknown"),
+                result.get("verification_id", "unknown"),
+            )
         result["request_id"] = request_id
         return result
     except AuthServiceError as error:
@@ -705,6 +720,28 @@ async def auth_email_login(payload: EmailLoginRequest, request: Request):
         result = auth_service.login_email(
             email=payload.email,
             password=payload.password,
+            device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/email/verify")
+async def auth_email_verify(payload: EmailVerifyRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.verify_email(
+            email=payload.email,
+            code=payload.code,
             device_id=payload.device_id,
         )
         result["request_id"] = request_id

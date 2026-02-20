@@ -1,7 +1,6 @@
 import { Colors } from '@/constants/theme';
-import { ScrollView } from 'react-native';
+import { ImageSourcePropType, ScrollView } from 'react-native';
 import { MutableRefObject, RefObject } from 'react';
-import { ImageSourcePropType } from 'react-native';
 
 export type ProfileTheme = typeof Colors.light;
 
@@ -23,9 +22,12 @@ export type AllergenOption = {
 export type ProfileFormState = {
     loading: boolean;
     inputValue: string;
+    customAllergenInputValue: string;
     allergies: string[];
+    severityMap: Record<string, AllergySeverity>;
     otherRestrictions: string[];
     suggestions: string[];
+    customAllergenSuggestions: string[];
 };
 
 export type UseProfileScreenResult = ProfileFormState & {
@@ -33,7 +35,10 @@ export type UseProfileScreenResult = ProfileFormState & {
     shouldScrollRef: MutableRefObject<boolean>;
     loadProfile: () => Promise<void>;
     toggleAllergen: (id: string) => void;
+    cycleSeverity: (id: string) => void;
     handleInputChange: (text: string) => void;
+    handleCustomAllergenInputChange: (text: string) => void;
+    addCustomAllergen: (item: string) => void;
     addOtherRestriction: () => void;
     removeRestriction: (item: string) => void;
     selectSuggestion: (item: string) => void;

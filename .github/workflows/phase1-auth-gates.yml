@@ -51,10 +51,17 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Auth unit tests
+      - name: Phase 1 mobile auth smoke
         run: |
-          npm run test -- \
-            services/auth/__tests__/providerLogout.test.ts \
-            services/auth/__tests__/oauthProvider.test.ts \
-            services/auth/__tests__/sessionManager.test.ts \
-            --runInBand
+          set -o pipefail
+          mkdir -p artifacts
+          bash scripts/ci_phase1_mobile_auth_smoke.sh 2>&1 | tee artifacts/phase1-mobile-auth-smoke.log
+
+      - name: Upload mobile auth smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-mobile-auth-smoke-log
+          path: FoodLens/artifacts/phase1-mobile-auth-smoke.log
+          if-no-files-found: error
+          retention-days: 14

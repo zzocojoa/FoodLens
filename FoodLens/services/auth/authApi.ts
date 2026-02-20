@@ -18,12 +18,30 @@ export type AuthSessionTokens = {
   user: AuthUser;
 };
 
-type AuthPayload = {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
+export type AuthEmailVerificationChallenge = {
+  verificationRequired: true;
+  verificationMethod: 'email_code';
+  verificationChannel: 'email';
+  verificationExpiresIn: number;
+  verificationId?: string;
+  debugCode?: string;
   user: AuthUser;
+};
+
+export type AuthEmailSignupResult = AuthSessionTokens | AuthEmailVerificationChallenge;
+
+type AuthPayload = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user?: AuthUser;
   request_id?: string;
+  verification_required?: boolean;
+  verification_method?: string;
+  verification_channel?: string;
+  verification_expires_in?: number;
+  verification_id?: string;
+  verification_debug_code?: string;
 };
 
 type ApiErrorShape = {
@@ -64,6 +82,31 @@ const toSessionTokens = (payload: AuthPayload): AuthSessionTokens => {
     user: payload.user,
   };
 };
+
+const toEmailVerificationChallenge = (payload: AuthPayload): AuthEmailVerificationChallenge => {
+  if (!payload.user?.id || typeof payload.verification_expires_in !== 'number') {
+    throw new AuthApiError(
+      'Email verification response is missing required fields.',
+      'AUTH_INVALID_RESPONSE',
+      502,
+      payload.request_id
+    );
+  }
+
+  return {
+    verificationRequired: true,
+    verificationMethod: 'email_code',
+    verificationChannel: 'email',
+    verificationExpiresIn: payload.verification_expires_in,
+    verificationId: payload.verification_id,
+    debugCode: payload.verification_debug_code,
+    user: payload.user,
+  };
+};
+
+export const isAuthEmailVerificationChallenge = (
+  value: AuthEmailSignupResult
+): value is AuthEmailVerificationChallenge => 'verificationRequired' in value;
 
 const parseErrorResponse = async (response: Response): Promise<AuthApiError> => {
   let parsed: ApiErrorShape | null = null;
@@ -136,7 +179,7 @@ export const AuthApi = {
     displayName?: string;
     locale?: string;
     deviceId?: string;
-  }): Promise<AuthSessionTokens> {
+  }): Promise<AuthEmailSignupResult> {
     const payload = await postJson<AuthPayload>('/auth/email/signup', {
       email: input.email,
       password: input.password,
@@ -144,6 +187,9 @@ export const AuthApi = {
       locale: input.locale ?? 'ko-KR',
       device_id: input.deviceId,
     });
+    if (payload.verification_required) {
+      return toEmailVerificationChallenge(payload);
+    }
     return toSessionTokens(payload);
   },
 
@@ -155,6 +201,19 @@ export const AuthApi = {
     const payload = await postJson<AuthPayload>('/auth/email/login', {
       email: input.email,
       password: input.password,
+      device_id: input.deviceId,
+    });
+    return toSessionTokens(payload);
+  },
+
+  async verifyEmail(input: {
+    email: string;
+    code: string;
+    deviceId?: string;
+  }): Promise<AuthSessionTokens> {
+    const payload = await postJson<AuthPayload>('/auth/email/verify', {
+      email: input.email,
+      code: input.code,
       device_id: input.deviceId,
     });
     return toSessionTokens(payload);

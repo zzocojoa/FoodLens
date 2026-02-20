@@ -67,16 +67,19 @@
 - `GET /auth/kakao/logout/callback`
 - `POST /auth/email/login`
 - `POST /auth/email/signup`
+- `POST /auth/email/verify`
 - `POST /auth/refresh`
 - `POST /auth/logout`
 
 필수 출력(공통):
-- `access_token`, `refresh_token`, `expires_in`, `user`
+- 인증 성공 시: `access_token`, `refresh_token`, `expires_in`, `user`
+- 이메일 가입 직후(인증 대기): `verification_required`, `verification_method`, `verification_channel`, `verification_expires_in`, `user`
 - `request_id`
 
 요청 요약:
 - `POST /auth/email/signup`: `email`, `password`, `display_name?`, `locale?`, `device_id?`
 - `POST /auth/email/login`: `email`, `password`, `device_id?`
+- `POST /auth/email/verify`: `email`, `code`, `device_id?`
 - `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `device_id?`
 - `GET /auth/google|kakao/start`: `redirect_uri?`(앱 콜백), `state?`(없으면 서버 생성)
 - `GET /auth/google|kakao/callback`: provider redirect 수신 후 앱 콜백 URI로 `code/state/error` 전달
@@ -93,6 +96,10 @@
 - `AUTH_PROVIDER_CANCELLED`
 - `AUTH_PROVIDER_INVALID_CODE`
 - `AUTH_REDIRECT_URI_MISMATCH`
+- `AUTH_EMAIL_NOT_VERIFIED`
+- `AUTH_EMAIL_VERIFICATION_INVALID`
+- `AUTH_EMAIL_VERIFICATION_EXPIRED`
+- `AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED`
 
 비개발자 설명:
 - 로그인 성공 시 앱은 "사용자 본인 식별값(user_id)"을 받습니다.
