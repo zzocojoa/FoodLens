@@ -399,6 +399,10 @@ def _is_kakao_code_verification_enabled() -> bool:
     return os.environ.get("AUTH_KAKAO_CODE_VERIFY_ENABLED", "0").strip() == "1"
 
 
+def _is_google_code_verification_enabled() -> bool:
+    return os.environ.get("AUTH_GOOGLE_CODE_VERIFY_ENABLED", "0").strip() == "1"
+
+
 def _provider_timeout_seconds() -> float:
     raw_value = (os.environ.get("AUTH_PROVIDER_TIMEOUT_SECONDS") or "").strip()
     if not raw_value:
@@ -527,6 +531,129 @@ def _verify_kakao_identity(*, request: Request, code: str) -> tuple[str, str | N
     kakao_account = profile_payload.get("kakao_account")
     if isinstance(kakao_account, dict):
         raw_email = kakao_account.get("email")
+        if isinstance(raw_email, str):
+            email = raw_email.strip() or None
+
+    return provider_user_id, email
+
+
+def _verify_google_identity(*, request: Request, code: str) -> tuple[str, str | None]:
+    client_id = os.environ.get("AUTH_GOOGLE_CLIENT_ID", "").strip()
+    if not client_id:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_MISCONFIGURED",
+            message="google OAuth client is not configured.",
+            status_code=500,
+        )
+
+    token_request_data = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "redirect_uri": _resolve_provider_callback_uri(request=request, provider="google"),
+        "code": code.strip(),
+    }
+    client_secret = os.environ.get("AUTH_GOOGLE_CLIENT_SECRET", "").strip()
+    if client_secret:
+        token_request_data["client_secret"] = client_secret
+
+    timeout_seconds = _provider_timeout_seconds()
+    try:
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data=token_request_data,
+            timeout=timeout_seconds,
+        )
+    except requests.Timeout as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_TIMEOUT",
+            message="Provider request timed out.",
+            status_code=504,
+        ) from error
+    except requests.RequestException as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_UNAVAILABLE",
+            message="Provider request failed.",
+            status_code=502,
+        ) from error
+
+    try:
+        token_payload = token_response.json()
+    except ValueError as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        ) from error
+
+    if token_response.status_code >= 400:
+        provider_error = str(token_payload.get("error", "")).strip().lower()
+        if provider_error in {"invalid_grant", "invalid_request"}:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_CODE",
+                message="Missing or invalid authorization code.",
+                status_code=400,
+            )
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    access_token = str(token_payload.get("access_token", "")).strip()
+    if not access_token:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    try:
+        profile_response = requests.get(
+            "https://openidconnect.googleapis.com/v1/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=timeout_seconds,
+        )
+    except requests.Timeout as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_TIMEOUT",
+            message="Provider request timed out.",
+            status_code=504,
+        ) from error
+    except requests.RequestException as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_UNAVAILABLE",
+            message="Provider request failed.",
+            status_code=502,
+        ) from error
+
+    try:
+        profile_payload = profile_response.json()
+    except ValueError as error:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        ) from error
+
+    if profile_response.status_code >= 400:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    provider_user_id = str(profile_payload.get("sub", "")).strip()
+    if not provider_user_id:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_REJECTED",
+            message="Provider login failed.",
+            status_code=400,
+        )
+
+    email: str | None = None
+    raw_email_verified = profile_payload.get("email_verified")
+    if raw_email_verified in {True, "true", "True", "1", 1}:
+        raw_email = profile_payload.get("email")
         if isinstance(raw_email, str):
             email = raw_email.strip() or None
 
@@ -1063,14 +1190,21 @@ async def auth_google(payload: OAuthProviderRequest, request: Request):
     request_id = _request_id(request)
     auth_service = _service("auth_service")
     try:
+        provider_user_id = payload.provider_user_id
+        email = payload.email
+        if _is_google_code_verification_enabled() and payload.code and not payload.error:
+            provider_user_id, verified_email = _verify_google_identity(request=request, code=payload.code)
+            if verified_email:
+                email = verified_email
+
         result = auth_service.oauth_login(
             provider="google",
             code=payload.code,
             state=payload.state,
             redirect_uri=payload.redirect_uri,
             error=payload.error,
-            provider_user_id=payload.provider_user_id,
-            email=payload.email,
+            provider_user_id=provider_user_id,
+            email=email,
             device_id=payload.device_id,
         )
         result["request_id"] = request_id

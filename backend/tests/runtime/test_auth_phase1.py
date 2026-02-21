@@ -439,6 +439,96 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(kakao_invalid.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_CODE")
             mocked_get.assert_not_called()
 
+    def test_google_oauth_live_verification_uses_client_secret(self):
+        mocked_token_response = Mock()
+        mocked_token_response.status_code = 200
+        mocked_token_response.json.return_value = {
+            "access_token": "google-access-token",
+            "token_type": "Bearer",
+        }
+
+        mocked_profile_response = Mock()
+        mocked_profile_response.status_code = 200
+        mocked_profile_response.json.return_value = {
+            "sub": "google-user-123",
+            "email": "verified-google@example.com",
+            "email_verified": True,
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_GOOGLE_CLIENT_SECRET": "google-client-secret-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server.requests.post", return_value=mocked_token_response) as mocked_post,
+            patch("backend.server.requests.get", return_value=mocked_profile_response) as mocked_get,
+            TestClient(app) as client,
+        ):
+            google_success = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-code-live",
+                    "state": "state-live",
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "provider_user_id": "untrusted-google-subject",
+                    "email": "untrusted@example.com",
+                },
+            )
+
+            self.assertEqual(google_success.status_code, 200)
+            body = google_success.json()
+            self.assertEqual(body["user"]["provider"], "google")
+            self.assertEqual(body["user"]["email"], "verified-google@example.com")
+            self.assertIn("request_id", body)
+
+            self.assertEqual(mocked_post.call_count, 1)
+            token_call_kwargs = mocked_post.call_args.kwargs
+            self.assertEqual(token_call_kwargs["data"]["client_id"], "google-client-id-test")
+            self.assertEqual(token_call_kwargs["data"]["client_secret"], "google-client-secret-test")
+            self.assertTrue(token_call_kwargs["data"]["redirect_uri"].endswith("/auth/google/callback"))
+
+            self.assertEqual(mocked_get.call_count, 1)
+            profile_call_kwargs = mocked_get.call_args.kwargs
+            self.assertEqual(profile_call_kwargs["headers"]["Authorization"], "Bearer google-access-token")
+
+    def test_google_oauth_live_verification_invalid_grant_maps_error(self):
+        mocked_token_response = Mock()
+        mocked_token_response.status_code = 400
+        mocked_token_response.json.return_value = {"error": "invalid_grant"}
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server.requests.post", return_value=mocked_token_response),
+            patch("backend.server.requests.get") as mocked_get,
+            TestClient(app) as client,
+        ):
+            google_invalid = client.post(
+                "/auth/google",
+                json={
+                    "code": "invalid-live-code",
+                    "state": "state-invalid",
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                },
+            )
+
+            self.assertEqual(google_invalid.status_code, 400)
+            self.assertEqual(google_invalid.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_CODE")
+            mocked_get.assert_not_called()
+
     def test_google_oauth_web_bridge_start_and_callback(self):
         with (
             patch.dict(
