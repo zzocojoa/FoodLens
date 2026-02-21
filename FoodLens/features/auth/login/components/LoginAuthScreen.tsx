@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Keyboard,
   Pressable,
   Text,
   TextInput,
@@ -29,6 +30,9 @@ type InputGroupProps = {
   onPressRightIcon?: () => void;
   style?: object;
   keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType'];
+  onSubmitEditing?: React.ComponentProps<typeof TextInput>['onSubmitEditing'];
+  returnKeyType?: React.ComponentProps<typeof TextInput>['returnKeyType'];
+  blurOnSubmit?: React.ComponentProps<typeof TextInput>['blurOnSubmit'];
 };
 
 const InputGroup = ({
@@ -42,6 +46,9 @@ const InputGroup = ({
   onPressRightIcon,
   style,
   keyboardType,
+  onSubmitEditing,
+  returnKeyType,
+  blurOnSubmit = true,
 }: InputGroupProps) => (
   <View style={[loginStyles.inputGroup, style]}>
     <Text style={loginStyles.inputLabel}>{label}</Text>
@@ -57,6 +64,9 @@ const InputGroup = ({
         onChangeText={onChangeText}
         style={loginStyles.inputField}
         keyboardType={keyboardType}
+        onSubmitEditing={onSubmitEditing}
+        returnKeyType={returnKeyType}
+        blurOnSubmit={blurOnSubmit}
       />
       {rightIconName ? (
         <Pressable onPress={onPressRightIcon} style={loginStyles.eyeButton}>
@@ -137,6 +147,8 @@ export default function LoginAuthScreen({
           value={formValues.email}
           onChangeText={onChangeEmail}
           keyboardType="email-address"
+          onSubmitEditing={() => Keyboard.dismiss()}
+          returnKeyType="done"
         />
 
         <InputGroup
@@ -149,6 +161,8 @@ export default function LoginAuthScreen({
           rightIconName={passwordVisible ? 'eye-off' : 'eye'}
           onPressRightIcon={onTogglePasswordVisible}
           style={{ marginBottom: 0 }}
+          onSubmitEditing={() => Keyboard.dismiss()}
+          returnKeyType="done"
         />
 
         <Animated.View style={[loginStyles.loginActionRow, loginActionRowStyle]}>
@@ -175,6 +189,8 @@ export default function LoginAuthScreen({
               rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
               onPressRightIcon={onToggleConfirmPasswordVisible}
               style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              returnKeyType="done"
             />
           </Animated.View>
         ) : null}
@@ -189,6 +205,8 @@ export default function LoginAuthScreen({
               onChangeText={onChangeVerificationCode}
               keyboardType="number-pad"
               style={{ marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              returnKeyType="done"
             />
           </View>
         ) : null}

@@ -2,6 +2,24 @@
 
 exports[`LoginScreen matches snapshot in login state 1`] = `
 <View
+  accessibilityState={
+    {
+      "busy": undefined,
+      "checked": undefined,
+      "disabled": undefined,
+      "expanded": undefined,
+      "selected": undefined,
+    }
+  }
+  accessible={false}
+  focusable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     {
       "backgroundColor": "#ffffff",
@@ -564,10 +582,13 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                 </Text>
                 <TextInput
                   autoCapitalize="none"
+                  blurOnSubmit={true}
                   keyboardType="email-address"
                   onChangeText={[Function]}
+                  onSubmitEditing={[Function]}
                   placeholder="example@email.com"
                   placeholderTextColor="#a0a0a0"
+                  returnKeyType="done"
                   style={
                     {
                       "color": "#333333",
@@ -631,9 +652,12 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                 </Text>
                 <TextInput
                   autoCapitalize="none"
+                  blurOnSubmit={true}
                   onChangeText={[Function]}
+                  onSubmitEditing={[Function]}
                   placeholder="enter your password"
                   placeholderTextColor="#a0a0a0"
+                  returnKeyType="done"
                   secureTextEntry={true}
                   style={
                     {
@@ -877,9 +901,12 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                   </Text>
                   <TextInput
                     autoCapitalize="none"
+                    blurOnSubmit={true}
                     onChangeText={[Function]}
+                    onSubmitEditing={[Function]}
                     placeholder="Confirm your password"
                     placeholderTextColor="#a0a0a0"
+                    returnKeyType="done"
                     secureTextEntry={true}
                     style={
                       {
@@ -1408,6 +1435,24 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
 
 exports[`LoginScreen matches snapshot in signup state 1`] = `
 <View
+  accessibilityState={
+    {
+      "busy": undefined,
+      "checked": undefined,
+      "disabled": undefined,
+      "expanded": undefined,
+      "selected": undefined,
+    }
+  }
+  accessible={false}
+  focusable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     {
       "backgroundColor": "#ffffff",
@@ -1970,10 +2015,13 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                 </Text>
                 <TextInput
                   autoCapitalize="none"
+                  blurOnSubmit={true}
                   keyboardType="email-address"
                   onChangeText={[Function]}
+                  onSubmitEditing={[Function]}
                   placeholder="example@email.com"
                   placeholderTextColor="#a0a0a0"
+                  returnKeyType="done"
                   style={
                     {
                       "color": "#333333",
@@ -2037,9 +2085,12 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                 </Text>
                 <TextInput
                   autoCapitalize="none"
+                  blurOnSubmit={true}
                   onChangeText={[Function]}
+                  onSubmitEditing={[Function]}
                   placeholder="enter your password"
                   placeholderTextColor="#a0a0a0"
+                  returnKeyType="done"
                   secureTextEntry={true}
                   style={
                     {
@@ -2283,9 +2334,12 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                   </Text>
                   <TextInput
                     autoCapitalize="none"
+                    blurOnSubmit={true}
                     onChangeText={[Function]}
+                    onSubmitEditing={[Function]}
                     placeholder="Confirm your password"
                     placeholderTextColor="#a0a0a0"
+                    returnKeyType="done"
                     secureTextEntry={true}
                     style={
                       {

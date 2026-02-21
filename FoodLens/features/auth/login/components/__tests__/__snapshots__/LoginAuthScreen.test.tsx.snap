@@ -105,10 +105,13 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
         </Text>
         <TextInput
           autoCapitalize="none"
+          blurOnSubmit={true}
           keyboardType="email-address"
           onChangeText={[MockFunction]}
+          onSubmitEditing={[Function]}
           placeholder="example@email.com"
           placeholderTextColor="#a0a0a0"
+          returnKeyType="done"
           style={
             {
               "color": "#333333",
@@ -172,9 +175,12 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
         </Text>
         <TextInput
           autoCapitalize="none"
+          blurOnSubmit={true}
           onChangeText={[MockFunction]}
+          onSubmitEditing={[Function]}
           placeholder="enter your password"
           placeholderTextColor="#a0a0a0"
+          returnKeyType="done"
           secureTextEntry={true}
           style={
             {
@@ -418,9 +424,12 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
           </Text>
           <TextInput
             autoCapitalize="none"
+            blurOnSubmit={true}
             onChangeText={[MockFunction]}
+            onSubmitEditing={[Function]}
             placeholder="Confirm your password"
             placeholderTextColor="#a0a0a0"
+            returnKeyType="done"
             secureTextEntry={true}
             style={
               {
@@ -1048,10 +1057,13 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
         </Text>
         <TextInput
           autoCapitalize="none"
+          blurOnSubmit={true}
           keyboardType="email-address"
           onChangeText={[MockFunction]}
+          onSubmitEditing={[Function]}
           placeholder="example@email.com"
           placeholderTextColor="#a0a0a0"
+          returnKeyType="done"
           style={
             {
               "color": "#333333",
@@ -1115,9 +1127,12 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
         </Text>
         <TextInput
           autoCapitalize="none"
+          blurOnSubmit={true}
           onChangeText={[MockFunction]}
+          onSubmitEditing={[Function]}
           placeholder="enter your password"
           placeholderTextColor="#a0a0a0"
+          returnKeyType="done"
           secureTextEntry={true}
           style={
             {
@@ -1361,9 +1376,12 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
           </Text>
           <TextInput
             autoCapitalize="none"
+            blurOnSubmit={true}
             onChangeText={[MockFunction]}
+            onSubmitEditing={[Function]}
             placeholder="Confirm your password"
             placeholderTextColor="#a0a0a0"
+            returnKeyType="done"
             secureTextEntry={true}
             style={
               {

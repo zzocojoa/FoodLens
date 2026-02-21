@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { Keyboard } from 'react-native';
 import { isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
 import { hasSeenOnboarding } from '@/services/storage';
 import { persistSession } from '@/services/auth/sessionManager';
@@ -84,6 +85,8 @@ export const useLoginScreen = () => {
   };
 
   const handleSubmit = async () => {
+    Keyboard.dismiss();
+
     if (verificationStepActive && pendingEmailVerification) {
       if (!formValues.verificationCode.trim()) {
         setErrorMessage(LOGIN_COPY.invalidVerificationCode);
