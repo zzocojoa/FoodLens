@@ -571,6 +571,16 @@ class EmailVerifyRequest(BaseModel):
     device_id: str | None = None
 
 
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+
 class OAuthProviderRequest(BaseModel):
     code: str | None = None
     state: str | None = None
@@ -744,6 +754,49 @@ async def auth_email_verify(payload: EmailVerifyRequest, request: Request):
             email=payload.email,
             code=payload.code,
             device_id=payload.device_id,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/email/password/reset/request")
+async def auth_email_password_reset_request(payload: PasswordResetRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = await run_in_threadpool(
+            auth_service.request_password_reset,
+            email=payload.email,
+        )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/email/password/reset/confirm")
+async def auth_email_password_reset_confirm(payload: PasswordResetConfirmRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = auth_service.confirm_password_reset(
+            email=payload.email,
+            code=payload.code,
+            new_password=payload.new_password,
         )
         result["request_id"] = request_id
         return result

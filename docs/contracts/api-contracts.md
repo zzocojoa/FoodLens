@@ -68,18 +68,24 @@
 - `POST /auth/email/login`
 - `POST /auth/email/signup`
 - `POST /auth/email/verify`
+- `POST /auth/email/password/reset/request`
+- `POST /auth/email/password/reset/confirm`
 - `POST /auth/refresh`
 - `POST /auth/logout`
 
 필수 출력(공통):
 - 인증 성공 시: `access_token`, `refresh_token`, `expires_in`, `user`
 - 이메일 가입 직후(인증 대기): `verification_required`, `verification_method`, `verification_channel`, `verification_expires_in`, `user`
+- 비밀번호 재설정 요청 수락 시: `reset_requested`, `reset_method`, `reset_channel`, `reset_expires_in`
+- 비밀번호 재설정 완료 시: `password_reset`, `sessions_revoked`
 - `request_id`
 
 요청 요약:
 - `POST /auth/email/signup`: `email`, `password`, `display_name?`, `locale?`, `device_id?`
 - `POST /auth/email/login`: `email`, `password`, `device_id?`
 - `POST /auth/email/verify`: `email`, `code`, `device_id?`
+- `POST /auth/email/password/reset/request`: `email`
+- `POST /auth/email/password/reset/confirm`: `email`, `code`, `new_password`
 - `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `device_id?`
 - `GET /auth/google|kakao/start`: `redirect_uri?`(앱 콜백), `state?`(없으면 서버 생성)
 - `GET /auth/google|kakao/callback`: provider redirect 수신 후 앱 콜백 URI로 `code/state/error` 전달
@@ -100,6 +106,10 @@
 - `AUTH_EMAIL_VERIFICATION_INVALID`
 - `AUTH_EMAIL_VERIFICATION_EXPIRED`
 - `AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED`
+- `AUTH_PASSWORD_RESET_INVALID`
+- `AUTH_PASSWORD_RESET_EXPIRED`
+- `AUTH_PASSWORD_RESET_LOCKED`
+- `AUTH_PASSWORD_RESET_DELIVERY_FAILED`
 
 비개발자 설명:
 - 로그인 성공 시 앱은 "사용자 본인 식별값(user_id)"을 받습니다.
@@ -144,6 +154,6 @@
 
 ---
 
-문서 버전: v1.1  
+문서 버전: v1.2  
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-02-19
+최종 수정: 2026-02-21

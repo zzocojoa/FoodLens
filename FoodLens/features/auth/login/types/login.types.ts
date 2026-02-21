@@ -15,6 +15,12 @@ export type LoginPendingEmailVerification = {
   debugCode?: string;
 };
 
+export type LoginPendingPasswordReset = {
+  email: string;
+  expiresInSeconds: number;
+  debugCode?: string;
+};
+
 export type LoginAuthCopy = {
   title: string;
   primaryButtonLabel: string;

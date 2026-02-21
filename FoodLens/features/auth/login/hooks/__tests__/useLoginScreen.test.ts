@@ -9,6 +9,8 @@ const mockHasSeenOnboarding = jest.fn();
 const mockPersistSession = jest.fn();
 const mockSubmitEmailAuth = jest.fn();
 const mockVerifyEmailCode = jest.fn();
+const mockRequestPasswordReset = jest.fn();
+const mockConfirmPasswordReset = jest.fn();
 const mockSubmitOAuthAuth = jest.fn();
 const mockResolveAuthErrorMessage = jest.fn();
 const mockGoToAuth = jest.fn();
@@ -53,6 +55,8 @@ jest.mock('../../services/loginAuthService', () => ({
   loginAuthService: {
     submitEmailAuth: (...args: unknown[]) => mockSubmitEmailAuth(...args),
     verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+    requestPasswordReset: (...args: unknown[]) => mockRequestPasswordReset(...args),
+    confirmPasswordReset: (...args: unknown[]) => mockConfirmPasswordReset(...args),
     submitOAuthAuth: (...args: unknown[]) => mockSubmitOAuthAuth(...args),
     resolveAuthErrorMessage: (...args: unknown[]) => mockResolveAuthErrorMessage(...args),
   },
@@ -180,5 +184,69 @@ describe('useLoginScreen', () => {
     });
 
     expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding');
+  });
+
+  it('handles forgot password request and confirmation in login mode', async () => {
+    mockRequestPasswordReset.mockResolvedValue({
+      resetRequested: true,
+      resetMethod: 'email_code',
+      resetChannel: 'email',
+      resetExpiresIn: 600,
+      resetId: 'prs_1',
+      debugCode: '654321',
+    });
+    mockConfirmPasswordReset.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'reset@example.com');
+      result.current.setFieldValue('password', 'N3wPassw0rd!');
+    });
+
+    await act(async () => {
+      await result.current.handleForgotPassword();
+    });
+
+    expect(mockRequestPasswordReset).toHaveBeenCalledWith({
+      email: 'reset@example.com',
+    });
+    expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.formValues.verificationCode).toBe('654321');
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(mockConfirmPasswordReset).toHaveBeenCalledWith({
+      email: 'reset@example.com',
+      code: '654321',
+      newPassword: 'N3wPassw0rd!',
+    });
+    expect(result.current.passwordResetStepActive).toBe(false);
+    expect(result.current.infoMessage).toContain('Password reset complete');
+  });
+
+  it('does not enter reset step when account is not found', async () => {
+    mockRequestPasswordReset.mockResolvedValue({
+      resetRequested: true,
+      resetMethod: 'email_code',
+      resetChannel: 'email',
+      resetExpiresIn: 600,
+      resetId: null,
+    });
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'missing@example.com');
+    });
+
+    await act(async () => {
+      await result.current.handleForgotPassword();
+    });
+
+    expect(result.current.passwordResetStepActive).toBe(false);
+    expect(result.current.infoMessage).toContain('If an account exists');
   });
 });

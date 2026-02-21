@@ -4,13 +4,18 @@ import { Keyboard } from 'react-native';
 import { isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
 import { hasSeenOnboarding } from '@/services/storage';
 import { persistSession } from '@/services/auth/sessionManager';
-import { LOGIN_COPY, LOGIN_INITIAL_FORM_VALUES } from '../constants/login.constants';
+import {
+  LOGIN_COPY,
+  LOGIN_INITIAL_FORM_VALUES,
+  LOGIN_PASSWORD_MIN_LENGTH,
+} from '../constants/login.constants';
 import { loginAuthService } from '../services/loginAuthService';
 import {
   LoginAuthMode,
   LoginFormValues,
   LoginOAuthProvider,
   LoginPendingEmailVerification,
+  LoginPendingPasswordReset,
 } from '../types/login.types';
 import { getAuthCopy, validateLoginForm } from '../utils/login.utils';
 import { useLoginMotion } from './useLoginMotion';
@@ -32,31 +37,42 @@ export const useLoginScreen = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [pendingEmailVerification, setPendingEmailVerification] = useState<LoginPendingEmailVerification | null>(null);
+  const [pendingPasswordReset, setPendingPasswordReset] = useState<LoginPendingPasswordReset | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
   const { motion, welcomeInteractive, authInteractive, goToAuth, setAuthMode } = useLoginMotion();
 
-  const verificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
+  const emailVerificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
+  const passwordResetStepActive = mode === 'login' && pendingPasswordReset !== null;
+  const verificationStepActive = emailVerificationStepActive || passwordResetStepActive;
 
   const authCopy = useMemo(() => {
     const baseCopy = getAuthCopy(mode);
-    if (!verificationStepActive) {
+    if (!emailVerificationStepActive && !passwordResetStepActive) {
       return baseCopy;
+    }
+
+    if (passwordResetStepActive) {
+      return {
+        ...baseCopy,
+        primaryButtonLabel: LOGIN_COPY.resetPasswordPrimaryButton,
+      };
     }
 
     return {
       ...baseCopy,
       primaryButtonLabel: LOGIN_COPY.verifyEmailPrimaryButton,
     };
-  }, [mode, verificationStepActive]);
+  }, [emailVerificationStepActive, mode, passwordResetStepActive]);
 
   const setFieldValue = <K extends keyof LoginFormValues>(field: K, value: LoginFormValues[K]): void => {
     setFormValues((prev) => updateField(prev, field, value));
   };
 
-  const resetVerificationState = () => {
+  const resetAuthPendingState = () => {
     setPendingEmailVerification(null);
+    setPendingPasswordReset(null);
     setInfoMessage(null);
     setFormValues((prev) => ({
       ...prev,
@@ -71,12 +87,47 @@ export const useLoginScreen = () => {
   const handleSwitchMode = (nextMode: LoginAuthMode) => {
     setMode(nextMode);
     setErrorMessage(null);
-    resetVerificationState();
+    resetAuthPendingState();
     setAuthMode(nextMode);
   };
 
-  const handleForgotPassword = () => {
-    setErrorMessage(LOGIN_COPY.forgotPasswordUnsupported);
+  const handleForgotPassword = async () => {
+    const normalizedEmail = formValues.email.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setErrorMessage(LOGIN_COPY.invalidEmailOrPassword);
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
+      if (!reset.resetId && !reset.debugCode) {
+        setPendingPasswordReset(null);
+        setInfoMessage(LOGIN_COPY.passwordResetRequestAccepted);
+        setFormValues((prev) => ({
+          ...prev,
+          verificationCode: '',
+        }));
+        return;
+      }
+      setPendingPasswordReset({
+        email: normalizedEmail,
+        expiresInSeconds: reset.resetExpiresIn,
+        debugCode: reset.debugCode,
+      });
+      setInfoMessage(LOGIN_COPY.passwordResetCodeSent);
+      setFormValues((prev) => ({
+        ...prev,
+        verificationCode: reset.debugCode || '',
+      }));
+    } catch (error) {
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const completeSignIn = async (userId: string): Promise<void> => {
@@ -87,7 +138,7 @@ export const useLoginScreen = () => {
   const handleSubmit = async () => {
     Keyboard.dismiss();
 
-    if (verificationStepActive && pendingEmailVerification) {
+    if (emailVerificationStepActive && pendingEmailVerification) {
       if (!formValues.verificationCode.trim()) {
         setErrorMessage(LOGIN_COPY.invalidVerificationCode);
         return;
@@ -101,9 +152,43 @@ export const useLoginScreen = () => {
           email: pendingEmailVerification.email,
           code: formValues.verificationCode,
         });
-        resetVerificationState();
+        resetAuthPendingState();
         await persistSession(session);
         await completeSignIn(session.user.id);
+      } catch (error) {
+        setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (passwordResetStepActive && pendingPasswordReset) {
+      if (!formValues.verificationCode.trim()) {
+        setErrorMessage(LOGIN_COPY.passwordResetCodeRejected);
+        return;
+      }
+      if (formValues.password.trim().length < LOGIN_PASSWORD_MIN_LENGTH) {
+        setErrorMessage(LOGIN_COPY.passwordResetInvalidPassword);
+        return;
+      }
+
+      setLoading(true);
+      setErrorMessage(null);
+      try {
+        await loginAuthService.confirmPasswordReset({
+          email: pendingPasswordReset.email,
+          code: formValues.verificationCode,
+          newPassword: formValues.password,
+        });
+        setPendingPasswordReset(null);
+        setInfoMessage(LOGIN_COPY.passwordResetSuccess);
+        setFormValues((prev) => ({
+          ...prev,
+          password: '',
+          confirmPassword: '',
+          verificationCode: '',
+        }));
       } catch (error) {
         setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
       } finally {
@@ -173,6 +258,8 @@ export const useLoginScreen = () => {
     errorMessage,
     infoMessage,
     verificationStepActive,
+    emailVerificationStepActive,
+    passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
     welcomeInteractive,

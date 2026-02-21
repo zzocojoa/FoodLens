@@ -36,6 +36,21 @@ class EmailVerificationSender:
     ) -> None:
         raise NotImplementedError
 
+    def send_password_reset_code(
+        self,
+        *,
+        email: str,
+        code: str,
+        expires_in_seconds: int,
+        user_id: str,
+    ) -> None:
+        self.send_verification_code(
+            email=email,
+            code=code,
+            expires_in_seconds=expires_in_seconds,
+            user_id=user_id,
+        )
+
 
 @dataclass(slots=True)
 class DisabledEmailVerificationSender(EmailVerificationSender):
@@ -85,6 +100,33 @@ class LoggingEmailVerificationSender(EmailVerificationSender):
             expires_in_seconds,
         )
 
+    def send_password_reset_code(
+        self,
+        *,
+        email: str,
+        code: str,
+        expires_in_seconds: int,
+        user_id: str,
+    ) -> None:
+        masked_email = _mask_email(email)
+        if self.include_code_in_logs:
+            logger.info(
+                "[AuthEmail] password reset code prepared mode=%s user_id=%s email=%s expires_in=%s code=%s",
+                self.mode,
+                user_id,
+                masked_email,
+                expires_in_seconds,
+                code,
+            )
+            return
+        logger.info(
+            "[AuthEmail] password reset delivery bypassed mode=%s user_id=%s email=%s expires_in=%s",
+            self.mode,
+            user_id,
+            masked_email,
+            expires_in_seconds,
+        )
+
 
 @dataclass(slots=True)
 class SmtpEmailVerificationSender(EmailVerificationSender):
@@ -99,6 +141,7 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
     use_starttls: bool = True
     use_ssl: bool = False
     subject: str = "FoodLens verification code"
+    password_reset_subject: str = "FoodLens password reset code"
     mode: EmailDeliveryMode = "smtp"
 
     def send_verification_code(
@@ -109,7 +152,42 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
         expires_in_seconds: int,
         user_id: str,
     ) -> None:
-        message = self._build_message(email=email, code=code, expires_in_seconds=expires_in_seconds)
+        message = self._build_message(
+            email=email,
+            code=code,
+            expires_in_seconds=expires_in_seconds,
+            subject=self.subject,
+            purpose_line="Your FoodLens verification code is:",
+            fallback_line="If you did not request this code, you can ignore this email.",
+        )
+        self._deliver_message(message=message, user_id=user_id, email=email, event_name="verification email")
+
+    def send_password_reset_code(
+        self,
+        *,
+        email: str,
+        code: str,
+        expires_in_seconds: int,
+        user_id: str,
+    ) -> None:
+        message = self._build_message(
+            email=email,
+            code=code,
+            expires_in_seconds=expires_in_seconds,
+            subject=self.password_reset_subject,
+            purpose_line="Your FoodLens password reset code is:",
+            fallback_line="If you did not request this reset, you can ignore this email.",
+        )
+        self._deliver_message(message=message, user_id=user_id, email=email, event_name="password reset email")
+
+    def _deliver_message(
+        self,
+        *,
+        message: EmailMessage,
+        user_id: str,
+        email: str,
+        event_name: str,
+    ) -> None:
         last_error: Exception | None = None
 
         max_attempts = max(1, int(self.max_attempts))
@@ -117,7 +195,8 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
             try:
                 self._send_message_with_timeout(message)
                 logger.info(
-                    "[AuthEmail] verification email delivered mode=%s user_id=%s email=%s attempt=%s",
+                    "[AuthEmail] %s delivered mode=%s user_id=%s email=%s attempt=%s",
+                    event_name,
                     self.mode,
                     user_id,
                     _mask_email(email),
@@ -134,18 +213,27 @@ class SmtpEmailVerificationSender(EmailVerificationSender):
             "Failed to deliver verification email."
         ) from last_error
 
-    def _build_message(self, *, email: str, code: str, expires_in_seconds: int) -> EmailMessage:
+    def _build_message(
+        self,
+        *,
+        email: str,
+        code: str,
+        expires_in_seconds: int,
+        subject: str,
+        purpose_line: str,
+        fallback_line: str,
+    ) -> EmailMessage:
         ttl_minutes = max(1, int((expires_in_seconds + 59) / 60))
         message = EmailMessage()
-        message["Subject"] = self.subject
+        message["Subject"] = subject
         message["From"] = self._formatted_from()
         message["To"] = email
         message.set_content(
             (
-                "Your FoodLens verification code is:\n\n"
+                f"{purpose_line}\n\n"
                 f"{code}\n\n"
                 f"This code expires in {ttl_minutes} minute(s).\n"
-                "If you did not request this code, you can ignore this email."
+                f"{fallback_line}"
             )
         )
         return message
@@ -235,6 +323,9 @@ def build_email_verification_sender_from_env(
     password = get_env("AUTH_EMAIL_SMTP_PASSWORD", None)
     from_name = (get_env("AUTH_EMAIL_SENDER_NAME", "FoodLens") or "FoodLens").strip()
     subject = (get_env("AUTH_EMAIL_VERIFICATION_SUBJECT", "FoodLens verification code") or "FoodLens verification code").strip()
+    password_reset_subject = (
+        get_env("AUTH_EMAIL_PASSWORD_RESET_SUBJECT", "FoodLens password reset code") or "FoodLens password reset code"
+    ).strip()
 
     sender = SmtpEmailVerificationSender(
         host=host,
@@ -248,6 +339,7 @@ def build_email_verification_sender_from_env(
         use_starttls=use_starttls,
         use_ssl=use_ssl,
         subject=subject,
+        password_reset_subject=password_reset_subject,
     )
     return sender, mode
 

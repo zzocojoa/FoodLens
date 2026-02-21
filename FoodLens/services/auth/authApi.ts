@@ -30,6 +30,15 @@ export type AuthEmailVerificationChallenge = {
 
 export type AuthEmailSignupResult = AuthSessionTokens | AuthEmailVerificationChallenge;
 
+export type AuthPasswordResetChallenge = {
+  resetRequested: true;
+  resetMethod: 'email_code';
+  resetChannel: 'email';
+  resetExpiresIn: number;
+  resetId?: string | null;
+  debugCode?: string;
+};
+
 type AuthPayload = {
   access_token?: string;
   refresh_token?: string;
@@ -42,6 +51,14 @@ type AuthPayload = {
   verification_expires_in?: number;
   verification_id?: string;
   verification_debug_code?: string;
+  reset_requested?: boolean;
+  reset_method?: string;
+  reset_channel?: string;
+  reset_expires_in?: number;
+  reset_id?: string | null;
+  reset_debug_code?: string;
+  password_reset?: boolean;
+  sessions_revoked?: number;
 };
 
 type ApiErrorShape = {
@@ -107,6 +124,26 @@ const toEmailVerificationChallenge = (payload: AuthPayload): AuthEmailVerificati
 export const isAuthEmailVerificationChallenge = (
   value: AuthEmailSignupResult
 ): value is AuthEmailVerificationChallenge => 'verificationRequired' in value;
+
+const toPasswordResetChallenge = (payload: AuthPayload): AuthPasswordResetChallenge => {
+  if (typeof payload.reset_expires_in !== 'number') {
+    throw new AuthApiError(
+      'Password reset response is missing required fields.',
+      'AUTH_INVALID_RESPONSE',
+      502,
+      payload.request_id
+    );
+  }
+
+  return {
+    resetRequested: true,
+    resetMethod: 'email_code',
+    resetChannel: 'email',
+    resetExpiresIn: payload.reset_expires_in,
+    resetId: payload.reset_id ?? null,
+    debugCode: payload.reset_debug_code,
+  };
+};
 
 const parseErrorResponse = async (response: Response): Promise<AuthApiError> => {
   let parsed: ApiErrorShape | null = null;
@@ -217,6 +254,43 @@ export const AuthApi = {
       device_id: input.deviceId,
     });
     return toSessionTokens(payload);
+  },
+
+  async requestPasswordReset(input: {
+    email: string;
+  }): Promise<AuthPasswordResetChallenge> {
+    const payload = await postJson<AuthPayload>('/auth/email/password/reset/request', {
+      email: input.email,
+    });
+    if (!payload.reset_requested) {
+      throw new AuthApiError(
+        'Password reset request response is missing required fields.',
+        'AUTH_INVALID_RESPONSE',
+        502,
+        payload.request_id
+      );
+    }
+    return toPasswordResetChallenge(payload);
+  },
+
+  async confirmPasswordReset(input: {
+    email: string;
+    code: string;
+    newPassword: string;
+  }): Promise<void> {
+    const payload = await postJson<AuthPayload>('/auth/email/password/reset/confirm', {
+      email: input.email,
+      code: input.code,
+      new_password: input.newPassword,
+    });
+    if (!payload.password_reset) {
+      throw new AuthApiError(
+        'Password reset confirmation response is missing required fields.',
+        'AUTH_INVALID_RESPONSE',
+        502,
+        payload.request_id
+      );
+    }
   },
 
   async loginWithGoogle(input: {

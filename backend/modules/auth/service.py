@@ -125,6 +125,18 @@ class EmailVerificationRecord:
     failed_attempts: int = 0
 
 
+@dataclass(slots=True)
+class PasswordResetRecord:
+    reset_id: str
+    user_id: str
+    email: str
+    code_hash: str
+    expires_at: datetime
+    created_at: datetime = field(default_factory=_utc_now)
+    consumed_at: datetime | None = None
+    failed_attempts: int = 0
+
+
 class InMemoryAuthSessionService:
     def __init__(
         self,
@@ -136,6 +148,9 @@ class InMemoryAuthSessionService:
         email_verification_code_ttl_seconds: int = 600,
         email_verification_max_attempts: int = 5,
         email_verification_debug_code_enabled: bool = False,
+        password_reset_code_ttl_seconds: int = 600,
+        password_reset_max_attempts: int = 5,
+        password_reset_debug_code_enabled: bool = False,
         email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
     ):
@@ -146,6 +161,9 @@ class InMemoryAuthSessionService:
         self.email_verification_code_ttl_seconds = max(60, email_verification_code_ttl_seconds)
         self.email_verification_max_attempts = max(1, email_verification_max_attempts)
         self.email_verification_debug_code_enabled = email_verification_debug_code_enabled
+        self.password_reset_code_ttl_seconds = max(60, password_reset_code_ttl_seconds)
+        self.password_reset_max_attempts = max(1, password_reset_max_attempts)
+        self.password_reset_debug_code_enabled = password_reset_debug_code_enabled
         self._email_verification_sender = email_verification_sender or LoggingEmailVerificationSender()
         self.allowed_redirects_by_provider = {
             key: set(value)
@@ -164,6 +182,7 @@ class InMemoryAuthSessionService:
         self._access_tokens_by_session: dict[str, set[str]] = {}
         self._refresh_tokens_by_session: dict[str, set[str]] = {}
         self._email_verifications_by_user_id: dict[str, EmailVerificationRecord] = {}
+        self._password_resets_by_user_id: dict[str, PasswordResetRecord] = {}
 
         self._lock = RLock()
 
@@ -182,9 +201,20 @@ class InMemoryAuthSessionService:
         email_verification_debug_code_enabled = (
             get_env("AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED", "0") or "0"
         ).strip() == "1"
+        password_reset_code_ttl_seconds = int(
+            (get_env("AUTH_PASSWORD_RESET_CODE_TTL_SECONDS", "600") or "600").strip()
+        )
+        password_reset_max_attempts = int(
+            (get_env("AUTH_PASSWORD_RESET_MAX_ATTEMPTS", "5") or "5").strip()
+        )
+        password_reset_debug_code_enabled = (
+            get_env("AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED", "0") or "0"
+        ).strip() == "1"
         email_verification_sender, email_delivery_mode = build_email_verification_sender_from_env(get_env=get_env)
         if email_delivery_mode == "smtp" and email_verification_debug_code_enabled:
             email_verification_debug_code_enabled = False
+        if email_delivery_mode == "smtp" and password_reset_debug_code_enabled:
+            password_reset_debug_code_enabled = False
         allowed_redirects_by_provider = {
             "google": _parse_csv(get_env("AUTH_GOOGLE_ALLOWED_REDIRECT_URIS", None)),
             "kakao": _parse_csv(get_env("AUTH_KAKAO_ALLOWED_REDIRECT_URIS", None)),
@@ -197,6 +227,9 @@ class InMemoryAuthSessionService:
             email_verification_code_ttl_seconds=email_verification_code_ttl_seconds,
             email_verification_max_attempts=email_verification_max_attempts,
             email_verification_debug_code_enabled=email_verification_debug_code_enabled,
+            password_reset_code_ttl_seconds=password_reset_code_ttl_seconds,
+            password_reset_max_attempts=password_reset_max_attempts,
+            password_reset_debug_code_enabled=password_reset_debug_code_enabled,
             email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
         )
@@ -376,6 +409,122 @@ class InMemoryAuthSessionService:
             user.email_verified_at = now
             user.updated_at = now
             return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+
+    def request_password_reset(self, *, email: str) -> dict[str, object]:
+        normalized_email = self._normalize_email(email)
+        self._validate_email(normalized_email)
+
+        with self._lock:
+            user_id = self._user_id_by_email.get(normalized_email)
+            if not user_id:
+                return self._serialize_password_reset_challenge(record=None)
+
+            user = self._users_by_id[user_id]
+            if user.provider != "email" or not user.password_hash or not user.password_salt:
+                return self._serialize_password_reset_challenge(record=None)
+
+            record, reset_code = self._issue_password_reset(user=user)
+            payload = self._serialize_password_reset_challenge(record=record)
+            if self.password_reset_debug_code_enabled:
+                payload["reset_debug_code"] = reset_code
+
+        try:
+            self._email_verification_sender.send_password_reset_code(
+                email=user.email,
+                code=reset_code,
+                expires_in_seconds=max(1, int((record.expires_at - _utc_now()).total_seconds())),
+                user_id=user.user_id,
+            )
+        except EmailVerificationDeliveryError as error:
+            with self._lock:
+                pending_reset = self._password_resets_by_user_id.get(user.user_id)
+                if pending_reset and pending_reset.reset_id == record.reset_id and pending_reset.consumed_at is None:
+                    self._password_resets_by_user_id.pop(user.user_id, None)
+            raise AuthServiceError(
+                code="AUTH_PASSWORD_RESET_DELIVERY_FAILED",
+                message="Failed to deliver password reset email.",
+                status_code=503,
+                user_id=user.user_id,
+            ) from error
+
+        return payload
+
+    def confirm_password_reset(
+        self,
+        *,
+        email: str,
+        code: str,
+        new_password: str,
+    ) -> dict[str, object]:
+        normalized_email = self._normalize_email(email)
+        normalized_code = code.strip()
+        self._validate_email(normalized_email)
+        self._validate_password(new_password)
+        if not normalized_code:
+            raise AuthServiceError(
+                code="AUTH_PASSWORD_RESET_INVALID",
+                message="Invalid password reset code.",
+                status_code=400,
+            )
+
+        now = _utc_now()
+        with self._lock:
+            user_id = self._user_id_by_email.get(normalized_email)
+            if not user_id:
+                raise AuthServiceError(
+                    code="AUTH_PASSWORD_RESET_INVALID",
+                    message="Invalid password reset code.",
+                    status_code=400,
+                )
+
+            user = self._users_by_id[user_id]
+            if user.provider != "email" or not user.password_hash or not user.password_salt:
+                raise AuthServiceError(
+                    code="AUTH_PASSWORD_RESET_INVALID",
+                    message="Invalid password reset code.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            record = self._password_resets_by_user_id.get(user.user_id)
+            if record is None or record.consumed_at is not None or record.expires_at <= now:
+                raise AuthServiceError(
+                    code="AUTH_PASSWORD_RESET_EXPIRED",
+                    message="Password reset code expired.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            expected_hash = self._hash_password_reset_code(
+                user_id=user.user_id,
+                code=normalized_code,
+            )
+            if not hmac.compare_digest(record.code_hash, expected_hash):
+                record.failed_attempts += 1
+                if record.failed_attempts >= self.password_reset_max_attempts:
+                    record.consumed_at = now
+                    raise AuthServiceError(
+                        code="AUTH_PASSWORD_RESET_LOCKED",
+                        message="Too many invalid password reset attempts.",
+                        status_code=429,
+                        user_id=user.user_id,
+                    )
+                raise AuthServiceError(
+                    code="AUTH_PASSWORD_RESET_INVALID",
+                    message="Invalid password reset code.",
+                    status_code=400,
+                    user_id=user.user_id,
+                )
+
+            record.consumed_at = now
+            user.password_salt, user.password_hash = self._create_password_credentials(new_password)
+            user.updated_at = now
+            revoked_sessions = self._revoke_sessions_for_user(user.user_id, reason="password_reset")
+
+            return {
+                "password_reset": True,
+                "sessions_revoked": revoked_sessions,
+            }
 
     def oauth_login(
         self,
@@ -642,8 +791,7 @@ class InMemoryAuthSessionService:
         password_salt: str | None = None
         password_hash: str | None = None
         if password is not None:
-            password_salt = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("ascii").rstrip("=")
-            password_hash = self._hash_password(password, password_salt)
+            password_salt, password_hash = self._create_password_credentials(password)
 
         user = AuthUser(
             user_id=_random_id("usr"),
@@ -683,6 +831,7 @@ class InMemoryAuthSessionService:
 
     def _rollback_unverified_user(self, user: AuthUser) -> None:
         self._email_verifications_by_user_id.pop(user.user_id, None)
+        self._password_resets_by_user_id.pop(user.user_id, None)
         self._profiles_by_user_id.pop(user.user_id, None)
         self._users_by_id.pop(user.user_id, None)
         if self._user_id_by_email.get(user.email) == user.user_id:
@@ -739,6 +888,19 @@ class InMemoryAuthSessionService:
             if refresh_record and refresh_record.status == "active":
                 refresh_record.status = "revoked"
 
+    def _revoke_sessions_for_user(self, user_id: str, *, reason: str) -> int:
+        now = _utc_now()
+        revoked_count = 0
+        for session in self._sessions.values():
+            if session.user_id != user_id:
+                continue
+            if session.revoked_at is None:
+                session.revoked_at = now
+                session.revoked_reason = reason
+                revoked_count += 1
+            self._revoke_tokens_for_session(session.session_id)
+        return revoked_count
+
     def _serialize_user(self, user: AuthUser) -> dict[str, object]:
         return {
             "id": user.user_id,
@@ -763,6 +925,19 @@ class InMemoryAuthSessionService:
         self._email_verifications_by_user_id[user.user_id] = record
         return record, verification_code
 
+    def _issue_password_reset(self, *, user: AuthUser) -> tuple[PasswordResetRecord, str]:
+        reset_code = f"{secrets.randbelow(1_000_000):06d}"
+        now = _utc_now()
+        record = PasswordResetRecord(
+            reset_id=_random_id("prs"),
+            user_id=user.user_id,
+            email=user.email,
+            code_hash=self._hash_password_reset_code(user_id=user.user_id, code=reset_code),
+            expires_at=now + timedelta(seconds=self.password_reset_code_ttl_seconds),
+        )
+        self._password_resets_by_user_id[user.user_id] = record
+        return record, reset_code
+
     def _serialize_email_verification_challenge(
         self,
         *,
@@ -778,6 +953,23 @@ class InMemoryAuthSessionService:
             "verification_expires_in": expires_in,
             "verification_id": record.verification_id,
             "user": self._serialize_user(user),
+        }
+
+    def _serialize_password_reset_challenge(
+        self,
+        *,
+        record: PasswordResetRecord | None,
+    ) -> dict[str, object]:
+        if record is None:
+            expires_in = self.password_reset_code_ttl_seconds
+        else:
+            expires_in = max(0, int((record.expires_at - _utc_now()).total_seconds()))
+        return {
+            "reset_requested": True,
+            "reset_method": "email_code",
+            "reset_channel": "email",
+            "reset_expires_in": expires_in,
+            "reset_id": record.reset_id if record else None,
         }
 
     def _serialize_profile(self, profile: UserProfile) -> dict[str, object]:
@@ -813,6 +1005,15 @@ class InMemoryAuthSessionService:
     def _hash_email_verification_code(self, *, user_id: str, code: str) -> str:
         payload = f"{user_id}:{code}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
+
+    def _hash_password_reset_code(self, *, user_id: str, code: str) -> str:
+        payload = f"{user_id}:{code}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def _create_password_credentials(self, password: str) -> tuple[str, str]:
+        salt = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("ascii").rstrip("=")
+        password_hash = self._hash_password(password, salt)
+        return salt, password_hash
 
     def _hash_password(self, password: str, salt: str) -> str:
         digest = hashlib.pbkdf2_hmac(

@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
+os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
+os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError  # noqa: E402
@@ -139,6 +141,81 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             )
             self.assertEqual(verify_response.status_code, 400)
             self.assertEqual(verify_response.json()["detail"]["code"], "AUTH_EMAIL_VERIFICATION_INVALID")
+
+    def test_password_reset_request_and_confirm_rotates_password(self):
+        with TestClient(app) as client:
+            self._signup_and_verify(
+                client,
+                email="reset@example.com",
+                password="Passw0rd!",
+                display_name="Reset User",
+            )
+
+            reset_request = client.post(
+                "/auth/email/password/reset/request",
+                json={"email": "reset@example.com"},
+            )
+            self.assertEqual(reset_request.status_code, 200)
+            request_body = reset_request.json()
+            self.assertIn("request_id", request_body)
+            self.assertTrue(request_body.get("reset_requested"))
+            self.assertEqual(request_body.get("reset_channel"), "email")
+            self.assertEqual(request_body.get("reset_method"), "email_code")
+            self.assertIn("reset_debug_code", request_body)
+
+            reset_confirm = client.post(
+                "/auth/email/password/reset/confirm",
+                json={
+                    "email": "reset@example.com",
+                    "code": request_body["reset_debug_code"],
+                    "new_password": "N3wPassw0rd!",
+                },
+            )
+            self.assertEqual(reset_confirm.status_code, 200)
+            confirm_body = reset_confirm.json()
+            self.assertTrue(confirm_body.get("password_reset"))
+            self.assertIn("request_id", confirm_body)
+            self.assertGreaterEqual(confirm_body.get("sessions_revoked", 0), 1)
+
+            old_login = client.post(
+                "/auth/email/login",
+                json={"email": "reset@example.com", "password": "Passw0rd!"},
+            )
+            self.assertEqual(old_login.status_code, 401)
+            self.assertEqual(old_login.json()["detail"]["code"], "AUTH_INVALID_CREDENTIALS")
+
+            new_login = client.post(
+                "/auth/email/login",
+                json={"email": "reset@example.com", "password": "N3wPassw0rd!"},
+            )
+            self.assertEqual(new_login.status_code, 200)
+            self.assertIn("access_token", new_login.json())
+
+    def test_password_reset_rejects_invalid_code(self):
+        with TestClient(app) as client:
+            self._signup_and_verify(
+                client,
+                email="reset-invalid@example.com",
+                password="Passw0rd!",
+                display_name="Reset Invalid",
+            )
+
+            reset_request = client.post(
+                "/auth/email/password/reset/request",
+                json={"email": "reset-invalid@example.com"},
+            )
+            self.assertEqual(reset_request.status_code, 200)
+
+            reset_confirm = client.post(
+                "/auth/email/password/reset/confirm",
+                json={
+                    "email": "reset-invalid@example.com",
+                    "code": "000000",
+                    "new_password": "N3wPassw0rd!",
+                },
+            )
+            self.assertEqual(reset_confirm.status_code, 400)
+            self.assertEqual(reset_confirm.json()["detail"]["code"], "AUTH_PASSWORD_RESET_INVALID")
 
     def test_refresh_reuse_detection_revokes_session_family(self):
         with TestClient(app) as client:

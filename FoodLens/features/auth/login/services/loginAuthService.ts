@@ -2,6 +2,7 @@ import {
   AuthApi,
   AuthApiError,
   AuthEmailSignupResult,
+  AuthPasswordResetChallenge,
   AuthSessionTokens,
 } from '@/services/auth/authApi';
 import { AuthOAuthProvider } from '@/services/auth/oauthProvider';
@@ -37,6 +38,22 @@ const verifyEmailCode = async (input: {
     code: input.code.trim(),
   });
 
+const requestPasswordReset = async (input: { email: string }): Promise<AuthPasswordResetChallenge> =>
+  AuthApi.requestPasswordReset({
+    email: normalizeEmail(input.email),
+  });
+
+const confirmPasswordReset = async (input: {
+  email: string;
+  code: string;
+  newPassword: string;
+}): Promise<void> =>
+  AuthApi.confirmPasswordReset({
+    email: normalizeEmail(input.email),
+    code: input.code.trim(),
+    newPassword: input.newPassword,
+  });
+
 const resolveAuthErrorMessage = (error: unknown): string => {
   if (error instanceof AuthApiError) {
     if (error.code === 'AUTH_EMAIL_NOT_VERIFIED') {
@@ -50,6 +67,18 @@ const resolveAuthErrorMessage = (error: unknown): string => {
     }
     if (error.code === 'AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED') {
       return LOGIN_COPY.verificationDeliveryFailed;
+    }
+    if (error.code === 'AUTH_PASSWORD_RESET_INVALID') {
+      return LOGIN_COPY.passwordResetCodeRejected;
+    }
+    if (error.code === 'AUTH_PASSWORD_RESET_EXPIRED') {
+      return LOGIN_COPY.passwordResetCodeRejected;
+    }
+    if (error.code === 'AUTH_PASSWORD_RESET_LOCKED') {
+      return LOGIN_COPY.passwordResetCodeRejected;
+    }
+    if (error.code === 'AUTH_PASSWORD_RESET_DELIVERY_FAILED') {
+      return LOGIN_COPY.passwordResetDeliveryFailed;
     }
     return `${error.code}: ${error.message}`;
   }
@@ -68,6 +97,8 @@ const submitOAuthAuth = async (
 export const loginAuthService = {
   submitEmailAuth,
   verifyEmailCode,
+  requestPasswordReset,
+  confirmPasswordReset,
   submitOAuthAuth,
   resolveAuthErrorMessage,
 };

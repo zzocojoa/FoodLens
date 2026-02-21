@@ -35,6 +35,7 @@ export const LOGIN_COPY = {
   loginPrimaryButton: 'Login',
   signupPrimaryButton: 'Create Account',
   verifyEmailPrimaryButton: 'Verify Email',
+  resetPasswordPrimaryButton: 'Reset Password',
   oauthDividerText: 'Or continue with',
   oauthGoogleButton: 'Continue with Google',
   oauthKakaoButton: 'Continue with Kakao',
@@ -51,7 +52,12 @@ export const LOGIN_COPY = {
   invalidVerificationCode: 'Enter the verification code sent to your email.',
   verificationCodeRejected: 'Verification code is invalid or expired.',
   verificationDeliveryFailed: 'Could not send verification email. Please try again shortly.',
-  forgotPasswordUnsupported: 'Forgot Password flow is not available yet.',
+  passwordResetCodeSent: 'Password reset code sent. Enter the code and your new password.',
+  passwordResetRequestAccepted: 'If an account exists, a password reset code has been sent.',
+  passwordResetSuccess: 'Password reset complete. Sign in with your new password.',
+  passwordResetCodeRejected: 'Password reset code is invalid or expired.',
+  passwordResetDeliveryFailed: 'Could not send password reset email. Please try again shortly.',
+  passwordResetInvalidPassword: 'Enter a new password with at least 8 characters.',
   genericAuthFailure: 'Authentication failed. Please try again.',
 } as const;
 
