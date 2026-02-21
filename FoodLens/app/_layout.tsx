@@ -81,10 +81,12 @@ function LayoutContent() {
         nextRoute = '/login';
       } finally {
         if (!active) return;
-        await SplashScreen.hideAsync();
         if (nextRoute) {
           appRouter.replace(nextRoute);
+          // Keep splash visible until the router applies replacement to avoid stale-route flashes.
+          await Promise.resolve();
         }
+        await SplashScreen.hideAsync();
       }
     };
 
