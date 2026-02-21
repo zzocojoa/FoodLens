@@ -184,21 +184,39 @@ export default function LoginAuthScreen({
         ) : null}
 
         {!verificationStepActive || passwordResetStepActive ? (
-          <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
-            <InputGroup
-              label={passwordResetStepActive ? LOGIN_COPY.confirmNewPasswordLabel : LOGIN_COPY.confirmPasswordLabel}
-              placeholder={passwordResetStepActive ? LOGIN_COPY.confirmNewPasswordPlaceholder : LOGIN_COPY.confirmPasswordPlaceholder}
-              iconName="lock"
-              value={formValues.confirmPassword}
-              onChangeText={onChangeConfirmPassword}
-              secureTextEntry={!confirmPasswordVisible}
-              rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
-              onPressRightIcon={onToggleConfirmPasswordVisible}
-              style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
-              onSubmitEditing={() => Keyboard.dismiss()}
-              returnKeyType="done"
-            />
-          </Animated.View>
+          passwordResetStepActive ? (
+            <View style={loginStyles.verificationFieldWrap}>
+              <InputGroup
+                label={LOGIN_COPY.confirmNewPasswordLabel}
+                placeholder={LOGIN_COPY.confirmNewPasswordPlaceholder}
+                iconName="lock"
+                value={formValues.confirmPassword}
+                onChangeText={onChangeConfirmPassword}
+                secureTextEntry={!confirmPasswordVisible}
+                rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
+                onPressRightIcon={onToggleConfirmPasswordVisible}
+                style={{ marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+                onSubmitEditing={() => Keyboard.dismiss()}
+                returnKeyType="done"
+              />
+            </View>
+          ) : (
+            <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
+              <InputGroup
+                label={LOGIN_COPY.confirmPasswordLabel}
+                placeholder={LOGIN_COPY.confirmPasswordPlaceholder}
+                iconName="lock"
+                value={formValues.confirmPassword}
+                onChangeText={onChangeConfirmPassword}
+                secureTextEntry={!confirmPasswordVisible}
+                rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
+                onPressRightIcon={onToggleConfirmPasswordVisible}
+                style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+                onSubmitEditing={() => Keyboard.dismiss()}
+                returnKeyType="done"
+              />
+            </Animated.View>
+          )
         ) : null}
 
         {verificationStepActive ? (
