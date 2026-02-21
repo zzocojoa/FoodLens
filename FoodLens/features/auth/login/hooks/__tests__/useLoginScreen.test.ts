@@ -227,7 +227,7 @@ describe('useLoginScreen', () => {
     expect(result.current.infoMessage).toContain('Password reset complete');
   });
 
-  it('does not enter reset step when account is not found', async () => {
+  it('enters reset step even when reset id is omitted', async () => {
     mockRequestPasswordReset.mockResolvedValue({
       resetRequested: true,
       resetMethod: 'email_code',
@@ -246,7 +246,8 @@ describe('useLoginScreen', () => {
       await result.current.handleForgotPassword();
     });
 
-    expect(result.current.passwordResetStepActive).toBe(false);
+    expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.formValues.verificationCode).toBe('');
     expect(result.current.infoMessage).toContain('If an account exists');
   });
 });

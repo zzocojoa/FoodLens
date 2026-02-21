@@ -85,6 +85,7 @@ type LoginAuthScreenProps = {
   errorMessage: string | null;
   infoMessage: string | null;
   verificationStepActive: boolean;
+  passwordResetStepActive: boolean;
   passwordVisible: boolean;
   confirmPasswordVisible: boolean;
   screenStyle: object;
@@ -100,6 +101,7 @@ type LoginAuthScreenProps = {
   onTogglePasswordVisible: () => void;
   onToggleConfirmPasswordVisible: () => void;
   onForgotPassword: () => void;
+  onCancelPasswordReset: () => void;
   onSwitchMode: (nextMode: LoginAuthMode) => void;
   onSubmit: () => void;
   onOAuthLogin: (provider: LoginOAuthProvider) => void;
@@ -113,6 +115,7 @@ export default function LoginAuthScreen({
   errorMessage,
   infoMessage,
   verificationStepActive,
+  passwordResetStepActive,
   passwordVisible,
   confirmPasswordVisible,
   screenStyle,
@@ -128,6 +131,7 @@ export default function LoginAuthScreen({
   onTogglePasswordVisible,
   onToggleConfirmPasswordVisible,
   onForgotPassword,
+  onCancelPasswordReset,
   onSwitchMode,
   onSubmit,
   onOAuthLogin,
@@ -152,8 +156,8 @@ export default function LoginAuthScreen({
         />
 
         <InputGroup
-          label={LOGIN_COPY.passwordLabel}
-          placeholder={LOGIN_COPY.passwordPlaceholder}
+          label={passwordResetStepActive ? LOGIN_COPY.newPasswordLabel : LOGIN_COPY.passwordLabel}
+          placeholder={passwordResetStepActive ? LOGIN_COPY.newPasswordPlaceholder : LOGIN_COPY.passwordPlaceholder}
           iconName="lock"
           value={formValues.password}
           onChangeText={onChangePassword}
@@ -165,19 +169,21 @@ export default function LoginAuthScreen({
           returnKeyType="done"
         />
 
-        <Animated.View style={[loginStyles.loginActionRow, loginActionRowStyle]}>
-          <View style={loginStyles.actionRowInner}>
-            <Pressable style={loginStyles.checkboxGroup} onPress={onToggleRememberMe}>
-              <View style={[loginStyles.checkboxRect, formValues.rememberMe && loginStyles.checkboxRectChecked]} />
-              <Text style={loginStyles.checkboxText}>{LOGIN_COPY.rememberMe}</Text>
-            </Pressable>
-            <Pressable onPress={onForgotPassword}>
-              <Text style={loginStyles.forgotText}>{LOGIN_COPY.forgotPassword}</Text>
-            </Pressable>
-          </View>
-        </Animated.View>
+        {!passwordResetStepActive ? (
+          <Animated.View style={[loginStyles.loginActionRow, loginActionRowStyle]}>
+            <View style={loginStyles.actionRowInner}>
+              <Pressable style={loginStyles.checkboxGroup} onPress={onToggleRememberMe}>
+                <View style={[loginStyles.checkboxRect, formValues.rememberMe && loginStyles.checkboxRectChecked]} />
+                <Text style={loginStyles.checkboxText}>{LOGIN_COPY.rememberMe}</Text>
+              </Pressable>
+              <Pressable onPress={onForgotPassword}>
+                <Text style={loginStyles.forgotText}>{LOGIN_COPY.forgotPassword}</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        ) : null}
 
-        {!verificationStepActive ? (
+        {!verificationStepActive && !passwordResetStepActive ? (
           <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
             <InputGroup
               label={LOGIN_COPY.confirmPasswordLabel}
@@ -224,43 +230,53 @@ export default function LoginAuthScreen({
           )}
         </Pressable>
 
-        <View style={loginStyles.oauthDivider}>
-          <View style={loginStyles.oauthDividerLine} />
-          <Text style={loginStyles.oauthDividerText}>{LOGIN_COPY.oauthDividerText}</Text>
-          <View style={loginStyles.oauthDividerLine} />
-        </View>
+        {!passwordResetStepActive ? (
+          <>
+            <View style={loginStyles.oauthDivider}>
+              <View style={loginStyles.oauthDividerLine} />
+              <Text style={loginStyles.oauthDividerText}>{LOGIN_COPY.oauthDividerText}</Text>
+              <View style={loginStyles.oauthDividerLine} />
+            </View>
 
-        <View style={loginStyles.oauthButtonGroup}>
-          <Pressable
-            testID="oauth-google-button"
-            disabled={loading}
-            onPress={() => onOAuthLogin('google')}
-            accessibilityRole="button"
-            accessibilityLabel={LOGIN_COPY.oauthGoogleButton}
-            accessibilityHint={LOGIN_COPY.oauthGoogleHint}
-            style={[loginStyles.oauthButton, loginStyles.oauthGoogleButton]}
-          >
-            <GoogleIcon size={18} />
-          </Pressable>
-          <Pressable
-            testID="oauth-kakao-button"
-            disabled={loading}
-            onPress={() => onOAuthLogin('kakao')}
-            accessibilityRole="button"
-            accessibilityLabel={LOGIN_COPY.oauthKakaoButton}
-            accessibilityHint={LOGIN_COPY.oauthKakaoHint}
-            style={[loginStyles.oauthButton, loginStyles.oauthKakaoButton]}
-          >
-            <KakaoIcon size={18} />
-          </Pressable>
-        </View>
+            <View style={loginStyles.oauthButtonGroup}>
+              <Pressable
+                testID="oauth-google-button"
+                disabled={loading}
+                onPress={() => onOAuthLogin('google')}
+                accessibilityRole="button"
+                accessibilityLabel={LOGIN_COPY.oauthGoogleButton}
+                accessibilityHint={LOGIN_COPY.oauthGoogleHint}
+                style={[loginStyles.oauthButton, loginStyles.oauthGoogleButton]}
+              >
+                <GoogleIcon size={18} />
+              </Pressable>
+              <Pressable
+                testID="oauth-kakao-button"
+                disabled={loading}
+                onPress={() => onOAuthLogin('kakao')}
+                accessibilityRole="button"
+                accessibilityLabel={LOGIN_COPY.oauthKakaoButton}
+                accessibilityHint={LOGIN_COPY.oauthKakaoHint}
+                style={[loginStyles.oauthButton, loginStyles.oauthKakaoButton]}
+              >
+                <KakaoIcon size={18} />
+              </Pressable>
+            </View>
 
-        <View style={loginStyles.switchAuthRow}>
-          <Text style={loginStyles.switchAuthLead}>{authCopy.switchLeadText}</Text>
-          <Pressable onPress={() => onSwitchMode(authCopy.nextMode)}>
-            <Text style={loginStyles.switchAuthAction}>{authCopy.switchActionText}</Text>
-          </Pressable>
-        </View>
+            <View style={loginStyles.switchAuthRow}>
+              <Text style={loginStyles.switchAuthLead}>{authCopy.switchLeadText}</Text>
+              <Pressable onPress={() => onSwitchMode(authCopy.nextMode)}>
+                <Text style={loginStyles.switchAuthAction}>{authCopy.switchActionText}</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <View style={loginStyles.switchAuthRow}>
+            <Pressable onPress={onCancelPasswordReset}>
+              <Text style={loginStyles.switchAuthAction}>{LOGIN_COPY.resetPasswordBackToSignIn}</Text>
+            </Pressable>
+          </View>
+        )}
       </Animated.View>
     </Animated.View>
   );

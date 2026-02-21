@@ -28,6 +28,7 @@ export default function LoginScreen() {
     errorMessage,
     infoMessage,
     verificationStepActive,
+    passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
     welcomeInteractive,
@@ -39,6 +40,7 @@ export default function LoginScreen() {
     handleContinue,
     handleSwitchMode,
     handleForgotPassword,
+    handleCancelPasswordReset,
     handleSubmit,
     handleOAuthSignIn,
   } = useLoginScreen();
@@ -83,6 +85,7 @@ export default function LoginScreen() {
                 errorMessage={errorMessage}
                 infoMessage={infoMessage}
                 verificationStepActive={verificationStepActive}
+                passwordResetStepActive={passwordResetStepActive}
                 passwordVisible={passwordVisible}
                 confirmPasswordVisible={confirmPasswordVisible}
                 screenStyle={motion.authScreenStyle}
@@ -106,6 +109,7 @@ export default function LoginScreen() {
                   setConfirmPasswordVisible((prev) => !prev)
                 }
                 onForgotPassword={handleForgotPassword}
+                onCancelPasswordReset={handleCancelPasswordReset}
                 onSwitchMode={handleSwitchMode}
                 onSubmit={handleSubmit}
                 onOAuthLogin={handleOAuthSignIn}

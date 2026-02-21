@@ -38,6 +38,7 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
   errorMessage: null,
   infoMessage: null,
   verificationStepActive: false,
+  passwordResetStepActive: false,
   passwordVisible: false,
   confirmPasswordVisible: false,
   screenStyle: {},
@@ -53,6 +54,7 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
   onTogglePasswordVisible: jest.fn(),
   onToggleConfirmPasswordVisible: jest.fn(),
   onForgotPassword: jest.fn(),
+  onCancelPasswordReset: jest.fn(),
   onSwitchMode: jest.fn(),
   onSubmit: jest.fn(),
   onOAuthLogin: jest.fn(),
@@ -117,5 +119,27 @@ describe('LoginAuthScreen', () => {
     expect(onOAuthLogin).toHaveBeenNthCalledWith(1, 'google');
     expect(onOAuthLogin).toHaveBeenNthCalledWith(2, 'kakao');
     expect(onOAuthLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders password reset view when reset step is active', () => {
+    const { queryByText, getByText } = render(
+      <LoginAuthScreen
+        {...createProps({
+          authCopy: {
+            title: 'Reset Password',
+            primaryButtonLabel: 'Reset Password',
+            switchLeadText: '',
+            switchActionText: '',
+            nextMode: 'login',
+          },
+          verificationStepActive: true,
+          passwordResetStepActive: true,
+        })}
+      />,
+    );
+
+    expect(getByText('Back to Sign in')).toBeTruthy();
+    expect(queryByText('Or continue with')).toBeNull();
+    expect(queryByText("Don't have an Account ?")).toBeNull();
   });
 });

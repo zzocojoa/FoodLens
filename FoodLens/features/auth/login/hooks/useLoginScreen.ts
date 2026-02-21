@@ -56,6 +56,7 @@ export const useLoginScreen = () => {
     if (passwordResetStepActive) {
       return {
         ...baseCopy,
+        title: LOGIN_COPY.resetPasswordTitle,
         primaryButtonLabel: LOGIN_COPY.resetPasswordPrimaryButton,
       };
     }
@@ -104,21 +105,12 @@ export const useLoginScreen = () => {
 
     try {
       const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
-      if (!reset.resetId && !reset.debugCode) {
-        setPendingPasswordReset(null);
-        setInfoMessage(LOGIN_COPY.passwordResetRequestAccepted);
-        setFormValues((prev) => ({
-          ...prev,
-          verificationCode: '',
-        }));
-        return;
-      }
       setPendingPasswordReset({
         email: normalizedEmail,
         expiresInSeconds: reset.resetExpiresIn,
         debugCode: reset.debugCode,
       });
-      setInfoMessage(LOGIN_COPY.passwordResetCodeSent);
+      setInfoMessage(reset.resetId || reset.debugCode ? LOGIN_COPY.passwordResetCodeSent : LOGIN_COPY.passwordResetRequestAccepted);
       setFormValues((prev) => ({
         ...prev,
         verificationCode: reset.debugCode || '',
@@ -128,6 +120,16 @@ export const useLoginScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancelPasswordReset = () => {
+    setPendingPasswordReset(null);
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setFormValues((prev) => ({
+      ...prev,
+      verificationCode: '',
+    }));
   };
 
   const completeSignIn = async (userId: string): Promise<void> => {
@@ -271,6 +273,7 @@ export const useLoginScreen = () => {
     handleContinue,
     handleSwitchMode,
     handleForgotPassword,
+    handleCancelPasswordReset,
     handleSubmit,
     handleOAuthSignIn,
   };
