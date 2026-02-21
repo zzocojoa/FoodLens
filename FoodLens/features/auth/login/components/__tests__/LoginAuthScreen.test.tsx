@@ -139,6 +139,7 @@ describe('LoginAuthScreen', () => {
     );
 
     expect(getByText('Back to Sign in')).toBeTruthy();
+    expect(getByText('Confirm New Password')).toBeTruthy();
     expect(queryByText('Or continue with')).toBeNull();
     expect(queryByText("Don't have an Account ?")).toBeNull();
   });

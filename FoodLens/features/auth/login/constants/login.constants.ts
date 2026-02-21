@@ -40,6 +40,8 @@ export const LOGIN_COPY = {
   resetPasswordBackToSignIn: 'Back to Sign in',
   newPasswordLabel: 'New Password',
   newPasswordPlaceholder: 'enter your new password',
+  confirmNewPasswordLabel: 'Confirm New Password',
+  confirmNewPasswordPlaceholder: 'confirm your new password',
   oauthDividerText: 'Or continue with',
   oauthGoogleButton: 'Continue with Google',
   oauthKakaoButton: 'Continue with Kakao',
@@ -62,6 +64,7 @@ export const LOGIN_COPY = {
   passwordResetCodeRejected: 'Password reset code is invalid or expired.',
   passwordResetDeliveryFailed: 'Could not send password reset email. Please try again shortly.',
   passwordResetInvalidPassword: 'Enter a new password with at least 8 characters.',
+  passwordResetPasswordMismatch: 'New password and confirm password do not match.',
   genericAuthFailure: 'Authentication failed. Please try again.',
 } as const;
 

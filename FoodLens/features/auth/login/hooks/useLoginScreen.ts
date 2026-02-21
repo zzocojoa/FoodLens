@@ -113,6 +113,8 @@ export const useLoginScreen = () => {
       setInfoMessage(reset.resetId || reset.debugCode ? LOGIN_COPY.passwordResetCodeSent : LOGIN_COPY.passwordResetRequestAccepted);
       setFormValues((prev) => ({
         ...prev,
+        password: '',
+        confirmPassword: '',
         verificationCode: reset.debugCode || '',
       }));
     } catch (error) {
@@ -128,6 +130,8 @@ export const useLoginScreen = () => {
     setInfoMessage(null);
     setFormValues((prev) => ({
       ...prev,
+      password: '',
+      confirmPassword: '',
       verificationCode: '',
     }));
   };
@@ -172,6 +176,10 @@ export const useLoginScreen = () => {
       }
       if (formValues.password.trim().length < LOGIN_PASSWORD_MIN_LENGTH) {
         setErrorMessage(LOGIN_COPY.passwordResetInvalidPassword);
+        return;
+      }
+      if (formValues.password !== formValues.confirmPassword) {
+        setErrorMessage(LOGIN_COPY.passwordResetPasswordMismatch);
         return;
       }
 

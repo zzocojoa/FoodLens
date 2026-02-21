@@ -183,11 +183,11 @@ export default function LoginAuthScreen({
           </Animated.View>
         ) : null}
 
-        {!verificationStepActive && !passwordResetStepActive ? (
+        {!verificationStepActive || passwordResetStepActive ? (
           <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
             <InputGroup
-              label={LOGIN_COPY.confirmPasswordLabel}
-              placeholder={LOGIN_COPY.confirmPasswordPlaceholder}
+              label={passwordResetStepActive ? LOGIN_COPY.confirmNewPasswordLabel : LOGIN_COPY.confirmPasswordLabel}
+              placeholder={passwordResetStepActive ? LOGIN_COPY.confirmNewPasswordPlaceholder : LOGIN_COPY.confirmPasswordPlaceholder}
               iconName="lock"
               value={formValues.confirmPassword}
               onChangeText={onChangeConfirmPassword}

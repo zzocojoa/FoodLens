@@ -214,6 +214,11 @@ describe('useLoginScreen', () => {
     expect(result.current.passwordResetStepActive).toBe(true);
     expect(result.current.formValues.verificationCode).toBe('654321');
 
+    act(() => {
+      result.current.setFieldValue('password', 'N3wPassw0rd!');
+      result.current.setFieldValue('confirmPassword', 'N3wPassw0rd!');
+    });
+
     await act(async () => {
       await result.current.handleSubmit();
     });
@@ -249,5 +254,39 @@ describe('useLoginScreen', () => {
     expect(result.current.passwordResetStepActive).toBe(true);
     expect(result.current.formValues.verificationCode).toBe('');
     expect(result.current.infoMessage).toContain('If an account exists');
+  });
+
+  it('validates reset password confirmation mismatch', async () => {
+    mockRequestPasswordReset.mockResolvedValue({
+      resetRequested: true,
+      resetMethod: 'email_code',
+      resetChannel: 'email',
+      resetExpiresIn: 600,
+      resetId: 'prs_2',
+      debugCode: '123123',
+    });
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'mismatch@example.com');
+    });
+
+    await act(async () => {
+      await result.current.handleForgotPassword();
+    });
+
+    act(() => {
+      result.current.setFieldValue('password', 'N3wPassw0rd!');
+      result.current.setFieldValue('confirmPassword', 'DifferentPass1!');
+      result.current.setFieldValue('verificationCode', '123123');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(mockConfirmPasswordReset).not.toHaveBeenCalled();
+    expect(result.current.errorMessage).toBe('New password and confirm password do not match.');
   });
 });
