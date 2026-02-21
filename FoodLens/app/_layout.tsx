@@ -48,7 +48,7 @@ function LayoutContent() {
     let active = true;
 
     const bootstrap = async () => {
-      let nextRoute: '/login' | '/onboarding' | null = null;
+      let nextRoute: '/login' | '/onboarding' | '/(tabs)' | null = null;
       try {
         initSentry();
         await initializeSafeStorage();
@@ -66,9 +66,7 @@ function LayoutContent() {
 
           // Check onboarding status
           const seen = await hasSeenOnboarding(restoredSession.user.id);
-          if (!seen) {
-            nextRoute = '/onboarding';
-          }
+          nextRoute = seen ? '/(tabs)' : '/onboarding';
         }
       } catch (error) {
         console.error('[Auth] Session bootstrap failed', {
