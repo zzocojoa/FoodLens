@@ -1,11 +1,12 @@
 import React from 'react';
 import { Animated, Pressable, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { LOGIN_COPY } from '../constants/login.constants';
+import { LoginCopy } from '../constants/login.constants';
 import { loginStyles } from '../styles/loginStyles';
 
 type LoginWelcomeScreenProps = {
   isActive: boolean;
+  copy: LoginCopy;
   screenStyle: object;
   titleStyle: object;
   descriptionStyle: object;
@@ -15,6 +16,7 @@ type LoginWelcomeScreenProps = {
 
 export default function LoginWelcomeScreen({
   isActive,
+  copy,
   screenStyle,
   titleStyle,
   descriptionStyle,
@@ -23,11 +25,11 @@ export default function LoginWelcomeScreen({
 }: LoginWelcomeScreenProps) {
   return (
     <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
-      <Animated.Text style={[loginStyles.welcomeTitle, titleStyle]}>{LOGIN_COPY.welcomeTitle}</Animated.Text>
+      <Animated.Text style={[loginStyles.welcomeTitle, titleStyle]}>{copy.welcomeTitle}</Animated.Text>
       <Animated.Text style={[loginStyles.welcomeDescription, descriptionStyle]}>
-        {LOGIN_COPY.welcomeDescriptionLine1}
+        {copy.welcomeDescriptionLine1}
         {'\n'}
-        {LOGIN_COPY.welcomeDescriptionLine2}
+        {copy.welcomeDescriptionLine2}
       </Animated.Text>
 
       <Animated.View style={[loginStyles.continueButtonContainer, continueStyle]}>
@@ -36,7 +38,7 @@ export default function LoginWelcomeScreen({
           onPress={onContinue}
           style={loginStyles.continueButtonPressable}
         >
-          <Text style={loginStyles.continueText}>{LOGIN_COPY.continueLabel}</Text>
+          <Text style={loginStyles.continueText}>{copy.continueLabel}</Text>
           <Animated.View style={loginStyles.arrowCircle}>
             <Feather name="arrow-right" size={22} color="#ffffff" />
           </Animated.View>

@@ -5,6 +5,7 @@ import { render } from '@testing-library/react-native';
 import LoginScreen from '../LoginScreen';
 import { useLoginScreen } from '../../hooks/useLoginScreen';
 import { LoginAuthCopy, LoginFormValues } from '../../types/login.types';
+import { LOGIN_COPY } from '../../constants/login.constants';
 
 jest.mock('../../hooks/useLoginScreen', () => ({
   useLoginScreen: jest.fn(),
@@ -48,6 +49,7 @@ const FORM_VALUES: LoginFormValues = {
 const createHookValue = (overrides: Record<string, unknown> = {}) =>
   ({
     mode: 'login',
+    loginCopy: LOGIN_COPY,
     authCopy: AUTH_COPY_LOGIN,
     formValues: FORM_VALUES,
     loading: false,

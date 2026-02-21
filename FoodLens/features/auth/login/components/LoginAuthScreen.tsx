@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { LOGIN_COPY, LOGIN_COLORS } from '../constants/login.constants';
+import { LOGIN_COLORS, LoginCopy } from '../constants/login.constants';
 import { GoogleIcon, KakaoIcon } from './OAuthProviderIcons';
 import {
   LoginAuthCopy,
@@ -80,6 +80,7 @@ const InputGroup = ({
 type LoginAuthScreenProps = {
   isActive: boolean;
   authCopy: LoginAuthCopy;
+  copy: LoginCopy;
   formValues: LoginFormValues;
   loading: boolean;
   errorMessage: string | null;
@@ -110,6 +111,7 @@ type LoginAuthScreenProps = {
 export default function LoginAuthScreen({
   isActive,
   authCopy,
+  copy,
   formValues,
   loading,
   errorMessage,
@@ -145,8 +147,8 @@ export default function LoginAuthScreen({
         </View>
 
         <InputGroup
-          label={LOGIN_COPY.emailLabel}
-          placeholder={LOGIN_COPY.emailPlaceholder}
+          label={copy.emailLabel}
+          placeholder={copy.emailPlaceholder}
           iconName="mail"
           value={formValues.email}
           onChangeText={onChangeEmail}
@@ -156,8 +158,8 @@ export default function LoginAuthScreen({
         />
 
         <InputGroup
-          label={passwordResetStepActive ? LOGIN_COPY.newPasswordLabel : LOGIN_COPY.passwordLabel}
-          placeholder={passwordResetStepActive ? LOGIN_COPY.newPasswordPlaceholder : LOGIN_COPY.passwordPlaceholder}
+          label={passwordResetStepActive ? copy.newPasswordLabel : copy.passwordLabel}
+          placeholder={passwordResetStepActive ? copy.newPasswordPlaceholder : copy.passwordPlaceholder}
           iconName="lock"
           value={formValues.password}
           onChangeText={onChangePassword}
@@ -174,10 +176,10 @@ export default function LoginAuthScreen({
             <View style={loginStyles.actionRowInner}>
               <Pressable style={loginStyles.checkboxGroup} onPress={onToggleRememberMe}>
                 <View style={[loginStyles.checkboxRect, formValues.rememberMe && loginStyles.checkboxRectChecked]} />
-                <Text style={loginStyles.checkboxText}>{LOGIN_COPY.rememberMe}</Text>
+                <Text style={loginStyles.checkboxText}>{copy.rememberMe}</Text>
               </Pressable>
               <Pressable onPress={onForgotPassword}>
-                <Text style={loginStyles.forgotText}>{LOGIN_COPY.forgotPassword}</Text>
+                <Text style={loginStyles.forgotText}>{copy.forgotPassword}</Text>
               </Pressable>
             </View>
           </Animated.View>
@@ -187,8 +189,8 @@ export default function LoginAuthScreen({
           passwordResetStepActive ? (
             <View style={loginStyles.verificationFieldWrap}>
               <InputGroup
-                label={LOGIN_COPY.confirmNewPasswordLabel}
-                placeholder={LOGIN_COPY.confirmNewPasswordPlaceholder}
+                label={copy.confirmNewPasswordLabel}
+                placeholder={copy.confirmNewPasswordPlaceholder}
                 iconName="lock"
                 value={formValues.confirmPassword}
                 onChangeText={onChangeConfirmPassword}
@@ -203,8 +205,8 @@ export default function LoginAuthScreen({
           ) : (
             <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
               <InputGroup
-                label={LOGIN_COPY.confirmPasswordLabel}
-                placeholder={LOGIN_COPY.confirmPasswordPlaceholder}
+                label={copy.confirmPasswordLabel}
+                placeholder={copy.confirmPasswordPlaceholder}
                 iconName="lock"
                 value={formValues.confirmPassword}
                 onChangeText={onChangeConfirmPassword}
@@ -222,8 +224,8 @@ export default function LoginAuthScreen({
         {verificationStepActive ? (
           <View style={loginStyles.verificationFieldWrap}>
             <InputGroup
-              label={LOGIN_COPY.verificationCodeLabel}
-              placeholder={LOGIN_COPY.verificationCodePlaceholder}
+              label={copy.verificationCodeLabel}
+              placeholder={copy.verificationCodePlaceholder}
               iconName="shield"
               value={formValues.verificationCode}
               onChangeText={onChangeVerificationCode}
@@ -252,7 +254,7 @@ export default function LoginAuthScreen({
           <>
             <View style={loginStyles.oauthDivider}>
               <View style={loginStyles.oauthDividerLine} />
-              <Text style={loginStyles.oauthDividerText}>{LOGIN_COPY.oauthDividerText}</Text>
+              <Text style={loginStyles.oauthDividerText}>{copy.oauthDividerText}</Text>
               <View style={loginStyles.oauthDividerLine} />
             </View>
 
@@ -262,8 +264,8 @@ export default function LoginAuthScreen({
                 disabled={loading}
                 onPress={() => onOAuthLogin('google')}
                 accessibilityRole="button"
-                accessibilityLabel={LOGIN_COPY.oauthGoogleButton}
-                accessibilityHint={LOGIN_COPY.oauthGoogleHint}
+                accessibilityLabel={copy.oauthGoogleButton}
+                accessibilityHint={copy.oauthGoogleHint}
                 style={[loginStyles.oauthButton, loginStyles.oauthGoogleButton]}
               >
                 <GoogleIcon size={18} />
@@ -273,8 +275,8 @@ export default function LoginAuthScreen({
                 disabled={loading}
                 onPress={() => onOAuthLogin('kakao')}
                 accessibilityRole="button"
-                accessibilityLabel={LOGIN_COPY.oauthKakaoButton}
-                accessibilityHint={LOGIN_COPY.oauthKakaoHint}
+                accessibilityLabel={copy.oauthKakaoButton}
+                accessibilityHint={copy.oauthKakaoHint}
                 style={[loginStyles.oauthButton, loginStyles.oauthKakaoButton]}
               >
                 <KakaoIcon size={18} />
@@ -291,7 +293,7 @@ export default function LoginAuthScreen({
         ) : (
           <View style={loginStyles.switchAuthRow}>
             <Pressable onPress={onCancelPasswordReset}>
-              <Text style={loginStyles.switchAuthAction}>{LOGIN_COPY.resetPasswordBackToSignIn}</Text>
+              <Text style={loginStyles.switchAuthAction}>{copy.resetPasswordBackToSignIn}</Text>
             </Pressable>
           </View>
         )}

@@ -4,8 +4,9 @@ import { Keyboard } from 'react-native';
 import { isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
 import { hasSeenOnboarding } from '@/services/storage';
 import { persistSession } from '@/services/auth/sessionManager';
+import { useI18n } from '@/features/i18n';
 import {
-  LOGIN_COPY,
+  createLoginCopy,
   LOGIN_INITIAL_FORM_VALUES,
   LOGIN_PASSWORD_MIN_LENGTH,
 } from '../constants/login.constants';
@@ -31,6 +32,7 @@ const updateField = <K extends keyof LoginFormValues>(
 
 export const useLoginScreen = () => {
   const router = useRouter();
+  const { t, locale } = useI18n();
   const [mode, setMode] = useState<LoginAuthMode>('login');
   const [formValues, setFormValues] = useState<LoginFormValues>(LOGIN_INITIAL_FORM_VALUES);
   const [loading, setLoading] = useState(false);
@@ -42,13 +44,14 @@ export const useLoginScreen = () => {
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
   const { motion, welcomeInteractive, authInteractive, goToAuth, setAuthMode } = useLoginMotion();
+  const loginCopy = useMemo(() => createLoginCopy(t), [t]);
 
   const emailVerificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
   const passwordResetStepActive = mode === 'login' && pendingPasswordReset !== null;
   const verificationStepActive = emailVerificationStepActive || passwordResetStepActive;
 
   const authCopy = useMemo(() => {
-    const baseCopy = getAuthCopy(mode);
+    const baseCopy = getAuthCopy(mode, loginCopy);
     if (!emailVerificationStepActive && !passwordResetStepActive) {
       return baseCopy;
     }
@@ -56,16 +59,16 @@ export const useLoginScreen = () => {
     if (passwordResetStepActive) {
       return {
         ...baseCopy,
-        title: LOGIN_COPY.resetPasswordTitle,
-        primaryButtonLabel: LOGIN_COPY.resetPasswordPrimaryButton,
+        title: loginCopy.resetPasswordTitle,
+        primaryButtonLabel: loginCopy.resetPasswordPrimaryButton,
       };
     }
 
     return {
       ...baseCopy,
-      primaryButtonLabel: LOGIN_COPY.verifyEmailPrimaryButton,
+      primaryButtonLabel: loginCopy.verifyEmailPrimaryButton,
     };
-  }, [emailVerificationStepActive, mode, passwordResetStepActive]);
+  }, [emailVerificationStepActive, loginCopy, mode, passwordResetStepActive]);
 
   const setFieldValue = <K extends keyof LoginFormValues>(field: K, value: LoginFormValues[K]): void => {
     setFormValues((prev) => updateField(prev, field, value));
@@ -95,7 +98,7 @@ export const useLoginScreen = () => {
   const handleForgotPassword = async () => {
     const normalizedEmail = formValues.email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      setErrorMessage(LOGIN_COPY.invalidEmailOrPassword);
+      setErrorMessage(loginCopy.invalidEmailOrPassword);
       return;
     }
 
@@ -110,7 +113,11 @@ export const useLoginScreen = () => {
         expiresInSeconds: reset.resetExpiresIn,
         debugCode: reset.debugCode,
       });
-      setInfoMessage(reset.resetId || reset.debugCode ? LOGIN_COPY.passwordResetCodeSent : LOGIN_COPY.passwordResetRequestAccepted);
+      setInfoMessage(
+        reset.resetId || reset.debugCode
+          ? loginCopy.passwordResetCodeSent
+          : loginCopy.passwordResetRequestAccepted
+      );
       setFormValues((prev) => ({
         ...prev,
         password: '',
@@ -118,7 +125,7 @@ export const useLoginScreen = () => {
         verificationCode: reset.debugCode || '',
       }));
     } catch (error) {
-      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {
       setLoading(false);
     }
@@ -146,7 +153,7 @@ export const useLoginScreen = () => {
 
     if (emailVerificationStepActive && pendingEmailVerification) {
       if (!formValues.verificationCode.trim()) {
-        setErrorMessage(LOGIN_COPY.invalidVerificationCode);
+        setErrorMessage(loginCopy.invalidVerificationCode);
         return;
       }
 
@@ -162,7 +169,7 @@ export const useLoginScreen = () => {
         await persistSession(session);
         await completeSignIn(session.user.id);
       } catch (error) {
-        setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+        setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
       } finally {
         setLoading(false);
       }
@@ -171,15 +178,15 @@ export const useLoginScreen = () => {
 
     if (passwordResetStepActive && pendingPasswordReset) {
       if (!formValues.verificationCode.trim()) {
-        setErrorMessage(LOGIN_COPY.passwordResetCodeRejected);
+        setErrorMessage(loginCopy.passwordResetCodeRejected);
         return;
       }
       if (formValues.password.trim().length < LOGIN_PASSWORD_MIN_LENGTH) {
-        setErrorMessage(LOGIN_COPY.passwordResetInvalidPassword);
+        setErrorMessage(loginCopy.passwordResetInvalidPassword);
         return;
       }
       if (formValues.password !== formValues.confirmPassword) {
-        setErrorMessage(LOGIN_COPY.passwordResetPasswordMismatch);
+        setErrorMessage(loginCopy.passwordResetPasswordMismatch);
         return;
       }
 
@@ -192,7 +199,7 @@ export const useLoginScreen = () => {
           newPassword: formValues.password,
         });
         setPendingPasswordReset(null);
-        setInfoMessage(LOGIN_COPY.passwordResetSuccess);
+        setInfoMessage(loginCopy.passwordResetSuccess);
         setFormValues((prev) => ({
           ...prev,
           password: '',
@@ -200,14 +207,14 @@ export const useLoginScreen = () => {
           verificationCode: '',
         }));
       } catch (error) {
-        setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+        setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
       } finally {
         setLoading(false);
       }
       return;
     }
 
-    const validationError = validateLoginForm(mode, formValues);
+    const validationError = validateLoginForm(mode, formValues, loginCopy);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -218,14 +225,14 @@ export const useLoginScreen = () => {
     setInfoMessage(null);
 
     try {
-      const result = await loginAuthService.submitEmailAuth({ mode, values: formValues });
+      const result = await loginAuthService.submitEmailAuth({ mode, values: formValues, locale });
       if (isAuthEmailVerificationChallenge(result)) {
         setPendingEmailVerification({
           email: result.user.email,
           expiresInSeconds: result.verificationExpiresIn,
           debugCode: result.debugCode,
         });
-        setInfoMessage(LOGIN_COPY.emailVerificationSent);
+        setInfoMessage(loginCopy.emailVerificationSent);
         if (result.debugCode) {
           setFormValues((prev) => ({
             ...prev,
@@ -238,7 +245,7 @@ export const useLoginScreen = () => {
       await persistSession(result);
       await completeSignIn(result.user.id);
     } catch (error) {
-      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {
       setLoading(false);
     }
@@ -254,7 +261,7 @@ export const useLoginScreen = () => {
       await persistSession(session);
       await completeSignIn(session.user.id);
     } catch (error) {
-      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error));
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {
       setLoading(false);
     }
@@ -262,6 +269,7 @@ export const useLoginScreen = () => {
 
   return {
     mode,
+    loginCopy,
     authCopy,
     formValues,
     loading,

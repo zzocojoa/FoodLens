@@ -1,6 +1,7 @@
 import {
   LOGIN_COPY,
   LOGIN_PASSWORD_MIN_LENGTH,
+  LoginCopy,
 } from '../constants/login.constants';
 import { LoginAuthCopy, LoginAuthMode, LoginFormValues } from '../types/login.types';
 
@@ -8,22 +9,22 @@ export const normalizeEmail = (email: string): string => email.trim().toLowerCas
 
 export const isSignupMode = (mode: LoginAuthMode): boolean => mode === 'signup';
 
-export const getAuthCopy = (mode: LoginAuthMode): LoginAuthCopy => {
+export const getAuthCopy = (mode: LoginAuthMode, copy: LoginCopy = LOGIN_COPY): LoginAuthCopy => {
   if (mode === 'signup') {
     return {
-      title: LOGIN_COPY.signupTitle,
-      primaryButtonLabel: LOGIN_COPY.signupPrimaryButton,
-      switchLeadText: LOGIN_COPY.signupSwitchLead,
-      switchActionText: LOGIN_COPY.signupSwitchAction,
+      title: copy.signupTitle,
+      primaryButtonLabel: copy.signupPrimaryButton,
+      switchLeadText: copy.signupSwitchLead,
+      switchActionText: copy.signupSwitchAction,
       nextMode: 'login',
     };
   }
 
   return {
-    title: LOGIN_COPY.loginTitle,
-    primaryButtonLabel: LOGIN_COPY.loginPrimaryButton,
-    switchLeadText: LOGIN_COPY.loginSwitchLead,
-    switchActionText: LOGIN_COPY.loginSwitchAction,
+    title: copy.loginTitle,
+    primaryButtonLabel: copy.loginPrimaryButton,
+    switchLeadText: copy.loginSwitchLead,
+    switchActionText: copy.loginSwitchAction,
     nextMode: 'signup',
   };
 };
@@ -31,18 +32,19 @@ export const getAuthCopy = (mode: LoginAuthMode): LoginAuthCopy => {
 export const validateLoginForm = (
   mode: LoginAuthMode,
   values: LoginFormValues,
+  copy: LoginCopy = LOGIN_COPY,
 ): string | null => {
   const normalizedEmail = normalizeEmail(values.email);
   if (!normalizedEmail || !normalizedEmail.includes('@')) {
-    return LOGIN_COPY.invalidEmailOrPassword;
+    return copy.invalidEmailOrPassword;
   }
 
   if (values.password.trim().length < LOGIN_PASSWORD_MIN_LENGTH) {
-    return LOGIN_COPY.invalidEmailOrPassword;
+    return copy.invalidEmailOrPassword;
   }
 
   if (mode === 'signup' && values.password !== values.confirmPassword) {
-    return LOGIN_COPY.passwordMismatch;
+    return copy.passwordMismatch;
   }
 
   return null;

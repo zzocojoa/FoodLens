@@ -3,6 +3,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { useLoginScreen } from '../useLoginScreen';
 import { AuthSessionTokens } from '@/services/auth/authApi';
+import { LOGIN_COPY } from '../../constants/login.constants';
 
 const mockRouterReplace = jest.fn();
 const mockHasSeenOnboarding = jest.fn();
@@ -28,6 +29,16 @@ jest.mock('@/services/storage', () => ({
 
 jest.mock('@/services/auth/sessionManager', () => ({
   persistSession: (...args: unknown[]) => mockPersistSession(...args),
+}));
+
+jest.mock('@/features/i18n', () => ({
+  useI18n: () => ({
+    t: (key: string, fallback?: string) => fallback ?? key,
+    locale: 'en-US',
+    ready: true,
+    settings: { language: 'auto', targetLanguage: null },
+    setLocale: jest.fn(),
+  }),
 }));
 
 jest.mock('../useLoginMotion', () => ({
@@ -82,6 +93,12 @@ describe('useLoginScreen', () => {
     jest.clearAllMocks();
     mockResolveAuthErrorMessage.mockReturnValue('auth failed');
     mockHasSeenOnboarding.mockResolvedValue(true);
+  });
+
+  it('exposes login copy translated by i18n hook', () => {
+    const { result } = renderHook(() => useLoginScreen());
+    expect(result.current.loginCopy.loginTitle).toBe(LOGIN_COPY.loginTitle);
+    expect(result.current.loginCopy.forgotPassword).toBe(LOGIN_COPY.forgotPassword);
   });
 
   it('completes signup with email verification and routes to tabs', async () => {

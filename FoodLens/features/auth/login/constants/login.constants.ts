@@ -68,6 +68,75 @@ export const LOGIN_COPY = {
   genericAuthFailure: 'Authentication failed. Please try again.',
 } as const;
 
+export type LoginCopy = { [K in keyof typeof LOGIN_COPY]: string };
+
+export const createLoginCopy = (
+  translate: (key: string, fallback?: string) => string
+): LoginCopy => ({
+  welcomeTitle: translate('login.welcome.title', LOGIN_COPY.welcomeTitle),
+  welcomeDescriptionLine1: translate('login.welcome.description.line1', LOGIN_COPY.welcomeDescriptionLine1),
+  welcomeDescriptionLine2: translate('login.welcome.description.line2', LOGIN_COPY.welcomeDescriptionLine2),
+  continueLabel: translate('login.welcome.continue', LOGIN_COPY.continueLabel),
+  emailLabel: translate('login.form.email.label', LOGIN_COPY.emailLabel),
+  emailPlaceholder: translate('login.form.email.placeholder', LOGIN_COPY.emailPlaceholder),
+  passwordLabel: translate('login.form.password.label', LOGIN_COPY.passwordLabel),
+  passwordPlaceholder: translate('login.form.password.placeholder', LOGIN_COPY.passwordPlaceholder),
+  confirmPasswordLabel: translate('login.form.passwordConfirm.label', LOGIN_COPY.confirmPasswordLabel),
+  confirmPasswordPlaceholder: translate('login.form.passwordConfirm.placeholder', LOGIN_COPY.confirmPasswordPlaceholder),
+  verificationCodeLabel: translate('login.form.verificationCode.label', LOGIN_COPY.verificationCodeLabel),
+  verificationCodePlaceholder: translate('login.form.verificationCode.placeholder', LOGIN_COPY.verificationCodePlaceholder),
+  rememberMe: translate('login.form.rememberMe', LOGIN_COPY.rememberMe),
+  forgotPassword: translate('login.form.forgotPassword', LOGIN_COPY.forgotPassword),
+  loginTitle: translate('login.title.signIn', LOGIN_COPY.loginTitle),
+  signupTitle: translate('login.title.signUp', LOGIN_COPY.signupTitle),
+  resetPasswordTitle: translate('login.title.resetPassword', LOGIN_COPY.resetPasswordTitle),
+  loginPrimaryButton: translate('login.action.login', LOGIN_COPY.loginPrimaryButton),
+  signupPrimaryButton: translate('login.action.createAccount', LOGIN_COPY.signupPrimaryButton),
+  verifyEmailPrimaryButton: translate('login.action.verifyEmail', LOGIN_COPY.verifyEmailPrimaryButton),
+  resetPasswordPrimaryButton: translate('login.action.resetPassword', LOGIN_COPY.resetPasswordPrimaryButton),
+  resetPasswordBackToSignIn: translate('login.action.backToSignIn', LOGIN_COPY.resetPasswordBackToSignIn),
+  newPasswordLabel: translate('login.form.newPassword.label', LOGIN_COPY.newPasswordLabel),
+  newPasswordPlaceholder: translate('login.form.newPassword.placeholder', LOGIN_COPY.newPasswordPlaceholder),
+  confirmNewPasswordLabel: translate('login.form.newPasswordConfirm.label', LOGIN_COPY.confirmNewPasswordLabel),
+  confirmNewPasswordPlaceholder: translate('login.form.newPasswordConfirm.placeholder', LOGIN_COPY.confirmNewPasswordPlaceholder),
+  oauthDividerText: translate('login.oauth.divider', LOGIN_COPY.oauthDividerText),
+  oauthGoogleButton: translate('login.oauth.google.label', LOGIN_COPY.oauthGoogleButton),
+  oauthKakaoButton: translate('login.oauth.kakao.label', LOGIN_COPY.oauthKakaoButton),
+  oauthGoogleHint: translate('login.oauth.google.hint', LOGIN_COPY.oauthGoogleHint),
+  oauthKakaoHint: translate('login.oauth.kakao.hint', LOGIN_COPY.oauthKakaoHint),
+  loginSwitchLead: translate('login.switch.login.lead', LOGIN_COPY.loginSwitchLead),
+  signupSwitchLead: translate('login.switch.signup.lead', LOGIN_COPY.signupSwitchLead),
+  loginSwitchAction: translate('login.switch.login.action', LOGIN_COPY.loginSwitchAction),
+  signupSwitchAction: translate('login.switch.signup.action', LOGIN_COPY.signupSwitchAction),
+  invalidEmailOrPassword: translate('login.error.invalidEmailOrPassword', LOGIN_COPY.invalidEmailOrPassword),
+  passwordMismatch: translate('login.error.passwordMismatch', LOGIN_COPY.passwordMismatch),
+  emailVerificationSent: translate('login.info.emailVerificationSent', LOGIN_COPY.emailVerificationSent),
+  emailNotVerified: translate('login.error.emailNotVerified', LOGIN_COPY.emailNotVerified),
+  invalidVerificationCode: translate('login.error.invalidVerificationCode', LOGIN_COPY.invalidVerificationCode),
+  verificationCodeRejected: translate('login.error.verificationCodeRejected', LOGIN_COPY.verificationCodeRejected),
+  verificationDeliveryFailed: translate('login.error.verificationDeliveryFailed', LOGIN_COPY.verificationDeliveryFailed),
+  passwordResetCodeSent: translate('login.info.passwordResetCodeSent', LOGIN_COPY.passwordResetCodeSent),
+  passwordResetRequestAccepted: translate(
+    'login.info.passwordResetRequestAccepted',
+    LOGIN_COPY.passwordResetRequestAccepted
+  ),
+  passwordResetSuccess: translate('login.info.passwordResetSuccess', LOGIN_COPY.passwordResetSuccess),
+  passwordResetCodeRejected: translate('login.error.passwordResetCodeRejected', LOGIN_COPY.passwordResetCodeRejected),
+  passwordResetDeliveryFailed: translate(
+    'login.error.passwordResetDeliveryFailed',
+    LOGIN_COPY.passwordResetDeliveryFailed
+  ),
+  passwordResetInvalidPassword: translate(
+    'login.error.passwordResetInvalidPassword',
+    LOGIN_COPY.passwordResetInvalidPassword
+  ),
+  passwordResetPasswordMismatch: translate(
+    'login.error.passwordResetPasswordMismatch',
+    LOGIN_COPY.passwordResetPasswordMismatch
+  ),
+  genericAuthFailure: translate('login.error.genericAuthFailure', LOGIN_COPY.genericAuthFailure),
+});
+
 export const LOGIN_LAYOUT = {
   phoneMaxWidth: 375,
   phoneMaxHeight: 812,

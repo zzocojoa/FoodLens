@@ -4,6 +4,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import LoginWelcomeScreen from '../LoginWelcomeScreen';
 import { loginStyles } from '../../styles/loginStyles';
+import { LOGIN_COPY } from '../../constants/login.constants';
 
 jest.mock('@expo/vector-icons', () => {
   const ReactModule = require('react');
@@ -16,6 +17,7 @@ jest.mock('@expo/vector-icons', () => {
 
 const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginWelcomeScreen>>) => ({
   isActive: true,
+  copy: LOGIN_COPY,
   screenStyle: {},
   titleStyle: {},
   descriptionStyle: {},

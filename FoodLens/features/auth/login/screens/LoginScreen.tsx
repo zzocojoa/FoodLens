@@ -22,6 +22,7 @@ export default function LoginScreen() {
     height > LOGIN_LAYOUT.phoneMaxHeight + 24;
 
   const {
+    loginCopy,
     authCopy,
     formValues,
     loading,
@@ -70,6 +71,7 @@ export default function LoginScreen() {
             >
               <LoginWelcomeScreen
                 isActive={welcomeInteractive}
+                copy={loginCopy}
                 screenStyle={motion.welcomeScreenStyle}
                 titleStyle={motion.welcomeTitleStyle}
                 descriptionStyle={motion.welcomeDescriptionStyle}
@@ -80,6 +82,7 @@ export default function LoginScreen() {
               <LoginAuthScreen
                 isActive={authInteractive}
                 authCopy={authCopy}
+                copy={loginCopy}
                 formValues={formValues}
                 loading={loading}
                 errorMessage={errorMessage}

@@ -4,6 +4,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import LoginAuthScreen from '../LoginAuthScreen';
 import { LoginAuthCopy, LoginFormValues } from '../../types/login.types';
+import { LOGIN_COPY } from '../../constants/login.constants';
 
 jest.mock('@expo/vector-icons', () => {
   const ReactModule = require('react');
@@ -33,6 +34,7 @@ const FORM_VALUES: LoginFormValues = {
 const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthScreen>>) => ({
   isActive: true,
   authCopy: AUTH_COPY,
+  copy: LOGIN_COPY,
   formValues: FORM_VALUES,
   loading: false,
   errorMessage: null,

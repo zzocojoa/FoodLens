@@ -32,4 +32,5 @@ export type LoginAuthCopy = {
 export type LoginSubmitPayload = {
   mode: LoginAuthMode;
   values: LoginFormValues;
+  locale?: string;
 };
