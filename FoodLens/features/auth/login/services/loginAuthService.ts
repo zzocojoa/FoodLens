@@ -56,6 +56,54 @@ const confirmPasswordReset = async (input: {
 
 const resolveAuthErrorMessage = (error: unknown, copy: LoginCopy = LOGIN_COPY): string => {
   if (error instanceof AuthApiError) {
+    if (error.code === 'AUTH_INVALID_CREDENTIALS') {
+      return copy.invalidEmailOrPassword;
+    }
+    if (error.code === 'AUTH_INVALID_EMAIL') {
+      return copy.invalidEmailOrPassword;
+    }
+    if (error.code === 'AUTH_WEAK_PASSWORD') {
+      return copy.passwordResetInvalidPassword;
+    }
+    if (error.code === 'AUTH_EMAIL_ALREADY_EXISTS') {
+      return copy.emailAlreadyExists;
+    }
+    if (error.code === 'AUTH_EMAIL_ALREADY_VERIFIED') {
+      return copy.emailAlreadyVerified;
+    }
+    if (error.code === 'AUTH_PROVIDER_MISCONFIGURED') {
+      return copy.providerMisconfigured;
+    }
+    if (error.code === 'AUTH_PROVIDER_INVALID_CODE') {
+      return copy.providerInvalidCode;
+    }
+    if (error.code === 'AUTH_PROVIDER_INVALID_STATE') {
+      return copy.providerInvalidState;
+    }
+    if (error.code === 'AUTH_PROVIDER_REJECTED') {
+      return copy.providerRejected;
+    }
+    if (error.code === 'AUTH_PROVIDER_CANCELLED') {
+      return copy.providerCancelled;
+    }
+    if (error.code === 'AUTH_PROVIDER_TIMEOUT' || error.code === 'AUTH_TIMEOUT') {
+      return copy.providerTimeout;
+    }
+    if (error.code === 'AUTH_PROVIDER_UNAVAILABLE') {
+      return copy.providerUnavailable;
+    }
+    if (error.code === 'AUTH_REDIRECT_URI_MISMATCH') {
+      return copy.providerRedirectMismatch;
+    }
+    if (error.code === 'AUTH_NETWORK_ERROR') {
+      return copy.networkError;
+    }
+    if (error.code === 'AUTH_REQUEST_FAILED') {
+      return copy.genericAuthFailure;
+    }
+    if (error.code === 'AUTH_INVALID_RESPONSE') {
+      return copy.genericAuthFailure;
+    }
     if (error.code === 'AUTH_EMAIL_NOT_VERIFIED') {
       return copy.emailNotVerified;
     }
@@ -64,6 +112,12 @@ const resolveAuthErrorMessage = (error: unknown, copy: LoginCopy = LOGIN_COPY): 
     }
     if (error.code === 'AUTH_EMAIL_VERIFICATION_EXPIRED') {
       return copy.verificationCodeRejected;
+    }
+    if (error.code === 'AUTH_EMAIL_VERIFICATION_LOCKED') {
+      return copy.verificationCodeRejected;
+    }
+    if (error.code === 'AUTH_EMAIL_VERIFICATION_NOT_FOUND') {
+      return copy.invalidVerificationCode;
     }
     if (error.code === 'AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED') {
       return copy.verificationDeliveryFailed;

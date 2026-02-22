@@ -65,6 +65,17 @@ export const LOGIN_COPY = {
   passwordResetDeliveryFailed: 'Could not send password reset email. Please try again shortly.',
   passwordResetInvalidPassword: 'Enter a new password with at least 8 characters.',
   passwordResetPasswordMismatch: 'New password and confirm password do not match.',
+  emailAlreadyExists: 'This email is already registered. Please sign in instead.',
+  emailAlreadyVerified: 'This email is already verified. Please sign in.',
+  providerMisconfigured: 'Login provider is not configured. Please try again later.',
+  providerInvalidCode: 'Provider sign-in code is invalid or expired. Please try again.',
+  providerInvalidState: 'Provider sign-in state is invalid. Please try again.',
+  providerRejected: 'Provider login failed. Please try again.',
+  providerCancelled: 'Provider login was cancelled.',
+  providerTimeout: 'Login request timed out. Please try again.',
+  providerUnavailable: 'Login provider is temporarily unavailable. Please try again later.',
+  providerRedirectMismatch: 'Login redirect mismatch detected. Please update the app and try again.',
+  networkError: 'Network error occurred. Please check your connection and try again.',
   genericAuthFailure: 'Authentication failed. Please try again.',
 } as const;
 
@@ -134,6 +145,17 @@ export const createLoginCopy = (
     'login.error.passwordResetPasswordMismatch',
     LOGIN_COPY.passwordResetPasswordMismatch
   ),
+  emailAlreadyExists: translate('login.error.emailAlreadyExists', LOGIN_COPY.emailAlreadyExists),
+  emailAlreadyVerified: translate('login.error.emailAlreadyVerified', LOGIN_COPY.emailAlreadyVerified),
+  providerMisconfigured: translate('login.error.providerMisconfigured', LOGIN_COPY.providerMisconfigured),
+  providerInvalidCode: translate('login.error.providerInvalidCode', LOGIN_COPY.providerInvalidCode),
+  providerInvalidState: translate('login.error.providerInvalidState', LOGIN_COPY.providerInvalidState),
+  providerRejected: translate('login.error.providerRejected', LOGIN_COPY.providerRejected),
+  providerCancelled: translate('login.error.providerCancelled', LOGIN_COPY.providerCancelled),
+  providerTimeout: translate('login.error.providerTimeout', LOGIN_COPY.providerTimeout),
+  providerUnavailable: translate('login.error.providerUnavailable', LOGIN_COPY.providerUnavailable),
+  providerRedirectMismatch: translate('login.error.providerRedirectMismatch', LOGIN_COPY.providerRedirectMismatch),
+  networkError: translate('login.error.networkError', LOGIN_COPY.networkError),
   genericAuthFailure: translate('login.error.genericAuthFailure', LOGIN_COPY.genericAuthFailure),
 });
 
