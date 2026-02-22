@@ -13,19 +13,9 @@ type OAuthGrant = {
   providerUserId?: string;
 };
 
-const OAUTH_MODE_ENV = 'EXPO_PUBLIC_AUTH_OAUTH_MODE';
-const GOOGLE_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_START_URL';
-const KAKAO_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_START_URL';
-const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
-
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
   kakao: 'oauth/kakao-callback',
-};
-
-const START_URL_ENV_BY_PROVIDER: Record<OAuthProvider, string> = {
-  google: GOOGLE_START_URL_ENV,
-  kakao: KAKAO_START_URL_ENV,
 };
 
 const isDevRuntime = (): boolean => {
@@ -33,6 +23,33 @@ const isDevRuntime = (): boolean => {
     return __DEV__;
   }
   return process.env.NODE_ENV !== 'production';
+};
+
+const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
+
+// NOTE: Keep both runtime and static access.
+// - runtime: works in Jest/dev when process.env is mutated at runtime.
+// - static: lets Expo replace EXPO_PUBLIC_* at bundle time for Release builds.
+const getExpoPublicOAuthMode = (): string => {
+  const runtime = readRuntimeEnv('EXPO_PUBLIC_AUTH_OAUTH_MODE');
+  if (runtime) return runtime;
+  return process.env.EXPO_PUBLIC_AUTH_OAUTH_MODE ?? '';
+};
+
+const getExpoPublicAnalysisServerUrl = (): string => {
+  const runtime = readRuntimeEnv('EXPO_PUBLIC_ANALYSIS_SERVER_URL');
+  if (runtime) return runtime;
+  return process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL ?? '';
+};
+
+const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
+  const runtime = readRuntimeEnv(
+    provider === 'google' ? 'EXPO_PUBLIC_AUTH_GOOGLE_START_URL' : 'EXPO_PUBLIC_AUTH_KAKAO_START_URL'
+  );
+  if (runtime) return runtime;
+  return provider === 'google'
+    ? process.env.EXPO_PUBLIC_AUTH_GOOGLE_START_URL ?? ''
+    : process.env.EXPO_PUBLIC_AUTH_KAKAO_START_URL ?? '';
 };
 
 const normalizedQueryValue = (value: unknown): string | undefined => {
@@ -93,7 +110,7 @@ const parseFallbackParamsFromCallbackUrl = (callbackUrl: string): Record<string,
 };
 
 const getOAuthMode = (): OAuthMode => {
-  const rawMode = (process.env[OAUTH_MODE_ENV] ?? '').trim().toLowerCase();
+  const rawMode = getExpoPublicOAuthMode().trim().toLowerCase();
   if (rawMode === 'live') {
     return 'live';
   }
@@ -122,10 +139,9 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
 };
 
 const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string): string => {
-  const startUrlEnvKey = START_URL_ENV_BY_PROVIDER[provider];
-  let startUrl = (process.env[startUrlEnvKey] ?? '').trim();
+  let startUrl = getExpoPublicProviderStartUrl(provider).trim();
   if (!startUrl) {
-    const baseUrl = (process.env[ANALYSIS_SERVER_URL_ENV] ?? '').trim().replace(/\/+$/, '');
+    const baseUrl = getExpoPublicAnalysisServerUrl().trim().replace(/\/+$/, '');
     if (baseUrl) {
       startUrl = `${baseUrl}/auth/${provider}/start`;
     }
