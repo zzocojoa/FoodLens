@@ -52,6 +52,7 @@ export const LOGIN_COPY = {
   loginSwitchAction: 'Sign up',
   signupSwitchAction: 'Login',
   invalidEmailOrPassword: 'Enter a valid email and a password with at least 8 characters.',
+  invalidEmailForReset: 'Enter a valid email address to reset your password.',
   passwordMismatch: 'Passwords do not match.',
   emailVerificationSent: 'Verification code sent. Check your email inbox.',
   emailNotVerified: 'Please verify your email before logging in.',
@@ -61,6 +62,8 @@ export const LOGIN_COPY = {
   passwordResetCodeSent: 'Password reset code sent. Enter the code and your new password.',
   passwordResetRequestAccepted: 'If an account exists, a password reset code has been sent.',
   passwordResetSuccess: 'Password reset complete. Sign in with your new password.',
+  passwordResetDeliveryGuide: 'It may take up to 1-2 minutes. Check your spam folder if needed.',
+  passwordResetSocialGuide: 'If you signed up with Google or Kakao, use social login instead of password reset.',
   passwordResetCodeRejected: 'Password reset code is invalid or expired.',
   passwordResetDeliveryFailed: 'Could not send password reset email. Please try again shortly.',
   passwordResetInvalidPassword: 'Enter a new password with at least 8 characters.',
@@ -75,6 +78,7 @@ export const LOGIN_COPY = {
   providerTimeout: 'Login request timed out. Please try again.',
   providerUnavailable: 'Login provider is temporarily unavailable. Please try again later.',
   providerRedirectMismatch: 'Login redirect mismatch detected. Please update the app and try again.',
+  providerUnsupportedForEmail: 'This account uses social login. Please continue with Google or Kakao.',
   networkError: 'Network error occurred. Please check your connection and try again.',
   genericAuthFailure: 'Authentication failed. Please try again.',
 } as const;
@@ -120,6 +124,7 @@ export const createLoginCopy = (
   loginSwitchAction: translate('login.switch.login.action', LOGIN_COPY.loginSwitchAction),
   signupSwitchAction: translate('login.switch.signup.action', LOGIN_COPY.signupSwitchAction),
   invalidEmailOrPassword: translate('login.error.invalidEmailOrPassword', LOGIN_COPY.invalidEmailOrPassword),
+  invalidEmailForReset: translate('login.error.invalidEmailForReset', LOGIN_COPY.invalidEmailForReset),
   passwordMismatch: translate('login.error.passwordMismatch', LOGIN_COPY.passwordMismatch),
   emailVerificationSent: translate('login.info.emailVerificationSent', LOGIN_COPY.emailVerificationSent),
   emailNotVerified: translate('login.error.emailNotVerified', LOGIN_COPY.emailNotVerified),
@@ -132,6 +137,14 @@ export const createLoginCopy = (
     LOGIN_COPY.passwordResetRequestAccepted
   ),
   passwordResetSuccess: translate('login.info.passwordResetSuccess', LOGIN_COPY.passwordResetSuccess),
+  passwordResetDeliveryGuide: translate(
+    'login.info.passwordResetDeliveryGuide',
+    LOGIN_COPY.passwordResetDeliveryGuide
+  ),
+  passwordResetSocialGuide: translate(
+    'login.info.passwordResetSocialGuide',
+    LOGIN_COPY.passwordResetSocialGuide
+  ),
   passwordResetCodeRejected: translate('login.error.passwordResetCodeRejected', LOGIN_COPY.passwordResetCodeRejected),
   passwordResetDeliveryFailed: translate(
     'login.error.passwordResetDeliveryFailed',
@@ -155,6 +168,10 @@ export const createLoginCopy = (
   providerTimeout: translate('login.error.providerTimeout', LOGIN_COPY.providerTimeout),
   providerUnavailable: translate('login.error.providerUnavailable', LOGIN_COPY.providerUnavailable),
   providerRedirectMismatch: translate('login.error.providerRedirectMismatch', LOGIN_COPY.providerRedirectMismatch),
+  providerUnsupportedForEmail: translate(
+    'login.error.providerUnsupportedForEmail',
+    LOGIN_COPY.providerUnsupportedForEmail
+  ),
   networkError: translate('login.error.networkError', LOGIN_COPY.networkError),
   genericAuthFailure: translate('login.error.genericAuthFailure', LOGIN_COPY.genericAuthFailure),
 });

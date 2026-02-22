@@ -98,7 +98,7 @@ export const useLoginScreen = () => {
   const handleForgotPassword = async () => {
     const normalizedEmail = formValues.email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      setErrorMessage(loginCopy.invalidEmailOrPassword);
+      setErrorMessage(loginCopy.invalidEmailForReset);
       return;
     }
 
@@ -108,6 +108,7 @@ export const useLoginScreen = () => {
 
     try {
       const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
+      const resetGuideMessage = `${loginCopy.passwordResetDeliveryGuide}\n${loginCopy.passwordResetSocialGuide}`;
       setPendingPasswordReset({
         email: normalizedEmail,
         expiresInSeconds: reset.resetExpiresIn,
@@ -115,8 +116,8 @@ export const useLoginScreen = () => {
       });
       setInfoMessage(
         reset.resetId || reset.debugCode
-          ? loginCopy.passwordResetCodeSent
-          : loginCopy.passwordResetRequestAccepted
+          ? `${loginCopy.passwordResetCodeSent}\n${resetGuideMessage}`
+          : `${loginCopy.passwordResetRequestAccepted}\n${resetGuideMessage}`
       );
       setFormValues((prev) => ({
         ...prev,
