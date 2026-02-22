@@ -53,6 +53,7 @@ const mockSession = (userId: string): AuthSessionTokens => ({
 });
 
 const ORIGINAL_ENV = process.env;
+const ORIGINAL_DEV_FLAG = (global as { __DEV__?: boolean }).__DEV__;
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -60,15 +61,23 @@ beforeEach(() => {
   delete process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'];
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'];
+  delete process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
+  (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
 });
 
 afterAll(() => {
   process.env = ORIGINAL_ENV;
+  (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
 });
 
 describe('oauthProvider', () => {
   it('runs in mock mode by default', () => {
     expect(AuthOAuthProvider.getOAuthMode()).toBe('mock');
+  });
+
+  it('defaults to live mode in production runtime when mode env is not provided', () => {
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    expect(AuthOAuthProvider.getOAuthMode()).toBe('live');
   });
 
   it('uses mock grant for google login', async () => {
@@ -110,6 +119,22 @@ describe('oauthProvider', () => {
     );
   });
 
+  it('falls back to analysis server URL when provider start URL is missing', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] = 'https://api.foodlens.example.com/';
+    mockedLinking.createURL.mockReturnValue('foodlens://oauth/google-callback');
+    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({ type: 'cancel' });
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_CANCELLED',
+    });
+
+    expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+      expect.stringContaining('https://api.foodlens.example.com/auth/google/start'),
+      'foodlens://oauth/google-callback'
+    );
+  });
+
   it('parses live callback and calls kakao auth API', async () => {
     process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
     process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] = 'https://kauth.kakao.com/oauth/authorize?client_id=test';
@@ -140,5 +165,32 @@ describe('oauthProvider', () => {
       })
     );
     expect(result.user.id).toBe('usr_kakao');
+  });
+
+  it('parses fragment callback params when query params are missing', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] = 'https://kauth.kakao.com/oauth/authorize?client_id=test';
+    mockedLinking.createURL.mockReturnValue('foodlens://oauth/kakao-callback');
+    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({
+      type: 'success',
+      url: 'foodlens://oauth/kakao-callback#code=frag-code-123&state=frag-state-123&email=frag%40example.com&provider_user_id=frag-kakao-user',
+    });
+    mockedLinking.parse.mockReturnValue({
+      queryParams: {},
+    });
+    mockedAuthApi.loginWithKakao.mockResolvedValue(mockSession('usr_kakao_fragment'));
+
+    const result = await AuthOAuthProvider.loginWithOAuthProvider('kakao');
+
+    expect(mockedAuthApi.loginWithKakao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'frag-code-123',
+        state: 'frag-state-123',
+        redirectUri: 'foodlens://oauth/kakao-callback',
+        email: 'frag@example.com',
+        providerUserId: 'frag-kakao-user',
+      })
+    );
+    expect(result.user.id).toBe('usr_kakao_fragment');
   });
 });

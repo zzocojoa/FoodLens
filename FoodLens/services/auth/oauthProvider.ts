@@ -16,6 +16,7 @@ type OAuthGrant = {
 const OAUTH_MODE_ENV = 'EXPO_PUBLIC_AUTH_OAUTH_MODE';
 const GOOGLE_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_START_URL';
 const KAKAO_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_START_URL';
+const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
@@ -25,6 +26,13 @@ const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
 const START_URL_ENV_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: GOOGLE_START_URL_ENV,
   kakao: KAKAO_START_URL_ENV,
+};
+
+const isDevRuntime = (): boolean => {
+  if (typeof __DEV__ !== 'undefined') {
+    return __DEV__;
+  }
+  return process.env.NODE_ENV !== 'production';
 };
 
 const normalizedQueryValue = (value: unknown): string | undefined => {
@@ -40,9 +48,59 @@ const normalizedQueryValue = (value: unknown): string | undefined => {
   return undefined;
 };
 
+const decodeQueryValue = (value: string): string => {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, '%20'));
+  } catch {
+    return value;
+  }
+};
+
+const parseUrlParamString = (raw: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  const normalized = raw.trim().replace(/^[?#]/, '');
+  if (!normalized) {
+    return out;
+  }
+
+  normalized.split('&').forEach((part) => {
+    if (!part) return;
+    const [rawKey, ...rest] = part.split('=');
+    const key = decodeQueryValue(rawKey || '').trim();
+    if (!key || key in out) return;
+    const rawValue = rest.join('=');
+    out[key] = decodeQueryValue(rawValue || '').trim();
+  });
+
+  return out;
+};
+
+const parseFallbackParamsFromCallbackUrl = (callbackUrl: string): Record<string, string> => {
+  try {
+    const url = new URL(callbackUrl);
+    return {
+      ...parseUrlParamString(url.search),
+      ...parseUrlParamString(url.hash),
+    };
+  } catch {
+    const [withoutQuery, queryRaw = ''] = callbackUrl.split('?', 2);
+    const [, hashRaw = ''] = withoutQuery.split('#', 2);
+    return {
+      ...parseUrlParamString(queryRaw),
+      ...parseUrlParamString(hashRaw),
+    };
+  }
+};
+
 const getOAuthMode = (): OAuthMode => {
-  const rawMode = (process.env[OAUTH_MODE_ENV] ?? 'mock').trim().toLowerCase();
-  return rawMode === 'live' ? 'live' : 'mock';
+  const rawMode = (process.env[OAUTH_MODE_ENV] ?? '').trim().toLowerCase();
+  if (rawMode === 'live') {
+    return 'live';
+  }
+  if (rawMode === 'mock') {
+    return 'mock';
+  }
+  return isDevRuntime() ? 'mock' : 'live';
 };
 
 const buildRedirectUri = (provider: OAuthProvider): string => {
@@ -65,7 +123,13 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
 
 const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string): string => {
   const startUrlEnvKey = START_URL_ENV_BY_PROVIDER[provider];
-  const startUrl = (process.env[startUrlEnvKey] ?? '').trim();
+  let startUrl = (process.env[startUrlEnvKey] ?? '').trim();
+  if (!startUrl) {
+    const baseUrl = (process.env[ANALYSIS_SERVER_URL_ENV] ?? '').trim().replace(/\/+$/, '');
+    if (baseUrl) {
+      startUrl = `${baseUrl}/auth/${provider}/start`;
+    }
+  }
 
   if (!startUrl) {
     throw new AuthApiError(
@@ -82,22 +146,32 @@ const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string): string 
 const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGrant => {
   const parsed = Linking.parse(callbackUrl);
   const params = parsed.queryParams ?? {};
+  const fallbackParams = parseFallbackParamsFromCallbackUrl(callbackUrl);
+  const readParam = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const fromParsed = normalizedQueryValue(params[key]);
+      if (fromParsed) return fromParsed;
+      const fromFallback = normalizedQueryValue(fallbackParams[key]);
+      if (fromFallback) return fromFallback;
+    }
+    return undefined;
+  };
 
-  const providerError = normalizedQueryValue(params['error']);
+  const providerError = readParam('error');
   if (providerError) {
     if (providerError === 'access_denied' || providerError === 'cancelled' || providerError === 'canceled') {
       throw new AuthApiError('Provider login was cancelled.', 'AUTH_PROVIDER_CANCELLED', 400);
     }
 
     throw new AuthApiError(
-      normalizedQueryValue(params['error_description']) ?? 'Provider login failed.',
+      readParam('error_description') ?? 'Provider login failed.',
       'AUTH_PROVIDER_REJECTED',
       400
     );
   }
 
-  const code = normalizedQueryValue(params['code']);
-  const state = normalizedQueryValue(params['state']);
+  const code = readParam('code');
+  const state = readParam('state');
 
   if (!code) {
     throw new AuthApiError('Missing or invalid authorization code.', 'AUTH_PROVIDER_INVALID_CODE', 400);
@@ -111,9 +185,8 @@ const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGran
     code,
     state,
     redirectUri,
-    email: normalizedQueryValue(params['email']),
-    providerUserId:
-      normalizedQueryValue(params['provider_user_id']) ?? normalizedQueryValue(params['providerUserId']),
+    email: readParam('email'),
+    providerUserId: readParam('provider_user_id', 'providerUserId'),
   };
 };
 
