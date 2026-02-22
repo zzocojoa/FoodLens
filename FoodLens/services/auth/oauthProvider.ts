@@ -18,13 +18,6 @@ const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   kakao: 'oauth/kakao-callback',
 };
 
-const isDevRuntime = (): boolean => {
-  if (typeof __DEV__ !== 'undefined') {
-    return __DEV__;
-  }
-  return process.env.NODE_ENV !== 'production';
-};
-
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
 
 // NOTE: Keep both runtime and static access.
@@ -117,7 +110,8 @@ const getOAuthMode = (): OAuthMode => {
   if (rawMode === 'mock') {
     return 'mock';
   }
-  return isDevRuntime() ? 'mock' : 'live';
+  // Security-first default: never enter mock mode implicitly.
+  return 'live';
 };
 
 const buildRedirectUri = (provider: OAuthProvider): string => {

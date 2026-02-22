@@ -4,6 +4,7 @@ set -euo pipefail
 echo "[CI Gate] Running Phase 1 mobile auth smoke suite..."
 
 npm run test -- --runInBand \
+  components/__tests__/ProfileSheet.test.tsx \
   features/auth/login/hooks/__tests__/useLoginScreen.test.ts \
   features/auth/login/hooks/__tests__/useLoginMotion.test.ts \
   features/auth/login/components/__tests__/LoginAuthScreen.test.tsx \

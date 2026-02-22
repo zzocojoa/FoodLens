@@ -71,8 +71,8 @@ afterAll(() => {
 });
 
 describe('oauthProvider', () => {
-  it('runs in mock mode by default', () => {
-    expect(AuthOAuthProvider.getOAuthMode()).toBe('mock');
+  it('runs in live mode by default', () => {
+    expect(AuthOAuthProvider.getOAuthMode()).toBe('live');
   });
 
   it('defaults to live mode in production runtime when mode env is not provided', () => {
@@ -81,6 +81,7 @@ describe('oauthProvider', () => {
   });
 
   it('uses mock grant for google login', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'mock';
     mockedAuthApi.loginWithGoogle.mockResolvedValue(mockSession('usr_google'));
 
     const result = await AuthOAuthProvider.loginWithOAuthProvider('google');

@@ -11,6 +11,10 @@ type SecureStoreModule = {
   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY?: string;
 };
 
+type AuthSecureStoreWriteOptions = {
+  persist?: boolean;
+};
+
 let secureStoreModule: SecureStoreModule | null = null;
 let warnedNativeUnavailable = false;
 let volatileSessionJson: string | null = null;
@@ -68,6 +72,23 @@ const parseSession = (raw: string | null): AuthSessionTokens | null => {
   }
 };
 
+const clearPersistedSession = async (): Promise<void> => {
+  const secureStore = getSecureStore();
+  if (!secureStore) {
+    return;
+  }
+
+  try {
+    await secureStore.deleteItemAsync(SESSION_STORAGE_KEY, secureStoreOptions());
+  } catch (error) {
+    if (isNativeModuleUnavailableError(error)) {
+      logNativeUnavailableOnce(error);
+      return;
+    }
+    throw error;
+  }
+};
+
 export const AuthSecureSessionStore = {
   async read(): Promise<AuthSessionTokens | null> {
     const secureStore = getSecureStore();
@@ -88,9 +109,15 @@ export const AuthSecureSessionStore = {
     }
   },
 
-  async write(session: AuthSessionTokens): Promise<void> {
+  async write(session: AuthSessionTokens, options: AuthSecureStoreWriteOptions = {}): Promise<void> {
+    const persist = options.persist !== false;
     const serialized = JSON.stringify(session);
     volatileSessionJson = serialized;
+    if (!persist) {
+      await clearPersistedSession();
+      return;
+    }
+
     const secureStore = getSecureStore();
     if (!secureStore) {
       return;

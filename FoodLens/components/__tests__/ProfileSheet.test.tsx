@@ -1,0 +1,134 @@
+import React from 'react';
+import { Alert } from 'react-native';
+import { act, render } from '@testing-library/react-native';
+import ProfileSheet from '../ProfileSheet';
+
+const mockReplace = jest.fn();
+const mockPush = jest.fn();
+const mockAuthLogout = jest.fn();
+const mockReadSession = jest.fn();
+const mockClearSession = jest.fn();
+const mockProviderLogout = jest.fn();
+
+let capturedProps: { onPressLogout: () => void } | null = null;
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    replace: mockReplace,
+    push: mockPush,
+  }),
+}));
+
+jest.mock('@/contexts/ThemeContext', () => ({
+  useTheme: () => ({
+    theme: 'system',
+    setTheme: jest.fn(),
+    colorScheme: 'light',
+  }),
+}));
+
+jest.mock('@/services/auth/authApi', () => ({
+  AuthApi: {
+    logout: (...args: unknown[]) => mockAuthLogout(...args),
+  },
+}));
+
+jest.mock('@/services/auth/secureSessionStore', () => ({
+  AuthSecureSessionStore: {
+    read: (...args: unknown[]) => mockReadSession(...args),
+  },
+}));
+
+jest.mock('@/services/auth/sessionManager', () => ({
+  clearSession: (...args: unknown[]) => mockClearSession(...args),
+}));
+
+jest.mock('@/services/auth/providerLogout', () => ({
+  logoutFromOAuthProvider: (...args: unknown[]) => mockProviderLogout(...args),
+}));
+
+jest.mock('../profileSheet/hooks/useProfileSheetController', () => ({
+  useProfileSheetController: () => ({
+    state: {
+      travelerLanguage: 'en',
+      uiLanguage: 'en',
+      loading: false,
+      handleUpdate: jest.fn(),
+    },
+    profileSheet: {
+      closeSheet: jest.fn(),
+      panY: { __mock: 'profile-pan' },
+      panResponder: { panHandlers: {} },
+    },
+    travelerLanguageSheet: {
+      closeSheet: jest.fn(),
+      panY: { __mock: 'traveler-pan' },
+      panResponder: { panHandlers: {} },
+    },
+    uiLanguageSheet: {
+      closeSheet: jest.fn(),
+      panY: { __mock: 'ui-pan' },
+      panResponder: { panHandlers: {} },
+    },
+  }),
+}));
+
+jest.mock('../profileSheet/components/ProfileSheetView', () => {
+  const MockProfileSheetView = (props: { onPressLogout: () => void }) => {
+    capturedProps = props;
+    return null;
+  };
+  return MockProfileSheetView;
+});
+
+describe('ProfileSheet logout', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    capturedProps = null;
+    mockReadSession.mockResolvedValue({
+      accessToken: 'atk_profile',
+      refreshToken: 'rtk_profile',
+      user: {
+        id: 'usr_profile',
+        provider: 'google',
+      },
+    });
+    mockAuthLogout.mockResolvedValue(undefined);
+    mockClearSession.mockResolvedValue(undefined);
+    mockProviderLogout.mockResolvedValue(undefined);
+  });
+
+  it('calls provider logout after local logout for social account', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const continueButton = buttons?.find((button) => button.text === 'Continue');
+      continueButton?.onPress?.();
+    });
+
+    render(
+      <ProfileSheet
+        isOpen
+        onClose={jest.fn()}
+        userId="usr_profile"
+        onUpdate={jest.fn()}
+      />
+    );
+
+    expect(capturedProps).not.toBeNull();
+
+    await act(async () => {
+      capturedProps?.onPressLogout();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockAuthLogout).toHaveBeenCalledWith({
+      accessToken: 'atk_profile',
+      refreshToken: 'rtk_profile',
+    });
+    expect(mockClearSession).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/login');
+    expect(mockProviderLogout).toHaveBeenCalledWith('google');
+
+    alertSpy.mockRestore();
+  });
+});

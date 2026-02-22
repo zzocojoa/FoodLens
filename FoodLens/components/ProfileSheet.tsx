@@ -6,6 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { AuthApi } from '@/services/auth/authApi';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
 import { clearSession } from '@/services/auth/sessionManager';
+import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
 import { useProfileSheetController } from './profileSheet/hooks/useProfileSheetController';
 import { ProfileSheetProps } from './profileSheet/types';
@@ -73,8 +74,17 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
         });
       }
 
+      const provider = storedSession?.user?.provider;
       await clearSession();
       router.replace('/login');
+      void logoutFromOAuthProvider(provider).catch((error) => {
+        console.warn('[AuthSession] Provider logout failed', {
+          request_id: requestId,
+          user_id: currentUserId,
+          provider: provider ?? 'none',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     } finally {
       setLogoutLoading(false);
     }

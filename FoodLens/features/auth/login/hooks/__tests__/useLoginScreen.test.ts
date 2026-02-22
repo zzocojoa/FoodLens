@@ -203,6 +203,39 @@ describe('useLoginScreen', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding');
   });
 
+  it('stores volatile session when remember me is disabled in login mode', async () => {
+    const loginSession = createSession({
+      user: {
+        id: 'usr_login',
+        email: 'login@example.com',
+      },
+    });
+    mockSubmitEmailAuth.mockResolvedValue(loginSession);
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'login@example.com');
+      result.current.setFieldValue('password', 'Passw0rd!');
+      result.current.setFieldValue('rememberMe', false);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(mockSubmitEmailAuth).toHaveBeenCalledWith({
+      mode: 'login',
+      values: expect.objectContaining({
+        email: 'login@example.com',
+        rememberMe: false,
+      }),
+      locale: 'en-US',
+    });
+    expect(mockPersistSession).toHaveBeenCalledWith(loginSession, { rememberMe: false });
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)');
+  });
+
   it('handles forgot password request and confirmation in login mode', async () => {
     mockRequestPasswordReset.mockResolvedValue({
       resetRequested: true,
@@ -249,7 +282,7 @@ describe('useLoginScreen', () => {
     expect(result.current.infoMessage).toContain('Password reset complete');
   });
 
-  it('enters reset step even when reset id is omitted', async () => {
+  it('stays on sign in when reset challenge is omitted', async () => {
     mockRequestPasswordReset.mockResolvedValue({
       resetRequested: true,
       resetMethod: 'email_code',
@@ -268,7 +301,7 @@ describe('useLoginScreen', () => {
       await result.current.handleForgotPassword();
     });
 
-    expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.passwordResetStepActive).toBe(false);
     expect(result.current.formValues.verificationCode).toBe('');
     expect(result.current.infoMessage).toContain('If an account exists');
   });

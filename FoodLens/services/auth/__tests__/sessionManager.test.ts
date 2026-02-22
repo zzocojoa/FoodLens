@@ -82,6 +82,13 @@ describe('sessionManager', () => {
     expect(mockedQueryClient.clear).not.toHaveBeenCalled();
   });
 
+  it('stores volatile session only when remember me is disabled', async () => {
+    await persistSession(activeSession, { rememberMe: false });
+
+    expect(mockedStore.write).toHaveBeenCalledWith(activeSession, { persist: false });
+    expect(mockedSetCurrentUserId).toHaveBeenCalledWith('usr_1');
+  });
+
   it('clears query cache when authenticated user switches accounts', async () => {
     mockedHasAuthenticatedUser.mockReturnValue(true);
     mockedGetCurrentUserId.mockReturnValue('usr_old');

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Keyboard } from 'react-native';
-import { isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
+import { AuthSessionTokens, isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
 import { hasSeenOnboarding } from '@/services/storage';
 import { persistSession } from '@/services/auth/sessionManager';
 import { useI18n } from '@/features/i18n';
@@ -109,22 +109,28 @@ export const useLoginScreen = () => {
     try {
       const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
       const resetGuideMessage = `${loginCopy.passwordResetDeliveryGuide}\n${loginCopy.passwordResetSocialGuide}`;
-      setPendingPasswordReset({
-        email: normalizedEmail,
-        expiresInSeconds: reset.resetExpiresIn,
-        debugCode: reset.debugCode,
-      });
-      setInfoMessage(
-        reset.resetId || reset.debugCode
-          ? `${loginCopy.passwordResetCodeSent}\n${resetGuideMessage}`
-          : `${loginCopy.passwordResetRequestAccepted}\n${resetGuideMessage}`
-      );
-      setFormValues((prev) => ({
-        ...prev,
-        password: '',
-        confirmPassword: '',
-        verificationCode: reset.debugCode || '',
-      }));
+      const hasResetChallenge = Boolean(reset.resetId || reset.debugCode);
+      if (hasResetChallenge) {
+        setPendingPasswordReset({
+          email: normalizedEmail,
+          expiresInSeconds: reset.resetExpiresIn,
+          debugCode: reset.debugCode,
+        });
+        setInfoMessage(`${loginCopy.passwordResetCodeSent}\n${resetGuideMessage}`);
+        setFormValues((prev) => ({
+          ...prev,
+          password: '',
+          confirmPassword: '',
+          verificationCode: reset.debugCode || '',
+        }));
+      } else {
+        setPendingPasswordReset(null);
+        setInfoMessage(`${loginCopy.passwordResetRequestAccepted}\n${resetGuideMessage}`);
+        setFormValues((prev) => ({
+          ...prev,
+          verificationCode: '',
+        }));
+      }
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {
@@ -149,6 +155,14 @@ export const useLoginScreen = () => {
     router.replace(seenOnboarding ? '/(tabs)' : '/onboarding');
   };
 
+  const persistAuthenticatedSession = async (session: AuthSessionTokens, rememberMe: boolean): Promise<void> => {
+    if (rememberMe) {
+      await persistSession(session);
+      return;
+    }
+    await persistSession(session, { rememberMe: false });
+  };
+
   const handleSubmit = async () => {
     Keyboard.dismiss();
 
@@ -167,7 +181,7 @@ export const useLoginScreen = () => {
           code: formValues.verificationCode,
         });
         resetAuthPendingState();
-        await persistSession(session);
+        await persistAuthenticatedSession(session, true);
         await completeSignIn(session.user.id);
       } catch (error) {
         setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
@@ -243,7 +257,8 @@ export const useLoginScreen = () => {
         return;
       }
 
-      await persistSession(result);
+      const shouldRememberSession = mode === 'login' ? formValues.rememberMe : true;
+      await persistAuthenticatedSession(result, shouldRememberSession);
       await completeSignIn(result.user.id);
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
@@ -259,7 +274,8 @@ export const useLoginScreen = () => {
 
     try {
       const session = await loginAuthService.submitOAuthAuth(provider);
-      await persistSession(session);
+      const shouldRememberSession = mode === 'login' ? formValues.rememberMe : true;
+      await persistAuthenticatedSession(session, shouldRememberSession);
       await completeSignIn(session.user.id);
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));

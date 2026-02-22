@@ -15,11 +15,23 @@ const clearSessionScopedCaches = (): void => {
   queryClient.clear();
 };
 
-export const persistSession = async (session: AuthSessionTokens): Promise<void> => {
+type PersistSessionOptions = {
+  rememberMe?: boolean;
+};
+
+export const persistSession = async (
+  session: AuthSessionTokens,
+  options: PersistSessionOptions = {}
+): Promise<void> => {
+  const persist = options.rememberMe !== false;
   if (hasAuthenticatedUser() && getCurrentUserId() !== session.user.id) {
     clearSessionScopedCaches();
   }
-  await AuthSecureSessionStore.write(session);
+  if (persist) {
+    await AuthSecureSessionStore.write(session);
+  } else {
+    await AuthSecureSessionStore.write(session, { persist: false });
+  }
   await setCurrentUserId(session.user.id);
 };
 
