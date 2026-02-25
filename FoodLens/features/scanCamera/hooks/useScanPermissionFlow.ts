@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { PermissionResponse } from 'expo-camera';
-import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
+import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
 
 type Translate = (key: string, fallback?: string) => string;
 

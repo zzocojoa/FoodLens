@@ -10,55 +10,57 @@ from typing import Any
 import requests
 from pydantic import BaseModel
 
-from backend.modules.server_bootstrap import (
+from backend.modules.server_bootstrap_Logic import (
     decode_upload_to_image,
     initialize_services,
     load_environment,
     log_environment_debug,
 )
-from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
-from backend.modules.analyst_core.response_utils import get_safe_fallback_response
-from backend.modules.ops.cost_guardrail import (
-    CostGuardrailAction,
+from backend.modules.analyst_core.prompts_Structure import LABEL_2PASS_PROMPT_VERSION
+from backend.modules.analyst_core.response_utils_Logic import get_safe_fallback_response
+from backend.modules.ops.cost_guardrail_Structure import CostGuardrailAction
+from backend.modules.ops.cost_guardrail_Logic import (
     CostGuardrailService,
     InMemoryMonthlyUsageStorage,
 )
-from backend.modules.ops.data_retention import (
+from backend.modules.ops.data_retention_Logic import (
     InMemoryRetentionStore,
     JsonFileRetentionStore,
     LocalFileRetentionCleanupAdapter,
     NoOpRetentionCleanupAdapter,
     RetentionCleanupJob,
-    RetentionPolicyConfig,
 )
-from backend.modules.ops.deletion_queue import (
+from backend.modules.ops.data_retention_Structure import RetentionPolicyConfig
+from backend.modules.ops.deletion_queue_Logic import (
     DeletionQueueConsumer,
     DeletionQueueProducer,
     InMemoryDeletionQueueStorage,
     JsonFileDeletionQueueStorage,
     NoOpDeletionHandler,
 )
-from backend.modules.ops.rollout_control import (
+from backend.modules.ops.rollout_control_Logic import (
     InMemoryRolloutStateStore,
     JsonFileRolloutStateStore,
-    KpiThresholds,
     LabelRolloutAutoManager,
     LabelRolloutController,
-    RolloutConfig,
     evaluate_kpi_gate,
     load_kpi_input_from_env,
 )
-from backend.modules.quality.label_quality_gate import evaluate_label_image_quality
-from backend.modules.runtime_guardrails import (
-    EndpointErrorPolicy,
-    ErrorCode,
+from backend.modules.ops.rollout_control_Structure import (
+    KpiThresholds,
+    RolloutConfig,
+)
+from backend.modules.quality.label_quality_gate_Logic import evaluate_label_image_quality
+from backend.modules.runtime_guardrails_Structure import ErrorCode
+from backend.modules.runtime_guardrails_Logic import (
     raise_service_unavailable,
     run_in_threadpool,
     run_with_error_policy,
 )
-from backend.modules.contracts.analysis_response import AnalysisResponseContract
-from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
-from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService
+from backend.modules.runtime_guardrails_Structure import EndpointErrorPolicy
+from backend.modules.contracts.analysis_response_Structure import AnalysisResponseContract
+from backend.modules.contracts.barcode_response_Structure import BarcodeLookupResponseContract
+from backend.modules.auth.service_Logic import AuthServiceError, InMemoryAuthSessionService
 
 load_environment()
 log_environment_debug()
@@ -732,6 +734,24 @@ class ProfileUpdateRequest(BaseModel):
     timezone: str | None = None
 
 
+class AllergiesUpdateRequest(BaseModel):
+    allergies: list[str] | None = None
+    dietary_restrictions: list[str] | None = None
+    severity_map: dict[str, str] | None = None
+
+
+class SettingsUpdateRequest(BaseModel):
+    language: str | None = None
+    target_language: str | None = None
+    auto_play_audio: bool | None = None
+    selected_emoji: str | None = None
+
+
+class HistoryWriteRequest(BaseModel):
+    entry: dict[str, Any]
+    idempotency_key: str | None = None
+
+
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
@@ -1334,6 +1354,130 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             code=error.code,
         )
         raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/me/allergies")
+async def get_me_allergies(request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        allergies = auth_service.get_allergies(user_id=user.user_id)
+        return {"allergies": allergies, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.put("/me/allergies")
+async def put_me_allergies(payload: AllergiesUpdateRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        allergies = auth_service.update_allergies(
+            user_id=user.user_id,
+            allergies=payload.allergies,
+            dietary_restrictions=payload.dietary_restrictions,
+            severity_map=payload.severity_map,
+        )
+        return {"allergies": allergies, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/me/settings")
+async def get_me_settings(request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        settings = auth_service.get_settings(user_id=user.user_id)
+        return {"settings": settings, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.put("/me/settings")
+async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        settings = auth_service.update_settings(
+            user_id=user.user_id,
+            language=payload.language,
+            target_language=payload.target_language,
+            auto_play_audio=payload.auto_play_audio,
+            selected_emoji=payload.selected_emoji,
+        )
+        return {"settings": settings, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/me/history")
+async def get_me_history(request: Request, limit: int | None = None):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        history = auth_service.get_history(user_id=user.user_id, limit=limit)
+        return {"history": history, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/me/history")
+async def post_me_history(payload: HistoryWriteRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        history_item = auth_service.append_history(
+            user_id=user.user_id,
+            entry=payload.entry,
+            idempotency_key=payload.idempotency_key,
+        )
+        return {"history_item": history_item, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
 
 @app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(

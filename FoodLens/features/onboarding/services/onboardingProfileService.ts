@@ -1,6 +1,6 @@
-import { setOnboardingComplete } from '@/services/storage';
-import { UserService } from '@/services/userService';
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { setOnboardingComplete } from '@/services/storage_Logic';
+import { UserService } from '@/services/userService_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 import type { CompletePayload } from '../types/onboarding.types';
 
 export const completeOnboardingProfile = async (payload: CompletePayload): Promise<void> => {

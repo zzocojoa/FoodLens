@@ -74,7 +74,7 @@ export default function ResultScreen() {
                         {t('result.empty.startScan', 'Start Scan')}
                     </Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => router.replace('/')}>
+                <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
                     <Text style={{ color: '#64748B', fontWeight: '600' }}>
                         {t('result.empty.backHome', 'Back to Home')}
                     </Text>

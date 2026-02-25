@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { AllergySeverity, Gender } from '@/features/profile/types/profile.types';
 import { TOTAL_STEPS, DEFAULT_BIRTH_DATE } from '../constants/onboarding.constants';
 import {
   getOnboardingPermissionStatuses,
   requestOnboardingPermissions,
-} from '../services/onboardingPermissionService';
-import { completeOnboardingProfile } from '../services/onboardingProfileService';
+} from '../services/onboardingPermissionService_Logic';
+import { completeOnboardingProfile } from '../services/onboardingProfileService_Logic';
 import type { OnboardingStep, PermissionStatusMap } from '../types/onboarding.types';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { buildSuggestions } from '@/features/profile/utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 
 type UseOnboardingFlowParams = {
   onCompleted: () => void;
@@ -148,8 +147,8 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     }
   }, [birthDate, gender, onCompleted, selectedAllergies, severityMap, t]);
 
-  const handleBirthDateChange = useCallback((_event: DateTimePickerEvent, date?: Date) => {
-    if (date) setBirthDate(date);
+  const handleBirthDateSelect = useCallback((date: Date) => {
+    setBirthDate(new Date(date));
   }, []);
 
   const handleSkip = useCallback(() => {
@@ -192,7 +191,7 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     handleRequestPermissions,
     handleSkipPermissions,
     handleComplete,
-    handleBirthDateChange,
+    handleBirthDateSelect,
     handleSkip,
   };
 };

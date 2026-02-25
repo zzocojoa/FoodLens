@@ -3,7 +3,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { useLoginScreen } from '../useLoginScreen';
 import { AuthSessionTokens } from '@/services/auth/authApi';
-import { LOGIN_COPY } from '../../constants/login.constants';
+import { LOGIN_ALERT_AUTO_DISMISS_MS, LOGIN_COPY } from '../../constants/login.constants';
 
 const mockRouterReplace = jest.fn();
 const mockHasSeenOnboarding = jest.fn();
@@ -282,7 +282,7 @@ describe('useLoginScreen', () => {
     expect(result.current.infoMessage).toContain('Password reset complete');
   });
 
-  it('stays on sign in when reset challenge is omitted', async () => {
+  it('enters reset step when reset challenge metadata is omitted', async () => {
     mockRequestPasswordReset.mockResolvedValue({
       resetRequested: true,
       resetMethod: 'email_code',
@@ -301,9 +301,9 @@ describe('useLoginScreen', () => {
       await result.current.handleForgotPassword();
     });
 
-    expect(result.current.passwordResetStepActive).toBe(false);
+    expect(result.current.passwordResetStepActive).toBe(true);
     expect(result.current.formValues.verificationCode).toBe('');
-    expect(result.current.infoMessage).toContain('If an account exists');
+    expect(result.current.infoMessage).toBeNull();
   });
 
   it('validates reset password confirmation mismatch', async () => {
@@ -338,5 +338,31 @@ describe('useLoginScreen', () => {
 
     expect(mockConfirmPasswordReset).not.toHaveBeenCalled();
     expect(result.current.errorMessage).toBe('New password and confirm password do not match.');
+  });
+
+  it('auto clears invalid reset email message after 3 seconds', async () => {
+    jest.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useLoginScreen());
+
+      act(() => {
+        result.current.setFieldValue('email', 'invalid-email');
+      });
+
+      await act(async () => {
+        await result.current.handleForgotPassword();
+      });
+
+      expect(result.current.errorMessage).toBe('Enter a valid email address to reset your password.');
+
+      await act(async () => {
+        jest.advanceTimersByTime(LOGIN_ALERT_AUTO_DISMISS_MS);
+      });
+
+      expect(result.current.errorMessage).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

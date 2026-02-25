@@ -1,6 +1,12 @@
 import { StyleSheet } from 'react-native';
 
 export const profileSheetStyles = StyleSheet.create({
+    backdrop: {
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    dismissArea: {
+        flex: 1,
+    },
     overlay: {
         flex: 1,
         justifyContent: 'flex-end',

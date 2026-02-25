@@ -27,9 +27,9 @@ export const useSheetGesture = (onCloseComplete: () => void) => {
 
     const panResponder = React.useRef(
         PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
+            onStartShouldSetPanResponder: () => false,
             onMoveShouldSetPanResponder: (_, gestureState) =>
-                gestureState.dy > 10 && Math.abs(gestureState.dx) < 10,
+                Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dx) < 10,
             onPanResponderMove: (_, gestureState) => {
                 if (gestureState.dy >= 0) panY.setValue(gestureState.dy);
             },

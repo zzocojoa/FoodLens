@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { getStoredAnalyses } from './analysis/storage';
+import { getStoredAnalyses } from './analysis/storage_Logic';
 import {
   buildManagedImageUri,
   createManagedFilename,
@@ -7,10 +7,11 @@ import {
   getManagedImageDirectory,
   isLegacyAbsoluteUri,
   isManagedImageReference,
-} from './imageStorage.helpers';
-import { SafeStorage } from './storage';
-import { USER_STORAGE_KEY } from './user/constants';
+} from './imageStorage.helpers_Logic';
+import { SafeStorage } from './storage_Logic';
+import { getUserStorageKey } from './user/constants_Logic';
 import { UserProfile } from '../models/User';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
 
 /**
  * ImageStorage Utility
@@ -104,12 +105,14 @@ export const saveImagePermanentlyOrThrow = async (
  */
 export const cleanupOrphanedImages = async (): Promise<void> => {
     try {
+        if (!hasAuthenticatedUser()) return;
+        const userId = getCurrentUserId();
         const dir = getManagedImageDirectory();
         const dirInfo = await FileSystem.getInfoAsync(dir);
         if (!dirInfo.exists) return;
 
         const files = await FileSystem.readDirectoryAsync(dir);
-        const analyses = await getStoredAnalyses();
+        const analyses = await getStoredAnalyses(userId);
         
         // Extract all referenced filenames from history
         const referencedFiles = new Set(
@@ -119,7 +122,7 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
         );
 
         // Preserve current profile image as well (it is not part of analysis history).
-        const profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+        const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
         const profileImage = profile?.profileImage;
         if (profileImage) {
             if (isManagedImageReference(profileImage)) {

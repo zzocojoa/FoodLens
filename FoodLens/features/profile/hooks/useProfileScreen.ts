@@ -5,7 +5,7 @@ import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersis
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import { buildSuggestions } from '../utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 
 const normalizeAllergyKey = (value: string) => value.trim().toLowerCase();

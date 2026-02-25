@@ -1,4 +1,4 @@
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 
 export const getCameraUserId = (): string => getCurrentUserId();
 export const DEFAULT_ISO_CODE = 'US';

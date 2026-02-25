@@ -1,4 +1,4 @@
-import { ANALYSIS_TIMEOUT_MS } from '../constants';
+import { ANALYSIS_TIMEOUT_MS } from '../constants_Logic';
 
 export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeoutId: any;

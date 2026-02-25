@@ -19,7 +19,7 @@ import CompleteStep from '@/features/onboarding/components/steps/CompleteStep';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { colorScheme } = useTheme();
   const theme = Colors[colorScheme];
   const { badgeRightStyle, badgeLeftStyle } = useOnboardingBadgesAnimation();
@@ -28,7 +28,7 @@ export default function OnboardingScreen() {
   });
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
       <OnboardingProgress step={flow.step} theme={theme} />
 
       {flow.step > 1 && <OnboardingBackButton onPress={flow.goBack} theme={theme} t={t} />}
@@ -46,13 +46,11 @@ export default function OnboardingScreen() {
         {flow.step === 2 && (
           <ProfileStep
             theme={theme}
-            colorScheme={colorScheme}
-            locale={locale}
             t={t}
             gender={flow.gender}
             birthDate={flow.birthDate}
             onSelectGender={flow.setGender}
-            onBirthDateChange={flow.handleBirthDateChange}
+            onSelectBirthDate={flow.handleBirthDateSelect}
             onNext={() => flow.goTo(3)}
             onSkip={() => flow.goTo(3)}
           />

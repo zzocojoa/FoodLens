@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { UserService } from '@/services/userService';
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { UserService } from '@/services/userService_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 
 export const useTravelerCardTargetLanguage = () => {
   const [targetLanguage, setTargetLanguage] = useState<string | undefined>(undefined);

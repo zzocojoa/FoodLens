@@ -49,7 +49,7 @@ export default function HistoryScreen() {
     const handleMarkerPress = useCallback((id: string) => {
         ui.handleSwitchMode('list');
         setExpandedCountries(new Set([id]));
-    }, [ui.handleSwitchMode, setExpandedCountries]);
+    }, [ui, setExpandedCountries]);
 
     const handleRegionChange = useCallback((region: any) => {
         ui.savedMapRegionRef.current = region;
@@ -64,6 +64,7 @@ export default function HistoryScreen() {
                     theme={theme}
                     archiveMode={ui.archiveMode}
                     isEditMode={ui.isEditMode}
+                    isMapModeAvailable={ui.isMapModeAvailable}
                     onBack={() => router.back()}
                     onSwitchMode={ui.handleSwitchMode}
                     onToggleEdit={ui.toggleEditMode}

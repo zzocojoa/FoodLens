@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import type { Gender } from '@/features/profile/types/profile.types';
 import type { PermissionStatusMap, SeverityMap, Translate } from '../../types/onboarding.types';
@@ -29,6 +30,7 @@ export default function CompleteStep({
   loading,
   onComplete,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const now = new Date();
   const birthMonth = birthDate.getMonth();
   const birthDay = birthDate.getDate();
@@ -247,7 +249,13 @@ export default function CompleteStep({
       </ScrollView>
 
       {/* CTA Button */}
-      <View style={{ paddingHorizontal: 24, paddingBottom: 18, paddingTop: 10 }}>
+      <View
+        style={{
+          paddingHorizontal: 24,
+          paddingBottom: Math.max(12, insets.bottom + 8),
+          paddingTop: 10,
+        }}
+      >
         <TouchableOpacity
           style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: loading ? 0.6 : 1 }]}
           onPress={onComplete}

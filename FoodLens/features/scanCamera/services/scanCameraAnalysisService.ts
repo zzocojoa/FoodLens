@@ -10,8 +10,8 @@ import {
   getIsoCode,
   persistAndNavigateAnalysisResult,
 } from '../utils/scanCameraGatewayHelpers';
-import { showAlert } from '@/services/ui/uiAlerts';
-import { logger } from '@/services/logger';
+import { showAlert } from '@/services/ui/uiAlerts_Logic';
+import { logger } from '@/services/logger_Logic';
 
 type AnalysisExecutor = (
   uri: string,

@@ -3,7 +3,7 @@ import MapView from 'react-native-maps';
 import * as Location from 'expo-location';
 import { ENABLE_MAP_CLUSTERING, ENABLE_QA_MAP_METRICS } from '../constants';
 import { metricsLog } from '../utils/historyMapUtils';
-import { openAppSettings } from '@/services/ui/permissionDialogs';
+import { openAppSettings } from '@/services/ui/permissionDialogs_Logic';
 
 const MAP_READY_TIMEOUT_MS = 10000;
 const TOAST_HIDE_MS = 2000;

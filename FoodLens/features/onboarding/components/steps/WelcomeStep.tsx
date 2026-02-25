@@ -1,7 +1,16 @@
 import React from 'react';
-import { Image, Text, TouchableOpacity, View, FlatList, useWindowDimensions } from 'react-native';
+import {
+  FlatList,
+  Image,
+  Platform,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Translate, BadgeAnimatedStyle } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 
@@ -15,14 +24,31 @@ type Props = {
 
 export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle, onStart }: Props) {
   const [carouselIndex, setCarouselIndex] = React.useState(0);
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const slideWidth = screenWidth - 48; // paddingHorizontal: 24 * 2
   const totalSlides = 4;
   const slides = React.useMemo(() => [0, 1, 2, 3], []);
+  const usableHeight = Math.max(1, screenHeight - Math.max(0, insets.top) - Math.max(0, insets.bottom));
+  const platformScaleBias = Platform.OS === 'android' ? 0.96 : 1;
+  const fitScale = Math.max(0.76, Math.min(1, (usableHeight / 812) * platformScaleBias));
+  const heroSize = Math.round(Math.min(280, Math.max(196, usableHeight * 0.32)));
+  const carouselMinHeight = Math.round(Math.min(240, Math.max(176, usableHeight * 0.3)));
+  const bottomSafePadding = Math.max(
+    Platform.OS === 'android' ? 8 : 4,
+    insets.bottom + (Platform.OS === 'android' ? 4 : 0),
+  );
+  const titleSize = Math.max(30, Math.round(34 * fitScale));
+  const subtitleSize = Math.max(14, Math.round(17 * fitScale));
+  const subtitleLineHeight = Math.max(20, Math.round(24 * fitScale));
+  const paginationTop = Math.max(10, Math.round(18 * fitScale));
+  const paginationBottom = Math.max(8, Math.round(14 * fitScale));
+  const buttonVerticalPadding = Math.max(14, Math.round(18 * fitScale));
+  const heroMarginBottom = Math.max(14, Math.round(28 * fitScale));
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 });
   const onViewableItemsChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+    ({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
       const currentIndex = viewableItems[0]?.index ?? 0;
       setCarouselIndex(Math.max(0, Math.min(totalSlides - 1, currentIndex)));
     }
@@ -209,13 +235,14 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
   );
 
   return (
-    <View style={styles.stepContainer}>
-      <View style={[styles.heroArea, { paddingTop: 8 }]}>
-        <View style={styles.heroImageWrapper}>
+    <View style={[styles.stepContainer, { justifyContent: 'flex-start', paddingBottom: bottomSafePadding }]}>
+      <View style={{ flex: 1 }}>
+        <View style={[styles.heroArea, { paddingTop: 8, marginBottom: heroMarginBottom }]}>
+          <View style={[styles.heroImageWrapper, { width: heroSize, maxWidth: heroSize }]}>
           <View style={[styles.heroImagePlaceholder, { backgroundColor: 'transparent' }]}>
             <Image
               source={require('@/assets/images/onboarding_hero.png')}
-              style={{ width: '100%', height: '100%', borderRadius: 24, marginTop: 40 }}
+              style={{ width: '100%', height: '100%', borderRadius: 24 }}
               resizeMode="cover"
             />
           </View>
@@ -242,56 +269,78 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
         </View>
       </View>
 
-      <Text style={[styles.welcomeTitle, { color: theme.textPrimary }]}>FoodLens</Text>
-      <Text style={[styles.welcomeSubtitle, { color: theme.textSecondary }]}>
-        {t('onboarding.welcome.subtitle', 'Eat safely, anywhere in the world')}
-      </Text>
+        <Text style={[styles.welcomeTitle, { color: theme.textPrimary, fontSize: titleSize }]}>FoodLens</Text>
+        <Text
+          style={[
+            styles.welcomeSubtitle,
+            {
+              color: theme.textSecondary,
+              fontSize: subtitleSize,
+              lineHeight: subtitleLineHeight,
+              paddingHorizontal: Math.max(20, Math.round(28 * fitScale)),
+            },
+          ]}
+        >
+          {t('onboarding.welcome.subtitle', 'Eat safely, anywhere in the world')}
+        </Text>
 
-      <View style={{ height: 240, overflow: 'hidden' }}>
-      <View style={{ height: 240, overflow: 'hidden', marginHorizontal: -24 }}>
-        <FlatList
-          horizontal
-          pagingEnabled
-          snapToInterval={screenWidth}
-          decelerationRate="fast"
-          disableIntervalMomentum
-          data={slides}
-          keyExtractor={(item) => String(item)}
-          renderItem={({ item }) => (
-            <View style={{ width: screenWidth, alignItems: 'center' }}>
-              {renderSlide(item)}
-            </View>
-          )}
-          getItemLayout={getItemLayout}
-          onViewableItemsChanged={onViewableItemsChanged.current}
-          viewabilityConfig={viewabilityConfig.current}
-          showsHorizontalScrollIndicator={false}
-          initialNumToRender={1}
-          windowSize={3}
-          removeClippedSubviews={false}
-          extraData={screenWidth}
-        />
-      </View>
-      </View>
+        <View style={{ minHeight: carouselMinHeight, marginHorizontal: -24 }}>
+          <FlatList
+            horizontal
+            pagingEnabled
+            snapToInterval={screenWidth}
+            decelerationRate="fast"
+            disableIntervalMomentum
+            data={slides}
+            keyExtractor={(item) => String(item)}
+            renderItem={({ item }) => (
+              <View style={{ width: screenWidth, alignItems: 'center' }}>
+                {renderSlide(item)}
+              </View>
+            )}
+            getItemLayout={getItemLayout}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            viewabilityConfig={viewabilityConfig.current}
+            showsHorizontalScrollIndicator={false}
+            initialNumToRender={1}
+            windowSize={3}
+            removeClippedSubviews={false}
+            extraData={screenWidth}
+          />
+        </View>
 
-      {/* Carousel Pagination (4 pages) */}
-      <View style={styles.paginationContainer}>
-        {Array.from({ length: totalSlides }, (_, idx) => (
+        <View
+          style={[
+            styles.paginationContainer,
+            {
+              marginTop: paginationTop,
+              marginBottom: paginationBottom,
+            },
+          ]}
+        >
+          {Array.from({ length: totalSlides }, (_, idx) => (
             <View
-                key={idx}
-                style={[
-                    styles.paginationDot,
-                    {
-                        backgroundColor: carouselIndex === idx ? theme.primary : theme.border,
-                        width: carouselIndex === idx ? 32 : 8,
-                    },
-                ]}
+              key={idx}
+              style={[
+                styles.paginationDot,
+                {
+                  backgroundColor: carouselIndex === idx ? theme.primary : theme.border,
+                  width: carouselIndex === idx ? 32 : 8,
+                },
+              ]}
             />
-        ))}
+          ))}
+        </View>
       </View>
 
       <TouchableOpacity
-        style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+        style={[
+          styles.primaryButton,
+          {
+            backgroundColor: theme.primary,
+            paddingVertical: buttonVerticalPadding,
+          },
+        ]}
         onPress={onStart}
         activeOpacity={0.8}
         accessibilityRole="button"

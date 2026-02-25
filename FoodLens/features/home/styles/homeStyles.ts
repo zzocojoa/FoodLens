@@ -29,7 +29,7 @@ export const homeStyles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#F0F4F8',
+    backgroundColor: '#FFFFFF',
   },
   offlineBanner: {
     backgroundColor: '#EF4444',
@@ -91,14 +91,14 @@ export const homeStyles = StyleSheet.create({
     fontWeight: '700',
   },
   heroCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 32,
     padding: 24,
     alignItems: 'center',
     marginBottom: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: '#E2E8F0',
   },
   heroGlow: {
     position: 'absolute',

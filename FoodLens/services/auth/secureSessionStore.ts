@@ -1,4 +1,4 @@
-import { AuthSessionTokens } from './authApi';
+import { AuthSessionTokens } from './authApi_Logic';
 
 const SESSION_STORAGE_KEY = '@foodlens_auth_session_v1';
 const STORAGE_FALLBACK_REQUEST_ID = `auth-secure-store-${Date.now().toString(36)}`;

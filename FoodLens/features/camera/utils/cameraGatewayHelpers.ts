@@ -2,11 +2,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 
 import { getLocationData, validateCoordinates } from '../../../services/utils';
-import { UserService } from '../../../services/userService';
+import { UserService } from '../../../services/userService_Logic';
 import { DEFAULT_ISO_CODE, getCameraUserId } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from './cameraMappers';
-import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage';
+import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage_Logic';
 
 export const assertImageFileReady = async (uri: string): Promise<void> => {
     const fileInfo = await FileSystem.getInfoAsync(uri);

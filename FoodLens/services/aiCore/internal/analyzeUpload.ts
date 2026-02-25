@@ -1,11 +1,11 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { ANALYSIS_TIMEOUT_MS } from '../constants';
-import { getAllergyString } from '../allergy';
-import { uploadWithRetry } from '../upload';
-import { ServerConfig } from '../serverConfig';
-import { resolveRequestLocale } from './requestLocale';
-import { assertAnalysisResponseContract } from '../contracts';
-import { compressForUpload } from './imageCompress';
+import { ANALYSIS_TIMEOUT_MS } from '../constants_Logic';
+import { getAllergyString } from '../allergy_Logic';
+import { uploadWithRetry } from '../upload_Logic';
+import { ServerConfig } from '../serverConfig_Logic';
+import { resolveRequestLocale } from './requestLocale_Logic';
+import { assertAnalysisResponseContract } from '../contracts_Logic';
+import { compressForUpload } from './imageCompress_Logic';
 
 type ProgressCallback = (progress: number) => void;
 

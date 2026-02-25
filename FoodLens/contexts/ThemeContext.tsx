@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useColorScheme as useSystemColorScheme } from 'react-native';
-import { SafeStorage } from '../services/storage';
+import { SafeStorage } from '../services/storage_Logic';
 
 type ThemeType = 'light' | 'dark' | 'system';
 

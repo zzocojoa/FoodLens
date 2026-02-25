@@ -73,19 +73,29 @@
 - [ ] 장애 시 롤백 경로가 명확하다
 
 ## 8) 결정 기록
-- 결정일: YYYY-MM-DD
-- 결정자: (PM/CTO/Lead)
-- 선택 옵션: (A/B/C)
+- 결정일: 2026-02-25
+- 결정자: PM/CTO/Lead (FoodLens)
+- 선택 옵션: A (Render 유지 + Managed PostgreSQL)
 - 선택 이유(3줄 이내):
-  1.
-  2.
-  3.
-- 재검토 시점: YYYY-MM-DD
+  1. 현재 Render 운영 환경과 연속성이 가장 높아 Phase 2 전환 리스크가 가장 낮다.
+  2. 모바일(iOS/Android) 릴리즈 안정성을 유지하면서 서버 원본 저장으로 빠르게 전환 가능하다.
+  3. PostgreSQL 표준 계층으로 구현하면 이후 GCP/AWS 이전도 가능한 구조를 유지할 수 있다.
+- 재검토 시점: 2026-06-30
 
 ## 9) 연결 문서
 - [Master Plan](./master-plan.md)
 - [Phase 2 실행표](./phase-2-cloud-db-execution.md)
 - [API 계약 기준서](../contracts/api-contracts.md)
+- [DB 컷오버 런북](../ops/db-cutover-local-to-render-postgres.md)
+
+## 10) 관련 파일 경로
+- `docs/roadmap/cloud-decision-record.md`
+- `docs/roadmap/phase-2-cloud-db-execution.md`
+- `docs/roadmap/phase-2-validation-context-prompt.md`
+- `docs/roadmap/master-plan.md`
+- `docs/ops/db-cutover-local-to-render-postgres.md`
+- `.env.example`
+- `FoodLens/.env.example`
 
 ---
 

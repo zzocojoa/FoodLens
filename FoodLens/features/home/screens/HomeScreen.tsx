@@ -9,12 +9,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, Heart, ShieldCheck } from 'lucide-react-native';
 
-import { THEME } from '../../../constants/theme';
 import { FloatingEmojis } from '../../../components/FloatingEmojis';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import ProfileSheet from '../../../components/ProfileSheet';
@@ -25,10 +24,11 @@ import HomeScansSection from '../components/HomeScansSection';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { useI18n } from '@/features/i18n';
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 
 export default function HomeScreen() {
   const { t, locale } = useI18n();
+  const insets = useSafeAreaInsets();
   const {
     colorScheme,
     theme,
@@ -58,12 +58,15 @@ export default function HomeScreen() {
     loadDashboardData,
     handleDeleteItem,
   } = dashboard;
+  const cameraOrbBottom = Math.max(40, insets.bottom + 16);
+
+  const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: homeBackgroundColor }]}>
       <View style={styles.backgroundContainer} />
 
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: homeBackgroundColor }} edges={['top']}>
         <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
         {isConnected === false && (
@@ -119,16 +122,19 @@ export default function HomeScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 24 }}
+          contentContainerStyle={{ paddingBottom: 120 + insets.bottom, paddingHorizontal: 24 }}
           showsVerticalScrollIndicator={false}
         >
           <View
             style={[
               styles.heroCard,
-              THEME.glass,
               {
-                backgroundColor: theme.glass,
-                borderColor: theme.glassBorder,
+                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.glass,
+                borderColor:
+                  colorScheme === 'light'
+                    ? 'rgba(226, 232, 240, 0.9)'
+                    : theme.glassBorder,
+                borderWidth: colorScheme === 'light' ? 0 : 1,
                 shadowColor: theme.shadow,
               },
             ]}
@@ -225,6 +231,7 @@ export default function HomeScreen() {
           styles.orbContainer,
           {
             opacity: orbAnim,
+            bottom: cameraOrbBottom,
             transform: [{ scale: orbAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
           },
         ]}

@@ -1,5 +1,5 @@
 import { UserProfile } from '@/models/User';
-import { UserService } from '@/services/userService';
+import { UserService } from '@/services/userService_Logic';
 import { getEmojiPickerUserId } from '../constants/emojiPicker.constants';
 
 export const emojiPickerService = {

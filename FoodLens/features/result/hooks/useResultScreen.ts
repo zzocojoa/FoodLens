@@ -6,7 +6,7 @@ import { useAutoSave } from '@/hooks/result/useAutoSave';
 import { useImageSize } from '@/hooks/result/useImageSize';
 import { useResultUI } from '@/hooks/result/useResultUI';
 import { useI18n } from '@/features/i18n';
-import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute_Logic';
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 import { HEADER_HEIGHT } from '../constants/result.constants';

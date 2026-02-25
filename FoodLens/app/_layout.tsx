@@ -6,14 +6,16 @@ import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
-import { SafeStorage, initializeSafeStorage, hasSeenOnboarding } from '../services/storage';
-import { cleanupOrphanedImages } from '../services/imageStorage';
-import { clearSession, restoreSession } from '../services/auth/sessionManager';
+import { SafeStorage, initializeSafeStorage, hasSeenOnboarding } from '../services/storage_Logic';
+import { cleanupOrphanedImages } from '../services/imageStorage_Logic';
+import { clearSession, restoreSession } from '../services/auth/sessionManager_Logic';
+import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { initSentry, setUser } from '../services/sentry';
+import { initSentry, setUser } from '../services/sentry_Logic';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -60,6 +62,7 @@ function LayoutContent() {
           setUser(deviceId);
           nextRoute = '/login';
         } else {
+          startPhase2SyncRuntime();
           setUser(restoredSession.user.id);
           // Professional background cleanup
           cleanupOrphanedImages().catch(() => {});
@@ -109,6 +112,8 @@ function LayoutContent() {
             <Stack.Screen name="history" />
             <Stack.Screen name="trip-stats" />
             <Stack.Screen name="emoji-picker" />
+            <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
+            <Stack.Screen name="oauth/kakao-callback" options={{ animation: 'none' }} />
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>
@@ -119,10 +124,12 @@ function LayoutContent() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <CustomThemeProvider>
-        <LayoutContent />
-      </CustomThemeProvider>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <CustomThemeProvider>
+          <LayoutContent />
+        </CustomThemeProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

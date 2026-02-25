@@ -1,11 +1,66 @@
 import { AnalyzedData } from './ai';
-import { deleteImage } from './imageStorage';
-import { generateId, resolveRecordTimestamp } from './analysis/helpers';
-import { getStoredAnalyses, saveAnalyses } from './analysis/storage';
-import { AnalysisRecord } from './analysis/types';
-import { logger } from './logger';
+import { deleteImage } from './imageStorage_Logic';
+import { generateId, resolveRecordTimestamp } from './analysis/helpers_Logic';
+import { getStoredAnalyses, saveAnalyses } from './analysis/storage_Logic';
+import { AnalysisRecord } from './analysis/types_Logic';
+import { logger } from './logger_Logic';
+import { SafeStorage } from './storage_Logic';
+import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
+import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers_Logic';
+import { dispatchPhase2SyncQueue, enqueueHistorySync, startPhase2SyncRuntime } from './sync/phase2SyncQueue_Logic';
 
-export type { AnalysisRecord } from './analysis/types';
+export type { AnalysisRecord } from './analysis/types_Structure';
+
+const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
+const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
+
+const historyMigrationMarkerKey = (userId: string): string => `${HISTORY_MIGRATION_MARKER_PREFIX}${userId}`;
+const historyDeleteTombstoneKey = (userId: string): string => `${HISTORY_DELETE_TOMBSTONE_PREFIX}${userId}`;
+
+const getHistoryDeleteSet = async (userId: string): Promise<Set<string>> => {
+  const list = await SafeStorage.get<string[]>(historyDeleteTombstoneKey(userId), []);
+  return new Set(list);
+};
+
+const saveHistoryDeleteSet = async (userId: string, deleteSet: Set<string>): Promise<void> => {
+  await SafeStorage.set(historyDeleteTombstoneKey(userId), [...deleteSet]);
+};
+
+const syncHistoryFromServer = async (userId: string, local: AnalysisRecord[]): Promise<AnalysisRecord[] | null> => {
+  try {
+    const deleteSet = await getHistoryDeleteSet(userId);
+    const remote = await Phase2Api.getHistory();
+    const filteredRemote = remote.history.filter((item) => {
+      const remoteEntryId =
+        typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
+      return !deleteSet.has(remoteEntryId);
+    });
+    const merged = mergeRemoteHistory(local, filteredRemote);
+    await saveAnalyses(userId, merged);
+    return merged;
+  } catch (error) {
+    const apiError = error instanceof Phase2SyncApiError ? error : null;
+    logger.warn('[Phase2Sync] history pull failed', {
+      request_id: apiError?.requestId || 'unknown',
+      user_id: userId,
+      code: apiError?.code || 'PHASE2_HISTORY_PULL_FAILED',
+    });
+    return null;
+  }
+};
+
+const enqueueHistoryMigrationIfNeeded = async (userId: string, records: AnalysisRecord[]): Promise<void> => {
+  const migrated = await SafeStorage.get<boolean>(historyMigrationMarkerKey(userId), false);
+  if (migrated) return;
+  if (records.length === 0) {
+    await SafeStorage.set(historyMigrationMarkerKey(userId), true);
+    return;
+  }
+  for (const item of records) {
+    await enqueueHistorySync(userId, serializeHistoryRecord(item), item.id);
+  }
+  await SafeStorage.set(historyMigrationMarkerKey(userId), true);
+};
 
 export const AnalysisService = {
     /**
@@ -13,7 +68,8 @@ export const AnalysisService = {
      */
     saveAnalysis: async (userId: string, data: AnalyzedData, imageUri?: string, location?: AnalysisRecord['location'], originalTimestamp?: string) => {
         try {
-            const analyses = await getStoredAnalyses();
+            startPhase2SyncRuntime();
+            const analyses = await getStoredAnalyses(userId);
             const finalDate = resolveRecordTimestamp(originalTimestamp);
 
             const newRecord: AnalysisRecord = {
@@ -37,7 +93,13 @@ export const AnalysisService = {
             // For now, let's keep it unshift (Action History) but display the correct date.
             // If the user wants a timeline view later, we can sort.
             
-            await saveAnalyses(analyses);
+            await saveAnalyses(userId, analyses);
+            const deleteSet = await getHistoryDeleteSet(userId);
+            if (deleteSet.has(newRecord.id)) {
+              deleteSet.delete(newRecord.id);
+              await saveHistoryDeleteSet(userId, deleteSet);
+            }
+            await enqueueHistorySync(userId, serializeHistoryRecord(newRecord), newRecord.id);
             logger.info('Analysis saved successfully with date', finalDate.toISOString(), 'AnalysisService');
             return newRecord;
         } catch (error) {
@@ -51,7 +113,7 @@ export const AnalysisService = {
      */
     getRecentAnalyses: async (userId: string, limitCount: number = 2): Promise<AnalysisRecord[]> => {
         try {
-            const analyses = await getStoredAnalyses();
+            const analyses = await AnalysisService.getAllAnalyses(userId);
             return analyses.slice(0, limitCount);
         } catch (error) {
             logger.error('Error fetching recent analyses', error, 'AnalysisService');
@@ -64,7 +126,18 @@ export const AnalysisService = {
      */
     getAllAnalyses: async (userId: string): Promise<AnalysisRecord[]> => {
         try {
-            return await getStoredAnalyses();
+            startPhase2SyncRuntime();
+            const local = await getStoredAnalyses(userId);
+            await enqueueHistoryMigrationIfNeeded(userId, local);
+            await dispatchPhase2SyncQueue();
+
+            if (local.length === 0) {
+              const remote = await syncHistoryFromServer(userId, local);
+              if (Array.isArray(remote)) return remote;
+            } else {
+              void syncHistoryFromServer(userId, local);
+            }
+            return local;
         } catch (error) {
             logger.error('Error fetching all analyses', error, 'AnalysisService');
             return [];
@@ -84,7 +157,7 @@ export const AnalysisService = {
      */
     deleteAnalyses: async (userId: string, analysisIds: string[]) => {
         try {
-            const analyses = await getStoredAnalyses();
+            const analyses = await getStoredAnalyses(userId);
             const idsToDelete = new Set(analysisIds);
             const filtered = analyses.filter(a => !idsToDelete.has(a.id));
             
@@ -95,7 +168,10 @@ export const AnalysisService = {
             }
             
             if (filtered.length !== analyses.length) {
-                await saveAnalyses(filtered);
+                await saveAnalyses(userId, filtered);
+                const deleteSet = await getHistoryDeleteSet(userId);
+                analysisIds.forEach((id) => deleteSet.add(id));
+                await saveHistoryDeleteSet(userId, deleteSet);
                 logger.info(
                   `[DELETE] Batch Success: ${analysisIds.length} items requested, ${analyses.length - filtered.length} deleted`,
                   undefined,
@@ -113,13 +189,13 @@ export const AnalysisService = {
      */
     updateAnalysisTimestamp: async (userId: string, analysisId: string, newTimestamp: Date) => {
         try {
-            const analyses = await getStoredAnalyses();
+            const analyses = await getStoredAnalyses(userId);
             const index = analyses.findIndex(a => a.id === analysisId);
             
             if (index !== -1) {
                 analyses[index].timestamp = newTimestamp;
                 // Optional: Re-sort if strictly chronological
-                await saveAnalyses(analyses);
+                await saveAnalyses(userId, analyses);
                 logger.info(
                   `[UPDATE] Updated timestamp for ${analysisId} to ${newTimestamp.toISOString()}`,
                   undefined,

@@ -1,4 +1,4 @@
-import { SafeStorage } from '@/services/storage';
+import { SafeStorage } from '@/services/storage_Logic';
 import {
   DEFAULT_FALLBACK_LOCALE,
   DEFAULT_LANGUAGE,

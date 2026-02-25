@@ -7,8 +7,8 @@ from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
 import io
 
-from backend.modules.analyst_runtime.food_analyst import FoodAnalyst
-from backend.modules.analyst_runtime.router_utils import (
+from backend.modules.analyst_runtime.food_analyst_Logic import FoodAnalyst
+from backend.modules.analyst_runtime.router_utils_Logic import (
     build_barcode_route_response,
     build_not_food_response,
     build_router_error_response,

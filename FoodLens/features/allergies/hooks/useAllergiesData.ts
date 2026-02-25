@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserService } from '../../../services/userService';
+import { UserService } from '../../../services/userService_Logic';
 import { getAllergiesUserId } from '../constants/allergies.constants';
 import { mergeAllergyTerms } from '../utils/mergeAllergyTerms';
 import { AllergiesState } from '../types/allergies.types';

@@ -1,5 +1,5 @@
-import { AnalysisRecord } from '../../../services/analysisService';
-import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation';
+import { AnalysisRecord } from '../../../services/analysisService_Logic';
+import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation_Logic';
 
 type RouterLike = {
   push: (route: any) => void;

@@ -28,7 +28,7 @@ type Palette = {
 export const Colors = {
   light: {
     text: '#11181C',
-    background: '#F8FAFC', // Updated from #fff to match design (Slate-50)
+    background: '#FFFFFF',
     tint: tintColorLight,
     icon: '#687076',
     tabIconDefault: '#687076',

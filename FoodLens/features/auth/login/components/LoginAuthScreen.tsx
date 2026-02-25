@@ -4,6 +4,7 @@ import {
   Animated,
   Keyboard,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -138,9 +139,114 @@ export default function LoginAuthScreen({
   onSubmit,
   onOAuthLogin,
 }: LoginAuthScreenProps) {
-  return (
-    <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
-      <Animated.View style={[loginStyles.authContainer, containerStyle]}>
+  const displayedMessage = errorMessage ?? infoMessage;
+  const displayedMessageType: 'error' | 'info' | null = errorMessage
+    ? 'error'
+    : infoMessage
+    ? 'info'
+    : null;
+  const messageLines = displayedMessage
+    ? displayedMessage
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+    : [];
+  const hasMessage = messageLines.length > 0;
+  const resetLayoutActive = passwordResetStepActive;
+  const authContainerStyle = [
+    loginStyles.authContainer,
+    containerStyle,
+    resetLayoutActive ? loginStyles.authContainerInline : null,
+  ];
+
+  const footerContent = (
+    <>
+      {hasMessage ? (
+        <View
+          style={[
+            loginStyles.messageCard,
+            displayedMessageType === 'error'
+              ? loginStyles.errorMessageCard
+              : loginStyles.infoMessageCard,
+          ]}
+        >
+          {messageLines.map((line, index) => (
+            <Text
+              key={`message-line-${index}`}
+              style={[
+                displayedMessageType === 'error'
+                  ? loginStyles.errorMessageText
+                  : loginStyles.infoMessageText,
+                index > 0 ? loginStyles.messageLineGap : null,
+              ]}
+            >
+              {line}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      <Pressable disabled={loading} onPress={onSubmit} style={loginStyles.primaryButton}>
+        {loading ? (
+          <ActivityIndicator color={LOGIN_COLORS.white} />
+        ) : (
+          <Text style={loginStyles.primaryButtonLabel}>{authCopy.primaryButtonLabel}</Text>
+        )}
+      </Pressable>
+
+      {!passwordResetStepActive ? (
+        <>
+          <View style={loginStyles.oauthDivider}>
+            <View style={loginStyles.oauthDividerLine} />
+            <Text style={loginStyles.oauthDividerText}>{copy.oauthDividerText}</Text>
+            <View style={loginStyles.oauthDividerLine} />
+          </View>
+
+          <View style={loginStyles.oauthButtonGroup}>
+            <Pressable
+              testID="oauth-google-button"
+              disabled={loading}
+              onPress={() => onOAuthLogin('google')}
+              accessibilityRole="button"
+              accessibilityLabel={copy.oauthGoogleButton}
+              accessibilityHint={copy.oauthGoogleHint}
+              style={[loginStyles.oauthButton, loginStyles.oauthGoogleButton]}
+            >
+              <GoogleIcon size={18} />
+            </Pressable>
+            <Pressable
+              testID="oauth-kakao-button"
+              disabled={loading}
+              onPress={() => onOAuthLogin('kakao')}
+              accessibilityRole="button"
+              accessibilityLabel={copy.oauthKakaoButton}
+              accessibilityHint={copy.oauthKakaoHint}
+              style={[loginStyles.oauthButton, loginStyles.oauthKakaoButton]}
+            >
+              <KakaoIcon size={18} />
+            </Pressable>
+          </View>
+
+          <View style={loginStyles.switchAuthRow}>
+            <Text style={loginStyles.switchAuthLead}>{authCopy.switchLeadText}</Text>
+            <Pressable onPress={() => onSwitchMode(authCopy.nextMode)}>
+              <Text style={loginStyles.switchAuthAction}>{authCopy.switchActionText}</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <View style={loginStyles.switchAuthRow}>
+          <Pressable onPress={onCancelPasswordReset}>
+            <Text style={loginStyles.switchAuthAction}>{copy.resetPasswordBackToSignIn}</Text>
+          </Pressable>
+        </View>
+      )}
+    </>
+  );
+
+  const formContent = (
+    <>
+      <Animated.View style={authContainerStyle}>
         <View style={loginStyles.authTitleWrap}>
           <Text style={loginStyles.authTitle}>{authCopy.title}</Text>
           <View style={loginStyles.authTitleUnderline} />
@@ -237,67 +343,32 @@ export default function LoginAuthScreen({
           </View>
         ) : null}
       </Animated.View>
+    </>
+  );
 
-      <Animated.View style={[loginStyles.authFooter, footerStyle]}>
-        {infoMessage ? <Text style={loginStyles.infoText}>{infoMessage}</Text> : null}
-        {errorMessage ? <Text style={loginStyles.errorText}>{errorMessage}</Text> : null}
-
-        <Pressable disabled={loading} onPress={onSubmit} style={loginStyles.primaryButton}>
-          {loading ? (
-            <ActivityIndicator color={LOGIN_COLORS.white} />
-          ) : (
-            <Text style={loginStyles.primaryButtonLabel}>{authCopy.primaryButtonLabel}</Text>
-          )}
-        </Pressable>
-
-        {!passwordResetStepActive ? (
-          <>
-            <View style={loginStyles.oauthDivider}>
-              <View style={loginStyles.oauthDividerLine} />
-              <Text style={loginStyles.oauthDividerText}>{copy.oauthDividerText}</Text>
-              <View style={loginStyles.oauthDividerLine} />
-            </View>
-
-            <View style={loginStyles.oauthButtonGroup}>
-              <Pressable
-                testID="oauth-google-button"
-                disabled={loading}
-                onPress={() => onOAuthLogin('google')}
-                accessibilityRole="button"
-                accessibilityLabel={copy.oauthGoogleButton}
-                accessibilityHint={copy.oauthGoogleHint}
-                style={[loginStyles.oauthButton, loginStyles.oauthGoogleButton]}
-              >
-                <GoogleIcon size={18} />
-              </Pressable>
-              <Pressable
-                testID="oauth-kakao-button"
-                disabled={loading}
-                onPress={() => onOAuthLogin('kakao')}
-                accessibilityRole="button"
-                accessibilityLabel={copy.oauthKakaoButton}
-                accessibilityHint={copy.oauthKakaoHint}
-                style={[loginStyles.oauthButton, loginStyles.oauthKakaoButton]}
-              >
-                <KakaoIcon size={18} />
-              </Pressable>
-            </View>
-
-            <View style={loginStyles.switchAuthRow}>
-              <Text style={loginStyles.switchAuthLead}>{authCopy.switchLeadText}</Text>
-              <Pressable onPress={() => onSwitchMode(authCopy.nextMode)}>
-                <Text style={loginStyles.switchAuthAction}>{authCopy.switchActionText}</Text>
-              </Pressable>
-            </View>
-          </>
-        ) : (
-          <View style={loginStyles.switchAuthRow}>
-            <Pressable onPress={onCancelPasswordReset}>
-              <Text style={loginStyles.switchAuthAction}>{copy.resetPasswordBackToSignIn}</Text>
-            </Pressable>
-          </View>
-        )}
+  if (resetLayoutActive) {
+    return (
+      <Animated.View
+        style={[loginStyles.screen, screenStyle]}
+        pointerEvents={isActive ? 'auto' : 'none'}
+      >
+        <ScrollView
+          style={loginStyles.authScroll}
+          contentContainerStyle={loginStyles.authScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {formContent}
+          <View style={loginStyles.authFooterInline}>{footerContent}</View>
+        </ScrollView>
       </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
+      {formContent}
+      <Animated.View style={[loginStyles.authFooter, footerStyle]}>{footerContent}</Animated.View>
     </Animated.View>
   );
 }

@@ -1,5 +1,5 @@
 import type { LocationGeocodedAddress } from 'expo-location';
-import type { LocationData } from './types';
+import type { LocationData } from './types_Structure';
 
 const unique = (parts: string[]): string[] => {
   const deduped: string[] = [];

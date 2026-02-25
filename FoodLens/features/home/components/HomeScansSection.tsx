@@ -5,8 +5,8 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 import { FoodThumbnail } from '../../../components/FoodThumbnail';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
-import { AnalysisRecord } from '../../../services/analysisService';
-import { getBarcodeImageUri, resolveImageUri } from '../../../services/imageStorage';
+import { AnalysisRecord } from '../../../services/analysisService_Logic';
+import { getBarcodeImageUri, resolveImageUri } from '../../../services/imageStorage_Logic';
 import { formatDate, getEmoji } from '../../../services/utils';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { formatHomeSectionTitle, getHomeScanStatusBadge } from '../utils/homeUi';

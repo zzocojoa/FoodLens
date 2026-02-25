@@ -55,6 +55,7 @@ export const emojiPickerStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 12,
+        justifyContent: 'center',
     },
     emojiItem: {
         width: 64,
@@ -82,4 +83,3 @@ export const emojiPickerStyles = StyleSheet.create({
         justifyContent: 'center',
     },
 });
-

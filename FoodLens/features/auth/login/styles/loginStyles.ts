@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { LOGIN_COLORS, LOGIN_LAYOUT } from '../constants/login.constants';
 
 export const loginStyles = StyleSheet.create({
@@ -210,15 +210,48 @@ export const loginStyles = StyleSheet.create({
     bottom: 60,
     zIndex: 30,
   },
-  errorText: {
-    color: '#b91c1c',
-    fontSize: 13,
+  authScroll: {
+    flex: 1,
+  },
+  authScrollContent: {
+    flexGrow: 1,
+  },
+  authFooterInline: {
+    marginTop: 'auto',
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'android' ? 28 : 52,
+    zIndex: 30,
+  },
+  authContainerInline: {
+    paddingBottom: 24,
+  },
+  messageCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 10,
   },
-  infoText: {
+  infoMessageCard: {
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  errorMessageCard: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
+  infoMessageText: {
     color: LOGIN_COLORS.textSecondary,
     fontSize: 13,
-    marginBottom: 10,
+    lineHeight: 20,
+  },
+  errorMessageText: {
+    color: '#b91c1c',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  messageLineGap: {
+    marginTop: 4,
   },
   verificationFieldWrap: {
     marginTop: 10,

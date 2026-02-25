@@ -15,6 +15,8 @@ export const spatialAppleStyles = StyleSheet.create({
   },
   emoji: {
     textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   glow: {
     position: 'absolute',

@@ -1,5 +1,5 @@
-import { AnalysisRecord } from '@/services/analysisService';
-import { getOptionalString, resolveLocalizedText } from '@/services/i18n/nameResolver';
+import { AnalysisRecord } from '@/services/analysisService_Logic';
+import { getOptionalString, resolveLocalizedText } from '@/services/i18n/nameResolver_Logic';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;

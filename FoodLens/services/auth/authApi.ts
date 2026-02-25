@@ -1,4 +1,4 @@
-import { ServerConfig } from '@/services/aiCore/serverConfig';
+import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
 
 const AUTH_TIMEOUT_MS = 15_000;
 

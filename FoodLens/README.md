@@ -44,7 +44,9 @@ cd FoodLens
 npm install
 npm run ios:dev # iOS 시뮬레이터 실행
 npx expo run:ios --device
-npx expo run:ios --configuration Release --device # iOS 7일간 사용가능
+npx expo run:android --device
+npx expo run:ios --configuration Release --device
+npx expo run:android --variant release --device
 # 또는
 npx expo start # Expo Go 실행
 npx expo start --tunnel

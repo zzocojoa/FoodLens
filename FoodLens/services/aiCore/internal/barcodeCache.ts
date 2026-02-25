@@ -1,4 +1,4 @@
-import { SafeStorage } from '../../storage';
+import { SafeStorage } from '../../storage_Logic';
 import { BarcodeLookupResult } from '../types';
 
 const BARCODE_CACHE_KEY_PREFIX = 'barcode_cache_';

@@ -2,7 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
-import { captureError } from '@/services/sentry';
+import { captureError } from '@/services/sentry_Logic';
 
 interface Props {
   children: ReactNode;

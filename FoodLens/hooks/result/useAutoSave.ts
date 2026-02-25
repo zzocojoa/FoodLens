@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { autoSaveService } from './autoSaveService';
 import { shouldAutoSaveResult } from './autoSaveUtils';
-import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute_Logic';
 
 export function useAutoSave(
     result: any, 

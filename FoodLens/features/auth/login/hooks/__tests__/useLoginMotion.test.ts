@@ -4,6 +4,15 @@ import { act, renderHook } from '@testing-library/react-native';
 import { LOGIN_ANIMATION } from '../../constants/login.constants';
 import { useLoginMotion } from '../useLoginMotion';
 
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  }),
+}));
+
 describe('useLoginMotion', () => {
   beforeEach(() => {
     jest.useFakeTimers();

@@ -2,12 +2,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Href } from 'expo-router';
 
 import { AnalyzedData } from '../../../services/ai';
-import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage';
-import { dataStore } from '../../../services/dataStore';
+import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage_Logic';
+import { dataStore } from '../../../services/dataStore_Logic';
 import { normalizeTimestamp } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
 import { createFallbackLocation } from './scanCameraMappers';
-import { buildResultRoute } from '@/services/contracts/resultRoute';
+import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
 
 type LocationLike = {
     isoCountryCode?: string;

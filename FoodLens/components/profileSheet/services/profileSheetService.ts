@@ -1,11 +1,11 @@
-import { UserService } from '@/services/userService';
+import { UserService } from '@/services/userService_Logic';
 import { persistProfileImageIfNeeded } from '../utils/profileSheetStateUtils';
-import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
 import {
   getI18nSnapshot,
   initializeI18nStore,
   setI18nSettings,
-} from '@/features/i18n/services/i18nStore';
+} from '@/features/i18n/services/i18nStore_Logic';
 
 export const profileSheetService = {
   async loadProfile(userId: string) {

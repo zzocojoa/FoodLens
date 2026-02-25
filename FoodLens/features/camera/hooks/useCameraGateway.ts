@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
-import { runCameraImageAnalysis } from '../services/cameraAnalysisService';
+import { runCameraImageAnalysis } from '../services/cameraAnalysisService_Logic';
 import { useCameraPermissionEffects } from './useCameraPermissionEffects';
 import { useCameraGatewayInitialization } from './useCameraGatewayInitialization';
 import { useI18n } from '@/features/i18n';

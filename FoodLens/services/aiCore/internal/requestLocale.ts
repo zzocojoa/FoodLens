@@ -2,7 +2,7 @@ import {
   getDeviceLocale,
   loadLanguageSettings,
   resolveEffectiveLocale,
-} from '@/features/i18n/services/languageService';
+} from '@/features/i18n/services/languageService_Logic';
 import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
 
 export const resolveRequestLocale = async (): Promise<string> => {

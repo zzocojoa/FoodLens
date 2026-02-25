@@ -1,6 +1,6 @@
 import { CountryData } from '../models/History';
-import { AnalysisRecord } from '../services/analysisService';
-import { getBarcodeImageUri, resolveImageUri } from '../services/imageStorage';
+import { AnalysisRecord } from '../services/analysisService_Logic';
+import { getBarcodeImageUri, resolveImageUri } from '../services/imageStorage_Logic';
 import { getEmoji } from '../services/utils';
 import { getLocalizedFoodName } from '../features/home/utils/localizedFoodName';
 export { flattenHistoryData } from './historyDataFlatten';

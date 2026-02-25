@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AnalysisService, AnalysisRecord } from '@/services/analysisService';
+import { AnalysisService, AnalysisRecord } from '@/services/analysisService_Logic';
 
 export const historyKeys = {
   all: ['history'] as const,

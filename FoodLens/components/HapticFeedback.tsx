@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, TouchableOpacityProps, Pressable, PressableProps } from 'react-native';
-import { HapticsService } from '../services/haptics';
+import { HapticsService } from '../services/haptics_Logic';
 
 // 1. Haptic TouchableOpacity
 // Adds medium haptic feedback on press by default

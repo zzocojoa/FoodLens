@@ -95,6 +95,7 @@
   - 데이터 유실/중복 없음
   - request_id/user_id 기준 로그 추적 가능
   - 재설치/기기변경 복원 시나리오 통과
+  - 로컬 Docker Postgres -> Render 유료 Postgres 컷오버 리허설 통과(복구 포함)
 
 ## 7) 리스크와 대응 (쉽게 설명)
 
@@ -110,6 +111,34 @@
 - 동기화 충돌 고도화 정책(Phase 3에서 집중)
 - AI 모델 운영 정책 확장(Phase 4에서 집중)
 - 개인정보 삭제 실운영 자동화(Phase 5에서 집중)
+
+## 9) 컷오버 절차 (로컬 Docker Postgres -> Render 유료 Postgres)
+
+- 사전 조건:
+  - Render 유료 PostgreSQL 인스턴스 생성
+  - 애플리케이션 DB 스키마 마이그레이션 스크립트 준비
+  - 백업/롤백 담당자와 점검 시간대 확정
+- 절차:
+  1. 로컬 DB 백업 덤프 생성
+  2. Render DB에 스키마 적용
+  3. 백업 덤프 복원
+  4. 서버 `DATABASE_URL`을 Render DB로 전환 후 재배포
+  5. `/me/profile`, `/me/allergies`, `/me/history`, `/me/settings` 스모크 테스트
+- 롤백:
+  - 실패 시 이전 `DATABASE_URL`로 즉시 복귀
+  - 덤프 기반 재복원 후 재검증
+- 상세 런북:
+  - `docs/ops/db-cutover-local-to-render-postgres.md`
+
+## 10) 관련 파일 경로
+
+- `docs/roadmap/phase-2-cloud-db-execution.md`
+- `docs/roadmap/cloud-decision-record.md`
+- `docs/roadmap/phase-2-validation-context-prompt.md`
+- `docs/roadmap/master-plan.md`
+- `docs/ops/db-cutover-local-to-render-postgres.md`
+- `.env.example`
+- `FoodLens/.env.example`
 
 ---
 

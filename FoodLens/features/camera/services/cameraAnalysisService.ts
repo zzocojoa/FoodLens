@@ -1,6 +1,6 @@
 import { MutableRefObject } from 'react';
 import { analyzeImage } from '../../../services/ai';
-import { dataStore } from '../../../services/dataStore';
+import { dataStore } from '../../../services/dataStore_Logic';
 import { getLocationData, normalizeTimestamp } from '../../../services/utils';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from '../utils/cameraMappers';
@@ -8,8 +8,8 @@ import {
   assertImageFileReady,
   resolveIsoCodeFromContext,
 } from '../utils/cameraGatewayHelpers';
-import { showAlert } from '@/services/ui/uiAlerts';
-import { logger } from '@/services/logger';
+import { showAlert } from '@/services/ui/uiAlerts_Logic';
+import { logger } from '@/services/logger_Logic';
 
 type RunCameraImageAnalysisParams = {
   uri: string;

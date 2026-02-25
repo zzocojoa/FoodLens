@@ -1,9 +1,13 @@
 
-from .clients.datago_client import DatagoClient
-from .clients.openfoodfacts_client import OpenFoodFactsClient
-from .clients.public_data_client import PublicDataClient
-from .constants import NUTRITION_PATCH_KEYS
-from .normalizers import is_nutrition_missing, normalize_datago, normalize_off
+from .clients.datago_client_Logic import DatagoClient
+from .clients.openfoodfacts_client_Logic import OpenFoodFactsClient
+from .clients.public_data_client_Logic import PublicDataClient
+from .constants_Structure import NUTRITION_PATCH_KEYS
+from .normalizers_Logic import (
+    is_nutrition_missing,
+    normalize_datago,
+    normalize_off,
+)
 from typing import Dict, Any, Optional
 
 class BarcodeService:

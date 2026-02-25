@@ -3,7 +3,10 @@
 import re
 from typing import Final
 
-from .constants import ISO_COUNTRY_TO_LANGUAGE, STANDARD_ALLERGENS
+from .constants_Structure import (
+    ISO_COUNTRY_TO_LANGUAGE,
+    STANDARD_ALLERGENS,
+)
 
 NONE_ALLERGEN_TOKENS: Final[set[str]] = {"none", "없음", "no", ""}
 TOKEN_SPLIT_PATTERN: Final[re.Pattern[str]] = re.compile(r"[,;/\s]+")

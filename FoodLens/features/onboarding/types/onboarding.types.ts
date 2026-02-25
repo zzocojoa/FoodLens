@@ -1,7 +1,6 @@
-import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { AnimatedStyle } from 'react-native-reanimated';
 import type { AllergySeverity, Gender } from '@/features/profile/types/profile.types';
-import type { PermissionResultStatus } from '../services/onboardingPermissionService';
+import type { PermissionResultStatus } from '../services/onboardingPermissionService_Structure';
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
 
@@ -19,4 +18,4 @@ export type CompletePayload = {
   severityMap: SeverityMap;
 };
 
-export type BirthDateChangeHandler = (_event: DateTimePickerEvent, date?: Date) => void;
+export type BirthDateSelectHandler = (date: Date) => void;

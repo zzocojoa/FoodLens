@@ -7,6 +7,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LOGIN_LAYOUT } from '../constants/login.constants';
 import { useLoginScreen } from '../hooks/useLoginScreen';
 import { loginStyles } from '../styles/loginStyles';
@@ -48,7 +49,7 @@ export default function LoginScreen() {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View style={loginStyles.safeArea}>
+      <SafeAreaView style={loginStyles.safeArea} edges={['top', 'bottom']}>
         <View
           style={[
             loginStyles.root,
@@ -67,6 +68,7 @@ export default function LoginScreen() {
 
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              enabled={Platform.OS === 'ios'}
               style={{ flex: 1 }}
             >
               <LoginWelcomeScreen
@@ -120,7 +122,7 @@ export default function LoginScreen() {
             </KeyboardAvoidingView>
           </View>
         </View>
-      </View>
+      </SafeAreaView>
     </TouchableWithoutFeedback>
   );
 }

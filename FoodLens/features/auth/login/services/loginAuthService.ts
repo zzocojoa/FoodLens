@@ -4,8 +4,8 @@ import {
   AuthEmailSignupResult,
   AuthPasswordResetChallenge,
   AuthSessionTokens,
-} from '@/services/auth/authApi';
-import { AuthOAuthProvider } from '@/services/auth/oauthProvider';
+} from '@/services/auth/authApi_Logic';
+import { AuthOAuthProvider } from '@/services/auth/oauthProvider_Logic';
 import { LOGIN_COPY, LOGIN_DEFAULT_LOCALE, LoginCopy } from '../constants/login.constants';
 import { LoginOAuthProvider, LoginSubmitPayload } from '../types/login.types';
 import { normalizeEmail } from '../utils/login.utils';

@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { resolveImageUri } from '../imageStorage';
-import { SafeStorage } from '../storage';
-import { USER_STORAGE_KEY } from './constants';
-import { pickRandomAvatar } from './profileFactory';
+import { resolveImageUri } from '../imageStorage_Logic';
+import { SafeStorage } from '../storage_Logic';
+import { getUserStorageKey } from './constants_Logic';
+import { pickRandomAvatar } from './profileFactory_Logic';
 import { UserProfile } from '../../models/User';
 
 export const resolveAndValidateProfileImage = async (
@@ -46,7 +46,7 @@ export const ensureProfileImageExists = async (uid: string, profile: UserProfile
   console.log('[UserService] Image missing or invalid. Starting migration...');
   try {
     profile.profileImage = pickRandomAvatar();
-    await SafeStorage.set(USER_STORAGE_KEY, profile);
+    await SafeStorage.set(getUserStorageKey(uid), profile);
     console.log(`[Migration] Auto-assigned avatar for user ${uid}: ${profile.profileImage}`);
   } catch (error) {
     console.warn('[Migration] Failed to persist auto-assigned avatar:', error);

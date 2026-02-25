@@ -8,8 +8,8 @@ import { useCameraGateway } from '../hooks/useCameraGateway';
 import { cameraStyles as styles } from '../styles/cameraStyles';
 import { CameraRouteParams } from '../types/camera.types';
 import { useI18n } from '@/features/i18n';
-import { openAppSettings } from '@/services/ui/permissionDialogs';
-import { buildResultRoute } from '@/services/contracts/resultRoute';
+import { openAppSettings } from '@/services/ui/permissionDialogs_Logic';
+import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
 
 export default function CameraScreen() {
     const router = useRouter();

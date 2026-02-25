@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOGIN_ANIMATION, LOGIN_LAYOUT } from '../constants/login.constants';
 import { LoginAuthMode } from '../types/login.types';
 
 const toPhoneStateValue = (mode: LoginAuthMode): number => (mode === 'signup' ? 2 : 1);
 
 export const useLoginMotion = () => {
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
   const phoneStateProgress = useRef(new Animated.Value(0)).current;
   const signupProgress = useRef(new Animated.Value(0)).current;
   const welcomeScreenOpacity = useRef(new Animated.Value(0)).current;
@@ -20,6 +24,44 @@ export const useLoginMotion = () => {
   const [authInteractive, setAuthInteractive] = useState(false);
 
   const entranceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const layoutMetrics = useMemo(() => {
+    const usableHeight = Math.max(
+      1,
+      height - Math.max(0, insets.top) - Math.max(0, insets.bottom),
+    );
+    const platformScaleBias = Platform.OS === 'android' ? 0.97 : 1;
+    const heightScale = Math.max(
+      0.7,
+      Math.min(1, (usableHeight / LOGIN_LAYOUT.phoneMaxHeight) * platformScaleBias),
+    );
+
+    const authMarginTopLogin = Math.round(LOGIN_LAYOUT.authMarginTopLogin * heightScale);
+    const authMarginTopSignup = Math.round(LOGIN_LAYOUT.authMarginTopSignup * heightScale);
+    const welcomeTitleMarginTop = Math.round(
+      LOGIN_LAYOUT.welcomeTitleMarginTop * heightScale,
+    );
+
+    const minFooterBottom =
+      Platform.OS === 'android'
+        ? 28
+        : LOGIN_LAYOUT.footerBottomOffset;
+    const footerBottom = Math.max(
+      minFooterBottom,
+      insets.bottom + (Platform.OS === 'android' ? 8 : 16),
+    );
+    const authFooterReserve =
+      LOGIN_LAYOUT.authFooterReservedHeight +
+      Math.max(0, footerBottom - LOGIN_LAYOUT.footerBottomOffset);
+
+    return {
+      authMarginTopLogin,
+      authMarginTopSignup,
+      welcomeTitleMarginTop,
+      footerBottom,
+      authFooterReserve,
+    };
+  }, [height, insets.bottom, insets.top]);
 
   const clearEntranceTimer = useCallback(() => {
     if (entranceTimerRef.current) {
@@ -188,13 +230,14 @@ export const useLoginMotion = () => {
     const authContainerMarginTop = phoneStateProgress.interpolate({
       inputRange: [0, 1, 2],
       outputRange: [
-        LOGIN_LAYOUT.authMarginTopLogin,
-        LOGIN_LAYOUT.authMarginTopLogin,
-        LOGIN_LAYOUT.authMarginTopSignup,
+        layoutMetrics.authMarginTopLogin,
+        layoutMetrics.authMarginTopLogin,
+        layoutMetrics.authMarginTopSignup,
       ],
     });
 
     const welcomeTitleStyle = {
+      marginTop: layoutMetrics.welcomeTitleMarginTop,
       opacity: welcomeTitleProgress,
       transform: [
         {
@@ -219,6 +262,7 @@ export const useLoginMotion = () => {
     };
 
     const welcomeContinueStyle = {
+      bottom: layoutMetrics.footerBottom,
       opacity: welcomeContinueProgress,
       transform: [
         {
@@ -231,6 +275,7 @@ export const useLoginMotion = () => {
     };
 
     const authFooterStyle = {
+      bottom: layoutMetrics.footerBottom,
       opacity: authFooterProgress,
       transform: [
         {
@@ -264,7 +309,10 @@ export const useLoginMotion = () => {
       welcomeDescriptionStyle,
       welcomeContinueStyle,
       authScreenStyle: { opacity: authScreenOpacity },
-      authContainerStyle: { marginTop: authContainerMarginTop },
+      authContainerStyle: {
+        marginTop: authContainerMarginTop,
+        paddingBottom: layoutMetrics.authFooterReserve,
+      },
       authFooterStyle,
       signupFieldStyle,
       loginActionRowStyle,
@@ -272,6 +320,11 @@ export const useLoginMotion = () => {
   }, [
     authFooterProgress,
     authScreenOpacity,
+    layoutMetrics.authFooterReserve,
+    layoutMetrics.authMarginTopLogin,
+    layoutMetrics.authMarginTopSignup,
+    layoutMetrics.footerBottom,
+    layoutMetrics.welcomeTitleMarginTop,
     phoneStateProgress,
     signupProgress,
     welcomeContinueProgress,

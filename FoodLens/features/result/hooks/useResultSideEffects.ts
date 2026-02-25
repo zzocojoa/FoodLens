@@ -1,10 +1,10 @@
 import React from 'react';
 
-import { AnalysisService } from '@/services/analysisService';
-import { HapticsService } from '@/services/haptics';
-import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
-import type { ResultSourceType } from '@/services/contracts/resultRoute';
-import { photoLibraryService } from '../services/photoLibraryService';
+import { AnalysisService } from '@/services/analysisService_Logic';
+import { HapticsService } from '@/services/haptics_Logic';
+import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
+import type { ResultSourceType } from '@/services/contracts/resultRoute_Structure';
+import { photoLibraryService } from '../services/photoLibraryService_Logic';
 import { getResultUserId } from '../constants/result.constants';
 
 export const useDateUpdateAction = (

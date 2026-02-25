@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { DEFAULT_LANGUAGE } from '../constants';
 import { CanonicalLocale, I18nState, LanguageSettings } from '../types';
-import { loadLanguageSettings, resolveEffectiveLocale, saveLanguageSettings } from './languageService';
+import { loadLanguageSettings, resolveEffectiveLocale, saveLanguageSettings } from './languageService_Logic';
 
 type Listener = () => void;
 

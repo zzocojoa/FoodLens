@@ -2,15 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
-import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
+import { AnalysisRecord, AnalysisService } from '../../../services/analysisService_Logic';
 import { UserProfile } from '../../../models/User';
 import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
 import { HomeModalType } from '../types/home.types';
 import { filterScansByDate } from '../utils/homeDashboard';
-import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
+import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService_Logic';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts';
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;

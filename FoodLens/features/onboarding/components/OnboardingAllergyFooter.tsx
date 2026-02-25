@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardingStyles as styles } from '../styles/onboarding.styles';
 import type { Translate } from '../types/onboarding.types';
 
@@ -11,8 +12,19 @@ type Props = {
 };
 
 export default function OnboardingAllergyFooter({ theme, t, onContinue, onSkip }: Props) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={[styles.footerContainer, { backgroundColor: theme.background, borderTopColor: theme.border }]}>
+    <View
+      style={[
+        styles.footerContainer,
+        {
+          backgroundColor: theme.background,
+          borderTopColor: theme.border,
+          paddingBottom: Math.max(10, insets.bottom + 6),
+        },
+      ]}
+    >
       <TouchableOpacity
         style={[styles.primaryButton, { backgroundColor: theme.primary, flex: 1 }]}
         onPress={onContinue}

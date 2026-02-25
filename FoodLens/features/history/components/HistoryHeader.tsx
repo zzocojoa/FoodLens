@@ -10,6 +10,7 @@ type HistoryHeaderProps = {
     theme: any;
     archiveMode: ArchiveMode;
     isEditMode: boolean;
+    isMapModeAvailable?: boolean;
     onBack: () => void;
     onSwitchMode: (mode: ArchiveMode) => void;
     onToggleEdit: () => void;
@@ -20,6 +21,7 @@ export default function HistoryHeader({
     theme,
     archiveMode,
     isEditMode,
+    isMapModeAvailable = true,
     onBack,
     onSwitchMode,
     onToggleEdit,
@@ -71,10 +73,12 @@ export default function HistoryHeader({
                     </>
                 )}
                 <TouchableOpacity
+                    disabled={!isMapModeAvailable}
                     onPress={() => onSwitchMode('map')}
                     style={[
                         styles.toggleButton,
                         archiveMode === 'map' && { backgroundColor: theme.textPrimary, shadowColor: theme.shadow },
+                        !isMapModeAvailable && { opacity: 0.45 },
                     ]}
                     hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                 >

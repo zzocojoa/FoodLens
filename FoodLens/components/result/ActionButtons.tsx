@@ -3,16 +3,18 @@ import { ArrowUpCircle } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '../HapticFeedback';
 import { actionButtonsStyles as styles } from './styles/actionButtons.styles';
 import { useActionButtonsModel } from './hooks/useActionButtonsModel';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ActionButtonsProps = {
   t: (key: string, fallback?: string) => string;
 };
 
 export function ActionButtons({ t }: ActionButtonsProps) {
+  const insets = useSafeAreaInsets();
   const { buttonTheme, shadowColor, onGoHome } = useActionButtonsModel();
   
   return (
-    <View style={styles.bottomFloat}>
+    <View style={[styles.bottomFloat, { bottom: Math.max(30, insets.bottom + 16) }]}>
         <HapticTouchableOpacity 
             style={[
                 styles.saveButton, 

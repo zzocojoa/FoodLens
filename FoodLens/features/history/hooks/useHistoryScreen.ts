@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation } from 'react-native';
+import { LayoutAnimation, Platform } from 'react-native';
 import { ArchiveMode } from '../types/history.types';
 import { confirmBulkDelete } from '../utils/historyDialogs';
 import { toggleInSet } from '../utils/historySelection';
 import { useI18n } from '@/features/i18n';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 
 type UseHistoryScreenOptions = {
     deleteMultipleItems: (ids: Set<string>) => Promise<void>;
@@ -11,16 +12,27 @@ type UseHistoryScreenOptions = {
 
 export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOptions) => {
     const { t } = useI18n();
-    const [archiveMode, setArchiveMode] = useState<ArchiveMode>('map');
+    const [archiveMode, setArchiveMode] = useState<ArchiveMode>('list');
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const savedMapRegionRef = useRef<any>(null);
+    const hasAndroidGoogleMapsApiKey = (process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] ?? '').trim().length > 0;
+    const isMapModeAvailable = Platform.OS !== 'android' || hasAndroidGoogleMapsApiKey;
 
     const handleSwitchMode = useCallback((mode: ArchiveMode) => {
+        if (mode === 'map' && !isMapModeAvailable) {
+            showTranslatedAlert(t, {
+                titleKey: 'history.map.unavailableTitle',
+                titleFallback: 'Map unavailable',
+                messageKey: 'history.map.unavailableMessage',
+                messageFallback: 'Map view is unavailable on this build. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild Android.',
+            });
+            return;
+        }
         if (mode === 'map') setIsEditMode(false);
         LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
         setArchiveMode(mode);
-    }, []);
+    }, [isMapModeAvailable, t]);
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((prev) => !prev);
@@ -45,6 +57,7 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         isEditMode,
         selectedItems,
         savedMapRegionRef,
+        isMapModeAvailable,
         handleSwitchMode,
         toggleEditMode,
         toggleSelectItem,
@@ -54,6 +67,7 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         isEditMode,
         selectedItems,
         savedMapRegionRef,
+        isMapModeAvailable,
         handleSwitchMode,
         toggleEditMode,
         toggleSelectItem,

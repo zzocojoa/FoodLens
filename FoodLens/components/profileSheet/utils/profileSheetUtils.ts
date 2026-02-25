@@ -1,5 +1,5 @@
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
-import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
+import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage_Logic';
 import { CanonicalLocale } from '@/features/i18n';
 
 export const toLanguageLabel = (language: string | undefined): string => {

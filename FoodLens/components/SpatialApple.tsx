@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { Platform, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Animated from 'react-native-reanimated';
 import { useSpatialAppleMotion } from './spatialApple/hooks/useSpatialAppleMotion';
 import { spatialAppleStyles as styles } from './spatialApple/styles';
 import { SpatialAppleProps } from './spatialApple/types';
+import { getEmojiImageUri } from './spatialApple/emojiImage';
 
 /**
  * Spatial Parallax Apple
@@ -13,6 +15,15 @@ import { SpatialAppleProps } from './spatialApple/types';
  */
 export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetect }: SpatialAppleProps) {
     const { animatedStyle, glowStyle, highlightStyle } = useSpatialAppleMotion(emoji, onMotionDetect);
+    const emojiFontSize = size * 0.8;
+    const emojiImageSize = size * 0.8;
+    const emojiLineHeight = Platform.OS === 'android' ? Math.round(emojiFontSize * 1.08) : undefined;
+    const emojiImageUri = React.useMemo(() => getEmojiImageUri(emoji), [emoji]);
+    const [imageLoadFailed, setImageLoadFailed] = React.useState(false);
+
+    React.useEffect(() => {
+      setImageLoadFailed(false);
+    }, [emojiImageUri]);
 
     return (
         <View style={[styles.container, { width: size, height: size }]}>
@@ -21,7 +32,27 @@ export default function SpatialApple({ size = 100, emoji = '🍎', onMotionDetec
             
             {/* Layer 2: Main Apple Shape */}
             <Animated.View style={[styles.appleContainer, animatedStyle]}>
-                 <Text style={[styles.emoji, { fontSize: size * 0.8 }]}>{emoji}</Text>
+                 {emojiImageUri && !imageLoadFailed ? (
+                   <Image
+                     source={{ uri: emojiImageUri }}
+                     contentFit="contain"
+                     cachePolicy="memory-disk"
+                     style={{ width: emojiImageSize, height: emojiImageSize }}
+                     onError={() => setImageLoadFailed(true)}
+                   />
+                 ) : (
+                   <Text
+                     style={[
+                       styles.emoji,
+                       {
+                         fontSize: emojiFontSize,
+                         lineHeight: emojiLineHeight,
+                       },
+                     ]}
+                   >
+                     {emoji}
+                   </Text>
+                 )}
             </Animated.View>
 
             {/* Layer 3: Specular Highlight (Front) */}

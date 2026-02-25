@@ -1,6 +1,7 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, Switch } from 'react-native';
+import { Platform, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 import type { Translate } from '../../types/onboarding.types';
 
@@ -29,55 +30,130 @@ export default function PermissionsStep({
   onAllow,
   onSkip,
 }: Props) {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+  const usableHeight = Math.max(1, screenHeight - Math.max(0, insets.top) - Math.max(0, insets.bottom));
+  const platformScaleBias = Platform.OS === 'android' ? 0.96 : 1;
+  const fitScale = Math.max(0.76, Math.min(1, (usableHeight / 812) * platformScaleBias));
+  const heroBoxSize = Math.round(120 * fitScale);
+  const heroIconSize = Math.max(40, Math.round(60 * fitScale));
+  const heroBadgeSize = Math.max(28, Math.round(40 * fitScale));
+  const heroBadgeIconSize = Math.max(14, Math.round(20 * fitScale));
+  const heroMarginBottom = Math.max(14, Math.round(24 * fitScale));
+  const cardPadding = Math.max(14, Math.round(20 * fitScale));
+  const cardGap = Math.max(10, Math.round(16 * fitScale));
+  const cardBottom = Math.max(14, Math.round(24 * fitScale));
+  const sectionIconSize = Math.max(20, Math.round(28 * fitScale));
+  const sectionIconBoxSize = Math.max(42, Math.round(52 * fitScale));
+  const titleSize = Math.max(30, Math.round(34 * fitScale));
+  const subtitleSize = Math.max(14, Math.round(17 * fitScale));
+  const subtitleLineHeight = Math.max(20, Math.round(24 * fitScale));
+  const primaryVerticalPadding = Math.max(14, Math.round(18 * fitScale));
+  const bottomSafePadding = Math.max(
+    Platform.OS === 'android' ? 8 : 10,
+    insets.bottom + (Platform.OS === 'android' ? 4 : 8),
+  );
 
   return (
-    <View style={styles.stepContainer}>
-      <View style={styles.heroArea}>
-        {/* Hero visualization - mimicking the HTML's 3D icon look with available icons */}
-        <View style={{ marginBottom: 24, alignItems: 'center' }}>
-            <View style={{ 
-                width: 120, height: 120, borderRadius: 30, 
-                backgroundColor: theme.surface, 
-                alignItems: 'center', justifyContent: 'center',
-                shadowColor: theme.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10,
-                borderWidth: 1, borderColor: theme.border
-            }}>
-                <Ionicons name="camera" size={60} color={theme.primary} />
-                <View style={{
-                    position: 'absolute', top: -10, right: -10,
-                    width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: theme.surface,
-                    alignItems: 'center', justifyContent: 'center',
-                    borderWidth: 1, borderColor: theme.border,
-                    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4
-                }}>
-                     <Ionicons name="images" size={20} color={theme.textSecondary} />
-                </View>
+    <View style={[styles.stepContainer, { justifyContent: 'flex-start', paddingBottom: bottomSafePadding }]}>
+      <View style={{ flex: 1 }}>
+        <View style={[styles.heroArea, { marginBottom: heroMarginBottom }]}>
+          <View style={{ marginBottom: heroMarginBottom, alignItems: 'center' }}>
+            <View
+              style={{
+                width: heroBoxSize,
+                height: heroBoxSize,
+                borderRadius: Math.round(heroBoxSize * 0.25),
+                backgroundColor: theme.surface,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: theme.primary,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 10,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}
+            >
+              <Ionicons name="camera" size={heroIconSize} color={theme.primary} />
+              <View
+                style={{
+                  position: 'absolute',
+                  top: Math.round(-10 * fitScale),
+                  right: Math.round(-10 * fitScale),
+                  width: heroBadgeSize,
+                  height: heroBadgeSize,
+                  borderRadius: Math.round(heroBadgeSize * 0.3),
+                  backgroundColor: theme.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                }}
+              >
+                <Ionicons name="images" size={heroBadgeIconSize} color={theme.textSecondary} />
+              </View>
             </View>
+          </View>
+
+          <Text style={[styles.welcomeTitle, { color: theme.textPrimary, fontSize: titleSize }]}>
+            {t('onboarding.permissions.title', "Let's set up your lens")}
+          </Text>
+          <Text
+            style={[
+              styles.welcomeSubtitle,
+              {
+                color: theme.textSecondary,
+                fontSize: subtitleSize,
+                lineHeight: subtitleLineHeight,
+              },
+            ]}
+          >
+            {t(
+              'onboarding.permissions.subtitle',
+              'To protect you from allergens, our AI needs to see what you eat.',
+            )}
+          </Text>
         </View>
 
-        <Text style={[styles.welcomeTitle, { color: theme.textPrimary }]}>
-          {t('onboarding.permissions.title', "Let's set up your lens")}
-        </Text>
-        <Text style={[styles.welcomeSubtitle, { color: theme.textSecondary }]}>
-          {t(
-            'onboarding.permissions.subtitle',
-            'To protect you from allergens, our AI needs to see what you eat.',
-          )}
-        </Text>
-      </View>
-
-      <View style={[styles.permissionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+        <View
+          style={[
+            styles.permissionCard,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+              borderWidth: 1,
+              padding: cardPadding,
+              gap: cardGap,
+              marginBottom: cardBottom,
+            },
+          ]}
+        >
         {/* Camera Permission */}
         <View style={styles.permissionRow}>
-          <View style={[styles.permissionIcon, { backgroundColor: `${theme.primary}20` }]}>
-            <Ionicons name="videocam" size={28} color={theme.primary} />
+          <View
+            style={[
+              styles.permissionIcon,
+              {
+                backgroundColor: `${theme.primary}20`,
+                width: sectionIconBoxSize,
+                height: sectionIconBoxSize,
+                borderRadius: Math.round(sectionIconBoxSize * 0.3),
+              },
+            ]}
+          >
+            <Ionicons name="videocam" size={sectionIconSize} color={theme.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary }]}>
+            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
               {t('onboarding.permissions.camera', 'Camera Access')}
             </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
               {t('onboarding.permissions.cameraDesc', 'To scan real-time meals')}
             </Text>
           </View>
@@ -92,15 +168,25 @@ export default function PermissionsStep({
         </View>
 
         {/* Library Permission */}
-        <View style={[styles.permissionRow, { marginTop: 16 }]}>
-          <View style={[styles.permissionIcon, { backgroundColor: `${theme.textSecondary}20` }]}>
-            <Ionicons name="images" size={28} color={theme.textSecondary} />
+        <View style={[styles.permissionRow, { marginTop: cardGap }]}>
+          <View
+            style={[
+              styles.permissionIcon,
+              {
+                backgroundColor: `${theme.textSecondary}20`,
+                width: sectionIconBoxSize,
+                height: sectionIconBoxSize,
+                borderRadius: Math.round(sectionIconBoxSize * 0.3),
+              },
+            ]}
+          >
+            <Ionicons name="images" size={sectionIconSize} color={theme.textSecondary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary }]}>
+            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
               {t('onboarding.permissions.gallery', 'Photo Library')}
             </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
               {t('onboarding.permissions.galleryDesc', 'To analyze saved photos')}
             </Text>
           </View>
@@ -115,15 +201,25 @@ export default function PermissionsStep({
         </View>
 
         {/* Location Permission */}
-        <View style={[styles.permissionRow, { marginTop: 16 }]}>
-          <View style={[styles.permissionIcon, { backgroundColor: `${theme.primary}20` }]}>
-            <Ionicons name="location" size={28} color={theme.primary} />
+        <View style={[styles.permissionRow, { marginTop: cardGap }]}>
+          <View
+            style={[
+              styles.permissionIcon,
+              {
+                backgroundColor: `${theme.primary}20`,
+                width: sectionIconBoxSize,
+                height: sectionIconBoxSize,
+                borderRadius: Math.round(sectionIconBoxSize * 0.3),
+              },
+            ]}
+          >
+            <Ionicons name="location" size={sectionIconSize} color={theme.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary }]}>
+            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
               {t('onboarding.permissions.location', 'Location Access')}
             </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
               {t('onboarding.permissions.locationDesc', 'To detect your current travel country')}
             </Text>
           </View>
@@ -135,11 +231,18 @@ export default function PermissionsStep({
             accessibilityLabel={t('onboarding.permissions.location', 'Location Access')}
             accessibilityHint={t('onboarding.permissions.locationDesc', 'To detect your current travel country')}
           />
+          </View>
         </View>
       </View>
 
       <TouchableOpacity
-        style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+        style={[
+          styles.primaryButton,
+          {
+            backgroundColor: theme.primary,
+            paddingVertical: primaryVerticalPadding,
+          },
+        ]}
         onPress={() => onAllow(cameraAllowed, libraryAllowed, locationAllowed)}
         activeOpacity={0.8}
         accessibilityRole="button"
@@ -151,7 +254,7 @@ export default function PermissionsStep({
       
       <TouchableOpacity
         onPress={onSkip}
-        style={styles.skipButton}
+        style={[styles.skipButton, { marginTop: Math.max(8, Math.round(14 * fitScale)) }]}
         accessibilityRole="button"
         accessibilityLabel={t('onboarding.skip', 'Maybe Later')}
         accessibilityHint={t('onboarding.accessibility.skipHint', 'Skip this step and continue')}

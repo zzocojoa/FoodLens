@@ -61,7 +61,11 @@ export default function LanguageSelectorModal({
                     <View {...panHandlers} style={[styles.header, { marginBottom: 20, justifyContent: 'center' }]}>
                         <Text style={[styles.title, { color: theme.textPrimary }]}>{title}</Text>
                     </View>
-                    <ScrollView showsVerticalScrollIndicator={false}>
+                    <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="always"
+                        keyboardDismissMode="on-drag"
+                    >
                         {options.map((opt) => (
                             <HapticTouchableOpacity
                                 key={opt.code}

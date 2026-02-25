@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
+import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi_Logic';
 
 export type OAuthProvider = 'google' | 'kakao';
 type OAuthMode = 'mock' | 'live';
@@ -26,13 +26,13 @@ const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
 const getExpoPublicOAuthMode = (): string => {
   const runtime = readRuntimeEnv('EXPO_PUBLIC_AUTH_OAUTH_MODE');
   if (runtime) return runtime;
-  return process.env.EXPO_PUBLIC_AUTH_OAUTH_MODE ?? '';
+  return process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] ?? '';
 };
 
 const getExpoPublicAnalysisServerUrl = (): string => {
   const runtime = readRuntimeEnv('EXPO_PUBLIC_ANALYSIS_SERVER_URL');
   if (runtime) return runtime;
-  return process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL ?? '';
+  return process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] ?? '';
 };
 
 const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
@@ -41,8 +41,8 @@ const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
   );
   if (runtime) return runtime;
   return provider === 'google'
-    ? process.env.EXPO_PUBLIC_AUTH_GOOGLE_START_URL ?? ''
-    : process.env.EXPO_PUBLIC_AUTH_KAKAO_START_URL ?? '';
+    ? process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] ?? ''
+    : process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] ?? '';
 };
 
 const normalizedQueryValue = (value: unknown): string | undefined => {

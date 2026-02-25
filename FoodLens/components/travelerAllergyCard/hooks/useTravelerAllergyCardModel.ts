@@ -2,7 +2,7 @@ import { useTravelerAllergens } from './useTravelerAllergens';
 import { buildDisplayData, buildTravelerMessage, isNullAiTranslation } from '../utils';
 import { AiTranslation } from '../types';
 import { useTravelerCardTargetLanguage } from './useTravelerCardTargetLanguage';
-import { resolveTravelerCardCountryCode, resolveTravelerLanguageMode } from '@/services/travelerCardLanguage';
+import { resolveTravelerCardCountryCode, resolveTravelerLanguageMode } from '@/services/travelerCardLanguage_Logic';
 
 export const useTravelerAllergyCardModel = (
   countryCode: string | null | undefined,

@@ -11,12 +11,12 @@ from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Literal
 from uuid import uuid4
-from .email_sender import (
+from .email_sender_Logic import (
     EmailVerificationDeliveryError,
     EmailVerificationSender,
-    LoggingEmailVerificationSender,
     build_email_verification_sender_from_env,
 )
+from .email_sender_Structure import LoggingEmailVerificationSender
 
 RefreshStatus = Literal["active", "used", "revoked", "expired"]
 
@@ -74,6 +74,35 @@ class UserProfile:
     display_name: str | None
     locale: str
     timezone: str
+    created_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(slots=True)
+class UserAllergiesProfile:
+    user_id: str
+    allergies: list[str] = field(default_factory=list)
+    dietary_restrictions: list[str] = field(default_factory=list)
+    severity_map: dict[str, str] = field(default_factory=dict)
+    updated_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(slots=True)
+class UserSettingsProfile:
+    user_id: str
+    language: str = "auto"
+    target_language: str | None = None
+    auto_play_audio: bool = False
+    selected_emoji: str | None = None
+    updated_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(slots=True)
+class UserHistoryRecord:
+    history_id: str
+    user_id: str
+    entry: dict[str, object]
+    idempotency_key: str | None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
 
@@ -174,6 +203,10 @@ class InMemoryAuthSessionService:
         self._user_id_by_email: dict[str, str] = {}
         self._provider_subject_to_user_id: dict[str, str] = {}
         self._profiles_by_user_id: dict[str, UserProfile] = {}
+        self._allergies_by_user_id: dict[str, UserAllergiesProfile] = {}
+        self._settings_by_user_id: dict[str, UserSettingsProfile] = {}
+        self._history_by_user_id: dict[str, list[UserHistoryRecord]] = {}
+        self._history_idempotency_by_user_id: dict[str, dict[str, str]] = {}
 
         self._sessions: dict[str, SessionRecord] = {}
         self._session_ids_by_family: dict[str, set[str]] = {}
@@ -777,6 +810,152 @@ class InMemoryAuthSessionService:
 
             return self._serialize_profile(profile)
 
+    def get_allergies(self, *, user_id: str) -> dict[str, object]:
+        with self._lock:
+            profile = self._allergies_by_user_id.get(user_id)
+            if profile is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            return self._serialize_allergies(profile)
+
+    def update_allergies(
+        self,
+        *,
+        user_id: str,
+        allergies: list[str] | None,
+        dietary_restrictions: list[str] | None,
+        severity_map: dict[str, str] | None,
+    ) -> dict[str, object]:
+        with self._lock:
+            profile = self._allergies_by_user_id.get(user_id)
+            if profile is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            if allergies is not None:
+                profile.allergies = [item.strip() for item in allergies if isinstance(item, str) and item.strip()]
+            if dietary_restrictions is not None:
+                profile.dietary_restrictions = [
+                    item.strip()
+                    for item in dietary_restrictions
+                    if isinstance(item, str) and item.strip()
+                ]
+            if severity_map is not None:
+                profile.severity_map = {
+                    str(key).strip(): str(value).strip()
+                    for key, value in severity_map.items()
+                    if str(key).strip() and str(value).strip()
+                }
+            profile.updated_at = _utc_now()
+            return self._serialize_allergies(profile)
+
+    def get_settings(self, *, user_id: str) -> dict[str, object]:
+        with self._lock:
+            settings = self._settings_by_user_id.get(user_id)
+            if settings is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            return self._serialize_settings(settings)
+
+    def update_settings(
+        self,
+        *,
+        user_id: str,
+        language: str | None,
+        target_language: str | None,
+        auto_play_audio: bool | None,
+        selected_emoji: str | None,
+    ) -> dict[str, object]:
+        with self._lock:
+            settings = self._settings_by_user_id.get(user_id)
+            if settings is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            if language is not None:
+                normalized_language = language.strip()
+                if normalized_language:
+                    settings.language = normalized_language
+            if target_language is not None:
+                normalized_target = target_language.strip()
+                settings.target_language = normalized_target or None
+            if auto_play_audio is not None:
+                settings.auto_play_audio = bool(auto_play_audio)
+            if selected_emoji is not None:
+                normalized_emoji = selected_emoji.strip()
+                settings.selected_emoji = normalized_emoji or None
+            settings.updated_at = _utc_now()
+            return self._serialize_settings(settings)
+
+    def get_history(self, *, user_id: str, limit: int | None = None) -> list[dict[str, object]]:
+        with self._lock:
+            records = self._history_by_user_id.get(user_id)
+            if records is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            if limit is None or limit <= 0:
+                selected = records
+            else:
+                selected = records[:limit]
+            return [self._serialize_history_item(record) for record in selected]
+
+    def append_history(
+        self,
+        *,
+        user_id: str,
+        entry: dict[str, object],
+        idempotency_key: str | None,
+    ) -> dict[str, object]:
+        with self._lock:
+            records = self._history_by_user_id.get(user_id)
+            if records is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            normalized_key = (idempotency_key or "").strip() or None
+            if normalized_key:
+                user_map = self._history_idempotency_by_user_id.setdefault(user_id, {})
+                existing_history_id = user_map.get(normalized_key)
+                if existing_history_id:
+                    for record in records:
+                        if record.history_id == existing_history_id:
+                            return self._serialize_history_item(record)
+
+            history_record = UserHistoryRecord(
+                history_id=_random_id("his"),
+                user_id=user_id,
+                entry={**entry},
+                idempotency_key=normalized_key,
+            )
+            records.insert(0, history_record)
+            if normalized_key:
+                self._history_idempotency_by_user_id.setdefault(user_id, {})[normalized_key] = history_record.history_id
+            return self._serialize_history_item(history_record)
+
     def _create_user(
         self,
         *,
@@ -814,6 +993,10 @@ class InMemoryAuthSessionService:
             locale=user.locale,
             timezone="UTC",
         )
+        self._allergies_by_user_id[user.user_id] = UserAllergiesProfile(user_id=user.user_id)
+        self._settings_by_user_id[user.user_id] = UserSettingsProfile(user_id=user.user_id, language=user.locale or "auto")
+        self._history_by_user_id[user.user_id] = []
+        self._history_idempotency_by_user_id[user.user_id] = {}
         return user
 
     def _create_session_bundle(self, *, user: AuthUser, provider: str, device_id: str | None) -> dict[str, object]:
@@ -833,6 +1016,10 @@ class InMemoryAuthSessionService:
         self._email_verifications_by_user_id.pop(user.user_id, None)
         self._password_resets_by_user_id.pop(user.user_id, None)
         self._profiles_by_user_id.pop(user.user_id, None)
+        self._allergies_by_user_id.pop(user.user_id, None)
+        self._settings_by_user_id.pop(user.user_id, None)
+        self._history_by_user_id.pop(user.user_id, None)
+        self._history_idempotency_by_user_id.pop(user.user_id, None)
         self._users_by_id.pop(user.user_id, None)
         if self._user_id_by_email.get(user.email) == user.user_id:
             self._user_id_by_email.pop(user.email, None)
@@ -981,6 +1168,35 @@ class InMemoryAuthSessionService:
             "timezone": profile.timezone,
             "created_at": _to_iso8601(profile.created_at),
             "updated_at": _to_iso8601(profile.updated_at),
+        }
+
+    def _serialize_allergies(self, profile: UserAllergiesProfile) -> dict[str, object]:
+        return {
+            "user_id": profile.user_id,
+            "allergies": [*profile.allergies],
+            "dietary_restrictions": [*profile.dietary_restrictions],
+            "severity_map": {**profile.severity_map},
+            "updated_at": _to_iso8601(profile.updated_at),
+        }
+
+    def _serialize_settings(self, settings: UserSettingsProfile) -> dict[str, object]:
+        return {
+            "user_id": settings.user_id,
+            "language": settings.language,
+            "target_language": settings.target_language,
+            "auto_play_audio": settings.auto_play_audio,
+            "selected_emoji": settings.selected_emoji,
+            "updated_at": _to_iso8601(settings.updated_at),
+        }
+
+    def _serialize_history_item(self, item: UserHistoryRecord) -> dict[str, object]:
+        return {
+            "id": item.history_id,
+            "user_id": item.user_id,
+            "entry": {**item.entry},
+            "idempotency_key": item.idempotency_key,
+            "created_at": _to_iso8601(item.created_at),
+            "updated_at": _to_iso8601(item.updated_at),
         }
 
     def _validate_password(self, password: str) -> None:

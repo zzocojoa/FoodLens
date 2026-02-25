@@ -1,10 +1,10 @@
-import { mapAnalyzedData } from './mappers';
+import { mapAnalyzedData } from './mappers_Logic';
 import { AnalyzedData, BarcodeLookupResult } from './types';
 import {
     performMultipartAnalysisUpload,
     rethrowTimeoutAsColdStartMessage,
-} from './internal/analyzeUpload';
-import { lookupBarcodeWithAllergyContext } from './internal/barcodeLookup';
+} from './internal/analyzeUpload_Logic';
+import { lookupBarcodeWithAllergyContext } from './internal/barcodeLookup_Logic';
 
 export const analyzeImage = async (
     imageUri: string,

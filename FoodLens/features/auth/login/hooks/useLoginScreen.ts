@@ -1,16 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Keyboard } from 'react-native';
-import { AuthSessionTokens, isAuthEmailVerificationChallenge } from '@/services/auth/authApi';
-import { hasSeenOnboarding } from '@/services/storage';
-import { persistSession } from '@/services/auth/sessionManager';
+import { AuthSessionTokens, isAuthEmailVerificationChallenge } from '@/services/auth/authApi_Logic';
+import { hasSeenOnboarding } from '@/services/storage_Logic';
+import { persistSession } from '@/services/auth/sessionManager_Logic';
 import { useI18n } from '@/features/i18n';
 import {
   createLoginCopy,
+  LOGIN_ALERT_AUTO_DISMISS_MS,
   LOGIN_INITIAL_FORM_VALUES,
   LOGIN_PASSWORD_MIN_LENGTH,
 } from '../constants/login.constants';
-import { loginAuthService } from '../services/loginAuthService';
+import { loginAuthService } from '../services/loginAuthService_Logic';
 import {
   LoginAuthMode,
   LoginFormValues,
@@ -42,9 +43,33 @@ export const useLoginScreen = () => {
   const [pendingPasswordReset, setPendingPasswordReset] = useState<LoginPendingPasswordReset | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const transientErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { motion, welcomeInteractive, authInteractive, goToAuth, setAuthMode } = useLoginMotion();
   const loginCopy = useMemo(() => createLoginCopy(t), [t]);
+
+  const clearTransientErrorTimeout = () => {
+    if (!transientErrorTimeoutRef.current) {
+      return;
+    }
+    clearTimeout(transientErrorTimeoutRef.current);
+    transientErrorTimeoutRef.current = null;
+  };
+
+  const showTransientError = (message: string) => {
+    clearTransientErrorTimeout();
+    setErrorMessage(message);
+    transientErrorTimeoutRef.current = setTimeout(() => {
+      setErrorMessage((currentMessage) => (currentMessage === message ? null : currentMessage));
+      transientErrorTimeoutRef.current = null;
+    }, LOGIN_ALERT_AUTO_DISMISS_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearTransientErrorTimeout();
+    };
+  }, []);
 
   const emailVerificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
   const passwordResetStepActive = mode === 'login' && pendingPasswordReset !== null;
@@ -89,6 +114,7 @@ export const useLoginScreen = () => {
   };
 
   const handleSwitchMode = (nextMode: LoginAuthMode) => {
+    clearTransientErrorTimeout();
     setMode(nextMode);
     setErrorMessage(null);
     resetAuthPendingState();
@@ -98,39 +124,29 @@ export const useLoginScreen = () => {
   const handleForgotPassword = async () => {
     const normalizedEmail = formValues.email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      setErrorMessage(loginCopy.invalidEmailForReset);
+      showTransientError(loginCopy.invalidEmailForReset);
       return;
     }
 
+    clearTransientErrorTimeout();
     setLoading(true);
     setErrorMessage(null);
     setInfoMessage(null);
 
     try {
       const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
-      const resetGuideMessage = `${loginCopy.passwordResetDeliveryGuide}\n${loginCopy.passwordResetSocialGuide}`;
-      const hasResetChallenge = Boolean(reset.resetId || reset.debugCode);
-      if (hasResetChallenge) {
-        setPendingPasswordReset({
-          email: normalizedEmail,
-          expiresInSeconds: reset.resetExpiresIn,
-          debugCode: reset.debugCode,
-        });
-        setInfoMessage(`${loginCopy.passwordResetCodeSent}\n${resetGuideMessage}`);
-        setFormValues((prev) => ({
-          ...prev,
-          password: '',
-          confirmPassword: '',
-          verificationCode: reset.debugCode || '',
-        }));
-      } else {
-        setPendingPasswordReset(null);
-        setInfoMessage(`${loginCopy.passwordResetRequestAccepted}\n${resetGuideMessage}`);
-        setFormValues((prev) => ({
-          ...prev,
-          verificationCode: '',
-        }));
-      }
+      setPendingPasswordReset({
+        email: normalizedEmail,
+        expiresInSeconds: reset.resetExpiresIn,
+        debugCode: reset.debugCode,
+      });
+      setInfoMessage(null);
+      setFormValues((prev) => ({
+        ...prev,
+        password: '',
+        confirmPassword: '',
+        verificationCode: reset.debugCode || '',
+      }));
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {

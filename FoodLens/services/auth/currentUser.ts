@@ -1,4 +1,4 @@
-import { SafeStorage } from '@/services/storage';
+import { SafeStorage } from '@/services/storage_Logic';
 
 const CURRENT_USER_STORAGE_KEY = '@foodlens_current_user_id';
 const UNAUTHENTICATED_USER_ID = 'auth-required';

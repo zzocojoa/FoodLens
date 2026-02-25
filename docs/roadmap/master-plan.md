@@ -58,11 +58,13 @@
 ### Phase 2. 사용자 데이터 DB 전환 (1~2주)
 
 - 상세 실행표(누가/언제/무엇): [Phase 2 실행표](./phase-2-cloud-db-execution.md)
+- 사전 결정 확정: [Cloud Decision Record](./cloud-decision-record.md) 옵션 A(Render + Managed PostgreSQL), 2026-02-25
 - 목표: 로컬 원본 저장 구조를 서버 원본 구조로 전환
 - 작업:
   - 서버 DB 스키마: users, profiles, allergies, scans, history, settings
   - 모바일 로컬 저장은 캐시로 축소
   - 서버 실패 시 재시도/복구 흐름 정의
+  - 로컬 Docker Postgres -> Render 유료 Postgres 컷오버 런북 기반 전환 검증
 - 완료 기준:
   - 기기 변경 후 로그인 시 데이터 복원 100%
   - 앱 삭제 후 재설치 + 로그인 복원 성공
@@ -142,7 +144,15 @@
 - [Phase 6 실행표](./phase-6-release-gate-execution.md)
 - [스킬 실행 우선순위표 (Phase 1~6)](./skills-execution-priority-phase-1-6.md)
 - [Cloud Decision Record](./cloud-decision-record.md)
+- [DB 컷오버 런북 (Local -> Render Postgres)](../ops/db-cutover-local-to-render-postgres.md)
 - [API 계약 기준서](../contracts/api-contracts.md)
+
+문서 경로:
+- `docs/roadmap/master-plan.md`
+- `docs/roadmap/cloud-decision-record.md`
+- `docs/roadmap/phase-2-cloud-db-execution.md`
+- `docs/roadmap/phase-2-validation-context-prompt.md`
+- `docs/ops/db-cutover-local-to-render-postgres.md`
 
 ## 10) Phase별 권장 스킬
 

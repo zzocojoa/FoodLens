@@ -16,7 +16,7 @@ import ProfileIdentitySection from './ProfileIdentitySection';
 import ProfileMenuItem from './ProfileMenuItem';
 import { profileSheetStyles as styles } from '../styles';
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
-import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
+import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage_Logic';
 import { CanonicalLocale } from '@/features/i18n';
 
 type ProfileSheetViewProps = {
@@ -85,146 +85,147 @@ export default function ProfileSheetView({
   uiLanguageLabel,
   toLanguageCode,
 }: ProfileSheetViewProps) {
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <View
-      style={[StyleSheet.absoluteFill, { zIndex: 999999, display: isOpen ? 'flex' : 'none' }]}
-      pointerEvents={isOpen ? 'box-none' : 'none'}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        style={[styles.overlay, { opacity: isOpen ? 1 : 0 }, StyleSheet.absoluteFill]}
-        onPress={closeProfile}
-      />
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999999 }]}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.backdrop]} />
+      <TouchableOpacity activeOpacity={1} style={styles.dismissArea} onPress={closeProfile} />
 
-      <View style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
-        <RNAnimated.View
-          style={[
-            styles.sheetContainer,
-            { transform: [{ translateY: profilePanY }], backgroundColor: theme.background },
-          ]}
+      <RNAnimated.View
+        style={[
+          styles.sheetContainer,
+          { transform: [{ translateY: profilePanY }], backgroundColor: theme.background },
+        ]}
+      >
+        <View {...profilePanHandlers} style={styles.swipeHandleWrapper}>
+          <View style={styles.swipeHandle} />
+        </View>
+
+        <View {...profilePanHandlers} style={[styles.header, { justifyContent: 'center' }]}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>Profile</Text>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{ paddingBottom: 40 }}
         >
-          <View {...profilePanHandlers} style={styles.swipeHandleWrapper}>
-            <View style={styles.swipeHandle} />
-          </View>
+          <ProfileIdentitySection
+            theme={theme}
+            colorScheme={colorScheme}
+            name={state.name}
+            image={state.image}
+            avatars={state.avatars}
+            onChangeName={state.setName}
+            onPickCamera={() => void state.pickImage(true)}
+            onPickLibrary={() => void state.pickImage(false)}
+            onSelectPreset={state.setImage}
+          />
 
-          <View {...profilePanHandlers} style={[styles.header, { justifyContent: 'center' }]}>
-            <Text style={[styles.title, { color: theme.textPrimary }]}>Profile</Text>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            <ProfileIdentitySection
+          <View style={styles.section}>
+            <AnimatedThemeToggle
               theme={theme}
+              currentTheme={currentTheme}
+              setTheme={setTheme}
               colorScheme={colorScheme}
-              name={state.name}
-              image={state.image}
-              avatars={state.avatars}
-              onChangeName={state.setName}
-              onPickCamera={() => void state.pickImage(true)}
-              onPickLibrary={() => void state.pickImage(false)}
-              onSelectPreset={state.setImage}
             />
 
-            <View style={styles.section}>
-              <AnimatedThemeToggle
-                theme={theme}
-                currentTheme={currentTheme}
-                setTheme={setTheme}
-                colorScheme={colorScheme}
-              />
+            <ProfileMenuItem
+              icon={<User size={20} color="#2563EB" />}
+              title="Manage Profile"
+              subtitle="Account settings & details"
+              iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
+              onPress={onPressManageProfile}
+              theme={theme}
+            />
 
-              <ProfileMenuItem
-                icon={<User size={20} color="#2563EB" />}
-                title="Manage Profile"
-                subtitle="Account settings & details"
-                iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
-                onPress={onPressManageProfile}
-                theme={theme}
-              />
-
-              <ProfileMenuItem
-                icon={<Globe size={20} color="#059669" />}
-                title="Traveler Card Language"
-                subtitle={`${travelerLanguageLabel} • Result card only`}
-                iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
-                onPress={() => state.setTravelerLangModalVisible(true)}
-                theme={theme}
-              />
-
-              <ProfileMenuItem
-                icon={<Globe size={20} color="#2563EB" />}
-                title="Settings Language"
-                subtitle={uiLanguageLabel}
-                iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
-                onPress={() => state.setUiLangModalVisible(true)}
-                theme={theme}
-              />
-
-              <ProfileMenuItem
-                icon={<Zap size={20} color="#D97706" fill="#D97706" />}
-                title="Remove Ads"
-                subtitle="Premium benefits"
-                iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
-                theme={theme}
-              />
-
-              <ProfileMenuItem
-                icon={<LogOut size={20} color="#DC2626" />}
-                title="Log out"
-                subtitle={logoutLoading ? 'Signing out...' : 'End session on this device'}
-                iconBgColor={colorScheme === 'dark' ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2'}
-                onPress={onPressLogout}
-                theme={theme}
-              />
-            </View>
-
-            <LanguageSelectorModal
-              visible={state.travelerLangModalVisible}
+            <ProfileMenuItem
+              icon={<Globe size={20} color="#059669" />}
               title="Traveler Card Language"
-              options={LANGUAGE_OPTIONS}
-              selectedCode={state.travelerLanguage}
-              colorScheme={colorScheme}
+              subtitle={`${travelerLanguageLabel} • Result card only`}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
+              onPress={() => state.setTravelerLangModalVisible(true)}
               theme={theme}
-              panY={travelerLanguagePanY}
-              panHandlers={travelerLanguagePanHandlers}
-              onClose={closeTravelerLanguageModal}
-              onSelectLanguage={(code) => {
-                state.setTravelerLanguage(toLanguageCode(code));
-                closeTravelerLanguageModal();
-              }}
-              normalizeForSelection={normalizeTravelerTargetLanguage}
             />
 
-            <LanguageSelectorModal
-              visible={state.uiLangModalVisible}
+            <ProfileMenuItem
+              icon={<Globe size={20} color="#2563EB" />}
               title="Settings Language"
-              options={UI_LANGUAGE_OPTIONS}
-              selectedCode={state.uiLanguage}
-              colorScheme={colorScheme}
+              subtitle={uiLanguageLabel}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
+              onPress={() => state.setUiLangModalVisible(true)}
               theme={theme}
-              panY={uiLanguagePanY}
-              panHandlers={uiLanguagePanHandlers}
-              onClose={closeUiLanguageModal}
-              onSelectLanguage={(code) => {
-                state.setUiLanguage(code as CanonicalLocale);
-                closeUiLanguageModal();
-              }}
             />
 
-            <HapticTouchableOpacity
-              onPress={onPressUpdate}
-              disabled={state.loading}
-              style={[styles.saveButton, { backgroundColor: theme.textPrimary, shadowColor: theme.shadow }]}
-              hapticType="success"
-            >
-              {state.loading ? (
-                <ActivityIndicator color={theme.background} />
-              ) : (
-                <Text style={[styles.saveText, { color: theme.background }]}>UPDATE PROFILE</Text>
-              )}
-            </HapticTouchableOpacity>
-          </ScrollView>
-        </RNAnimated.View>
-      </View>
+            <ProfileMenuItem
+              icon={<Zap size={20} color="#D97706" fill="#D97706" />}
+              title="Remove Ads"
+              subtitle="Premium benefits"
+              iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<LogOut size={20} color="#DC2626" />}
+              title="Log out"
+              subtitle={logoutLoading ? 'Signing out...' : 'End session on this device'}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2'}
+              onPress={onPressLogout}
+              theme={theme}
+            />
+          </View>
+
+          <LanguageSelectorModal
+            visible={state.travelerLangModalVisible}
+            title="Traveler Card Language"
+            options={LANGUAGE_OPTIONS}
+            selectedCode={state.travelerLanguage}
+            colorScheme={colorScheme}
+            theme={theme}
+            panY={travelerLanguagePanY}
+            panHandlers={travelerLanguagePanHandlers}
+            onClose={closeTravelerLanguageModal}
+            onSelectLanguage={(code) => {
+              state.setTravelerLanguage(toLanguageCode(code));
+              closeTravelerLanguageModal();
+            }}
+            normalizeForSelection={normalizeTravelerTargetLanguage}
+          />
+
+          <LanguageSelectorModal
+            visible={state.uiLangModalVisible}
+            title="Settings Language"
+            options={UI_LANGUAGE_OPTIONS}
+            selectedCode={state.uiLanguage}
+            colorScheme={colorScheme}
+            theme={theme}
+            panY={uiLanguagePanY}
+            panHandlers={uiLanguagePanHandlers}
+            onClose={closeUiLanguageModal}
+            onSelectLanguage={(code) => {
+              state.setUiLanguage(code as CanonicalLocale);
+              closeUiLanguageModal();
+            }}
+          />
+
+          <HapticTouchableOpacity
+            onPress={onPressUpdate}
+            disabled={state.loading}
+            style={[styles.saveButton, { backgroundColor: theme.textPrimary, shadowColor: theme.shadow }]}
+            hapticType="success"
+          >
+            {state.loading ? (
+              <ActivityIndicator color={theme.background} />
+            ) : (
+              <Text style={[styles.saveText, { color: theme.background }]}>UPDATE PROFILE</Text>
+            )}
+          </HapticTouchableOpacity>
+        </ScrollView>
+      </RNAnimated.View>
     </View>
   );
 }

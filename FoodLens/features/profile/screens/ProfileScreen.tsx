@@ -55,14 +55,19 @@ export default function ProfileScreen() {
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
             <ProfileHeader theme={theme} onBack={() => router.back()} />
 
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                enabled={Platform.OS === 'ios'}
+                style={{ flex: 1 }}
+            >
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.container}
                     contentContainerStyle={{
                         paddingBottom: insets.bottom + 120,
                     }}
-                    keyboardShouldPersistTaps="handled"
+                    keyboardShouldPersistTaps="always"
+                    keyboardDismissMode="on-drag"
                 >
                     <View style={styles.heroSection}>
                         <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>

@@ -1,9 +1,9 @@
 import * as Location from 'expo-location';
 import type { LocationGeocodedAddress } from 'expo-location';
-import { validateCoordinates } from './coordinates';
+import { validateCoordinates } from './coordinates_Logic';
 import { LocationData } from './types';
-import { mapPlaceToLocationData } from './locationMapper';
-import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
+import { mapPlaceToLocationData } from './locationMapper_Logic';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService_Logic';
 
 const LOCATION_TIMEOUT_MS = 3000;
 const EXIF_DEFAULT_ISO = 'US';

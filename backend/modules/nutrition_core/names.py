@@ -1,4 +1,4 @@
-from .constants import FOOD_SYNONYMS
+from .constants_Structure import FOOD_SYNONYMS
 
 
 def normalize_food_name(food_name: str) -> list[str]:

@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { runWithAnalysisTimeout, sleep } from './internal/retryUtils';
+import { runWithAnalysisTimeout, sleep } from './internal/retryUtils_Logic';
 
 export const uploadWithRetry = async (
     url: string,

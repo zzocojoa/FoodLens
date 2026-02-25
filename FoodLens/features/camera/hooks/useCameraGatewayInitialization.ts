@@ -3,7 +3,7 @@ import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraSourceType, LocationContext } from '../types/camera.types';
 import { resolveInitialLocationContext } from '../utils/cameraGatewayHelpers';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 
 type UseCameraGatewayInitializationParams = {
   photoLat?: string;

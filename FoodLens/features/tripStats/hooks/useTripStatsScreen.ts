@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { getTripStatsUserId } from '../constants/tripStats.constants';
-import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
+import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService_Logic';
 import { useTripStartToast } from './useTripStartToast';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 
 export function useTripStatsScreen(insetsTop: number) {
     const { t } = useI18n();

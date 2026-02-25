@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from .constants import INGREDIENT_BLACKLIST
+from .constants_Structure import INGREDIENT_BLACKLIST
 
 
 def parse_float(value: Any) -> float:

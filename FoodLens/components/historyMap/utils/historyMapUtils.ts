@@ -1,7 +1,7 @@
 import { Region } from 'react-native-maps';
 import * as FileSystem from 'expo-file-system/legacy';
 import { CountryData } from '@/models/History';
-import { resolveImageUri } from '@/services/imageStorage';
+import { resolveImageUri } from '@/services/imageStorage_Logic';
 import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM, ENABLE_MAP_DEBUG_LOGS, ENABLE_QA_MAP_METRICS } from '../constants';
 import { ClusterFeature, ClusterOrPoint, MapMarker, PointFeature } from '../types';
 

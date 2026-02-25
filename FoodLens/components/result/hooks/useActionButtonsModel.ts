@@ -12,6 +12,6 @@ export function useActionButtonsModel() {
   return {
     buttonTheme,
     shadowColor: theme.shadow,
-    onGoHome: () => router.replace('/'),
+    onGoHome: () => router.replace('/(tabs)'),
   };
 }

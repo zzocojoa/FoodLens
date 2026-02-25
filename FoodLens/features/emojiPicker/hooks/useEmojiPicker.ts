@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { HapticsService } from '@/services/haptics';
+import { HapticsService } from '@/services/haptics_Logic';
 import { DEFAULT_EMOJI } from '../constants/emojiPicker.constants';
-import { emojiPickerService } from '../services/emojiPickerService';
+import { emojiPickerService } from '../services/emojiPickerService_Logic';
 import { UseEmojiPickerResult } from '../types/emojiPicker.types';
 
 export const useEmojiPicker = (): UseEmojiPickerResult => {

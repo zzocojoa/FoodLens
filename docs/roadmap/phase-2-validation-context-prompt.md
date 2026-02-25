@@ -7,7 +7,9 @@
 [기준 문서]
 - docs/roadmap/context_prompt_roadmap_execution.md
 - docs/roadmap/master-plan.md
+- docs/roadmap/cloud-decision-record.md
 - docs/roadmap/phase-2-cloud-db-execution.md
+- docs/ops/db-cutover-local-to-render-postgres.md
 - docs/contracts/api-contracts.md
 - docs/roadmap/skills-execution-priority-phase-1-6.md
 
@@ -22,6 +24,7 @@ DONE_CRITERIA:
 - 앱 삭제/재설치 + 로그인 시 데이터 복원
 - 계정 전환 시 데이터 섞임 0
 - request_id/user_id 기반 추적 가능
+- 로컬 Docker Postgres -> Render 유료 Postgres 컷오버 리허설(백업/복구 포함) 통과
 CONSTRAINTS:
 - 코드 수정 없이 검증 우선
 - 타입/린트/계약/테스트 실패는 즉시 보고
@@ -32,8 +35,9 @@ CONSTRAINTS:
 2) 아래 스킬 기준 대조
    - $foodlens-offline-first-sync
    - $foodlens-render-blueprint-validation
-3) DoD 항목 Pass/Fail 판정
-4) 미충족 항목은 원인/영향/최소 수정안 제시
+3) 컷오버 런북(`docs/ops/db-cutover-local-to-render-postgres.md`) 기준 실행/복구 점검
+4) DoD 항목 Pass/Fail 판정
+5) 미충족 항목은 원인/영향/최소 수정안 제시
 
 [출력 형식]
 PHASE_CHECK
@@ -47,4 +51,3 @@ NEXT_ACTIONS
 - 모든 DONE_CRITERIA Pass: “Phase 2 완료”
 - 하나라도 Fail: “Phase 2 미완료”
 ```
-

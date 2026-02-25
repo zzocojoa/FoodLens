@@ -1,6 +1,6 @@
 import { UserProfile } from '../../../models/User';
-import { AnalysisService } from '../../../services/analysisService';
-import { UserService } from '../../../services/userService';
+import { AnalysisService } from '../../../services/analysisService_Logic';
+import { UserService } from '../../../services/userService_Logic';
 import { buildWeeklyStats } from '../utils/homeDashboard';
 
 export const fetchHomeDashboardData = async (uid: string) => {

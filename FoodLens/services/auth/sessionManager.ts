@@ -1,6 +1,6 @@
-import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
-import { AuthSecureSessionStore } from './secureSessionStore';
-import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser';
+import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi_Logic';
+import { AuthSecureSessionStore } from './secureSessionStore_Logic';
+import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser_Logic';
 import { queryClient } from '../queryClient';
 
 const REFRESH_SKEW_MS = 30_000;

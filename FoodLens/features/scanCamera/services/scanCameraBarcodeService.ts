@@ -1,5 +1,5 @@
 import { lookupBarcode } from '../../../services/ai';
-import { getAllergyString } from '../../../services/aiCore/allergy';
+import { getAllergyString } from '../../../services/aiCore/allergy_Logic';
 
 export const lookupBarcodeWithCache = async (barcode: string) => {
   const { BarcodeCache } = await import('../../../services/aiCore/internal/barcodeCache');

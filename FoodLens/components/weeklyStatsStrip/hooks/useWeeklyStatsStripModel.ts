@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { HapticsService } from '@/services/haptics';
+import { HapticsService } from '@/services/haptics_Logic';
 
 export const useWeeklyStatsStripModel = (onSelectDate: (date: Date) => void) => {
   const colorScheme = useColorScheme() ?? 'light';

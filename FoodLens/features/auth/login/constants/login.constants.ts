@@ -182,12 +182,16 @@ export const LOGIN_LAYOUT = {
   statusBarHeight: 44,
   screenHorizontalPadding: 30,
   screenBottomPadding: 44,
+  welcomeTitleMarginTop: 524,
   pinkHeaderTop: -40,
   pinkHeaderHeightPercent: 0.6,
   pinkHeaderTranslateLogin: -140,
   pinkHeaderTranslateSignup: -260,
   authMarginTopLogin: 344,
   authMarginTopSignup: 224,
+  footerBottomOffset: 60,
+  androidBottomSafeGap: 20,
+  authFooterReservedHeight: 220,
 } as const;
 
 export const LOGIN_ANIMATION = {
@@ -200,6 +204,7 @@ export const LOGIN_ANIMATION = {
 } as const;
 
 export const LOGIN_PASSWORD_MIN_LENGTH = 8;
+export const LOGIN_ALERT_AUTO_DISMISS_MS = 3000;
 export const LOGIN_DEFAULT_LOCALE = 'ko-KR';
 
 export const LOGIN_INITIAL_FORM_VALUES: LoginFormValues = {

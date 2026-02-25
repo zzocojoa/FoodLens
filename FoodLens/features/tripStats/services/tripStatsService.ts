@@ -1,8 +1,8 @@
 import * as Location from 'expo-location';
-import { AnalysisService } from '@/services/analysisService';
-import { UserService } from '@/services/userService';
+import { AnalysisService } from '@/services/analysisService_Logic';
+import { UserService } from '@/services/userService_Logic';
 import { buildLocationLabel } from '../utils/tripStatsCalculations';
-import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService_Logic';
 
 type Coordinates = { latitude: number; longitude: number };
 
