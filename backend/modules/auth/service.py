@@ -3,8 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
+import logging
 import os
 import secrets
+from dataclasses import asdict, is_dataclass
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -17,8 +20,10 @@ from .email_sender_Logic import (
     build_email_verification_sender_from_env,
 )
 from .email_sender_Structure import LoggingEmailVerificationSender
+from .state_store_Logic import AuthStateStore, AuthStateStoreError, PostgresAuthStateStore
 
 RefreshStatus = Literal["active", "used", "revoked", "expired"]
+logger = logging.getLogger("foodlens.auth.state")
 
 
 def _utc_now() -> datetime:
@@ -41,6 +46,10 @@ def _parse_csv(raw: str | None) -> set[str]:
     if not raw:
         return set()
     return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _from_iso8601(raw: str) -> datetime:
+    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
 
 
 class AuthServiceError(Exception):
@@ -166,6 +175,21 @@ class PasswordResetRecord:
     failed_attempts: int = 0
 
 
+AUTH_STATE_SNAPSHOT_VERSION = 1
+AUTH_STATE_DATACLASSES = {
+    "AuthUser": AuthUser,
+    "UserProfile": UserProfile,
+    "UserAllergiesProfile": UserAllergiesProfile,
+    "UserSettingsProfile": UserSettingsProfile,
+    "UserHistoryRecord": UserHistoryRecord,
+    "SessionRecord": SessionRecord,
+    "AccessTokenRecord": AccessTokenRecord,
+    "RefreshTokenRecord": RefreshTokenRecord,
+    "EmailVerificationRecord": EmailVerificationRecord,
+    "PasswordResetRecord": PasswordResetRecord,
+}
+
+
 class InMemoryAuthSessionService:
     def __init__(
         self,
@@ -182,6 +206,7 @@ class InMemoryAuthSessionService:
         password_reset_debug_code_enabled: bool = False,
         email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
+        state_store: AuthStateStore | None = None,
     ):
         self.access_ttl_seconds = max(60, access_ttl_seconds)
         self.refresh_ttl_seconds = max(24 * 60 * 60, refresh_ttl_days * 24 * 60 * 60)
@@ -198,6 +223,7 @@ class InMemoryAuthSessionService:
             key: set(value)
             for key, value in (allowed_redirects_by_provider or {}).items()
         }
+        self._state_store = state_store
 
         self._users_by_id: dict[str, AuthUser] = {}
         self._user_id_by_email: dict[str, str] = {}
@@ -218,6 +244,8 @@ class InMemoryAuthSessionService:
         self._password_resets_by_user_id: dict[str, PasswordResetRecord] = {}
 
         self._lock = RLock()
+        if self._state_store is not None:
+            self._hydrate_from_state_store()
 
     @classmethod
     def from_env(cls, get_env: Callable[[str, str | None], str | None] = os.environ.get) -> "InMemoryAuthSessionService":
@@ -252,6 +280,21 @@ class InMemoryAuthSessionService:
             "google": _parse_csv(get_env("AUTH_GOOGLE_ALLOWED_REDIRECT_URIS", None)),
             "kakao": _parse_csv(get_env("AUTH_KAKAO_ALLOWED_REDIRECT_URIS", None)),
         }
+        database_url = (get_env("DATABASE_URL", "") or "").strip()
+        requested_state_backend = (get_env("AUTH_STATE_BACKEND", "") or "").strip().lower()
+        resolved_state_backend = requested_state_backend or ("postgres" if database_url else "memory")
+        state_store: AuthStateStore | None = None
+        if resolved_state_backend == "postgres":
+            if not database_url:
+                raise ValueError("DATABASE_URL is required when AUTH_STATE_BACKEND=postgres.")
+            state_store = PostgresAuthStateStore(
+                database_url=database_url,
+                table_name=(get_env("AUTH_STATE_TABLE", "auth_runtime_state") or "auth_runtime_state").strip(),
+                state_key=(get_env("AUTH_STATE_KEY", "default") or "default").strip(),
+            )
+        elif resolved_state_backend != "memory":
+            raise ValueError("AUTH_STATE_BACKEND must be one of: memory, postgres.")
+
         return cls(
             access_ttl_seconds=access_ttl_seconds,
             refresh_ttl_days=refresh_ttl_days,
@@ -265,7 +308,116 @@ class InMemoryAuthSessionService:
             password_reset_debug_code_enabled=password_reset_debug_code_enabled,
             email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
+            state_store=state_store,
         )
+
+    @property
+    def state_backend(self) -> str:
+        return "postgres" if self._state_store is not None else "memory"
+
+    def _hydrate_from_state_store(self) -> None:
+        if self._state_store is None:
+            return
+        snapshot = self._state_store.load()
+        if not snapshot:
+            return
+        self._restore_runtime_snapshot(snapshot)
+
+    def _persist_state_unlocked(self) -> None:
+        if self._state_store is None:
+            return
+        snapshot = self._build_runtime_snapshot()
+        self._state_store.save(snapshot)
+
+    def _build_runtime_snapshot(self) -> dict[str, object]:
+        payload = {
+            "_users_by_id": self._users_by_id,
+            "_user_id_by_email": self._user_id_by_email,
+            "_provider_subject_to_user_id": self._provider_subject_to_user_id,
+            "_profiles_by_user_id": self._profiles_by_user_id,
+            "_allergies_by_user_id": self._allergies_by_user_id,
+            "_settings_by_user_id": self._settings_by_user_id,
+            "_history_by_user_id": self._history_by_user_id,
+            "_history_idempotency_by_user_id": self._history_idempotency_by_user_id,
+            "_sessions": self._sessions,
+            "_session_ids_by_family": self._session_ids_by_family,
+            "_access_tokens": self._access_tokens,
+            "_refresh_tokens": self._refresh_tokens,
+            "_access_tokens_by_session": self._access_tokens_by_session,
+            "_refresh_tokens_by_session": self._refresh_tokens_by_session,
+            "_email_verifications_by_user_id": self._email_verifications_by_user_id,
+            "_password_resets_by_user_id": self._password_resets_by_user_id,
+        }
+        return {
+            "version": AUTH_STATE_SNAPSHOT_VERSION,
+            "saved_at": _to_iso8601(_utc_now()),
+            "payload": json.dumps(payload, default=self._snapshot_json_default, ensure_ascii=False, separators=(",", ":")),
+        }
+
+    def _restore_runtime_snapshot(self, snapshot: dict[str, object]) -> None:
+        version = int(snapshot.get("version", 0))
+        if version != AUTH_STATE_SNAPSHOT_VERSION:
+            raise AuthStateStoreError(f"Unsupported auth state snapshot version: {version}")
+
+        raw_payload = snapshot.get("payload")
+        if not isinstance(raw_payload, str) or not raw_payload.strip():
+            raise AuthStateStoreError("Auth state snapshot payload is missing.")
+
+        state = json.loads(raw_payload, object_hook=self._snapshot_json_object_hook)
+        if not isinstance(state, dict):
+            raise AuthStateStoreError("Auth state snapshot payload has invalid format.")
+
+        self._users_by_id = dict(state.get("_users_by_id", {}))
+        self._user_id_by_email = dict(state.get("_user_id_by_email", {}))
+        self._provider_subject_to_user_id = dict(state.get("_provider_subject_to_user_id", {}))
+        self._profiles_by_user_id = dict(state.get("_profiles_by_user_id", {}))
+        self._allergies_by_user_id = dict(state.get("_allergies_by_user_id", {}))
+        self._settings_by_user_id = dict(state.get("_settings_by_user_id", {}))
+        self._history_by_user_id = dict(state.get("_history_by_user_id", {}))
+        self._history_idempotency_by_user_id = dict(state.get("_history_idempotency_by_user_id", {}))
+        self._sessions = dict(state.get("_sessions", {}))
+        self._session_ids_by_family = dict(state.get("_session_ids_by_family", {}))
+        self._access_tokens = dict(state.get("_access_tokens", {}))
+        self._refresh_tokens = dict(state.get("_refresh_tokens", {}))
+        self._access_tokens_by_session = dict(state.get("_access_tokens_by_session", {}))
+        self._refresh_tokens_by_session = dict(state.get("_refresh_tokens_by_session", {}))
+        self._email_verifications_by_user_id = dict(state.get("_email_verifications_by_user_id", {}))
+        self._password_resets_by_user_id = dict(state.get("_password_resets_by_user_id", {}))
+        logger.info("[Auth] restored state snapshot from backend=%s users=%s", self.state_backend, len(self._users_by_id))
+
+    @staticmethod
+    def _snapshot_json_default(value: object) -> object:
+        if isinstance(value, datetime):
+            return {"__fl_datetime__": _to_iso8601(value)}
+        if isinstance(value, set):
+            return {"__fl_set__": sorted(str(item) for item in value)}
+        if is_dataclass(value):
+            payload = asdict(value)
+            payload["__fl_dataclass__"] = value.__class__.__name__
+            return payload
+        raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+    @staticmethod
+    def _snapshot_json_object_hook(raw: dict[str, object]) -> object:
+        if "__fl_datetime__" in raw:
+            value = raw.get("__fl_datetime__")
+            if isinstance(value, str):
+                return _from_iso8601(value)
+            raise AuthStateStoreError("Invalid datetime value in auth state snapshot.")
+        if "__fl_set__" in raw:
+            value = raw.get("__fl_set__")
+            if isinstance(value, list):
+                return set(str(item) for item in value)
+            raise AuthStateStoreError("Invalid set value in auth state snapshot.")
+        data_class_name = raw.get("__fl_dataclass__")
+        if isinstance(data_class_name, str):
+            payload = dict(raw)
+            payload.pop("__fl_dataclass__", None)
+            klass = AUTH_STATE_DATACLASSES.get(data_class_name)
+            if klass is None:
+                raise AuthStateStoreError(f"Unknown dataclass marker in auth state snapshot: {data_class_name}")
+            return klass(**payload)
+        return raw
 
     def signup_email(
         self,
@@ -298,7 +450,9 @@ class InMemoryAuthSessionService:
                 email_verified_at=None if self.email_verification_required else _utc_now(),
             )
             if not self.email_verification_required:
-                return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+                bundle = self._create_session_bundle(user=user, provider="email", device_id=device_id)
+                self._persist_state_unlocked()
+                return bundle
 
             verification_record, verification_code = self._issue_email_verification(user=user)
             challenge_payload = self._serialize_email_verification_challenge(
@@ -307,6 +461,7 @@ class InMemoryAuthSessionService:
             )
             if self.email_verification_debug_code_enabled:
                 challenge_payload["verification_debug_code"] = verification_code
+            self._persist_state_unlocked()
 
         try:
             self._email_verification_sender.send_verification_code(
@@ -320,6 +475,7 @@ class InMemoryAuthSessionService:
                 pending_user = self._users_by_id.get(user.user_id)
                 if pending_user and pending_user.email_verified_at is None:
                     self._rollback_unverified_user(pending_user)
+                    self._persist_state_unlocked()
             raise AuthServiceError(
                 code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",
                 message="Failed to deliver verification email.",
@@ -363,7 +519,9 @@ class InMemoryAuthSessionService:
                     user_id=user.user_id,
                 )
 
-            return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+            bundle = self._create_session_bundle(user=user, provider="email", device_id=device_id)
+            self._persist_state_unlocked()
+            return bundle
 
     def verify_email(
         self,
@@ -425,12 +583,14 @@ class InMemoryAuthSessionService:
                 record.failed_attempts += 1
                 if record.failed_attempts >= self.email_verification_max_attempts:
                     record.consumed_at = now
+                    self._persist_state_unlocked()
                     raise AuthServiceError(
                         code="AUTH_EMAIL_VERIFICATION_LOCKED",
                         message="Too many invalid verification attempts.",
                         status_code=429,
                         user_id=user.user_id,
                     )
+                self._persist_state_unlocked()
                 raise AuthServiceError(
                     code="AUTH_EMAIL_VERIFICATION_INVALID",
                     message="Invalid verification code.",
@@ -441,7 +601,9 @@ class InMemoryAuthSessionService:
             record.consumed_at = now
             user.email_verified_at = now
             user.updated_at = now
-            return self._create_session_bundle(user=user, provider="email", device_id=device_id)
+            bundle = self._create_session_bundle(user=user, provider="email", device_id=device_id)
+            self._persist_state_unlocked()
+            return bundle
 
     def request_password_reset(self, *, email: str) -> dict[str, object]:
         normalized_email = self._normalize_email(email)
@@ -460,6 +622,7 @@ class InMemoryAuthSessionService:
             payload = self._serialize_password_reset_challenge(record=record)
             if self.password_reset_debug_code_enabled:
                 payload["reset_debug_code"] = reset_code
+            self._persist_state_unlocked()
 
         try:
             self._email_verification_sender.send_password_reset_code(
@@ -473,6 +636,7 @@ class InMemoryAuthSessionService:
                 pending_reset = self._password_resets_by_user_id.get(user.user_id)
                 if pending_reset and pending_reset.reset_id == record.reset_id and pending_reset.consumed_at is None:
                     self._password_resets_by_user_id.pop(user.user_id, None)
+                    self._persist_state_unlocked()
             raise AuthServiceError(
                 code="AUTH_PASSWORD_RESET_DELIVERY_FAILED",
                 message="Failed to deliver password reset email.",
@@ -536,12 +700,14 @@ class InMemoryAuthSessionService:
                 record.failed_attempts += 1
                 if record.failed_attempts >= self.password_reset_max_attempts:
                     record.consumed_at = now
+                    self._persist_state_unlocked()
                     raise AuthServiceError(
                         code="AUTH_PASSWORD_RESET_LOCKED",
                         message="Too many invalid password reset attempts.",
                         status_code=429,
                         user_id=user.user_id,
                     )
+                self._persist_state_unlocked()
                 raise AuthServiceError(
                     code="AUTH_PASSWORD_RESET_INVALID",
                     message="Invalid password reset code.",
@@ -553,6 +719,7 @@ class InMemoryAuthSessionService:
             user.password_salt, user.password_hash = self._create_password_credentials(new_password)
             user.updated_at = now
             revoked_sessions = self._revoke_sessions_for_user(user.user_id, reason="password_reset")
+            self._persist_state_unlocked()
 
             return {
                 "password_reset": True,
@@ -643,7 +810,9 @@ class InMemoryAuthSessionService:
             if user.email_verified_at is None:
                 user.email_verified_at = _utc_now()
 
-            return self._create_session_bundle(user=user, provider=provider_normalized, device_id=device_id)
+            bundle = self._create_session_bundle(user=user, provider=provider_normalized, device_id=device_id)
+            self._persist_state_unlocked()
+            return bundle
 
     def refresh(self, *, refresh_token: str) -> dict[str, object]:
         now = _utc_now()
@@ -667,6 +836,7 @@ class InMemoryAuthSessionService:
 
             if record.expires_at <= now:
                 record.status = "expired"
+                self._persist_state_unlocked()
                 raise AuthServiceError(
                     code="AUTH_REFRESH_EXPIRED",
                     message="Refresh token has expired.",
@@ -676,6 +846,7 @@ class InMemoryAuthSessionService:
 
             if record.status != "active":
                 self._revoke_family(record.family_id, reason="refresh_reuse_detected")
+                self._persist_state_unlocked()
                 raise AuthServiceError(
                     code="AUTH_REFRESH_REUSED",
                     message="Refresh token reuse detected. Session family was revoked.",
@@ -695,6 +866,7 @@ class InMemoryAuthSessionService:
 
             bundle = self._issue_tokens(user=user, session=session)
             record.replaced_by = bundle["refresh_token"]
+            self._persist_state_unlocked()
             return bundle
 
     def logout(self, *, access_token: str | None, refresh_token: str | None) -> int:
@@ -725,6 +897,7 @@ class InMemoryAuthSessionService:
                     revoked_count += 1
                 self._revoke_tokens_for_session(session_id)
 
+            self._persist_state_unlocked()
             return revoked_count
 
     def authenticate_access_token(self, *, access_token: str) -> AuthUser:
@@ -808,7 +981,9 @@ class InMemoryAuthSessionService:
             user.locale = profile.locale
             user.updated_at = profile.updated_at
 
-            return self._serialize_profile(profile)
+            payload = self._serialize_profile(profile)
+            self._persist_state_unlocked()
+            return payload
 
     def get_allergies(self, *, user_id: str) -> dict[str, object]:
         with self._lock:
@@ -855,7 +1030,9 @@ class InMemoryAuthSessionService:
                     if str(key).strip() and str(value).strip()
                 }
             profile.updated_at = _utc_now()
-            return self._serialize_allergies(profile)
+            payload = self._serialize_allergies(profile)
+            self._persist_state_unlocked()
+            return payload
 
     def get_settings(self, *, user_id: str) -> dict[str, object]:
         with self._lock:
@@ -901,7 +1078,9 @@ class InMemoryAuthSessionService:
                 normalized_emoji = selected_emoji.strip()
                 settings.selected_emoji = normalized_emoji or None
             settings.updated_at = _utc_now()
-            return self._serialize_settings(settings)
+            payload = self._serialize_settings(settings)
+            self._persist_state_unlocked()
+            return payload
 
     def get_history(self, *, user_id: str, limit: int | None = None) -> list[dict[str, object]]:
         with self._lock:
@@ -954,7 +1133,9 @@ class InMemoryAuthSessionService:
             records.insert(0, history_record)
             if normalized_key:
                 self._history_idempotency_by_user_id.setdefault(user_id, {})[normalized_key] = history_record.history_id
-            return self._serialize_history_item(history_record)
+            payload = self._serialize_history_item(history_record)
+            self._persist_state_unlocked()
+            return payload
 
     def _create_user(
         self,

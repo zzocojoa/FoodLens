@@ -46,6 +46,9 @@
 ## 6) 예시 명령 (운영 전 사전 검증 필수)
 
 ```bash
+# 0) Start local postgres (dev)
+docker compose -f docker-compose.postgres.yml up -d
+
 # 1) Local dump
 docker exec -t <local_pg_container> pg_dump -U <local_user> -d <local_db> -Fc > local.dump
 

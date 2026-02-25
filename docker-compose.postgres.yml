@@ -1,0 +1,39 @@
+services:
+  foodlens-postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:97ff59a4e30e08d1c11bdcd9455e7832368c0572b576c9092cde2df4ae5552a3
+    container_name: foodlens-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: foodlens
+      POSTGRES_PASSWORD: foodlens
+      POSTGRES_DB: foodlens
+    ports:
+      - "5432:5432"
+    volumes:
+      - foodlens_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foodlens -d foodlens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  foodlens-backend:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foodlens-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://foodlens:foodlens@foodlens-postgres:5432/foodlens
+      AUTH_STATE_BACKEND: postgres
+      AUTH_STATE_TABLE: auth_runtime_state
+      AUTH_STATE_KEY: default
+    depends_on:
+      foodlens-postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+volumes:
+  foodlens_postgres_data:

@@ -118,6 +118,9 @@
   - Render 유료 PostgreSQL 인스턴스 생성
   - 애플리케이션 DB 스키마 마이그레이션 스크립트 준비
   - 백업/롤백 담당자와 점검 시간대 확정
+  - 백엔드 환경변수 적용:
+    - `DATABASE_URL=postgresql://...`
+    - `AUTH_STATE_BACKEND=postgres`
 - 절차:
   1. 로컬 DB 백업 덤프 생성
   2. Render DB에 스키마 적용

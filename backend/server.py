@@ -118,6 +118,10 @@ def _is_label_429_returns_503_enabled() -> bool:
 @app.on_event("startup")
 async def _startup() -> None:
     app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
+    logger.info(
+        "[Auth] state backend initialized backend=%s",
+        getattr(app.state.auth_service, "state_backend", "memory"),
+    )
 
     if _is_openapi_export_mode():
         app.state.analyst = None
