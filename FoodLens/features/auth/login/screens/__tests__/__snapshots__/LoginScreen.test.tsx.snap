@@ -1,7 +1,7 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`LoginScreen matches snapshot in login state 1`] = `
-<View
+<RNCSafeAreaView
   accessibilityState={
     {
       "busy": undefined,
@@ -12,6 +12,14 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
     }
   }
   accessible={false}
+  edges={
+    {
+      "bottom": "additive",
+      "left": "off",
+      "right": "off",
+      "top": "additive",
+    }
+  }
   focusable={true}
   onClick={[Function]}
   onResponderGrant={[Function]}
@@ -1430,11 +1438,11 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
       </View>
     </View>
   </View>
-</View>
+</RNCSafeAreaView>
 `;
 
 exports[`LoginScreen matches snapshot in signup state 1`] = `
-<View
+<RNCSafeAreaView
   accessibilityState={
     {
       "busy": undefined,
@@ -1445,6 +1453,14 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
     }
   }
   accessible={false}
+  edges={
+    {
+      "bottom": "additive",
+      "left": "off",
+      "right": "off",
+      "top": "additive",
+    }
+  }
   focusable={true}
   onClick={[Function]}
   onResponderGrant={[Function]}
@@ -2863,5 +2879,5 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
       </View>
     </View>
   </View>
-</View>
+</RNCSafeAreaView>
 `;
