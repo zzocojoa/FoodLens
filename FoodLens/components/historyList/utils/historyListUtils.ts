@@ -1,5 +1,3 @@
-import { Colors } from '@/constants/theme';
-
 export type StatusMeta = {
     containerStyle: { backgroundColor: string; borderColor: string };
     kind: 'ok' | 'avoid' | 'ask';

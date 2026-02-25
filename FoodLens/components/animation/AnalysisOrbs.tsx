@@ -8,14 +8,12 @@ import {
   vec,
   LinearGradient,
 } from '@shopify/react-native-skia';
-import Animated, {
+import {
   useSharedValue,
-  useAnimatedStyle,
   withRepeat,
   withTiming,
   withDelay,
   Easing,
-  interpolate,
 } from 'react-native-reanimated';
 
 const ORB_COUNT = 3;
@@ -91,5 +89,3 @@ export const AnalysisOrbs = () => {
     </Canvas>
   );
 };
-
-const styles = StyleSheet.create({});

@@ -1,9 +1,8 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { Colors } from '@/constants/theme';
-import { StyleSheet } from 'react-native';
 import { useI18n } from '@/features/i18n';
 
 type CountryCardHeaderProps = {

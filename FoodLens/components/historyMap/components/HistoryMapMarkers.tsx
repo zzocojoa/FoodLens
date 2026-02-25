@@ -1,12 +1,10 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
-import * as FileSystem from 'expo-file-system/legacy';
 import { ENABLE_MAP_CLUSTERING } from '../constants';
 import { ClusterFeature, ClusterOrPoint, MapMarker } from '../types';
 import { historyMapStyles as styles } from '../styles';
-import { isClusterFeature } from '../utils/historyMapUtils';
-import { mapTraceLog, mapTraceWarn } from '../utils/historyMapUtils';
+import { isClusterFeature, mapTraceLog, mapTraceWarn } from '../utils/historyMapUtils';
 
 const THUMB_FALLBACK_FONT_SIZE = 16;
 const FOOD_MARKER_ANCHOR = { x: 0.5, y: 1 };
@@ -15,23 +13,6 @@ const USE_NATIVE_PIN_MARKERS = true;
 
 // Keep marker snapshots stable to reduce native re-render churn while zooming.
 const SHOULD_TRACK_VIEW_CHANGES = false;
-
-type UriKind = 'file' | 'http' | 'asset' | 'none';
-
-const toUriMeta = (uri?: string) => {
-    if (!uri) return { kind: 'none' as UriKind, head: '', tail: '', len: 0 };
-    const kind: UriKind = uri.startsWith('file://')
-        ? 'file'
-        : uri.startsWith('http://') || uri.startsWith('https://')
-        ? 'http'
-        : 'asset';
-    return {
-        kind,
-        head: uri.slice(0, 48),
-        tail: uri.slice(-28),
-        len: uri.length,
-    };
-};
 
 type HistoryMapMarkersProps = {
     markers: MapMarker[];

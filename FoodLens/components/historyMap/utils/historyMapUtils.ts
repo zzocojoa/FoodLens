@@ -2,8 +2,7 @@ import { Region } from 'react-native-maps';
 import * as FileSystem from 'expo-file-system/legacy';
 import { CountryData } from '@/models/History';
 import { resolveImageUri } from '@/services/imageStorage';
-import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM } from '../constants';
-import { ENABLE_MAP_DEBUG_LOGS, ENABLE_QA_MAP_METRICS } from '../constants';
+import { CLUSTER_MAX_ZOOM, CLUSTER_MIN_ZOOM, ENABLE_MAP_DEBUG_LOGS, ENABLE_QA_MAP_METRICS } from '../constants';
 import { ClusterFeature, ClusterOrPoint, MapMarker, PointFeature } from '../types';
 
 export const debugLog = (...args: unknown[]) => {
@@ -18,7 +17,6 @@ const TRACE_FILE_URI = TRACE_DIR ? `${TRACE_DIR}${TRACE_FILE_NAME}` : '';
 const TRACE_EXPORT_URI = FileSystem.documentDirectory
     ? `${FileSystem.documentDirectory}${TRACE_FILE_NAME}`
     : '';
-let traceFileInitialized = false;
 let traceWriteQueue: Promise<void> = Promise.resolve();
 let traceFlushScheduled = false;
 let tracePathLogged = false;
@@ -45,7 +43,6 @@ const initializeTraceFile = async () => {
                 encoding: FileSystem.EncodingType.UTF8,
             });
         }
-        traceFileInitialized = true;
     } catch (e) {
         // Fallback or ignore if path is strictly forbidden by sandbox
         console.error('[MapTrace] Initialization failed', e);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, TouchableOpacityProps, Pressable, PressableProps, ViewStyle, StyleProp } from 'react-native';
+import { TouchableOpacity, TouchableOpacityProps, Pressable, PressableProps } from 'react-native';
 import { HapticsService } from '../services/haptics';
 
 // 1. Haptic TouchableOpacity

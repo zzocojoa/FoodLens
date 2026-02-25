@@ -16,7 +16,7 @@ const BreakdownOverlay: React.FC<BreakdownOverlayProps> = ({ isOpen, onClose, re
     const theme = Colors[colorScheme];
     const styles = React.useMemo(() => getBreakdownOverlayStyles(theme), [theme]);
 
-    const { insets, translateY, opacity: manualOpacity, panResponder, shouldRender, model } = useBreakdownOverlayModel({
+    const { insets, translateY, panResponder, shouldRender, model } = useBreakdownOverlayModel({
         isOpen,
         onClose,
         resultData,

@@ -3,8 +3,7 @@ import { DEFAULT_AVATARS } from '@/models/User';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
-import { CanonicalLocale } from '@/features/i18n';
-import { useI18n } from '@/features/i18n';
+import { CanonicalLocale, useI18n } from '@/features/i18n';
 import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 

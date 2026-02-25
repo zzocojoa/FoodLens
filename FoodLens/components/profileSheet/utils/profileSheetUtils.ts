@@ -1,7 +1,6 @@
-import { LANGUAGE_OPTIONS } from '../constants';
+import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
 import { CanonicalLocale } from '@/features/i18n';
-import { UI_LANGUAGE_OPTIONS } from '../constants';
 
 export const toLanguageLabel = (language: string | undefined): string => {
   if (!language) return 'Auto (Photo/GPS)';
