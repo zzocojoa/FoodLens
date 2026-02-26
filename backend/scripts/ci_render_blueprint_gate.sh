@@ -11,13 +11,29 @@ fi
 
 echo "[Render Blueprint Gate] validating ${BLUEPRINT_PATH}"
 
+if command -v rg >/dev/null 2>&1; then
+  SEARCH_BIN="rg"
+else
+  SEARCH_BIN="grep"
+fi
+
 require_pattern() {
   local pattern="$1"
   local label="$2"
-  if ! rg -n --fixed-strings "${pattern}" "${BLUEPRINT_PATH}" >/dev/null; then
-    echo "[Render Blueprint Gate] missing required field: ${label}"
-    exit 1
+  if [[ "${SEARCH_BIN}" == "rg" ]]; then
+    if rg -n --fixed-strings "${pattern}" "${BLUEPRINT_PATH}" >/dev/null; then
+      return
+    fi
+  else
+    if grep -nF "${pattern}" "${BLUEPRINT_PATH}" >/dev/null; then
+      return
+    fi
   fi
+  if [[ "${SEARCH_BIN}" == "grep" ]]; then
+    echo "[Render Blueprint Gate] ripgrep not found in runner; used grep fallback."
+  fi
+  echo "[Render Blueprint Gate] missing required field: ${label}"
+  exit 1
 }
 
 require_pattern "type: web" "type: web"
