@@ -60,7 +60,11 @@ const authenticatedRequest = async <T>(
   path: string,
   init: RequestInit = {}
 ): Promise<{ data: T; requestId: string }> => {
-  const session = await restoreSession();
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+    refreshIfExpired: false,
+  });
   if (!session) {
     throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
   }

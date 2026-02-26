@@ -28,6 +28,14 @@ export const LOGIN_COPY = {
   confirmPasswordPlaceholder: 'Confirm your password',
   verificationCodeLabel: 'Verification Code',
   verificationCodePlaceholder: 'Enter 6-digit code',
+  verificationHelpText: 'After creating your account, enter the verification code sent to your email.',
+  verificationExpiresInPrefix: 'Code expires in',
+  verificationExpired: 'Verification code has expired. Request a new code.',
+  resendVerificationCode: 'Resend Code',
+  verificationResendUnavailable:
+    'Verification resend endpoint is unavailable on this server. Please update backend deployment.',
+  emailNotVerifiedSwitchToSignup:
+    'This account is not verified yet. Continue on sign up to request a verification code.',
   rememberMe: 'Remember Me',
   forgotPassword: 'Forgot Password?',
   loginTitle: 'Sign in',
@@ -100,6 +108,18 @@ export const createLoginCopy = (
   confirmPasswordPlaceholder: translate('login.form.passwordConfirm.placeholder', LOGIN_COPY.confirmPasswordPlaceholder),
   verificationCodeLabel: translate('login.form.verificationCode.label', LOGIN_COPY.verificationCodeLabel),
   verificationCodePlaceholder: translate('login.form.verificationCode.placeholder', LOGIN_COPY.verificationCodePlaceholder),
+  verificationHelpText: translate('login.info.verificationHelpText', LOGIN_COPY.verificationHelpText),
+  verificationExpiresInPrefix: translate('login.info.verificationExpiresInPrefix', LOGIN_COPY.verificationExpiresInPrefix),
+  verificationExpired: translate('login.info.verificationExpired', LOGIN_COPY.verificationExpired),
+  resendVerificationCode: translate('login.action.resendVerificationCode', LOGIN_COPY.resendVerificationCode),
+  verificationResendUnavailable: translate(
+    'login.error.verificationResendUnavailable',
+    LOGIN_COPY.verificationResendUnavailable
+  ),
+  emailNotVerifiedSwitchToSignup: translate(
+    'login.info.emailNotVerifiedSwitchToSignup',
+    LOGIN_COPY.emailNotVerifiedSwitchToSignup
+  ),
   rememberMe: translate('login.form.rememberMe', LOGIN_COPY.rememberMe),
   forgotPassword: translate('login.form.forgotPassword', LOGIN_COPY.forgotPassword),
   loginTitle: translate('login.title.signIn', LOGIN_COPY.loginTitle),

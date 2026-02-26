@@ -40,6 +40,9 @@ const syncHistoryFromServer = async (userId: string, local: AnalysisRecord[]): P
     return merged;
   } catch (error) {
     const apiError = error instanceof Phase2SyncApiError ? error : null;
+    if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
+      return null;
+    }
     logger.warn('[Phase2Sync] history pull failed', {
       request_id: apiError?.requestId || 'unknown',
       user_id: userId,

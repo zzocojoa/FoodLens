@@ -38,6 +38,13 @@ const verifyEmailCode = async (input: {
     code: input.code.trim(),
   });
 
+const requestEmailVerification = async (input: {
+  email: string;
+}): Promise<AuthEmailSignupResult> =>
+  AuthApi.requestEmailVerification({
+    email: normalizeEmail(input.email),
+  });
+
 const requestPasswordReset = async (input: { email: string }): Promise<AuthPasswordResetChallenge> =>
   AuthApi.requestPasswordReset({
     email: normalizeEmail(input.email),
@@ -154,6 +161,7 @@ const submitOAuthAuth = async (
 export const loginAuthService = {
   submitEmailAuth,
   verifyEmailCode,
+  requestEmailVerification,
   requestPasswordReset,
   confirmPasswordReset,
   submitOAuthAuth,

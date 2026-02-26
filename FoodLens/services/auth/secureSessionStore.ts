@@ -1,6 +1,7 @@
 import { AuthSessionTokens } from './authApi_Logic';
 
-const SESSION_STORAGE_KEY = '@foodlens_auth_session_v1';
+// expo-secure-store keys must be alphanumeric or [.-_]; '@' is invalid on Android.
+const SESSION_STORAGE_KEY = 'foodlens_auth_session_v1';
 const STORAGE_FALLBACK_REQUEST_ID = `auth-secure-store-${Date.now().toString(36)}`;
 const STORAGE_FALLBACK_USER_ID = 'unknown';
 

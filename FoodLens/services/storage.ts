@@ -4,16 +4,45 @@ import { MMKV } from 'react-native-mmkv';
 const LOG_PREFIX = '[SafeStorage]';
 const MIGRATION_KEY = 'foodlens_storage_migrated_v1';
 
-// Initialize MMKV instance with fallback detection
-let storageInstance: MMKV | null = null;
-try {
-  // MMKV will throw an error if Remote Debugging is enabled
-  storageInstance = new MMKV();
-} catch (e) {
-  console.warn(`${LOG_PREFIX} MMKV initialization failed. Falling back to AsyncStorage (Internal mode). This usually happens if Remote Debugging is enabled.`);
-}
+const STORAGE_FALLBACK_REQUEST_ID = `safe-storage-${Date.now().toString(36)}`;
+const STORAGE_FALLBACK_USER_ID = 'unknown';
 
-export const storage = storageInstance;
+let mmkvWarned = false;
+export let storage: MMKV | null = null;
+
+const extractErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
+
+const logMMKVFallbackOnce = (error: unknown): void => {
+  if (mmkvWarned) return;
+  mmkvWarned = true;
+  const details = extractErrorMessage(error);
+  const hint =
+    typeof globalThis !== 'undefined' && (globalThis as { HermesInternal?: unknown }).HermesInternal
+      ? 'MMKV native module unavailable in current runtime.'
+      : 'JSI/Hermes path unavailable (often caused by Remote Debugging).';
+  console.warn(`${LOG_PREFIX} MMKV initialization failed. Falling back to AsyncStorage (Internal mode).`, {
+    request_id: STORAGE_FALLBACK_REQUEST_ID,
+    user_id: STORAGE_FALLBACK_USER_ID,
+    hint,
+    error: details,
+  });
+};
+
+const getStorageInstance = (): MMKV | null => {
+  if (storage) return storage;
+
+  try {
+    storage = new MMKV();
+    return storage;
+  } catch (error) {
+    storage = null;
+    logMMKVFallbackOnce(error);
+    return null;
+  }
+};
 
 const logParseError = (key: string, error: unknown): void => {
   console.error(`${LOG_PREFIX} Error parsing key "${key}":`, error);
@@ -37,9 +66,10 @@ const parseStoredValue = <T>(jsonValue: string | undefined | null, fallback: T):
  */
 export const initializeSafeStorage = async () => {
     try {
-        if (!storage) return; // MMKV not available (Debugger mode)
+        const activeStorage = getStorageInstance();
+        if (!activeStorage) return; // MMKV not available in current runtime.
         
-        const isMigrated = storage.getBoolean(MIGRATION_KEY);
+        const isMigrated = activeStorage.getBoolean(MIGRATION_KEY);
         if (isMigrated) return;
 
         console.log(`${LOG_PREFIX} Starting migration from AsyncStorage...`);
@@ -49,12 +79,12 @@ export const initializeSafeStorage = async () => {
             const pairs = await AsyncStorage.multiGet(keys);
             for (const [key, value] of pairs) {
                 if (value !== null) {
-                    storage.set(key, value);
+                    activeStorage.set(key, value);
                 }
             }
         }
 
-        storage.set(MIGRATION_KEY, true);
+        activeStorage.set(MIGRATION_KEY, true);
         console.log(`${LOG_PREFIX} Migration completed successfully. Total keys: ${keys.length}`);
     } catch (error) {
         console.error(`${LOG_PREFIX} Migration failed:`, error);
@@ -75,19 +105,21 @@ export const SafeStorage = {
      */
     async get<T>(key: string, fallback: T): Promise<T> {
         try {
-            if (storage) {
-                const jsonValue = storage.getString(key);
+            const activeStorage = getStorageInstance();
+            if (activeStorage) {
+                const jsonValue = activeStorage.getString(key);
                 return parseStoredValue(jsonValue, fallback);
             }
-            // Fallback for Debugging Mode
+            // Fallback path when MMKV is unavailable in current runtime.
             const asyncJson = await AsyncStorage.getItem(key);
             return parseStoredValue(asyncJson, fallback);
         } catch (error) {
             logParseError(key, error);
             // Self-healing: Remove corrupted data
             try {
-                if (storage) {
-                    storage.delete(key);
+                const activeStorage = getStorageInstance();
+                if (activeStorage) {
+                    activeStorage.delete(key);
                 } else {
                     await AsyncStorage.removeItem(key);
                 }
@@ -105,8 +137,9 @@ export const SafeStorage = {
     async set<T>(key: string, value: T): Promise<void> {
         try {
             const jsonValue = JSON.stringify(value);
-            if (storage) {
-                storage.set(key, jsonValue);
+            const activeStorage = getStorageInstance();
+            if (activeStorage) {
+                activeStorage.set(key, jsonValue);
             } else {
                 await AsyncStorage.setItem(key, jsonValue);
             }
@@ -121,8 +154,9 @@ export const SafeStorage = {
      */
     async remove(key: string): Promise<void> {
         try {
-            if (storage) {
-                storage.delete(key);
+            const activeStorage = getStorageInstance();
+            if (activeStorage) {
+                activeStorage.delete(key);
             } else {
                 await AsyncStorage.removeItem(key);
             }
@@ -133,8 +167,9 @@ export const SafeStorage = {
 
     async clearAll(): Promise<void> {
         try {
-            if (storage) {
-                storage.clearAll();
+            const activeStorage = getStorageInstance();
+            if (activeStorage) {
+                activeStorage.clearAll();
             } else {
                 await AsyncStorage.clear();
             }

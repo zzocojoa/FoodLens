@@ -12,6 +12,7 @@ export type LoginFormValues = {
 export type LoginPendingEmailVerification = {
   email: string;
   expiresInSeconds: number;
+  expiresAtMillis: number;
   debugCode?: string;
 };
 

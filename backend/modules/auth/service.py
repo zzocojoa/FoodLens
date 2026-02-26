@@ -431,24 +431,53 @@ class InMemoryAuthSessionService:
         normalized_email = self._normalize_email(email)
         self._validate_email(normalized_email)
         self._validate_password(password)
+        normalized_display_name = display_name.strip() if display_name else None
+        normalized_locale = locale or "ko-KR"
+        created_new_user = False
+        verification_record: EmailVerificationRecord | None = None
+        verification_code = ""
+        user: AuthUser
 
         with self._lock:
-            if normalized_email in self._user_id_by_email:
-                raise AuthServiceError(
-                    code="AUTH_EMAIL_ALREADY_EXISTS",
-                    message="Email is already registered.",
-                    status_code=409,
+            user_id = self._user_id_by_email.get(normalized_email)
+            if user_id:
+                existing_user = self._users_by_id[user_id]
+                can_reissue_verification = (
+                    self.email_verification_required
+                    and existing_user.provider == "email"
+                    and existing_user.email_verified_at is None
                 )
+                if not can_reissue_verification:
+                    raise AuthServiceError(
+                        code="AUTH_EMAIL_ALREADY_EXISTS",
+                        message="Email is already registered.",
+                        status_code=409,
+                        user_id=existing_user.user_id,
+                    )
 
-            user = self._create_user(
-                email=normalized_email,
-                display_name=display_name,
-                provider="email",
-                provider_subject=None,
-                locale=locale,
-                password=password,
-                email_verified_at=None if self.email_verification_required else _utc_now(),
-            )
+                existing_user.password_salt, existing_user.password_hash = self._create_password_credentials(password)
+                if normalized_display_name is not None:
+                    existing_user.display_name = normalized_display_name
+                existing_user.locale = normalized_locale
+                existing_user.updated_at = _utc_now()
+                profile = self._profiles_by_user_id.get(existing_user.user_id)
+                if profile is not None:
+                    profile.display_name = existing_user.display_name
+                    profile.locale = existing_user.locale
+                    profile.updated_at = existing_user.updated_at
+                user = existing_user
+            else:
+                user = self._create_user(
+                    email=normalized_email,
+                    display_name=normalized_display_name,
+                    provider="email",
+                    provider_subject=None,
+                    locale=normalized_locale,
+                    password=password,
+                    email_verified_at=None if self.email_verification_required else _utc_now(),
+                )
+                created_new_user = True
+
             if not self.email_verification_required:
                 bundle = self._create_session_bundle(user=user, provider="email", device_id=device_id)
                 self._persist_state_unlocked()
@@ -473,8 +502,82 @@ class InMemoryAuthSessionService:
         except EmailVerificationDeliveryError as error:
             with self._lock:
                 pending_user = self._users_by_id.get(user.user_id)
-                if pending_user and pending_user.email_verified_at is None:
+                if created_new_user and pending_user and pending_user.email_verified_at is None:
                     self._rollback_unverified_user(pending_user)
+                    self._persist_state_unlocked()
+                elif (
+                    not created_new_user
+                    and pending_user
+                    and pending_user.email_verified_at is None
+                    and verification_record is not None
+                ):
+                    pending_record = self._email_verifications_by_user_id.get(pending_user.user_id)
+                    if pending_record and pending_record.verification_id == verification_record.verification_id:
+                        self._email_verifications_by_user_id.pop(pending_user.user_id, None)
+                        self._persist_state_unlocked()
+            raise AuthServiceError(
+                code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",
+                message="Failed to deliver verification email.",
+                status_code=503,
+                user_id=user.user_id,
+            ) from error
+
+        return challenge_payload
+
+    def request_email_verification(self, *, email: str) -> dict[str, object]:
+        normalized_email = self._normalize_email(email)
+        self._validate_email(normalized_email)
+        verification_record: EmailVerificationRecord | None = None
+        verification_code = ""
+        user: AuthUser
+
+        with self._lock:
+            user_id = self._user_id_by_email.get(normalized_email)
+            if not user_id:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_VERIFICATION_NOT_FOUND",
+                    message="No pending email verification was found.",
+                    status_code=404,
+                )
+
+            user = self._users_by_id[user_id]
+            if user.provider != "email":
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_UNSUPPORTED",
+                    message="Email verification is not available for this account.",
+                    status_code=409,
+                    user_id=user.user_id,
+                )
+
+            if user.email_verified_at is not None:
+                raise AuthServiceError(
+                    code="AUTH_EMAIL_ALREADY_VERIFIED",
+                    message="Email is already verified.",
+                    status_code=409,
+                    user_id=user.user_id,
+                )
+
+            verification_record, verification_code = self._issue_email_verification(user=user)
+            challenge_payload = self._serialize_email_verification_challenge(
+                user=user,
+                record=verification_record,
+            )
+            if self.email_verification_debug_code_enabled:
+                challenge_payload["verification_debug_code"] = verification_code
+            self._persist_state_unlocked()
+
+        try:
+            self._email_verification_sender.send_verification_code(
+                email=user.email,
+                code=verification_code,
+                expires_in_seconds=max(1, int((verification_record.expires_at - _utc_now()).total_seconds())),
+                user_id=user.user_id,
+            )
+        except EmailVerificationDeliveryError as error:
+            with self._lock:
+                pending_record = self._email_verifications_by_user_id.get(user.user_id)
+                if pending_record and pending_record.verification_id == verification_record.verification_id:
+                    self._email_verifications_by_user_id.pop(user.user_id, None)
                     self._persist_state_unlocked()
             raise AuthServiceError(
                 code="AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED",

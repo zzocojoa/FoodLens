@@ -30,12 +30,34 @@ Food Lens는 해외 여행 중 낯선 음식을 만났을 때, 카메라 촬영 
 
 ### 1. 백엔드 서버 실행
 
+````bash
+아래 순서로 실행하면 됩니다.
+
+1. Postgres 실행(로컬 URL 사용할 때 필수)
 ```bash
 cd /Users/beatlefeed/Documents/FoodLens-project
-bash backend/setup.sh
+docker compose -f docker-compose.postgres.yml up -d foodlens-postgres
+````
+
+2. 백엔드 실행 경로/명령어
+
+```bash
+cd /Users/beatlefeed/Documents/FoodLens-project
 source .venv/bin/activate
 python -m backend.server
 ```
+
+3. 정상 확인
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+참고:
+
+- 지금 앱 `.env`가 `http://192.168.219.102:8000`을 보도록 되어 있으면, 위 백엔드가 떠 있어야 OAuth 시작이 됩니다.
+
+````
 
 ### 2. 모바일 앱 실행
 
@@ -53,7 +75,15 @@ npx expo start --tunnel
 npx expo start --tunnel --go
 
 npx expo prebuild --clean
-```
+
+# 로그 기록용
+npm run ios:device:logs
+npm run ios:release:device:logs
+npm run android:device:logs
+npm run android:release:device:logs
+
+
+````
 
 ### 3. 🚨 문제 해결 (Troubleshooting)
 

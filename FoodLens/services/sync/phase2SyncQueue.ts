@@ -143,6 +143,20 @@ export const dispatchPhase2SyncQueue = async (): Promise<void> =>
       } catch (error) {
         const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;
+
+        if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
+          mutable[index] = {
+            ...sending,
+            state: 'pending',
+            updatedAt: now(),
+            nextAttemptAt: now() + RETRY_BASE_DELAY_MS,
+            requestId: apiError.requestId,
+            lastError: undefined,
+          };
+          await saveQueue(pruneQueue(mutable));
+          break;
+        }
+
         const reachedLimit = previousAttempts >= RETRY_LIMIT;
 
         mutable[index] = {

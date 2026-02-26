@@ -256,6 +256,15 @@ export const AuthApi = {
     return toSessionTokens(payload);
   },
 
+  async requestEmailVerification(input: {
+    email: string;
+  }): Promise<AuthEmailVerificationChallenge> {
+    const payload = await postJson<AuthPayload>('/auth/email/verification/request', {
+      email: input.email,
+    });
+    return toEmailVerificationChallenge(payload);
+  },
+
   async requestPasswordReset(input: {
     email: string;
   }): Promise<AuthPasswordResetChallenge> {

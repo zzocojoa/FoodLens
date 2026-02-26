@@ -1,7 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
-import { Phase2Api } from '../phase2Api_Logic';
+import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
 import { dispatchPhase2SyncQueue } from '../phase2SyncQueue';
 import type { Phase2SyncOperation } from '../phase2Sync.types';
 
@@ -146,5 +146,19 @@ describe('phase2SyncQueue', () => {
 
     expect(mockedPhase2Api.putProfile).not.toHaveBeenCalled();
     expect(queueState[0].state).toBe('pending');
+  });
+
+  it('keeps queue pending when session is unavailable', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a')];
+    mockedPhase2Api.putProfile.mockRejectedValueOnce(
+      new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401)
+    );
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('pending');
+    expect(queueState[0].attempts).toBe(0);
+    expect(queueState[0].lastError).toBeUndefined();
   });
 });

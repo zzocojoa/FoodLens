@@ -4,7 +4,6 @@ import {
   Animated,
   Keyboard,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -81,12 +80,16 @@ const InputGroup = ({
 type LoginAuthScreenProps = {
   isActive: boolean;
   authCopy: LoginAuthCopy;
+  mode: LoginAuthMode;
   copy: LoginCopy;
   formValues: LoginFormValues;
   loading: boolean;
   errorMessage: string | null;
   infoMessage: string | null;
   verificationStepActive: boolean;
+  emailVerificationStepActive: boolean;
+  verificationCountdownLabel: string | null;
+  verificationExpired: boolean;
   passwordResetStepActive: boolean;
   passwordVisible: boolean;
   confirmPasswordVisible: boolean;
@@ -104,6 +107,7 @@ type LoginAuthScreenProps = {
   onToggleConfirmPasswordVisible: () => void;
   onForgotPassword: () => void;
   onCancelPasswordReset: () => void;
+  onResendEmailVerification: () => void;
   onSwitchMode: (nextMode: LoginAuthMode) => void;
   onSubmit: () => void;
   onOAuthLogin: (provider: LoginOAuthProvider) => void;
@@ -112,12 +116,16 @@ type LoginAuthScreenProps = {
 export default function LoginAuthScreen({
   isActive,
   authCopy,
+  mode,
   copy,
   formValues,
   loading,
   errorMessage,
   infoMessage,
   verificationStepActive,
+  emailVerificationStepActive,
+  verificationCountdownLabel,
+  verificationExpired,
   passwordResetStepActive,
   passwordVisible,
   confirmPasswordVisible,
@@ -135,6 +143,7 @@ export default function LoginAuthScreen({
   onToggleConfirmPasswordVisible,
   onForgotPassword,
   onCancelPasswordReset,
+  onResendEmailVerification,
   onSwitchMode,
   onSubmit,
   onOAuthLogin,
@@ -153,6 +162,7 @@ export default function LoginAuthScreen({
     : [];
   const hasMessage = messageLines.length > 0;
   const resetLayoutActive = passwordResetStepActive;
+  const showSignupVerificationField = mode === 'signup';
   const authContainerStyle = [
     loginStyles.authContainer,
     containerStyle,
@@ -327,7 +337,7 @@ export default function LoginAuthScreen({
           )
         ) : null}
 
-        {verificationStepActive ? (
+        {showSignupVerificationField || verificationStepActive ? (
           <View style={loginStyles.verificationFieldWrap}>
             <InputGroup
               label={copy.verificationCodeLabel}
@@ -340,35 +350,45 @@ export default function LoginAuthScreen({
               onSubmitEditing={() => Keyboard.dismiss()}
               returnKeyType="done"
             />
+            {showSignupVerificationField && !passwordResetStepActive ? (
+              <View style={loginStyles.verificationMetaRow}>
+                <Text style={loginStyles.verificationMetaText}>
+                  {emailVerificationStepActive
+                    ? verificationExpired || !verificationCountdownLabel
+                      ? copy.verificationExpired
+                      : `${copy.verificationExpiresInPrefix} ${verificationCountdownLabel}`
+                    : copy.verificationHelpText}
+                </Text>
+                {emailVerificationStepActive ? (
+                  <Pressable
+                    onPress={onResendEmailVerification}
+                    disabled={loading}
+                    style={loginStyles.verificationResendPressable}
+                  >
+                    <Text
+                      style={[
+                        loginStyles.verificationResendText,
+                        loading ? loginStyles.verificationResendTextDisabled : null,
+                      ]}
+                    >
+                      {copy.resendVerificationCode}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         ) : null}
       </Animated.View>
     </>
   );
 
-  if (resetLayoutActive) {
-    return (
-      <Animated.View
-        style={[loginStyles.screen, screenStyle]}
-        pointerEvents={isActive ? 'auto' : 'none'}
-      >
-        <ScrollView
-          style={loginStyles.authScroll}
-          contentContainerStyle={loginStyles.authScrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {formContent}
-          <View style={loginStyles.authFooterInline}>{footerContent}</View>
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-
   return (
     <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
-      {formContent}
-      <Animated.View style={[loginStyles.authFooter, footerStyle]}>{footerContent}</Animated.View>
+      <View style={loginStyles.authBody}>
+        {formContent}
+        <Animated.View style={[loginStyles.authFooterInline, footerStyle]}>{footerContent}</Animated.View>
+      </View>
     </Animated.View>
   );
 }

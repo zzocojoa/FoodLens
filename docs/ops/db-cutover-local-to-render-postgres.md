@@ -14,6 +14,7 @@
 - `docs/roadmap/master-plan.md`
 - `.env.example`
 - `FoodLens/.env.example`
+- `backend/scripts/phase2_cutover_rehearsal.sh`
 
 ## 3) 사전 조건
 
@@ -50,10 +51,20 @@
 docker compose -f docker-compose.postgres.yml up -d
 
 # 1) Local dump
-docker exec -t <local_pg_container> pg_dump -U <local_user> -d <local_db> -Fc > local.dump
+# NOTE: custom-format dump(-Fc)는 TTY(-t) 없이 생성해야 복구 파일 손상을 피할 수 있음
+docker exec -i <local_pg_container> pg_dump -U <local_user> -d <local_db> -Fc > local.dump
 
 # 2) Restore to Render Postgres
 pg_restore --no-owner --no-privileges --clean --if-exists --dbname="<RENDER_DATABASE_URL>" local.dump
+```
+
+자동 리허설 스크립트(권장):
+
+```bash
+RENDER_API_KEY=<render_api_key> \
+RENDER_SERVICE_ID=<render_backend_service_id> \
+RENDER_PUBLIC_DB_HOST=<render_public_db_host> \
+bash backend/scripts/phase2_cutover_rehearsal.sh
 ```
 
 ## 7) 롤백
@@ -77,6 +88,8 @@ pg_restore --no-owner --no-privileges --clean --if-exists --dbname="<RENDER_DATA
 ## 9) 증적 보관
 
 - 백업 파일 해시, 복원 로그, 스모크 로그, 실패/롤백 로그를 릴리스 증적에 첨부
+- Phase 2 컷오버 리허설 증적 문서:
+  - `docs/roadmap/phase-2-cutover-rehearsal-evidence.md`
 - 문서 업데이트:
   - `docs/roadmap/cloud-decision-record.md`
   - `docs/roadmap/phase-2-cloud-db-execution.md`

@@ -2,6 +2,7 @@ import os
 import sys
 import types
 import unittest
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,10 @@ def _auth_headers(access_token: str) -> dict[str, str]:
 
 
 class AuthPhase2DataRuntimeTests(unittest.TestCase):
+    @staticmethod
+    def _unique_email(prefix: str) -> str:
+        return f"{prefix}-{uuid4().hex[:10]}@example.com"
+
     def _signup_and_verify(
         self,
         client: TestClient,
@@ -58,7 +63,7 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
 
     def test_me_endpoints_roundtrip_profile_allergies_settings_history(self):
         with TestClient(app) as client:
-            session = self._signup_and_verify(client, email="phase2-roundtrip@example.com")
+            session = self._signup_and_verify(client, email=self._unique_email("phase2-roundtrip"))
             headers = _auth_headers(session["access_token"])
 
             put_allergies = client.put(
@@ -130,8 +135,8 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
 
     def test_history_idempotency_isolated_by_user(self):
         with TestClient(app) as client:
-            session_a = self._signup_and_verify(client, email="phase2-a@example.com")
-            session_b = self._signup_and_verify(client, email="phase2-b@example.com")
+            session_a = self._signup_and_verify(client, email=self._unique_email("phase2-a"))
+            session_b = self._signup_and_verify(client, email=self._unique_email("phase2-b"))
             headers_a = _auth_headers(session_a["access_token"])
             headers_b = _auth_headers(session_b["access_token"])
 

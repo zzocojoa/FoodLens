@@ -23,6 +23,7 @@ export default function LoginScreen() {
     height > LOGIN_LAYOUT.phoneMaxHeight + 24;
 
   const {
+    mode,
     loginCopy,
     authCopy,
     formValues,
@@ -30,6 +31,9 @@ export default function LoginScreen() {
     errorMessage,
     infoMessage,
     verificationStepActive,
+    emailVerificationStepActive,
+    verificationCountdownLabel,
+    verificationExpired,
     passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
@@ -43,6 +47,7 @@ export default function LoginScreen() {
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,
+    handleResendEmailVerification,
     handleSubmit,
     handleOAuthSignIn,
   } = useLoginScreen();
@@ -84,12 +89,16 @@ export default function LoginScreen() {
               <LoginAuthScreen
                 isActive={authInteractive}
                 authCopy={authCopy}
+                mode={mode}
                 copy={loginCopy}
                 formValues={formValues}
                 loading={loading}
                 errorMessage={errorMessage}
                 infoMessage={infoMessage}
                 verificationStepActive={verificationStepActive}
+                emailVerificationStepActive={emailVerificationStepActive}
+                verificationCountdownLabel={verificationCountdownLabel}
+                verificationExpired={verificationExpired}
                 passwordResetStepActive={passwordResetStepActive}
                 passwordVisible={passwordVisible}
                 confirmPasswordVisible={confirmPasswordVisible}
@@ -115,6 +124,7 @@ export default function LoginScreen() {
                 }
                 onForgotPassword={handleForgotPassword}
                 onCancelPasswordReset={handleCancelPasswordReset}
+                onResendEmailVerification={handleResendEmailVerification}
                 onSwitchMode={handleSwitchMode}
                 onSubmit={handleSubmit}
                 onOAuthLogin={handleOAuthSignIn}

@@ -96,6 +96,7 @@
   - request_id/user_id 기준 로그 추적 가능
   - 재설치/기기변경 복원 시나리오 통과
   - 로컬 Docker Postgres -> Render 유료 Postgres 컷오버 리허설 통과(복구 포함)
+  - Render IaC(`render.yaml`)와 env parity CI 게이트 통과
 
 ## 7) 리스크와 대응 (쉽게 설명)
 
@@ -140,6 +141,11 @@
 - `docs/roadmap/phase-2-validation-context-prompt.md`
 - `docs/roadmap/master-plan.md`
 - `docs/ops/db-cutover-local-to-render-postgres.md`
+- `docs/roadmap/phase-2-cutover-rehearsal-evidence.md`
+- `docs/roadmap/phase-2-mobile-reinstall-account-switch-evidence.md`
+- `render.yaml`
+- `backend/scripts/ci_render_blueprint_gate.sh`
+- `.github/workflows/phase2-render-blueprint.yml`
 - `.env.example`
 - `FoodLens/.env.example`
 

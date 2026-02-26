@@ -36,30 +36,41 @@ export const useLoginMotion = () => {
       Math.min(1, (usableHeight / LOGIN_LAYOUT.phoneMaxHeight) * platformScaleBias),
     );
 
-    const authMarginTopLogin = Math.round(LOGIN_LAYOUT.authMarginTopLogin * heightScale);
-    const authMarginTopSignup = Math.round(LOGIN_LAYOUT.authMarginTopSignup * heightScale);
+    const estimatedFooterHeight = Math.round(LOGIN_LAYOUT.authFooterReservedHeight * 0.8);
+    const estimatedAuthFormHeightLogin = 290;
+    const estimatedAuthFormHeightSignup = 350;
+
+    const scaledLoginTop = Math.round(LOGIN_LAYOUT.authMarginTopLogin * heightScale);
+    const scaledSignupTop = Math.round(LOGIN_LAYOUT.authMarginTopSignup * heightScale);
+    const maxLoginTop = Math.max(
+      20,
+      usableHeight - estimatedAuthFormHeightLogin - estimatedFooterHeight,
+    );
+    const maxSignupTop = Math.max(
+      20,
+      usableHeight - estimatedAuthFormHeightSignup - estimatedFooterHeight,
+    );
+
+    const authMarginTopLogin = Math.max(160, Math.min(scaledLoginTop, maxLoginTop));
+    const authMarginTopSignup = Math.max(124, Math.min(scaledSignupTop, maxSignupTop));
     const welcomeTitleMarginTop = Math.round(
-      LOGIN_LAYOUT.welcomeTitleMarginTop * heightScale,
+      Math.max(292, Math.min(LOGIN_LAYOUT.welcomeTitleMarginTop * heightScale, 432)),
     );
 
     const minFooterBottom =
       Platform.OS === 'android'
-        ? 28
+        ? 22
         : LOGIN_LAYOUT.footerBottomOffset;
     const footerBottom = Math.max(
       minFooterBottom,
       insets.bottom + (Platform.OS === 'android' ? 8 : 16),
     );
-    const authFooterReserve =
-      LOGIN_LAYOUT.authFooterReservedHeight +
-      Math.max(0, footerBottom - LOGIN_LAYOUT.footerBottomOffset);
 
     return {
       authMarginTopLogin,
       authMarginTopSignup,
       welcomeTitleMarginTop,
       footerBottom,
-      authFooterReserve,
     };
   }, [height, insets.bottom, insets.top]);
 
@@ -275,7 +286,6 @@ export const useLoginMotion = () => {
     };
 
     const authFooterStyle = {
-      bottom: layoutMetrics.footerBottom,
       opacity: authFooterProgress,
       transform: [
         {
@@ -311,7 +321,7 @@ export const useLoginMotion = () => {
       authScreenStyle: { opacity: authScreenOpacity },
       authContainerStyle: {
         marginTop: authContainerMarginTop,
-        paddingBottom: layoutMetrics.authFooterReserve,
+        paddingBottom: 16,
       },
       authFooterStyle,
       signupFieldStyle,
@@ -320,7 +330,6 @@ export const useLoginMotion = () => {
   }, [
     authFooterProgress,
     authScreenOpacity,
-    layoutMetrics.authFooterReserve,
     layoutMetrics.authMarginTopLogin,
     layoutMetrics.authMarginTopSignup,
     layoutMetrics.footerBottom,

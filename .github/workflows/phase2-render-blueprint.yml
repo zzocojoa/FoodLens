@@ -1,0 +1,26 @@
+name: Phase2 Render Blueprint Gate
+
+on:
+  pull_request:
+    paths:
+      - render.yaml
+      - backend/scripts/ci_render_blueprint_gate.sh
+      - .github/workflows/phase2-render-blueprint.yml
+  push:
+    branches:
+      - main
+    paths:
+      - render.yaml
+      - backend/scripts/ci_render_blueprint_gate.sh
+      - .github/workflows/phase2-render-blueprint.yml
+  workflow_dispatch:
+
+jobs:
+  render-blueprint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Render blueprint and env parity
+        run: bash backend/scripts/ci_render_blueprint_gate.sh

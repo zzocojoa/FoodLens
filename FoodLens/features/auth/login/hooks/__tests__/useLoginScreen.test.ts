@@ -2,7 +2,7 @@
 
 import { act, renderHook } from '@testing-library/react-native';
 import { useLoginScreen } from '../useLoginScreen';
-import { AuthSessionTokens } from '@/services/auth/authApi';
+import { AuthApiError, AuthSessionTokens } from '@/services/auth/authApi';
 import { LOGIN_ALERT_AUTO_DISMISS_MS, LOGIN_COPY } from '../../constants/login.constants';
 
 const mockRouterReplace = jest.fn();
@@ -10,6 +10,7 @@ const mockHasSeenOnboarding = jest.fn();
 const mockPersistSession = jest.fn();
 const mockSubmitEmailAuth = jest.fn();
 const mockVerifyEmailCode = jest.fn();
+const mockRequestEmailVerification = jest.fn();
 const mockRequestPasswordReset = jest.fn();
 const mockConfirmPasswordReset = jest.fn();
 const mockSubmitOAuthAuth = jest.fn();
@@ -66,6 +67,7 @@ jest.mock('../../services/loginAuthService', () => ({
   loginAuthService: {
     submitEmailAuth: (...args: unknown[]) => mockSubmitEmailAuth(...args),
     verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+    requestEmailVerification: (...args: unknown[]) => mockRequestEmailVerification(...args),
     requestPasswordReset: (...args: unknown[]) => mockRequestPasswordReset(...args),
     confirmPasswordReset: (...args: unknown[]) => mockConfirmPasswordReset(...args),
     submitOAuthAuth: (...args: unknown[]) => mockSubmitOAuthAuth(...args),
@@ -93,6 +95,17 @@ describe('useLoginScreen', () => {
     jest.clearAllMocks();
     mockResolveAuthErrorMessage.mockReturnValue('auth failed');
     mockHasSeenOnboarding.mockResolvedValue(true);
+    mockRequestEmailVerification.mockResolvedValue({
+      verificationRequired: true as const,
+      verificationMethod: 'email_code' as const,
+      verificationChannel: 'email' as const,
+      verificationExpiresIn: 600,
+      verificationId: 'evr_default',
+      user: {
+        id: 'usr_test',
+        email: 'alpha@example.com',
+      },
+    });
   });
 
   it('exposes login copy translated by i18n hook', () => {
@@ -201,6 +214,149 @@ describe('useLoginScreen', () => {
     });
 
     expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding');
+  });
+
+  it('switches to signup and requests verification when login requires email verification', async () => {
+    const authError = new AuthApiError(
+      'Email verification required before login.',
+      'AUTH_EMAIL_NOT_VERIFIED',
+      400,
+      'req_test',
+    );
+    mockSubmitEmailAuth.mockRejectedValue(authError);
+    mockRequestEmailVerification.mockResolvedValue({
+      verificationRequired: true as const,
+      verificationMethod: 'email_code' as const,
+      verificationChannel: 'email' as const,
+      verificationExpiresIn: 600,
+      verificationId: 'evr_resend',
+      debugCode: '334455',
+      user: {
+        id: 'usr_test',
+        email: 'alpha@example.com',
+      },
+    });
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'alpha@example.com');
+      result.current.setFieldValue('password', 'Passw0rd!');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(result.current.mode).toBe('signup');
+    expect(result.current.emailVerificationStepActive).toBe(true);
+    expect(result.current.errorMessage).toBeNull();
+    expect(result.current.infoMessage).toContain('Verification code sent');
+    expect(result.current.formValues.verificationCode).toBe('334455');
+    expect(mockRequestEmailVerification).toHaveBeenCalledWith({ email: 'alpha@example.com' });
+    expect(mockSetAuthMode).toHaveBeenCalledWith('signup');
+  });
+
+  it('requests verification challenge when signup email already exists', async () => {
+    const authError = new AuthApiError(
+      'Email already exists.',
+      'AUTH_EMAIL_ALREADY_EXISTS',
+      409,
+      'req_signup_exists',
+    );
+    mockSubmitEmailAuth.mockRejectedValue(authError);
+    mockRequestEmailVerification.mockResolvedValue({
+      verificationRequired: true as const,
+      verificationMethod: 'email_code' as const,
+      verificationChannel: 'email' as const,
+      verificationExpiresIn: 600,
+      verificationId: 'evr_existing_user',
+      debugCode: '778899',
+      user: {
+        id: 'usr_existing',
+        email: 'existing@example.com',
+      },
+    });
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.handleSwitchMode('signup');
+      result.current.setFieldValue('email', 'existing@example.com');
+      result.current.setFieldValue('password', 'Passw0rd!');
+      result.current.setFieldValue('confirmPassword', 'Passw0rd!');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(result.current.emailVerificationStepActive).toBe(true);
+    expect(result.current.errorMessage).toBeNull();
+    expect(result.current.infoMessage).toContain('Verification code sent');
+    expect(result.current.formValues.verificationCode).toBe('778899');
+    expect(mockRequestEmailVerification).toHaveBeenCalledWith({ email: 'existing@example.com' });
+  });
+
+  it('resends verification code and refreshes countdown metadata', async () => {
+    jest.useFakeTimers();
+    try {
+      mockSubmitEmailAuth.mockResolvedValue({
+        verificationRequired: true as const,
+        verificationMethod: 'email_code' as const,
+        verificationChannel: 'email' as const,
+        verificationExpiresIn: 600,
+        verificationId: 'evr_1',
+        user: {
+          id: 'usr_test',
+          email: 'alpha@example.com',
+        },
+      });
+      mockRequestEmailVerification.mockResolvedValue({
+        verificationRequired: true as const,
+        verificationMethod: 'email_code' as const,
+        verificationChannel: 'email' as const,
+        verificationExpiresIn: 600,
+        verificationId: 'evr_2',
+        debugCode: '112233',
+        user: {
+          id: 'usr_test',
+          email: 'alpha@example.com',
+        },
+      });
+
+      const { result } = renderHook(() => useLoginScreen());
+
+      act(() => {
+        result.current.handleSwitchMode('signup');
+        result.current.setFieldValue('email', 'alpha@example.com');
+        result.current.setFieldValue('password', 'Passw0rd!');
+        result.current.setFieldValue('confirmPassword', 'Passw0rd!');
+      });
+
+      await act(async () => {
+        await result.current.handleSubmit();
+      });
+
+      expect(result.current.emailVerificationStepActive).toBe(true);
+      expect(result.current.verificationCountdownLabel).toBe('10:00');
+
+      await act(async () => {
+        jest.advanceTimersByTime(2_000);
+      });
+
+      expect(result.current.verificationCountdownLabel).toBe('09:58');
+
+      await act(async () => {
+        await result.current.handleResendEmailVerification();
+      });
+
+      expect(mockRequestEmailVerification).toHaveBeenCalledWith({ email: 'alpha@example.com' });
+      expect(result.current.formValues.verificationCode).toBe('112233');
+      expect(result.current.verificationCountdownLabel).toBe('10:00');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('stores volatile session when remember me is disabled in login mode', async () => {

@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .DS_Store
 FoodLens/node_modules/
+artifacts/phase2/
+FoodLens/artifacts/phase2-*.log

@@ -19,6 +19,12 @@ type PersistSessionOptions = {
   rememberMe?: boolean;
 };
 
+type RestoreSessionOptions = {
+  clearCurrentUserOnMissing?: boolean;
+  logWarnings?: boolean;
+  refreshIfExpired?: boolean;
+};
+
 export const persistSession = async (
   session: AuthSessionTokens,
   options: PersistSessionOptions = {}
@@ -41,21 +47,32 @@ export const clearSession = async (): Promise<void> => {
   clearSessionScopedCaches();
 };
 
-export const restoreSession = async (): Promise<AuthSessionTokens | null> => {
+export const restoreSession = async (
+  options: RestoreSessionOptions = {}
+): Promise<AuthSessionTokens | null> => {
+  const clearCurrentUserOnMissing = options.clearCurrentUserOnMissing !== false;
+  const logWarnings = options.logWarnings !== false;
+  const refreshIfExpired = options.refreshIfExpired !== false;
   let stored: AuthSessionTokens | null = null;
   try {
     stored = await AuthSecureSessionStore.read();
   } catch (error) {
-    console.warn('[AuthSession] Secure storage unavailable during bootstrap', {
-      request_id: BOOTSTRAP_REQUEST_ID,
-      user_id: 'unknown',
-      error: error instanceof Error ? error.message : String(error),
-    });
-    await clearCurrentUserId();
+    if (logWarnings) {
+      console.warn('[AuthSession] Secure storage unavailable during bootstrap', {
+        request_id: BOOTSTRAP_REQUEST_ID,
+        user_id: 'unknown',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (clearCurrentUserOnMissing) {
+      await clearCurrentUserId();
+    }
     return null;
   }
   if (!stored) {
-    await clearCurrentUserId();
+    if (clearCurrentUserOnMissing) {
+      await clearCurrentUserId();
+    }
     return null;
   }
 
@@ -64,27 +81,35 @@ export const restoreSession = async (): Promise<AuthSessionTokens | null> => {
     return stored;
   }
 
+  if (!refreshIfExpired) {
+    return null;
+  }
+
   try {
     const refreshed = await AuthApi.refresh(stored.refreshToken);
     await persistSession(refreshed);
     return refreshed;
   } catch (error) {
-    if (error instanceof AuthApiError) {
-      console.warn('[AuthSession] Failed to refresh session', {
-        request_id: BOOTSTRAP_REQUEST_ID,
-        user_id: stored.user.id,
-        code: error.code,
-        status: error.status,
-        requestId: error.requestId,
-      });
-    } else {
-      console.warn('[AuthSession] Failed to refresh session', {
-        request_id: BOOTSTRAP_REQUEST_ID,
-        user_id: stored.user.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (logWarnings) {
+      if (error instanceof AuthApiError) {
+        console.warn('[AuthSession] Failed to refresh session', {
+          request_id: BOOTSTRAP_REQUEST_ID,
+          user_id: stored.user.id,
+          code: error.code,
+          status: error.status,
+          requestId: error.requestId,
+        });
+      } else {
+        console.warn('[AuthSession] Failed to refresh session', {
+          request_id: BOOTSTRAP_REQUEST_ID,
+          user_id: stored.user.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
-    await clearSession();
+    if (clearCurrentUserOnMissing) {
+      await clearSession();
+    }
     return null;
   }
 };

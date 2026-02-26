@@ -704,6 +704,10 @@ class EmailVerifyRequest(BaseModel):
     device_id: str | None = None
 
 
+class EmailVerificationRequest(BaseModel):
+    email: str
+
+
 class PasswordResetRequest(BaseModel):
     email: str
 
@@ -906,6 +910,36 @@ async def auth_email_verify(payload: EmailVerifyRequest, request: Request):
             code=payload.code,
             device_id=payload.device_id,
         )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=error.user_id,
+            provider="email",
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.post("/auth/email/verification/request")
+async def auth_email_verification_request(payload: EmailVerificationRequest, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = await run_in_threadpool(
+            auth_service.request_email_verification,
+            email=payload.email,
+        )
+        if result.get("verification_required") is True:
+            user = result.get("user") if isinstance(result.get("user"), dict) else {}
+            logger.info(
+                "[Auth] email verification reissued request_id=%s user_id=%s email=%s verification_id=%s",
+                request_id,
+                user.get("id", "unknown"),
+                user.get("email", "unknown"),
+                result.get("verification_id", "unknown"),
+            )
         result["request_id"] = request_id
         return result
     except AuthServiceError as error:

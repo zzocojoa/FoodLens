@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Keyboard } from 'react-native';
-import { AuthSessionTokens, isAuthEmailVerificationChallenge } from '@/services/auth/authApi_Logic';
+import {
+  AuthApiError,
+  AuthSessionTokens,
+  isAuthEmailVerificationChallenge,
+} from '@/services/auth/authApi_Logic';
 import { hasSeenOnboarding } from '@/services/storage_Logic';
 import { persistSession } from '@/services/auth/sessionManager_Logic';
 import { useI18n } from '@/features/i18n';
@@ -19,7 +23,7 @@ import {
   LoginPendingEmailVerification,
   LoginPendingPasswordReset,
 } from '../types/login.types';
-import { getAuthCopy, validateLoginForm } from '../utils/login.utils';
+import { formatCountdown, getAuthCopy, validateLoginForm } from '../utils/login.utils';
 import { useLoginMotion } from './useLoginMotion';
 
 const updateField = <K extends keyof LoginFormValues>(
@@ -30,6 +34,22 @@ const updateField = <K extends keyof LoginFormValues>(
   ...prev,
   [field]: value,
 });
+
+const toEmailVerificationPendingState = (input: {
+  email: string;
+  expiresInSeconds: number;
+  debugCode?: string;
+}): LoginPendingEmailVerification => ({
+  email: input.email,
+  expiresInSeconds: input.expiresInSeconds,
+  expiresAtMillis: Date.now() + Math.max(1, input.expiresInSeconds) * 1_000,
+  debugCode: input.debugCode,
+});
+
+const isVerificationResendEndpointMissing = (error: unknown): boolean =>
+  error instanceof AuthApiError &&
+  error.code === 'AUTH_REQUEST_FAILED' &&
+  error.status === 404;
 
 export const useLoginScreen = () => {
   const router = useRouter();
@@ -43,6 +63,7 @@ export const useLoginScreen = () => {
   const [pendingPasswordReset, setPendingPasswordReset] = useState<LoginPendingPasswordReset | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [verificationNowMillis, setVerificationNowMillis] = useState(() => Date.now());
   const transientErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { motion, welcomeInteractive, authInteractive, goToAuth, setAuthMode } = useLoginMotion();
@@ -58,11 +79,8 @@ export const useLoginScreen = () => {
 
   const showTransientError = (message: string) => {
     clearTransientErrorTimeout();
+    setInfoMessage(null);
     setErrorMessage(message);
-    transientErrorTimeoutRef.current = setTimeout(() => {
-      setErrorMessage((currentMessage) => (currentMessage === message ? null : currentMessage));
-      transientErrorTimeoutRef.current = null;
-    }, LOGIN_ALERT_AUTO_DISMISS_MS);
   };
 
   useEffect(() => {
@@ -71,9 +89,55 @@ export const useLoginScreen = () => {
     };
   }, []);
 
+  useEffect(() => {
+    clearTransientErrorTimeout();
+    const activeMessage = errorMessage ?? infoMessage;
+    if (!activeMessage) {
+      return;
+    }
+
+    transientErrorTimeoutRef.current = setTimeout(() => {
+      setErrorMessage((currentMessage) => (currentMessage === activeMessage ? null : currentMessage));
+      setInfoMessage((currentMessage) => (currentMessage === activeMessage ? null : currentMessage));
+      transientErrorTimeoutRef.current = null;
+    }, LOGIN_ALERT_AUTO_DISMISS_MS);
+
+    return () => {
+      clearTransientErrorTimeout();
+    };
+  }, [errorMessage, infoMessage]);
+
   const emailVerificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
   const passwordResetStepActive = mode === 'login' && pendingPasswordReset !== null;
   const verificationStepActive = emailVerificationStepActive || passwordResetStepActive;
+  const verificationSecondsRemaining = useMemo(() => {
+    if (!pendingEmailVerification) {
+      return null;
+    }
+    return Math.max(0, Math.ceil((pendingEmailVerification.expiresAtMillis - verificationNowMillis) / 1000));
+  }, [pendingEmailVerification, verificationNowMillis]);
+  const verificationExpired = emailVerificationStepActive && (verificationSecondsRemaining ?? 0) <= 0;
+  const verificationCountdownLabel = useMemo(() => {
+    if (!emailVerificationStepActive || verificationSecondsRemaining === null) {
+      return null;
+    }
+    return formatCountdown(verificationSecondsRemaining);
+  }, [emailVerificationStepActive, verificationSecondsRemaining]);
+
+  useEffect(() => {
+    if (!emailVerificationStepActive) {
+      return;
+    }
+
+    setVerificationNowMillis(Date.now());
+    const intervalId = setInterval(() => {
+      setVerificationNowMillis(Date.now());
+    }, 1_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [emailVerificationStepActive, pendingEmailVerification?.expiresAtMillis]);
 
   const authCopy = useMemo(() => {
     const baseCopy = getAuthCopy(mode, loginCopy);
@@ -109,16 +173,20 @@ export const useLoginScreen = () => {
     }));
   };
 
-  const handleContinue = () => {
-    goToAuth('login');
-  };
-
-  const handleSwitchMode = (nextMode: LoginAuthMode) => {
+  const switchToMode = (nextMode: LoginAuthMode) => {
     clearTransientErrorTimeout();
     setMode(nextMode);
     setErrorMessage(null);
     resetAuthPendingState();
     setAuthMode(nextMode);
+  };
+
+  const handleContinue = () => {
+    goToAuth('login');
+  };
+
+  const handleSwitchMode = (nextMode: LoginAuthMode) => {
+    switchToMode(nextMode);
   };
 
   const handleForgotPassword = async () => {
@@ -164,6 +232,85 @@ export const useLoginScreen = () => {
       confirmPassword: '',
       verificationCode: '',
     }));
+  };
+
+  const handleResendEmailVerification = async () => {
+    if (!emailVerificationStepActive || !pendingEmailVerification) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const challenge = await loginAuthService.requestEmailVerification({
+        email: pendingEmailVerification.email,
+      });
+      if (isAuthEmailVerificationChallenge(challenge)) {
+        setPendingEmailVerification(
+          toEmailVerificationPendingState({
+            email: challenge.user.email,
+            expiresInSeconds: challenge.verificationExpiresIn,
+            debugCode: challenge.debugCode,
+          }),
+        );
+        setVerificationNowMillis(Date.now());
+        setInfoMessage(loginCopy.emailVerificationSent);
+        setFormValues((prev) => ({
+          ...prev,
+          verificationCode: challenge.debugCode || '',
+        }));
+      }
+    } catch (error) {
+      if (isVerificationResendEndpointMissing(error) && mode === 'signup') {
+        try {
+          const fallbackResult = await loginAuthService.submitEmailAuth({
+            mode: 'signup',
+            values: {
+              ...formValues,
+              confirmPassword: formValues.confirmPassword || formValues.password,
+            },
+            locale,
+          });
+          if (isAuthEmailVerificationChallenge(fallbackResult)) {
+            setPendingEmailVerification(
+              toEmailVerificationPendingState({
+                email: fallbackResult.user.email,
+                expiresInSeconds: fallbackResult.verificationExpiresIn,
+                debugCode: fallbackResult.debugCode,
+              }),
+            );
+            setVerificationNowMillis(Date.now());
+            setErrorMessage(null);
+            setInfoMessage(loginCopy.emailVerificationSent);
+            setFormValues((prev) => ({
+              ...prev,
+              verificationCode: fallbackResult.debugCode || '',
+            }));
+            return;
+          }
+        } catch (fallbackError) {
+          if (
+            fallbackError instanceof AuthApiError &&
+            fallbackError.code === 'AUTH_EMAIL_ALREADY_EXISTS'
+          ) {
+            setErrorMessage(loginCopy.verificationResendUnavailable);
+            setInfoMessage(null);
+            return;
+          }
+          setErrorMessage(loginAuthService.resolveAuthErrorMessage(fallbackError, loginCopy));
+          setInfoMessage(null);
+          return;
+        }
+        setErrorMessage(loginCopy.verificationResendUnavailable);
+        setInfoMessage(null);
+        return;
+      }
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const completeSignIn = async (userId: string): Promise<void> => {
@@ -258,11 +405,14 @@ export const useLoginScreen = () => {
     try {
       const result = await loginAuthService.submitEmailAuth({ mode, values: formValues, locale });
       if (isAuthEmailVerificationChallenge(result)) {
-        setPendingEmailVerification({
-          email: result.user.email,
-          expiresInSeconds: result.verificationExpiresIn,
-          debugCode: result.debugCode,
-        });
+        setPendingEmailVerification(
+          toEmailVerificationPendingState({
+            email: result.user.email,
+            expiresInSeconds: result.verificationExpiresIn,
+            debugCode: result.debugCode,
+          }),
+        );
+        setVerificationNowMillis(Date.now());
         setInfoMessage(loginCopy.emailVerificationSent);
         if (result.debugCode) {
           setFormValues((prev) => ({
@@ -277,6 +427,133 @@ export const useLoginScreen = () => {
       await persistAuthenticatedSession(result, shouldRememberSession);
       await completeSignIn(result.user.id);
     } catch (error) {
+      if (
+        mode === 'login' &&
+        error instanceof AuthApiError &&
+        error.code === 'AUTH_EMAIL_NOT_VERIFIED'
+      ) {
+        switchToMode('signup');
+        setFormValues((prev) => ({
+          ...prev,
+          confirmPassword: prev.password,
+          verificationCode: '',
+        }));
+        try {
+          const resendChallenge = await loginAuthService.requestEmailVerification({
+            email: formValues.email,
+          });
+
+          if (isAuthEmailVerificationChallenge(resendChallenge)) {
+            setPendingEmailVerification(
+              toEmailVerificationPendingState({
+                email: resendChallenge.user.email,
+                expiresInSeconds: resendChallenge.verificationExpiresIn,
+                debugCode: resendChallenge.debugCode,
+              }),
+            );
+            setVerificationNowMillis(Date.now());
+            setErrorMessage(null);
+            setInfoMessage(loginCopy.emailVerificationSent);
+            setFormValues((prev) => ({
+              ...prev,
+              verificationCode: resendChallenge.debugCode || '',
+            }));
+            return;
+          }
+        } catch (resendError) {
+          if (isVerificationResendEndpointMissing(resendError)) {
+            try {
+              const fallbackResult = await loginAuthService.submitEmailAuth({
+                mode: 'signup',
+                values: {
+                  ...formValues,
+                  confirmPassword: formValues.confirmPassword || formValues.password,
+                },
+                locale,
+              });
+              if (isAuthEmailVerificationChallenge(fallbackResult)) {
+                setPendingEmailVerification(
+                  toEmailVerificationPendingState({
+                    email: fallbackResult.user.email,
+                    expiresInSeconds: fallbackResult.verificationExpiresIn,
+                    debugCode: fallbackResult.debugCode,
+                  }),
+                );
+                setVerificationNowMillis(Date.now());
+                setErrorMessage(null);
+                setInfoMessage(loginCopy.emailVerificationSent);
+                setFormValues((prev) => ({
+                  ...prev,
+                  verificationCode: fallbackResult.debugCode || '',
+                }));
+                return;
+              }
+            } catch (fallbackError) {
+              if (
+                fallbackError instanceof AuthApiError &&
+                fallbackError.code === 'AUTH_EMAIL_ALREADY_EXISTS'
+              ) {
+                setErrorMessage(loginCopy.verificationResendUnavailable);
+                setInfoMessage(null);
+                return;
+              }
+              setErrorMessage(loginAuthService.resolveAuthErrorMessage(fallbackError, loginCopy));
+              setInfoMessage(null);
+              return;
+            }
+            setErrorMessage(loginCopy.verificationResendUnavailable);
+            setInfoMessage(null);
+            return;
+          }
+          setErrorMessage(loginAuthService.resolveAuthErrorMessage(resendError, loginCopy));
+          setInfoMessage(null);
+          return;
+        }
+
+        setErrorMessage(loginCopy.emailNotVerifiedSwitchToSignup);
+        setInfoMessage(null);
+        return;
+      }
+
+      if (
+        mode === 'signup' &&
+        error instanceof AuthApiError &&
+        error.code === 'AUTH_EMAIL_ALREADY_EXISTS'
+      ) {
+        try {
+          const resendChallenge = await loginAuthService.requestEmailVerification({
+            email: formValues.email,
+          });
+
+          if (isAuthEmailVerificationChallenge(resendChallenge)) {
+            setPendingEmailVerification(
+              toEmailVerificationPendingState({
+                email: resendChallenge.user.email,
+                expiresInSeconds: resendChallenge.verificationExpiresIn,
+                debugCode: resendChallenge.debugCode,
+              }),
+            );
+            setVerificationNowMillis(Date.now());
+            setErrorMessage(null);
+            setInfoMessage(loginCopy.emailVerificationSent);
+            setFormValues((prev) => ({
+              ...prev,
+              verificationCode: resendChallenge.debugCode || prev.verificationCode,
+            }));
+            return;
+          }
+        } catch (resendError) {
+          if (isVerificationResendEndpointMissing(resendError)) {
+            setErrorMessage(loginCopy.verificationResendUnavailable);
+            setInfoMessage(null);
+            return;
+          }
+          setErrorMessage(loginAuthService.resolveAuthErrorMessage(resendError, loginCopy));
+          setInfoMessage(null);
+          return;
+        }
+      }
+
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
     } finally {
       setLoading(false);
@@ -310,6 +587,8 @@ export const useLoginScreen = () => {
     infoMessage,
     verificationStepActive,
     emailVerificationStepActive,
+    verificationCountdownLabel,
+    verificationExpired,
     passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
@@ -323,6 +602,7 @@ export const useLoginScreen = () => {
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,
+    handleResendEmailVerification,
     handleSubmit,
     handleOAuthSignIn,
   };

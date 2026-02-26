@@ -126,6 +126,45 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(login_response.status_code, 403)
             self.assertEqual(login_response.json()["detail"]["code"], "AUTH_EMAIL_NOT_VERIFIED")
 
+    def test_email_signup_reissues_verification_for_existing_unverified_account(self):
+        with TestClient(app) as client:
+            first_signup = self._signup_email(
+                client,
+                email="pending-retry@example.com",
+                password="Passw0rd!",
+                display_name="Pending Retry",
+            )
+
+            second_signup = self._signup_email(
+                client,
+                email="pending-retry@example.com",
+                password="N3wPassw0rd!",
+                display_name="Pending Retry Updated",
+            )
+
+            self.assertNotEqual(
+                second_signup.get("verification_id"),
+                first_signup.get("verification_id"),
+            )
+            self.assertNotEqual(
+                second_signup.get("verification_debug_code"),
+                first_signup.get("verification_debug_code"),
+            )
+
+            verified = self._verify_email(
+                client,
+                email="pending-retry@example.com",
+                code=second_signup["verification_debug_code"],
+            )
+            self.assertIn("access_token", verified)
+
+            login_with_updated_password = client.post(
+                "/auth/email/login",
+                json={"email": "pending-retry@example.com", "password": "N3wPassw0rd!"},
+            )
+            self.assertEqual(login_with_updated_password.status_code, 200)
+            self.assertIn("access_token", login_with_updated_password.json())
+
     def test_email_verification_rejects_invalid_code(self):
         with TestClient(app) as client:
             self._signup_email(

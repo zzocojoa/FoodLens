@@ -34,12 +34,16 @@ const FORM_VALUES: LoginFormValues = {
 const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthScreen>>) => ({
   isActive: true,
   authCopy: AUTH_COPY,
+  mode: 'login' as const,
   copy: LOGIN_COPY,
   formValues: FORM_VALUES,
   loading: false,
   errorMessage: null,
   infoMessage: null,
   verificationStepActive: false,
+  emailVerificationStepActive: false,
+  verificationCountdownLabel: null,
+  verificationExpired: false,
   passwordResetStepActive: false,
   passwordVisible: false,
   confirmPasswordVisible: false,
@@ -57,6 +61,7 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
   onToggleConfirmPasswordVisible: jest.fn(),
   onForgotPassword: jest.fn(),
   onCancelPasswordReset: jest.fn(),
+  onResendEmailVerification: jest.fn(),
   onSwitchMode: jest.fn(),
   onSubmit: jest.fn(),
   onOAuthLogin: jest.fn(),
@@ -83,6 +88,7 @@ describe('LoginAuthScreen', () => {
       <LoginAuthScreen
         {...createProps({
           authCopy: signupCopy,
+          mode: 'signup',
           formValues: {
             ...FORM_VALUES,
             email: 'example@foodlens.ai',

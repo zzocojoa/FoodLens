@@ -119,9 +119,10 @@ export const loginStyles = StyleSheet.create({
   },
   authContainer: {
     marginTop: LOGIN_LAYOUT.authMarginTopLogin,
+    flexShrink: 1,
   },
   authTitleWrap: {
-    marginBottom: 30,
+    marginBottom: 18,
   },
   authTitle: {
     fontSize: 36,
@@ -139,7 +140,7 @@ export const loginStyles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: LOGIN_COLORS.border,
     paddingBottom: 8,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   inputLabel: {
     fontSize: 14,
@@ -210,20 +211,19 @@ export const loginStyles = StyleSheet.create({
     bottom: 60,
     zIndex: 30,
   },
-  authScroll: {
+  authBody: {
     flex: 1,
-  },
-  authScrollContent: {
-    flexGrow: 1,
+    minHeight: 0,
+    justifyContent: 'space-between',
   },
   authFooterInline: {
-    marginTop: 'auto',
-    paddingTop: 16,
-    paddingBottom: Platform.OS === 'android' ? 28 : 52,
+    marginTop: 12,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'android' ? 12 : 18,
     zIndex: 30,
   },
   authContainerInline: {
-    paddingBottom: 24,
+    paddingBottom: 12,
   },
   messageCard: {
     borderWidth: 1,
@@ -256,11 +256,36 @@ export const loginStyles = StyleSheet.create({
   verificationFieldWrap: {
     marginTop: 10,
   },
+  verificationMetaRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  verificationMetaText: {
+    flex: 1,
+    color: LOGIN_COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  verificationResendPressable: {
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+  },
+  verificationResendText: {
+    color: LOGIN_COLORS.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  verificationResendTextDisabled: {
+    opacity: 0.5,
+  },
   primaryButton: {
     width: '100%',
     backgroundColor: LOGIN_COLORS.accent,
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: LOGIN_COLORS.accent,
@@ -275,8 +300,8 @@ export const loginStyles = StyleSheet.create({
     fontWeight: '700',
   },
   oauthDivider: {
-    marginTop: 18,
-    marginBottom: 10,
+    marginTop: 14,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -324,7 +349,7 @@ export const loginStyles = StyleSheet.create({
     borderColor: '#FEE500',
   },
   switchAuthRow: {
-    marginTop: 20,
+    marginTop: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
