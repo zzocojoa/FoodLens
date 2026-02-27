@@ -651,8 +651,9 @@ export const useLoginScreen = () => {
 
     try {
       const session = await loginAuthService.submitOAuthAuth(provider);
-      const shouldRememberSession = mode === 'login' ? formValues.rememberMe : true;
-      await persistAuthenticatedSession(session, shouldRememberSession);
+      // OAuth sign-in may round-trip through external browser and app process restarts.
+      // Always persist session tokens for social providers to keep auth state stable.
+      await persistAuthenticatedSession(session, true);
       await completeSignIn(session.user.id);
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
