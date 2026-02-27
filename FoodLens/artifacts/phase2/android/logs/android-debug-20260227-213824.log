@@ -1,0 +1,9 @@
+02-27 21:39:36.921 W/ReactNativeJS(24589): '[SafeStorage] MMKV initialization failed. Falling back to AsyncStorage (Internal mode).', { request_id: 'safe-storage-mm4vq4zu',
+02-27 21:39:36.921 W/ReactNativeJS(24589):   user_id: 'unknown',
+02-27 21:39:36.921 W/ReactNativeJS(24589):   hint: 'MMKV native module unavailable in current runtime.',
+02-27 21:39:36.921 W/ReactNativeJS(24589):   error: 'Failed to create a new MMKV instance: React Native is not running on-device. MMKV can only be used when synchronous method invocations (JSI) are possible. If you are using a remote debugger (e.g. Chrome), switch to an on-device debugger (e.g. Flipper) instead.' }, { [Stack] name: 'Stack' }
+02-27 22:13:18.202 W/ReactNativeJS(26504): '[SafeStorage] MMKV initialization failed. Falling back to AsyncStorage (Internal mode).', { request_id: 'safe-storage-mm4wxivw',
+02-27 22:13:18.202 W/ReactNativeJS(26504):   user_id: 'unknown',
+02-27 22:13:18.202 W/ReactNativeJS(26504):   hint: 'MMKV native module unavailable in current runtime.',
+02-27 22:13:18.202 W/ReactNativeJS(26504):   error: 'Failed to create a new MMKV instance: React Native is not running on-device. MMKV can only be used when synchronous method invocations (JSI) are possible. If you are using a remote debugger (e.g. Chrome), switch to an on-device debugger (e.g. Flipper) instead.' }
+02-27 22:15:44.683 I/ActivityTaskManager( 1059): START u0 {act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=foodlens://oauth/google-callback?request_id=20c83afe841e&code=4/0AfrIepAP1ZI55IkW8emKa7Bevoz1cItIE45xSpGI70B7ty3t9VhmKPG9ahuQ--2TVQxxXw&state=d8ba1ef7cb97b136.Zm9vZGxlbnM6Ly9vYXV0aC9nb29nbGUtY2FsbGJhY2s flg=0x14000000 cmp=com.hoihou.foodlens/.MainActivity (has extras)} from uid 10223

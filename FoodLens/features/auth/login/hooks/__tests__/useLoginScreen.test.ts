@@ -414,10 +414,18 @@ describe('useLoginScreen', () => {
       await result.current.handleForgotPassword();
     });
 
+    expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.passwordResetCodeSent).toBe(false);
+    expect(result.current.formValues.verificationCode).toBe('');
+
+    await act(async () => {
+      await result.current.handleResendPasswordReset();
+    });
+
     expect(mockRequestPasswordReset).toHaveBeenCalledWith({
       email: 'reset@example.com',
     });
-    expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.passwordResetCodeSent).toBe(true);
     expect(result.current.formValues.verificationCode).toBe('654321');
 
     act(() => {
@@ -438,7 +446,68 @@ describe('useLoginScreen', () => {
     expect(result.current.infoMessage).toContain('Password reset complete');
   });
 
-  it('enters reset step when reset challenge metadata is omitted', async () => {
+  it('resends password reset code and refreshes countdown metadata', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRequestPasswordReset
+        .mockResolvedValueOnce({
+          resetRequested: true,
+          resetMethod: 'email_code',
+          resetChannel: 'email',
+          resetExpiresIn: 600,
+          resetId: 'prs_1',
+          debugCode: '654321',
+        })
+        .mockResolvedValueOnce({
+          resetRequested: true,
+          resetMethod: 'email_code',
+          resetChannel: 'email',
+          resetExpiresIn: 600,
+          resetId: 'prs_2',
+          debugCode: '112233',
+        });
+
+      const { result } = renderHook(() => useLoginScreen());
+
+      act(() => {
+        result.current.setFieldValue('email', 'reset@example.com');
+      });
+
+      await act(async () => {
+        await result.current.handleForgotPassword();
+      });
+
+      expect(result.current.passwordResetStepActive).toBe(true);
+      expect(result.current.verificationCountdownLabel).toBeNull();
+
+      await act(async () => {
+        await result.current.handleResendPasswordReset();
+      });
+
+      expect(result.current.verificationCountdownLabel).toBe('10:00');
+      expect(result.current.formValues.verificationCode).toBe('654321');
+
+      await act(async () => {
+        jest.advanceTimersByTime(2_000);
+      });
+
+      expect(result.current.verificationCountdownLabel).toBe('09:58');
+
+      await act(async () => {
+        await result.current.handleResendPasswordReset();
+      });
+
+      expect(mockRequestPasswordReset).toHaveBeenNthCalledWith(2, {
+        email: 'reset@example.com',
+      });
+      expect(result.current.formValues.verificationCode).toBe('112233');
+      expect(result.current.verificationCountdownLabel).toBe('10:00');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('enters reset step and keeps verification empty when reset challenge debug code is omitted', async () => {
     mockRequestPasswordReset.mockResolvedValue({
       resetRequested: true,
       resetMethod: 'email_code',
@@ -457,9 +526,38 @@ describe('useLoginScreen', () => {
       await result.current.handleForgotPassword();
     });
 
+    await act(async () => {
+      await result.current.handleResendPasswordReset();
+    });
+
     expect(result.current.passwordResetStepActive).toBe(true);
+    expect(result.current.passwordResetCodeSent).toBe(true);
     expect(result.current.formValues.verificationCode).toBe('');
-    expect(result.current.infoMessage).toBeNull();
+  });
+
+  it('blocks reset confirmation until reset code is requested from reset page', async () => {
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'wait@example.com');
+    });
+
+    await act(async () => {
+      await result.current.handleForgotPassword();
+    });
+
+    act(() => {
+      result.current.setFieldValue('password', 'N3wPassw0rd!');
+      result.current.setFieldValue('confirmPassword', 'N3wPassw0rd!');
+      result.current.setFieldValue('verificationCode', '123123');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(mockConfirmPasswordReset).not.toHaveBeenCalled();
+    expect(result.current.errorMessage).toBe('Request a reset code first.');
   });
 
   it('validates reset password confirmation mismatch', async () => {
@@ -480,6 +578,10 @@ describe('useLoginScreen', () => {
 
     await act(async () => {
       await result.current.handleForgotPassword();
+    });
+
+    await act(async () => {
+      await result.current.handleResendPasswordReset();
     });
 
     act(() => {

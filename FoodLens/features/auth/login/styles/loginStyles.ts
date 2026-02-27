@@ -167,6 +167,15 @@ export const loginStyles = StyleSheet.create({
     marginLeft: 8,
     padding: 2,
   },
+  inputActionButton: {
+    marginLeft: 10,
+    paddingVertical: 2,
+  },
+  inputActionText: {
+    color: LOGIN_COLORS.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   collapsibleField: {
     overflow: 'hidden',
     borderBottomColor: LOGIN_COLORS.border,
@@ -325,6 +334,9 @@ export const loginStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
+  footerGhostSpacer: {
+    opacity: 0,
+  },
   oauthButton: {
     width: 56,
     height: 56,
@@ -347,6 +359,10 @@ export const loginStyles = StyleSheet.create({
   oauthKakaoButton: {
     backgroundColor: '#FEE500',
     borderColor: '#FEE500',
+  },
+  oauthGhostButton: {
+    backgroundColor: LOGIN_COLORS.white,
+    borderColor: '#f0f0f0',
   },
   switchAuthRow: {
     marginTop: 12,

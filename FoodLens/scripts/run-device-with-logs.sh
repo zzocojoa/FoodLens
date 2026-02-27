@@ -18,7 +18,7 @@ if [[ -z "${PLATFORM}" ]]; then
 fi
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-LOG_FILTER_REGEX='request_id|user_id|AuthSession|Phase2Sync|\[Auth\]'
+LOG_FILTER_REGEX='request_id|user_id|AuthSession|Phase2Sync|\\[Auth\\]|AUTH_|SafeStorage|MMKV|Session bootstrap|Secure storage|No route named|unmatched route|AndroidRuntime|FATAL EXCEPTION|Process: com\\.hoihou\\.foodlens|Process: com\\.hoihou\\.foodlens\\.dev'
 LOG_PID=""
 LOG_FILE=""
 
@@ -131,8 +131,30 @@ build_expo_command() {
   fi
 }
 
-force_launch_android_release_main() {
-  if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "release" ]]; then
+resolve_android_launch_package() {
+  if ! command -v adb >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local candidates=()
+  if [[ -n "${ANDROID_LAUNCH_PACKAGE:-}" ]]; then
+    candidates+=("${ANDROID_LAUNCH_PACKAGE}")
+  fi
+  candidates+=("com.hoihou.foodlens" "com.hoihou.foodlens.dev")
+
+  local package_name
+  for package_name in "${candidates[@]}"; do
+    if adb shell pm path "${package_name}" >/dev/null 2>&1; then
+      echo "${package_name}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+force_launch_android_main() {
+  if [[ "${PLATFORM}" != "android" ]]; then
     return
   fi
 
@@ -140,16 +162,37 @@ force_launch_android_release_main() {
     return
   fi
 
-  local package_name="${ANDROID_LAUNCH_PACKAGE:-com.hoihou.foodlens}"
+  local package_name
+  package_name="$(resolve_android_launch_package || true)"
+  if [[ -z "${package_name}" ]]; then
+    package_name="${ANDROID_LAUNCH_PACKAGE:-com.hoihou.foodlens}"
+  fi
   local activity_name="${ANDROID_LAUNCH_ACTIVITY:-.MainActivity}"
+  local launch_output=""
+
+  echo "[run-with-logs] Installed package candidates:"
+  adb shell pm list packages | grep -E "com\\.hoihou\\.foodlens(\\.dev)?$" || true
 
   echo "[run-with-logs] Forcing launcher start: ${package_name}/${activity_name}"
-  if ! adb shell am start \
+  launch_output="$(
+    adb shell am start -W \
     -a android.intent.action.MAIN \
     -c android.intent.category.LAUNCHER \
-    -n "${package_name}/${activity_name}" >/dev/null 2>&1; then
-    echo "[run-with-logs] Launcher start failed. Set ANDROID_LAUNCH_PACKAGE/ANDROID_LAUNCH_ACTIVITY if your app id differs."
+    -n "${package_name}/${activity_name}" 2>&1
+  )" || true
+  echo "${launch_output}"
+  if echo "${launch_output}" | grep -q "Status: ok"; then
+    return
   fi
+
+  launch_output="$(adb shell monkey -p "${package_name}" -c android.intent.category.LAUNCHER 1 2>&1)" || true
+  echo "${launch_output}"
+  if echo "${launch_output}" | grep -q "Events injected: 1"; then
+    echo "[run-with-logs] Fallback launch via monkey succeeded."
+    return
+  fi
+
+  echo "[run-with-logs] Launcher start failed. Set ANDROID_LAUNCH_PACKAGE/ANDROID_LAUNCH_ACTIVITY if your app id differs."
 }
 
 cd "${PROJECT_DIR}"
@@ -160,10 +203,20 @@ else
   start_android_logs
 fi
 
+# Local device log capture should not fail on missing Sentry org/project config.
+if [[ "${BUILD_TYPE}" == "release" ]]; then
+  export SENTRY_DISABLE_AUTO_UPLOAD=true
+  export SENTRY_ALLOW_FAILURE=1
+  echo "[run-with-logs] Local release run: Sentry upload failures are non-blocking."
+  if [[ -z "${SENTRY_ORG:-}" && -z "${SENTRY_PROPERTIES:-}" ]]; then
+    echo "[run-with-logs] SENTRY_ORG/SENTRY_PROPERTIES not set. Sentry source map upload is disabled."
+  fi
+fi
+
 build_expo_command "${PLATFORM}" "${BUILD_TYPE}" "$@"
 echo "[run-with-logs] Running: ${EXPO_CMD[*]}"
 "${EXPO_CMD[@]}"
-force_launch_android_release_main
+force_launch_android_main
 
 if [[ -n "${LOG_FILE}" && -n "${LOG_PID}" ]]; then
   echo "[run-with-logs] Build/install finished. Interact with app now."

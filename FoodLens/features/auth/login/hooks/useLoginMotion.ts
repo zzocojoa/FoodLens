@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, useWindowDimensions } from 'react-native';
+import { Animated, Easing, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOGIN_ANIMATION, LOGIN_LAYOUT } from '../constants/login.constants';
 import { LoginAuthMode } from '../types/login.types';
@@ -30,10 +30,9 @@ export const useLoginMotion = () => {
       1,
       height - Math.max(0, insets.top) - Math.max(0, insets.bottom),
     );
-    const platformScaleBias = Platform.OS === 'android' ? 0.97 : 1;
     const heightScale = Math.max(
       0.7,
-      Math.min(1, (usableHeight / LOGIN_LAYOUT.phoneMaxHeight) * platformScaleBias),
+      Math.min(1, usableHeight / LOGIN_LAYOUT.phoneMaxHeight),
     );
 
     const estimatedFooterHeight = Math.round(LOGIN_LAYOUT.authFooterReservedHeight * 0.8);
@@ -57,14 +56,7 @@ export const useLoginMotion = () => {
       Math.max(292, Math.min(LOGIN_LAYOUT.welcomeTitleMarginTop * heightScale, 432)),
     );
 
-    const minFooterBottom =
-      Platform.OS === 'android'
-        ? 22
-        : LOGIN_LAYOUT.footerBottomOffset;
-    const footerBottom = Math.max(
-      minFooterBottom,
-      insets.bottom + (Platform.OS === 'android' ? 8 : 16),
-    );
+    const footerBottom = Math.max(LOGIN_LAYOUT.footerBottomOffset, insets.bottom + 16);
 
     return {
       authMarginTopLogin,
@@ -229,6 +221,14 @@ export const useLoginMotion = () => {
   ]);
 
   const motion = useMemo(() => {
+    const createCollapsibleFieldStyle = (progress: Animated.Value) => ({
+      maxHeight: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 80] }),
+      opacity: progress,
+      marginBottom: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 15] }),
+      paddingBottom: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
+      borderBottomWidth: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1.5] }),
+    });
+
     const headerTranslateY = phoneStateProgress.interpolate({
       inputRange: [0, 1, 2],
       outputRange: [
@@ -297,13 +297,7 @@ export const useLoginMotion = () => {
       ],
     };
 
-    const signupFieldStyle = {
-      maxHeight: signupProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 80] }),
-      opacity: signupProgress,
-      marginBottom: signupProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 15] }),
-      paddingBottom: signupProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
-      borderBottomWidth: signupProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 1.5] }),
-    };
+    const signupFieldStyle = createCollapsibleFieldStyle(signupProgress);
 
     const loginActionRowStyle = {
       maxHeight: signupProgress.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }),

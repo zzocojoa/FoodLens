@@ -19,6 +19,8 @@ export type LoginPendingEmailVerification = {
 export type LoginPendingPasswordReset = {
   email: string;
   expiresInSeconds: number;
+  expiresAtMillis: number;
+  codeSent: boolean;
   debugCode?: string;
 };
 

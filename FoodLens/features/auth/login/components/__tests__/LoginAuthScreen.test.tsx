@@ -44,6 +44,7 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
   emailVerificationStepActive: false,
   verificationCountdownLabel: null,
   verificationExpired: false,
+  passwordResetCodeSent: false,
   passwordResetStepActive: false,
   passwordVisible: false,
   confirmPasswordVisible: false,
@@ -61,6 +62,7 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
   onToggleConfirmPasswordVisible: jest.fn(),
   onForgotPassword: jest.fn(),
   onCancelPasswordReset: jest.fn(),
+  onResendPasswordReset: jest.fn(),
   onResendEmailVerification: jest.fn(),
   onSwitchMode: jest.fn(),
   onSubmit: jest.fn(),
@@ -130,6 +132,7 @@ describe('LoginAuthScreen', () => {
   });
 
   it('renders password reset view when reset step is active', () => {
+    const onResendPasswordReset = jest.fn();
     const { queryByText, getByText } = render(
       <LoginAuthScreen
         {...createProps({
@@ -141,14 +144,42 @@ describe('LoginAuthScreen', () => {
             nextMode: 'login',
           },
           verificationStepActive: true,
+          passwordResetCodeSent: true,
           passwordResetStepActive: true,
+          verificationCountdownLabel: '09:59',
+          onResendPasswordReset,
         })}
       />,
     );
 
     expect(getByText('Back to Sign in')).toBeTruthy();
     expect(getByText('Confirm New Password')).toBeTruthy();
+    expect(getByText('Code expires in 09:59')).toBeTruthy();
     expect(queryByText('Or continue with')).toBeNull();
     expect(queryByText("Don't have an Account ?")).toBeNull();
+
+    fireEvent.press(getByText('Resend'));
+    expect(onResendPasswordReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders send label before password reset code is requested', () => {
+    const { getByText } = render(
+      <LoginAuthScreen
+        {...createProps({
+          authCopy: {
+            title: 'Reset Password',
+            primaryButtonLabel: 'Reset Password',
+            switchLeadText: '',
+            switchActionText: '',
+            nextMode: 'login',
+          },
+          verificationStepActive: true,
+          passwordResetCodeSent: false,
+          passwordResetStepActive: true,
+        })}
+      />,
+    );
+
+    expect(getByText('Send')).toBeTruthy();
   });
 });

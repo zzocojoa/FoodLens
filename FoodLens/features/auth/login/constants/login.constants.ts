@@ -32,6 +32,8 @@ export const LOGIN_COPY = {
   verificationExpiresInPrefix: 'Code expires in',
   verificationExpired: 'Verification code has expired. Request a new code.',
   resendVerificationCode: 'Resend Code',
+  passwordResetSendCode: 'Send',
+  passwordResetResendCode: 'Resend',
   verificationResendUnavailable:
     'Verification resend endpoint is unavailable on this server. Please update backend deployment.',
   emailNotVerifiedSwitchToSignup:
@@ -69,10 +71,12 @@ export const LOGIN_COPY = {
   verificationDeliveryFailed: 'Could not send verification email. Please try again shortly.',
   passwordResetCodeSent: 'Password reset code sent. Enter the code and your new password.',
   passwordResetRequestAccepted: 'If an account exists, a password reset code has been sent.',
+  passwordResetRequestInstruction: 'Tap Send to send a password reset code to your email.',
   passwordResetSuccess: 'Password reset complete. Sign in with your new password.',
   passwordResetDeliveryGuide: 'It may take up to 1-2 minutes. Check your spam folder if needed.',
   passwordResetSocialGuide: 'If you signed up with Google or Kakao, use social login instead of password reset.',
   passwordResetCodeRejected: 'Password reset code is invalid or expired.',
+  passwordResetCodeNotRequested: 'Request a reset code first.',
   passwordResetDeliveryFailed: 'Could not send password reset email. Please try again shortly.',
   passwordResetInvalidPassword: 'Enter a new password with at least 8 characters.',
   passwordResetPasswordMismatch: 'New password and confirm password do not match.',
@@ -112,6 +116,8 @@ export const createLoginCopy = (
   verificationExpiresInPrefix: translate('login.info.verificationExpiresInPrefix', LOGIN_COPY.verificationExpiresInPrefix),
   verificationExpired: translate('login.info.verificationExpired', LOGIN_COPY.verificationExpired),
   resendVerificationCode: translate('login.action.resendVerificationCode', LOGIN_COPY.resendVerificationCode),
+  passwordResetSendCode: translate('login.action.passwordResetSendCode', LOGIN_COPY.passwordResetSendCode),
+  passwordResetResendCode: translate('login.action.passwordResetResendCode', LOGIN_COPY.passwordResetResendCode),
   verificationResendUnavailable: translate(
     'login.error.verificationResendUnavailable',
     LOGIN_COPY.verificationResendUnavailable
@@ -156,6 +162,10 @@ export const createLoginCopy = (
     'login.info.passwordResetRequestAccepted',
     LOGIN_COPY.passwordResetRequestAccepted
   ),
+  passwordResetRequestInstruction: translate(
+    'login.info.passwordResetRequestInstruction',
+    LOGIN_COPY.passwordResetRequestInstruction
+  ),
   passwordResetSuccess: translate('login.info.passwordResetSuccess', LOGIN_COPY.passwordResetSuccess),
   passwordResetDeliveryGuide: translate(
     'login.info.passwordResetDeliveryGuide',
@@ -166,6 +176,10 @@ export const createLoginCopy = (
     LOGIN_COPY.passwordResetSocialGuide
   ),
   passwordResetCodeRejected: translate('login.error.passwordResetCodeRejected', LOGIN_COPY.passwordResetCodeRejected),
+  passwordResetCodeNotRequested: translate(
+    'login.error.passwordResetCodeNotRequested',
+    LOGIN_COPY.passwordResetCodeNotRequested
+  ),
   passwordResetDeliveryFailed: translate(
     'login.error.passwordResetDeliveryFailed',
     LOGIN_COPY.passwordResetDeliveryFailed
@@ -203,10 +217,10 @@ export const LOGIN_LAYOUT = {
   screenHorizontalPadding: 30,
   screenBottomPadding: 44,
   welcomeTitleMarginTop: 524,
-  pinkHeaderTop: -40,
+  pinkHeaderTop: -80,
   pinkHeaderHeightPercent: 0.6,
   pinkHeaderTranslateLogin: -140,
-  pinkHeaderTranslateSignup: -260,
+  pinkHeaderTranslateSignup: -200,
   authMarginTopLogin: 344,
   authMarginTopSignup: 224,
   footerBottomOffset: 60,

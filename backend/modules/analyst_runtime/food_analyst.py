@@ -1,6 +1,5 @@
 import os
 import atexit
-import threading
 import time
 from google.api_core.exceptions import ResourceExhausted
 import vertexai
@@ -33,6 +32,7 @@ from backend.modules.analyst_core.schemas_Logic import (
     build_label_response_schema,
 )
 from backend.modules.analyst_runtime.generation_Logic import (
+    create_request_semaphore,
     generate_with_429_backoff,
     generate_with_retry_and_fallback,
     generate_with_semaphore,
@@ -46,10 +46,10 @@ class FoodAnalyst:
     
     # Concurrency control: limit simultaneous Vertex AI requests
     # Prevents thundering herd on 429 recovery
-    _request_semaphore = threading.Semaphore(3)  # Max 3 concurrent requests
+    _request_semaphore = create_request_semaphore()
     
     # Retry tracking for operational monitoring
-    _retry_stats = {"total_retries": 0, "last_429_time": None}
+    _retry_stats = {"total_retries": 0, "last_429_time": None, "consecutive_429": 0, "last_used_model": None}
 
     async def debug_list_models(self):
         """Debug method to list available models in the project."""
@@ -430,7 +430,7 @@ class FoodAnalyst:
             result = self._sanitize_response(result)  # P2: App-level content filter
             
             # Attach model info for debugging/verification
-            result["used_model"] = self.model_name
+            result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
             
             return result
             

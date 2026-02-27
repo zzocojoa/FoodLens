@@ -157,7 +157,11 @@
   2.  **Contract Test**: 설계와 구현의 일치 여부 검증.
   3.  **Automated Regression**: 핵심 플로우(로그인 -> 스캔 -> 히스토리) E2E 테스트 통과.
   4.  **Smoke Test**: 배포 직후 주요 기능 정상 작동 확인.
-- **전략**: 점진적 배포 (Staged Rollout: 1% -> 5% -> 100%).
+- **전략**: 점진적 배포 (Staged Rollout: 1% -> 5% -> 20% -> 100%).
+- **추가 운영 기준**:
+  - 내부 테스트 트랙 증적 필수: Android AAB Internal Testing + iOS IPA(TestFlight Internal) 각 1회 이상.
+  - Android 최초 1회 제출은 수동(Play Console) 허용, 이후 `eas submit` 자동 제출/재시도 로그 필수.
+  - 실디바이스 런타임 로그에서 `[SafeStorage] MMKV initialization failed` 재확인 및 영향도 판정 기록.
 - **완료 기준(DoD)**: 치명적 버그 없이 2회 연속 릴리스 성공.
 
 ---

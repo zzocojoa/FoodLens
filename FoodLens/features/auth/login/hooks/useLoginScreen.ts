@@ -10,6 +10,7 @@ import { hasSeenOnboarding } from '@/services/storage_Logic';
 import { persistSession } from '@/services/auth/sessionManager_Logic';
 import { useI18n } from '@/features/i18n';
 import {
+  LOGIN_ANIMATION,
   createLoginCopy,
   LOGIN_ALERT_AUTO_DISMISS_MS,
   LOGIN_INITIAL_FORM_VALUES,
@@ -46,6 +47,19 @@ const toEmailVerificationPendingState = (input: {
   debugCode: input.debugCode,
 });
 
+const toPasswordResetPendingState = (input: {
+  email: string;
+  expiresInSeconds: number;
+  codeSent: boolean;
+  debugCode?: string;
+}): LoginPendingPasswordReset => ({
+  email: input.email,
+  expiresInSeconds: input.expiresInSeconds,
+  expiresAtMillis: Date.now() + Math.max(1, input.expiresInSeconds) * 1_000,
+  codeSent: input.codeSent,
+  debugCode: input.debugCode,
+});
+
 const isVerificationResendEndpointMissing = (error: unknown): boolean =>
   error instanceof AuthApiError &&
   error.code === 'AUTH_REQUEST_FAILED' &&
@@ -65,8 +79,15 @@ export const useLoginScreen = () => {
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [verificationNowMillis, setVerificationNowMillis] = useState(() => Date.now());
   const transientErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetExitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { motion, welcomeInteractive, authInteractive, goToAuth, setAuthMode } = useLoginMotion();
+  const {
+    motion,
+    welcomeInteractive,
+    authInteractive,
+    goToAuth,
+    setAuthMode,
+  } = useLoginMotion();
   const loginCopy = useMemo(() => createLoginCopy(t), [t]);
 
   const clearTransientErrorTimeout = () => {
@@ -75,6 +96,14 @@ export const useLoginScreen = () => {
     }
     clearTimeout(transientErrorTimeoutRef.current);
     transientErrorTimeoutRef.current = null;
+  };
+
+  const clearResetExitTimeout = () => {
+    if (!resetExitTimeoutRef.current) {
+      return;
+    }
+    clearTimeout(resetExitTimeoutRef.current);
+    resetExitTimeoutRef.current = null;
   };
 
   const showTransientError = (message: string) => {
@@ -86,6 +115,7 @@ export const useLoginScreen = () => {
   useEffect(() => {
     return () => {
       clearTransientErrorTimeout();
+      clearResetExitTimeout();
     };
   }, []);
 
@@ -108,24 +138,33 @@ export const useLoginScreen = () => {
   }, [errorMessage, infoMessage]);
 
   const emailVerificationStepActive = mode === 'signup' && pendingEmailVerification !== null;
-  const passwordResetStepActive = mode === 'login' && pendingPasswordReset !== null;
+  const passwordResetStepActive = pendingPasswordReset !== null;
+  const passwordResetCodeSent = passwordResetStepActive && pendingPasswordReset?.codeSent === true;
   const verificationStepActive = emailVerificationStepActive || passwordResetStepActive;
+  const activeVerificationExpiresAtMillis = emailVerificationStepActive
+    ? pendingEmailVerification?.expiresAtMillis ?? null
+    : passwordResetCodeSent
+    ? pendingPasswordReset?.expiresAtMillis ?? null
+    : null;
   const verificationSecondsRemaining = useMemo(() => {
-    if (!pendingEmailVerification) {
+    if (activeVerificationExpiresAtMillis === null) {
       return null;
     }
-    return Math.max(0, Math.ceil((pendingEmailVerification.expiresAtMillis - verificationNowMillis) / 1000));
-  }, [pendingEmailVerification, verificationNowMillis]);
-  const verificationExpired = emailVerificationStepActive && (verificationSecondsRemaining ?? 0) <= 0;
+    return Math.max(0, Math.ceil((activeVerificationExpiresAtMillis - verificationNowMillis) / 1000));
+  }, [activeVerificationExpiresAtMillis, verificationNowMillis]);
+  const verificationExpired =
+    verificationStepActive &&
+    verificationSecondsRemaining !== null &&
+    verificationSecondsRemaining <= 0;
   const verificationCountdownLabel = useMemo(() => {
-    if (!emailVerificationStepActive || verificationSecondsRemaining === null) {
+    if (!verificationStepActive || verificationSecondsRemaining === null) {
       return null;
     }
     return formatCountdown(verificationSecondsRemaining);
-  }, [emailVerificationStepActive, verificationSecondsRemaining]);
+  }, [verificationStepActive, verificationSecondsRemaining]);
 
   useEffect(() => {
-    if (!emailVerificationStepActive) {
+    if (!verificationStepActive || activeVerificationExpiresAtMillis === null) {
       return;
     }
 
@@ -137,7 +176,7 @@ export const useLoginScreen = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, [emailVerificationStepActive, pendingEmailVerification?.expiresAtMillis]);
+  }, [verificationStepActive, activeVerificationExpiresAtMillis]);
 
   const authCopy = useMemo(() => {
     const baseCopy = getAuthCopy(mode, loginCopy);
@@ -174,6 +213,7 @@ export const useLoginScreen = () => {
   };
 
   const switchToMode = (nextMode: LoginAuthMode) => {
+    clearResetExitTimeout();
     clearTransientErrorTimeout();
     setMode(nextMode);
     setErrorMessage(null);
@@ -189,49 +229,87 @@ export const useLoginScreen = () => {
     switchToMode(nextMode);
   };
 
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = () => {
+    clearResetExitTimeout();
     const normalizedEmail = formValues.email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       showTransientError(loginCopy.invalidEmailForReset);
       return;
     }
 
+    setMode('signup');
+    setAuthMode('signup');
     clearTransientErrorTimeout();
-    setLoading(true);
     setErrorMessage(null);
     setInfoMessage(null);
-
-    try {
-      const reset = await loginAuthService.requestPasswordReset({ email: normalizedEmail });
-      setPendingPasswordReset({
+    setPendingEmailVerification(null);
+    setPendingPasswordReset(
+      toPasswordResetPendingState({
         email: normalizedEmail,
-        expiresInSeconds: reset.resetExpiresIn,
-        debugCode: reset.debugCode,
-      });
-      setInfoMessage(null);
-      setFormValues((prev) => ({
-        ...prev,
-        password: '',
-        confirmPassword: '',
-        verificationCode: reset.debugCode || '',
-      }));
-    } catch (error) {
-      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancelPasswordReset = () => {
-    setPendingPasswordReset(null);
-    setErrorMessage(null);
-    setInfoMessage(null);
+        expiresInSeconds: 0,
+        codeSent: false,
+      }),
+    );
+    setVerificationNowMillis(Date.now());
     setFormValues((prev) => ({
       ...prev,
       password: '',
       confirmPassword: '',
       verificationCode: '',
     }));
+  };
+
+  const handleCancelPasswordReset = () => {
+    clearResetExitTimeout();
+    clearTransientErrorTimeout();
+    setMode('login');
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setAuthMode('login');
+    resetExitTimeoutRef.current = setTimeout(() => {
+      setPendingPasswordReset(null);
+      setFormValues((prev) => ({
+        ...prev,
+        password: '',
+        confirmPassword: '',
+        verificationCode: '',
+      }));
+      resetExitTimeoutRef.current = null;
+    }, LOGIN_ANIMATION.collapseMs);
+  };
+
+  const handleResendPasswordReset = async () => {
+    if (!passwordResetStepActive || !pendingPasswordReset) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const reset = await loginAuthService.requestPasswordReset({
+        email: pendingPasswordReset.email,
+      });
+      setPendingPasswordReset(
+        toPasswordResetPendingState({
+          email: pendingPasswordReset.email,
+          expiresInSeconds: reset.resetExpiresIn,
+          codeSent: true,
+          debugCode: reset.debugCode,
+        }),
+      );
+      setVerificationNowMillis(Date.now());
+      setFormValues((prev) => ({
+        ...prev,
+        verificationCode: reset.debugCode || '',
+      }));
+      setInfoMessage(loginCopy.passwordResetCodeSent);
+    } catch (error) {
+      setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResendEmailVerification = async () => {
@@ -355,6 +433,10 @@ export const useLoginScreen = () => {
     }
 
     if (passwordResetStepActive && pendingPasswordReset) {
+      if (!pendingPasswordReset.codeSent) {
+        setErrorMessage(loginCopy.passwordResetCodeNotRequested);
+        return;
+      }
       if (!formValues.verificationCode.trim()) {
         setErrorMessage(loginCopy.passwordResetCodeRejected);
         return;
@@ -376,6 +458,8 @@ export const useLoginScreen = () => {
           code: formValues.verificationCode,
           newPassword: formValues.password,
         });
+        setMode('login');
+        setAuthMode('login');
         setPendingPasswordReset(null);
         setInfoMessage(loginCopy.passwordResetSuccess);
         setFormValues((prev) => ({
@@ -589,6 +673,7 @@ export const useLoginScreen = () => {
     emailVerificationStepActive,
     verificationCountdownLabel,
     verificationExpired,
+    passwordResetCodeSent,
     passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
@@ -602,6 +687,7 @@ export const useLoginScreen = () => {
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,
+    handleResendPasswordReset,
     handleResendEmailVerification,
     handleSubmit,
     handleOAuthSignIn,

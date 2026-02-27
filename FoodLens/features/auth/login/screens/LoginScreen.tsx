@@ -34,6 +34,7 @@ export default function LoginScreen() {
     emailVerificationStepActive,
     verificationCountdownLabel,
     verificationExpired,
+    passwordResetCodeSent,
     passwordResetStepActive,
     passwordVisible,
     confirmPasswordVisible,
@@ -47,6 +48,7 @@ export default function LoginScreen() {
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,
+    handleResendPasswordReset,
     handleResendEmailVerification,
     handleSubmit,
     handleOAuthSignIn,
@@ -72,8 +74,8 @@ export default function LoginScreen() {
             <LoginPinkHeader animatedStyle={motion.pinkHeaderStyle} />
 
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              enabled={Platform.OS === 'ios'}
+              behavior={Platform.OS === 'web' ? undefined : 'padding'}
+              enabled={Platform.OS !== 'web'}
               style={{ flex: 1 }}
             >
               <LoginWelcomeScreen
@@ -99,6 +101,7 @@ export default function LoginScreen() {
                 emailVerificationStepActive={emailVerificationStepActive}
                 verificationCountdownLabel={verificationCountdownLabel}
                 verificationExpired={verificationExpired}
+                passwordResetCodeSent={passwordResetCodeSent}
                 passwordResetStepActive={passwordResetStepActive}
                 passwordVisible={passwordVisible}
                 confirmPasswordVisible={confirmPasswordVisible}
@@ -124,6 +127,7 @@ export default function LoginScreen() {
                 }
                 onForgotPassword={handleForgotPassword}
                 onCancelPasswordReset={handleCancelPasswordReset}
+                onResendPasswordReset={handleResendPasswordReset}
                 onResendEmailVerification={handleResendEmailVerification}
                 onSwitchMode={handleSwitchMode}
                 onSubmit={handleSubmit}

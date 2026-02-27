@@ -22,6 +22,9 @@ DONE_CRITERIA:
 - feature flag 기반 긴급 OFF 경로 확인
 - 릴리스 리허설/롤백 리허설 결과 존재
 - 런북/담당자/알림 경로 명확
+- 내부 테스트 트랙 배포 증적 존재(Android AAB, iOS IPA/TestFlight)
+- `eas submit` 자동 제출/재시도 로그 존재 (최초 1회 수동 제출 예외 허용)
+- 실디바이스 로그에서 `[SafeStorage] MMKV initialization failed` 재확인 및 영향도 판정
 CONSTRAINTS:
 - 코드 수정 없이 검증 우선
 - Gate 실패 항목은 우선순위와 차단 영향도 포함
@@ -34,7 +37,8 @@ CONSTRAINTS:
    - $foodlens-ci-policy-enforcement
    - $foodlens-feature-flag-rollout-control
 3) DoD 항목 Pass/Fail 판정
-4) 미충족 항목 보완안 제시
+4) 내부 테스트 트랙 증적/런타임 로그(MMKV) 확인
+5) 미충족 항목 보완안 제시
 
 [출력 형식]
 PHASE_CHECK
@@ -48,4 +52,3 @@ NEXT_ACTIONS
 - 모든 DONE_CRITERIA Pass: “Phase 6 완료”
 - 하나라도 Fail: “Phase 6 미완료”
 ```
-

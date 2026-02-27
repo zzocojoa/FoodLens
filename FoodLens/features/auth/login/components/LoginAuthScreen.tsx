@@ -33,6 +33,10 @@ type InputGroupProps = {
   onSubmitEditing?: React.ComponentProps<typeof TextInput>['onSubmitEditing'];
   returnKeyType?: React.ComponentProps<typeof TextInput>['returnKeyType'];
   blurOnSubmit?: React.ComponentProps<typeof TextInput>['blurOnSubmit'];
+  rightActionLabel?: string;
+  onPressRightAction?: () => void;
+  rightActionDisabled?: boolean;
+  rightActionTestID?: string;
 };
 
 const InputGroup = ({
@@ -49,6 +53,10 @@ const InputGroup = ({
   onSubmitEditing,
   returnKeyType,
   blurOnSubmit = true,
+  rightActionLabel,
+  onPressRightAction,
+  rightActionDisabled = false,
+  rightActionTestID,
 }: InputGroupProps) => (
   <View style={[loginStyles.inputGroup, style]}>
     <Text style={loginStyles.inputLabel}>{label}</Text>
@@ -73,6 +81,23 @@ const InputGroup = ({
           <Feather name={rightIconName} size={16} color={LOGIN_COLORS.inputIcon} />
         </Pressable>
       ) : null}
+      {rightActionLabel && onPressRightAction ? (
+        <Pressable
+          testID={rightActionTestID}
+          onPress={onPressRightAction}
+          disabled={rightActionDisabled}
+          style={loginStyles.inputActionButton}
+        >
+          <Text
+            style={[
+              loginStyles.inputActionText,
+              rightActionDisabled ? loginStyles.verificationResendTextDisabled : null,
+            ]}
+          >
+            {rightActionLabel}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   </View>
 );
@@ -90,6 +115,7 @@ type LoginAuthScreenProps = {
   emailVerificationStepActive: boolean;
   verificationCountdownLabel: string | null;
   verificationExpired: boolean;
+  passwordResetCodeSent: boolean;
   passwordResetStepActive: boolean;
   passwordVisible: boolean;
   confirmPasswordVisible: boolean;
@@ -107,6 +133,7 @@ type LoginAuthScreenProps = {
   onToggleConfirmPasswordVisible: () => void;
   onForgotPassword: () => void;
   onCancelPasswordReset: () => void;
+  onResendPasswordReset: () => void;
   onResendEmailVerification: () => void;
   onSwitchMode: (nextMode: LoginAuthMode) => void;
   onSubmit: () => void;
@@ -126,6 +153,7 @@ export default function LoginAuthScreen({
   emailVerificationStepActive,
   verificationCountdownLabel,
   verificationExpired,
+  passwordResetCodeSent,
   passwordResetStepActive,
   passwordVisible,
   confirmPasswordVisible,
@@ -143,6 +171,7 @@ export default function LoginAuthScreen({
   onToggleConfirmPasswordVisible,
   onForgotPassword,
   onCancelPasswordReset,
+  onResendPasswordReset,
   onResendEmailVerification,
   onSwitchMode,
   onSubmit,
@@ -161,13 +190,19 @@ export default function LoginAuthScreen({
         .filter((line) => line.length > 0)
     : [];
   const hasMessage = messageLines.length > 0;
-  const resetLayoutActive = passwordResetStepActive;
   const showSignupVerificationField = mode === 'signup';
-  const authContainerStyle = [
-    loginStyles.authContainer,
-    containerStyle,
-    resetLayoutActive ? loginStyles.authContainerInline : null,
-  ];
+  const showVerificationMeta =
+    showSignupVerificationField || (passwordResetStepActive && passwordResetCodeSent);
+  const verificationMetaText = emailVerificationStepActive
+    ? verificationExpired || !verificationCountdownLabel
+      ? copy.verificationExpired
+      : `${copy.verificationExpiresInPrefix} ${verificationCountdownLabel}`
+    : passwordResetStepActive && passwordResetCodeSent
+    ? verificationExpired || !verificationCountdownLabel
+      ? copy.verificationExpired
+      : `${copy.verificationExpiresInPrefix} ${verificationCountdownLabel}`
+    : copy.verificationHelpText;
+  const authContainerStyle = [loginStyles.authContainer, containerStyle];
 
   const footerContent = (
     <>
@@ -245,11 +280,34 @@ export default function LoginAuthScreen({
           </View>
         </>
       ) : (
-        <View style={loginStyles.switchAuthRow}>
-          <Pressable onPress={onCancelPasswordReset}>
-            <Text style={loginStyles.switchAuthAction}>{copy.resetPasswordBackToSignIn}</Text>
-          </Pressable>
-        </View>
+        <>
+          <View
+            style={[loginStyles.oauthDivider, loginStyles.footerGhostSpacer]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <View style={loginStyles.oauthDividerLine} />
+            <Text style={loginStyles.oauthDividerText}>{copy.oauthDividerText}</Text>
+            <View style={loginStyles.oauthDividerLine} />
+          </View>
+
+          <View
+            style={[loginStyles.oauthButtonGroup, loginStyles.footerGhostSpacer]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <View style={[loginStyles.oauthButton, loginStyles.oauthGhostButton]} />
+            <View style={[loginStyles.oauthButton, loginStyles.oauthGhostButton]} />
+          </View>
+
+          <View style={loginStyles.switchAuthRow}>
+            <Pressable onPress={onCancelPasswordReset}>
+              <Text style={loginStyles.switchAuthAction}>{copy.resetPasswordBackToSignIn}</Text>
+            </Pressable>
+          </View>
+        </>
       )}
     </>
   );
@@ -302,63 +360,51 @@ export default function LoginAuthScreen({
         ) : null}
 
         {!verificationStepActive || passwordResetStepActive ? (
-          passwordResetStepActive ? (
-            <View style={loginStyles.verificationFieldWrap}>
-              <InputGroup
-                label={copy.confirmNewPasswordLabel}
-                placeholder={copy.confirmNewPasswordPlaceholder}
-                iconName="lock"
-                value={formValues.confirmPassword}
-                onChangeText={onChangeConfirmPassword}
-                secureTextEntry={!confirmPasswordVisible}
-                rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
-                onPressRightIcon={onToggleConfirmPasswordVisible}
-                style={{ marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
-                onSubmitEditing={() => Keyboard.dismiss()}
-                returnKeyType="done"
-              />
-            </View>
-          ) : (
-            <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
-              <InputGroup
-                label={copy.confirmPasswordLabel}
-                placeholder={copy.confirmPasswordPlaceholder}
-                iconName="lock"
-                value={formValues.confirmPassword}
-                onChangeText={onChangeConfirmPassword}
-                secureTextEntry={!confirmPasswordVisible}
-                rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
-                onPressRightIcon={onToggleConfirmPasswordVisible}
-                style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
-                onSubmitEditing={() => Keyboard.dismiss()}
-                returnKeyType="done"
-              />
-            </Animated.View>
-          )
-        ) : null}
-
-        {showSignupVerificationField || verificationStepActive ? (
-          <View style={loginStyles.verificationFieldWrap}>
+          <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
             <InputGroup
-              label={copy.verificationCodeLabel}
-              placeholder={copy.verificationCodePlaceholder}
-              iconName="shield"
-              value={formValues.verificationCode}
-              onChangeText={onChangeVerificationCode}
-              keyboardType="number-pad"
-              style={{ marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+              label={passwordResetStepActive ? copy.confirmNewPasswordLabel : copy.confirmPasswordLabel}
+              placeholder={passwordResetStepActive ? copy.confirmNewPasswordPlaceholder : copy.confirmPasswordPlaceholder}
+              iconName="lock"
+              value={formValues.confirmPassword}
+              onChangeText={onChangeConfirmPassword}
+              secureTextEntry={!confirmPasswordVisible}
+              rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
+              onPressRightIcon={onToggleConfirmPasswordVisible}
+              style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
               onSubmitEditing={() => Keyboard.dismiss()}
               returnKeyType="done"
             />
-            {showSignupVerificationField && !passwordResetStepActive ? (
+          </Animated.View>
+        ) : null}
+
+        {showSignupVerificationField || verificationStepActive ? (
+          <>
+            <View style={loginStyles.verificationFieldWrap}>
+              <InputGroup
+                label={copy.verificationCodeLabel}
+                placeholder={copy.verificationCodePlaceholder}
+                iconName="shield"
+                value={formValues.verificationCode}
+                onChangeText={onChangeVerificationCode}
+                keyboardType="number-pad"
+                style={{ marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
+                onSubmitEditing={() => Keyboard.dismiss()}
+                returnKeyType="done"
+                rightActionLabel={
+                  passwordResetStepActive
+                    ? passwordResetCodeSent
+                      ? copy.passwordResetResendCode
+                      : copy.passwordResetSendCode
+                    : undefined
+                }
+                onPressRightAction={passwordResetStepActive ? onResendPasswordReset : undefined}
+                rightActionDisabled={passwordResetStepActive ? loading : undefined}
+                rightActionTestID={passwordResetStepActive ? 'password-reset-resend-button' : undefined}
+              />
+            </View>
+            {showVerificationMeta ? (
               <View style={loginStyles.verificationMetaRow}>
-                <Text style={loginStyles.verificationMetaText}>
-                  {emailVerificationStepActive
-                    ? verificationExpired || !verificationCountdownLabel
-                      ? copy.verificationExpired
-                      : `${copy.verificationExpiresInPrefix} ${verificationCountdownLabel}`
-                    : copy.verificationHelpText}
-                </Text>
+                <Text style={loginStyles.verificationMetaText}>{verificationMetaText}</Text>
                 {emailVerificationStepActive ? (
                   <Pressable
                     onPress={onResendEmailVerification}
@@ -377,7 +423,7 @@ export default function LoginAuthScreen({
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </>
         ) : null}
       </Animated.View>
     </>
