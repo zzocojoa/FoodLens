@@ -782,6 +782,34 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(post_logout_me.status_code, 401)
             self.assertEqual(post_logout_me.json()["detail"]["code"], "AUTH_TOKEN_INVALID")
 
+    def test_logout_is_idempotent_when_session_already_revoked(self):
+        with TestClient(app) as client:
+            _, signup = self._signup_and_verify(
+                client,
+                email="logout-idempotent@example.com",
+                password="Passw0rd!",
+                display_name="LogoutIdempotent",
+            )
+
+            first_logout = client.post(
+                "/auth/logout",
+                json={"refresh_token": signup["refresh_token"]},
+                headers=_auth_headers(signup["access_token"]),
+            )
+            self.assertEqual(first_logout.status_code, 200)
+            self.assertTrue(first_logout.json()["ok"])
+            self.assertGreaterEqual(first_logout.json().get("revoked_sessions", 0), 1)
+
+            second_logout = client.post(
+                "/auth/logout",
+                json={"refresh_token": signup["refresh_token"]},
+                headers=_auth_headers(signup["access_token"]),
+            )
+            self.assertEqual(second_logout.status_code, 200)
+            self.assertTrue(second_logout.json()["ok"])
+            self.assertEqual(second_logout.json().get("revoked_sessions"), 0)
+            self.assertIsNotNone(second_logout.json().get("request_id"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1344,6 +1344,13 @@ async def auth_logout(payload: LogoutRequest, request: Request):
             "request_id": request_id,
         }
     except AuthServiceError as error:
+        if error.code == "AUTH_SESSION_NOT_FOUND":
+            # Idempotent logout: treat missing/expired local session as already logged out.
+            return {
+                "ok": True,
+                "revoked_sessions": 0,
+                "request_id": request_id,
+            }
         _log_auth_failure(
             request_id=request_id,
             user_id=error.user_id,
