@@ -81,8 +81,6 @@ npm run ios:device:logs
 npm run ios:release:device:logs
 npm run android:device:logs
 npm run android:release:device:logs
-
-
 ````
 
 ### 3. 🚨 문제 해결 (Troubleshooting)
