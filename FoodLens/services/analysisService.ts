@@ -65,6 +65,18 @@ const enqueueHistoryMigrationIfNeeded = async (userId: string, records: Analysis
   await SafeStorage.set(historyMigrationMarkerKey(userId), true);
 };
 
+const flushHistoryWrites = async (userId: string): Promise<void> => {
+  try {
+    await dispatchPhase2SyncQueue();
+  } catch (error) {
+    logger.warn('[Phase2Sync] history write flush failed', {
+      request_id: 'unknown',
+      user_id: userId,
+      code: error instanceof Error ? error.message : 'PHASE2_HISTORY_FLUSH_FAILED',
+    });
+  }
+};
+
 export const AnalysisService = {
     /**
      * Save a new analysis result to local storage
@@ -103,6 +115,7 @@ export const AnalysisService = {
               await saveHistoryDeleteSet(userId, deleteSet);
             }
             await enqueueHistorySync(userId, serializeHistoryRecord(newRecord), newRecord.id);
+            await flushHistoryWrites(userId);
             logger.info('Analysis saved successfully with date', finalDate.toISOString(), 'AnalysisService');
             return newRecord;
         } catch (error) {

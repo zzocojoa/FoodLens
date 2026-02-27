@@ -10,7 +10,11 @@ import {
   mergeRemoteUserSnapshot,
   normalizeLegacyProfileForUser,
 } from './sync/phase2Mappers_Logic';
-import { enqueuePhase2Sync, startPhase2SyncRuntime } from './sync/phase2SyncQueue_Logic';
+import {
+  dispatchPhase2SyncQueue,
+  enqueuePhase2Sync,
+  startPhase2SyncRuntime,
+} from './sync/phase2SyncQueue_Logic';
 
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
@@ -82,6 +86,18 @@ const syncProfileFromServer = async (
   }
 };
 
+const flushProfileWrites = async (uid: string): Promise<void> => {
+  try {
+    await dispatchPhase2SyncQueue();
+  } catch (error) {
+    logger.warn('[Phase2Sync] profile write flush failed', {
+      request_id: 'unknown',
+      user_id: uid,
+      code: error instanceof Error ? error.message : 'PHASE2_PROFILE_FLUSH_FAILED',
+    });
+  }
+};
+
 const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<void> => {
   const payloads = buildProfileWritePayload(profile);
   await Promise.all([
@@ -112,6 +128,7 @@ export const UserService = {
     const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(uid), false);
     if (!serverSynced) {
       await queueProfileWrites(uid, hydrated);
+      await flushProfileWrites(uid);
       await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
     }
 
@@ -154,6 +171,7 @@ export const UserService = {
       await saveScopedProfile(uid, newProfile);
       await SafeStorage.set(profileMigrationMarkerKey(uid), true);
       await queueProfileWrites(uid, newProfile);
+      await flushProfileWrites(uid);
       await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
       return newProfile;
     } catch (error) {

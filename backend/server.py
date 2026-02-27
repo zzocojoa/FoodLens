@@ -791,6 +791,22 @@ def _log_auth_failure(
     )
 
 
+def _log_phase2_write(
+    *,
+    request_id: str,
+    user_id: str,
+    method: str,
+    path: str,
+) -> None:
+    logger.info(
+        "[Phase2Write] request_id=%s user_id=%s method=%s path=%s",
+        request_id,
+        user_id,
+        method,
+        path,
+    )
+
+
 def _extract_bearer_token(request: Request) -> str | None:
     header = request.headers.get("Authorization")
     if not header:
@@ -1338,6 +1354,11 @@ async def auth_logout(payload: LogoutRequest, request: Request):
             access_token=_extract_bearer_token(request),
             refresh_token=payload.refresh_token,
         )
+        logger.info(
+            "[Auth] logout success request_id=%s revoked_sessions=%s",
+            request_id,
+            revoked_count,
+        )
         return {
             "ok": True,
             "revoked_sessions": revoked_count,
@@ -1346,6 +1367,10 @@ async def auth_logout(payload: LogoutRequest, request: Request):
     except AuthServiceError as error:
         if error.code == "AUTH_SESSION_NOT_FOUND":
             # Idempotent logout: treat missing/expired local session as already logged out.
+            logger.info(
+                "[Auth] logout success request_id=%s revoked_sessions=0 idempotent=true",
+                request_id,
+            )
             return {
                 "ok": True,
                 "revoked_sessions": 0,
@@ -1390,6 +1415,12 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             locale=payload.locale,
             timezone_name=payload.timezone,
         )
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="PUT",
+            path="/me/profile",
+        )
         return {"profile": profile, "request_id": request_id}
     except AuthServiceError as error:
         _log_auth_failure(
@@ -1430,6 +1461,12 @@ async def put_me_allergies(payload: AllergiesUpdateRequest, request: Request):
             allergies=payload.allergies,
             dietary_restrictions=payload.dietary_restrictions,
             severity_map=payload.severity_map,
+        )
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="PUT",
+            path="/me/allergies",
         )
         return {"allergies": allergies, "request_id": request_id}
     except AuthServiceError as error:
@@ -1473,6 +1510,12 @@ async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
             auto_play_audio=payload.auto_play_audio,
             selected_emoji=payload.selected_emoji,
         )
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="PUT",
+            path="/me/settings",
+        )
         return {"settings": settings, "request_id": request_id}
     except AuthServiceError as error:
         _log_auth_failure(
@@ -1512,6 +1555,12 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
             user_id=user.user_id,
             entry=payload.entry,
             idempotency_key=payload.idempotency_key,
+        )
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="POST",
+            path="/me/history",
         )
         return {"history_item": history_item, "request_id": request_id}
     except AuthServiceError as error:
