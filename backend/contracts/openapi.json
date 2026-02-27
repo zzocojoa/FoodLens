@@ -733,6 +733,19 @@
         "title": "EmailSignupRequest",
         "type": "object"
       },
+      "EmailVerificationRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "EmailVerificationRequest",
+        "type": "object"
+      },
       "EmailVerifyRequest": {
         "properties": {
           "code": {
@@ -1583,6 +1596,42 @@
           }
         },
         "summary": "Auth Email Signup"
+      }
+    },
+    "/auth/email/verification/request": {
+      "post": {
+        "operationId": "auth_email_verification_request_auth_email_verification_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Email Verification Request"
       }
     },
     "/auth/email/verify": {
