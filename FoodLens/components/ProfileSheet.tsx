@@ -7,6 +7,7 @@ import { AuthApi } from '@/services/auth/authApi_Logic';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore_Logic';
 import { clearSession } from '@/services/auth/sessionManager_Logic';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout_Logic';
+import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue_Logic';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
 import { useProfileSheetController } from './profileSheet/hooks/useProfileSheetController';
 import { ProfileSheetProps } from './profileSheet/types';
@@ -59,6 +60,16 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     try {
       const storedSession = await AuthSecureSessionStore.read();
       currentUserId = storedSession?.user?.id ?? 'unknown';
+
+      try {
+        await dispatchPhase2SyncQueue();
+      } catch (error) {
+        console.warn('[Phase2Sync] Pre-logout queue flush failed', {
+          request_id: requestId,
+          user_id: currentUserId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       try {
         await AuthApi.logout({

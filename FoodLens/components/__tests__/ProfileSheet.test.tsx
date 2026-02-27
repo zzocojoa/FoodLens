@@ -9,6 +9,7 @@ const mockAuthLogout = jest.fn();
 const mockReadSession = jest.fn();
 const mockClearSession = jest.fn();
 const mockProviderLogout = jest.fn();
+const mockDispatchPhase2SyncQueue = jest.fn();
 
 let capturedProps: { onPressLogout: () => void } | null = null;
 
@@ -45,6 +46,10 @@ jest.mock('@/services/auth/sessionManager', () => ({
 
 jest.mock('@/services/auth/providerLogout', () => ({
   logoutFromOAuthProvider: (...args: unknown[]) => mockProviderLogout(...args),
+}));
+
+jest.mock('@/services/sync/phase2SyncQueue', () => ({
+  dispatchPhase2SyncQueue: (...args: unknown[]) => mockDispatchPhase2SyncQueue(...args),
 }));
 
 jest.mock('../profileSheet/hooks/useProfileSheetController', () => ({
@@ -96,6 +101,7 @@ describe('ProfileSheet logout', () => {
     mockAuthLogout.mockResolvedValue(undefined);
     mockClearSession.mockResolvedValue(undefined);
     mockProviderLogout.mockResolvedValue(undefined);
+    mockDispatchPhase2SyncQueue.mockResolvedValue(undefined);
   });
 
   it('calls provider logout after local logout for social account', async () => {
@@ -125,6 +131,7 @@ describe('ProfileSheet logout', () => {
       accessToken: 'atk_profile',
       refreshToken: 'rtk_profile',
     });
+    expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
     expect(mockClearSession).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith('/login');
     expect(mockProviderLogout).toHaveBeenCalledWith('google');
