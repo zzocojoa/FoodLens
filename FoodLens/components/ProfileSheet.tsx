@@ -60,20 +60,18 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       const storedSession = await AuthSecureSessionStore.read();
       currentUserId = storedSession?.user?.id ?? 'unknown';
 
-      if (storedSession) {
-        try {
-          await AuthApi.logout({
-            accessToken: storedSession.accessToken,
-            refreshToken: storedSession.refreshToken,
-          });
-        } catch (error) {
-          console.warn('[AuthSession] Backend logout failed', {
-            request_id: requestId,
-            user_id: currentUserId,
-            provider: storedSession.user?.provider ?? 'none',
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+      try {
+        await AuthApi.logout({
+          accessToken: storedSession?.accessToken,
+          refreshToken: storedSession?.refreshToken,
+        });
+      } catch (error) {
+        console.warn('[AuthSession] Backend logout failed', {
+          request_id: requestId,
+          user_id: currentUserId,
+          provider: storedSession?.user?.provider ?? 'none',
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       const provider = storedSession?.user?.provider;
