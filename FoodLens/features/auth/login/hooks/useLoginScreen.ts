@@ -6,6 +6,7 @@ import {
   AuthSessionTokens,
   isAuthEmailVerificationChallenge,
 } from '@/services/auth/authApi_Logic';
+import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
 import { hasSeenOnboarding } from '@/services/storage_Logic';
 import { persistSession } from '@/services/auth/sessionManager_Logic';
 import { useI18n } from '@/features/i18n';
@@ -64,6 +65,31 @@ const isVerificationResendEndpointMissing = (error: unknown): boolean =>
   error instanceof AuthApiError &&
   error.code === 'AUTH_REQUEST_FAILED' &&
   error.status === 404;
+
+const warmupMeEndpoints = async (session: AuthSessionTokens): Promise<void> => {
+  if (process.env['NODE_ENV'] === 'test') return;
+  if (typeof fetch !== 'function') return;
+
+  try {
+    const baseUrl = await ServerConfig.getServerUrl();
+    const requestSeed = Date.now().toString(36);
+    const paths = ['/me/profile', '/me/allergies', '/me/settings', '/me/history'];
+
+    await Promise.allSettled(
+      paths.map((path, index) =>
+        fetch(`${baseUrl}${path}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+            'X-Request-Id': `auth-warmup-${requestSeed}-${index}`,
+          },
+        })
+      )
+    );
+  } catch {
+    // Non-blocking warmup best-effort call.
+  }
+};
 
 export const useLoginScreen = () => {
   const router = useRouter();
@@ -654,6 +680,7 @@ export const useLoginScreen = () => {
       // OAuth sign-in may round-trip through external browser and app process restarts.
       // Always persist session tokens for social providers to keep auth state stable.
       await persistAuthenticatedSession(session, true);
+      void warmupMeEndpoints(session);
       await completeSignIn(session.user.id);
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
