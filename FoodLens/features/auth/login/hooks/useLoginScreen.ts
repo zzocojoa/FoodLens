@@ -28,6 +28,8 @@ import {
 import { formatCountdown, getAuthCopy, validateLoginForm } from '../utils/login.utils';
 import { useLoginMotion } from './useLoginMotion';
 
+const FORCE_PHASE2_WRITE_PROBE = process.env['EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE'] === '1';
+
 const updateField = <K extends keyof LoginFormValues>(
   prev: LoginFormValues,
   field: K,
@@ -88,6 +90,55 @@ const warmupMeEndpoints = async (session: AuthSessionTokens): Promise<void> => {
     );
   } catch {
     // Non-blocking warmup best-effort call.
+  }
+};
+
+const runPhase2WriteProbe = async (session: AuthSessionTokens): Promise<void> => {
+  if (!FORCE_PHASE2_WRITE_PROBE) return;
+  if (process.env['NODE_ENV'] === 'test') return;
+  if (typeof fetch !== 'function') return;
+
+  try {
+    const baseUrl = await ServerConfig.getServerUrl();
+    const requestSeed = Date.now().toString(36);
+    const authHeaders = (requestId: string) => ({
+      Authorization: `Bearer ${session.accessToken}`,
+      'X-Request-Id': requestId,
+      'Content-Type': 'application/json',
+    });
+
+    await fetch(`${baseUrl}/me/profile`, {
+      method: 'PUT',
+      headers: authHeaders(`auth-write-probe-${requestSeed}-profile`),
+      body: JSON.stringify({}),
+    });
+
+    await fetch(`${baseUrl}/me/allergies`, {
+      method: 'PUT',
+      headers: authHeaders(`auth-write-probe-${requestSeed}-allergies`),
+      body: JSON.stringify({}),
+    });
+
+    await fetch(`${baseUrl}/me/settings`, {
+      method: 'PUT',
+      headers: authHeaders(`auth-write-probe-${requestSeed}-settings`),
+      body: JSON.stringify({}),
+    });
+
+    await fetch(`${baseUrl}/me/history`, {
+      method: 'POST',
+      headers: authHeaders(`auth-write-probe-${requestSeed}-history`),
+      body: JSON.stringify({
+        entry: {
+          id: `phase2-write-probe-${session.user.id}`,
+          source: 'phase2_write_probe',
+          timestamp: new Date().toISOString(),
+        },
+        idempotency_key: `phase2-write-probe-${session.user.id}`,
+      }),
+    });
+  } catch {
+    // Non-blocking probe for runtime write-path evidence.
   }
 };
 
@@ -681,6 +732,7 @@ export const useLoginScreen = () => {
       // Always persist session tokens for social providers to keep auth state stable.
       await persistAuthenticatedSession(session, true);
       void warmupMeEndpoints(session);
+      void runPhase2WriteProbe(session);
       await completeSignIn(session.user.id);
     } catch (error) {
       setErrorMessage(loginAuthService.resolveAuthErrorMessage(error, loginCopy));
