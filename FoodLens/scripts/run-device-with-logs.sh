@@ -208,11 +208,10 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
   export SENTRY_DISABLE_AUTO_UPLOAD=true
   export SENTRY_ALLOW_FAILURE=1
   echo "[run-with-logs] Local release run: Sentry upload failures are non-blocking."
-  if [[ -z "${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE+x}" ]]; then
-    export EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=1
-    echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=1 (default for release evidence run)."
-  else
+  if [[ -n "${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE+x}" ]]; then
     echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE} (user supplied)."
+  else
+    echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE not set (default disabled)."
   fi
   if [[ -z "${SENTRY_ORG:-}" && -z "${SENTRY_PROPERTIES:-}" ]]; then
     echo "[run-with-logs] SENTRY_ORG/SENTRY_PROPERTIES not set. Sentry source map upload is disabled."
