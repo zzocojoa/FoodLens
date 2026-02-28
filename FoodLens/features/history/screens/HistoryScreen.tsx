@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, LayoutAnimation, Platform, UIManager, Text } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import HistoryMap from '@/components/HistoryMap';
@@ -40,6 +40,9 @@ export default function HistoryScreen() {
     const { archiveFilter, setArchiveFilter, matchesFilter, isAllowedItemType } = useHistoryFilter();
 
     const ui = useHistoryScreen({ deleteMultipleItems });
+    const hasAndroidGoogleMapsApiKey =
+        (process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] ?? '').trim().length > 0;
+    const canRenderNativeMap = Platform.OS !== 'android' || hasAndroidGoogleMapsApiKey;
 
     const handleToggleCountry = useCallback((countryName: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -71,12 +74,26 @@ export default function HistoryScreen() {
                 />
 
                 {ui.archiveMode === 'map' ? (
-                    <HistoryMap
-                        data={archiveData}
-                        initialRegion={ui.savedMapRegionRef.current || initialRegion}
-                        onMarkerPress={handleMarkerPress}
-                        onRegionChange={handleRegionChange}
-                    />
+                    canRenderNativeMap ? (
+                        <HistoryMap
+                            data={archiveData}
+                            initialRegion={ui.savedMapRegionRef.current || initialRegion}
+                            onMarkerPress={handleMarkerPress}
+                            onRegionChange={handleRegionChange}
+                        />
+                    ) : (
+                        <View style={[styles.mapUnavailableContainer, { backgroundColor: theme.background }]}>
+                            <Text style={[styles.mapUnavailableTitle, { color: theme.textPrimary }]}>
+                                {t('history.map.unavailableTitle', 'Map unavailable')}
+                            </Text>
+                            <Text style={[styles.mapUnavailableDescription, { color: theme.textSecondary }]}>
+                                {t(
+                                    'history.map.unavailableMessage',
+                                    'Map mode is unavailable on this Android build. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild.'
+                                )}
+                            </Text>
+                        </View>
+                    )
                 ) : (
                     <HistoryList
                         data={archiveData}

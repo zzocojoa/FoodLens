@@ -46,5 +46,21 @@ export const historyStyles = StyleSheet.create({
         height: 16,
         marginHorizontal: 4,
     },
+    mapUnavailableContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+        gap: 8,
+    },
+    mapUnavailableTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    mapUnavailableDescription: {
+        fontSize: 14,
+        lineHeight: 20,
+        textAlign: 'center',
+    },
 });
-
