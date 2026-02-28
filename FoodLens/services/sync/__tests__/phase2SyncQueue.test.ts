@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
+import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
 import { dispatchPhase2SyncQueue } from '../phase2SyncQueue';
@@ -16,6 +17,10 @@ jest.mock('@react-native-community/netinfo', () => ({
 jest.mock('@/services/auth/currentUser_Logic', () => ({
   getCurrentUserId: jest.fn(),
   hasAuthenticatedUser: jest.fn(),
+}));
+
+jest.mock('@/services/auth/sessionManager_Logic', () => ({
+  restoreSession: jest.fn(),
 }));
 
 jest.mock('@/services/storage_Logic', () => ({
@@ -51,6 +56,7 @@ const mockedNetInfo = NetInfo as unknown as { fetch: jest.Mock };
 const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.Mock;
 const mockedGetCurrentUserId = getCurrentUserId as jest.Mock;
+const mockedRestoreSession = restoreSession as jest.Mock;
 const mockedPhase2Api = Phase2Api as jest.Mocked<typeof Phase2Api>;
 
 let queueState: Phase2SyncOperation[] = [];
@@ -77,6 +83,7 @@ beforeEach(() => {
   });
   mockedHasAuthenticatedUser.mockReturnValue(true);
   mockedGetCurrentUserId.mockReturnValue('usr_a');
+  mockedRestoreSession.mockResolvedValue(null);
 
   mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
     if (key === '@foodlens_phase2_sync_queue_v1') {
@@ -141,11 +148,25 @@ describe('phase2SyncQueue', () => {
   it('skips dispatch when no authenticated user is active', async () => {
     queueState = [pendingProfileOperation('op-a', 'usr_a')];
     mockedHasAuthenticatedUser.mockReturnValue(false);
+    mockedRestoreSession.mockResolvedValue(null);
 
     await dispatchPhase2SyncQueue();
 
     expect(mockedPhase2Api.putProfile).not.toHaveBeenCalled();
     expect(queueState[0].state).toBe('pending');
+  });
+
+  it('dispatches using restored session when current user marker is missing', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a')];
+    mockedHasAuthenticatedUser.mockReturnValue(false);
+    mockedRestoreSession.mockResolvedValue({
+      user: { id: 'usr_a' },
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('synced');
   });
 
   it('keeps queue pending when session is unavailable', async () => {

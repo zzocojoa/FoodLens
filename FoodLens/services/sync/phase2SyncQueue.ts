@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { SafeStorage } from '@/services/storage_Logic';
 import { logger } from '@/services/logger_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
+import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
 import type { Phase2SyncEntity, Phase2SyncOperation } from './phase2Sync.types_Structure';
 
@@ -96,16 +97,29 @@ const withDispatchLock = async (runner: () => Promise<void>): Promise<void> => {
   await dispatchInFlight;
 };
 
-const resolveActiveUserId = (): string | null => {
-  if (!hasAuthenticatedUser()) return null;
-  const userId = getCurrentUserId();
-  return typeof userId === 'string' && userId.trim().length > 0 ? userId : null;
+const resolveActiveUserId = async (): Promise<string | null> => {
+  if (hasAuthenticatedUser()) {
+    const userId = getCurrentUserId();
+    if (typeof userId === 'string' && userId.trim().length > 0) {
+      return userId;
+    }
+  }
+
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+    refreshIfExpired: false,
+  });
+  const fallbackUserId = session?.user?.id;
+  if (typeof fallbackUserId !== 'string') return null;
+  const normalized = fallbackUserId.trim();
+  return normalized.length > 0 ? normalized : null;
 };
 
 export const dispatchPhase2SyncQueue = async (): Promise<void> =>
   withDispatchLock(async () => {
     if (!(await isNetworkAvailable())) return;
-    const activeUserId = resolveActiveUserId();
+    const activeUserId = await resolveActiveUserId();
     if (!activeUserId) return;
 
     const queue = await loadQueue();
