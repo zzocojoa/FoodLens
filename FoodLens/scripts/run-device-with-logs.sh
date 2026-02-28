@@ -197,6 +197,24 @@ force_launch_android_main() {
 
 cd "${PROJECT_DIR}"
 
+# Ensure Android native build can read maps key even when it exists only in .env.
+if [[ "${PLATFORM}" == "android" && -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" && -f "${PROJECT_DIR}/.env" ]]; then
+  maps_key_line="$(grep -E '^EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=' "${PROJECT_DIR}/.env" | tail -n 1 || true)"
+  if [[ -n "${maps_key_line}" ]]; then
+    export EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${maps_key_line#EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=}"
+    # Strip surrounding quotes if present.
+    EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY%\"}"
+    EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY#\"}"
+    export EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+    echo "[run-with-logs] Loaded EXPO_PUBLIC_GOOGLE_MAPS_API_KEY from .env for android build."
+  fi
+fi
+
+if [[ "${PLATFORM}" == "android" ]]; then
+  echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
+  npx expo prebuild --platform android --no-install
+fi
+
 if [[ "${PLATFORM}" == "ios" ]]; then
   start_ios_logs
 else
