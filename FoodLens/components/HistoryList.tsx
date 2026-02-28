@@ -56,6 +56,7 @@ export default function HistoryList({
                 isEditMode={isEditMode}
                 selectedItems={selectedItems}
                 onToggleItem={onToggleItem}
+                onDelete={onDelete}
                 onFoodItemPress={controller.handleFoodItemPress}
             />
         ),
@@ -68,6 +69,7 @@ export default function HistoryList({
             isEditMode,
             selectedItems,
             onToggleItem,
+            onDelete,
         ]
     );
 

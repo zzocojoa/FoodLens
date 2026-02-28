@@ -108,6 +108,27 @@ export const historyListViewStyles = StyleSheet.create({
     borderWidth: 1,
   },
   emptyRegionContainer: { padding: 16, alignItems: 'center' },
+  deleteAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 92,
+    marginBottom: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 20,
+    marginLeft: 10,
+  },
+  deleteBtnContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 92,
+    height: 72,
+    gap: 4,
+  },
+  deleteText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   loadingContainer: { alignItems: 'center', marginTop: EMPTY_STATE_TOP_MARGIN },
   loadingText: { marginTop: 16 },
   emptyContainer: {

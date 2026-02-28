@@ -32,5 +32,6 @@ export type HistoryListItemRendererProps = {
     isEditMode: boolean;
     selectedItems: Set<string>;
     onToggleItem: (id: string) => void;
+    onDelete: (id: string) => void;
     onFoodItemPress: (item: any) => void;
 };
