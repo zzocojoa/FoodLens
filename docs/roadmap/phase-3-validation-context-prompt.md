@@ -8,6 +8,7 @@
 - docs/roadmap/context_prompt_roadmap_execution.md
 - docs/roadmap/master-plan.md
 - docs/roadmap/phase-3-sync-conflict-execution.md
+- docs/roadmap/phase-3-vercel-agent-skills-analysis.md
 - docs/contracts/api-contracts.md
 - docs/roadmap/skills-execution-priority-phase-1-6.md
 
@@ -22,6 +23,7 @@ DONE_CRITERIA:
 - 중요 데이터 충돌 시 manual merge 경로 확인
 - 오프라인->온라인 복귀에서 데이터 유실/중복 0
 - request_id/user_id 추적 가능
+- 외부 스킬(`react-native-skills`, `composition-patterns`) 적용 항목의 반영 여부/근거 확인
 CONSTRAINTS:
 - 코드 수정 없이 검증 우선
 - 실패 원인과 재현 경로를 명확히 제시
@@ -31,6 +33,8 @@ CONSTRAINTS:
 2) 아래 스킬 기준 대조
    - $foodlens-sync-conflict-policy
    - $foodlens-offline-first-sync
+   - `react-native-skills` (Vercel)
+   - `composition-patterns` (Vercel)
 3) DoD 항목 Pass/Fail 판정
 4) 미충족 항목 보완안 제시
 
@@ -46,4 +50,3 @@ NEXT_ACTIONS
 - 모든 DONE_CRITERIA Pass: “Phase 3 완료”
 - 하나라도 Fail: “Phase 3 미완료”
 ```
-

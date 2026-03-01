@@ -118,8 +118,27 @@
 - 법무/보안 삭제 자동화(Phase 5)
 - 인증 공급자 추가 확장(Phase 1 범위 외)
 
+## 9) 외부 스킬 적용 계획 (`vercel-labs/agent-skills`)
+
+- 분석 문서:
+  - `docs/roadmap/phase-3-vercel-agent-skills-analysis.md`
+
+- Phase 3 우선 적용 스킬:
+  - `react-native-skills` (높은 우선순위)
+  - `composition-patterns` (높은 우선순위)
+
+- 선택 적용 스킬:
+  - `react-best-practices` (RN에 유효한 규칙만 선별)
+  - `web-design-guidelines` (Web 표면 작업 시에만)
+
+- 실행 체크:
+  - [ ] Manual Merge UI를 Provider/Compound 구조로 분리 설계
+  - [ ] Queue 상태 모델에 `conflicted` 전이 경로 명시
+  - [ ] History/Sync 상태 UI 성능 규칙(`list-performance-*`) 점검
+  - [ ] Phase 3 검증 보고서에 외부 스킬 적용/비적용 근거 기록
+
 ---
 
-문서 버전: v1.0  
+문서 버전: v1.1  
 연결 문서: [Master Plan](./master-plan.md), [Phase 2 실행표](./phase-2-cloud-db-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
-최종 수정: 2026-02-19
+최종 수정: 2026-03-01

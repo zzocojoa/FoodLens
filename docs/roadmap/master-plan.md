@@ -170,6 +170,8 @@
 - Phase 3:
   - `.codex/skills/foodlens-sync-conflict-policy/SKILL.md`
   - `.codex/skills/foodlens-offline-first-sync/SKILL.md`
+  - `~/.codex/skills/react-native-skills/SKILL.md` (외부 보조)
+  - `~/.codex/skills/composition-patterns/SKILL.md` (외부 보조)
 - Phase 4:
   - `.codex/skills/foodlens-api-rate-limit-cors-guard/SKILL.md`
   - `.codex/skills/foodlens-observability-otel-sentry/SKILL.md`
