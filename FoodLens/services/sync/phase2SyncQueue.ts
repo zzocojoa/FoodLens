@@ -144,10 +144,15 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
 };
 
 const isNetworkAvailable = async (): Promise<boolean> => {
-  const state = await NetInfo.fetch();
-  if (state.isConnected === false) return false;
-  if (state.isInternetReachable === false) return false;
-  return true;
+  try {
+    const state = await NetInfo.fetch();
+    if (state.isConnected === false) return false;
+    if (state.isInternetReachable === false) return false;
+    return true;
+  } catch {
+    // If connectivity probe fails, prefer trying actual requests.
+    return true;
+  }
 };
 
 const withDispatchLock = async (runner: () => Promise<void>): Promise<void> => {
@@ -186,9 +191,11 @@ const resolveActiveUserId = async (): Promise<string | null> => {
   return normalized.length > 0 ? normalized : null;
 };
 
-export const dispatchPhase2SyncQueue = async (): Promise<void> =>
+export const dispatchPhase2SyncQueue = async (
+  options: { force?: boolean } = {}
+): Promise<void> =>
   withDispatchLock(async () => {
-    if (!(await isNetworkAvailable())) return;
+    if (!options.force && !(await isNetworkAvailable())) return;
     const activeUserId = await resolveActiveUserId();
     if (!activeUserId) return;
 

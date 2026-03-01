@@ -134,7 +134,7 @@ const syncProfileFromServer = async (
 
 const flushProfileWrites = async (uid: string, operationIds: string[]): Promise<void> => {
   try {
-    await dispatchPhase2SyncQueue();
+    await dispatchPhase2SyncQueue({ force: true });
     const operations = await getPhase2OperationsByIds(operationIds);
     const unsynced = operations.filter((item) => item.state !== 'synced');
     if (unsynced.length > 0) {
