@@ -75,6 +75,16 @@ start_ios_logs() {
     return
   fi
 
+  if ! xcrun devicectl help device 2>/dev/null | grep -q "log"; then
+    echo "[run-with-logs] Current devicectl does not support 'device log stream'."
+    echo "[run-with-logs] iOS runtime log capture is skipped on this Xcode toolchain."
+    {
+      echo "[run-with-logs] iOS runtime log capture skipped: devicectl 'device log stream' not supported."
+      echo "[run-with-logs] Capture backend evidence from Render Live Logs instead."
+    } > "${LOG_FILE}"
+    return
+  fi
+
   local udid
   udid="$(resolve_ios_udid || true)"
   if [[ -z "${udid}" ]]; then
