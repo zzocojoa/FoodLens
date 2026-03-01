@@ -24,6 +24,27 @@ LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
 MAPS_KEY_PLACEHOLDER="__MISSING_GOOGLE_MAPS_API_KEY__"
 
+run_with_timeout() {
+  local timeout_secs="$1"
+  shift
+
+  "$@" &
+  local cmd_pid=$!
+  local elapsed=0
+
+  while kill -0 "${cmd_pid}" >/dev/null 2>&1; do
+    if (( elapsed >= timeout_secs )); then
+      kill "${cmd_pid}" >/dev/null 2>&1 || true
+      wait "${cmd_pid}" >/dev/null 2>&1 || true
+      return 124
+    fi
+    sleep 1
+    ((elapsed+=1))
+  done
+
+  wait "${cmd_pid}"
+}
+
 redact_sensitive_log_fields() {
   sed -E \
     -e 's/(code=)[^&[:space:]]+/\1[REDACTED]/g' \
@@ -110,8 +131,13 @@ start_android_logs() {
     return
   fi
 
-  adb start-server >/dev/null 2>&1 || true
-  adb logcat -c >/dev/null 2>&1 || true
+  echo "[run-with-logs] Preparing adb runtime log capture..."
+  if ! run_with_timeout 12 adb start-server >/dev/null 2>&1; then
+    echo "[run-with-logs] WARN: adb start-server timed out. Continuing without blocking."
+  fi
+  if ! run_with_timeout 8 adb logcat -c >/dev/null 2>&1; then
+    echo "[run-with-logs] WARN: adb logcat -c timed out. Continuing."
+  fi
 
   echo "[run-with-logs] Android runtime logs -> ${LOG_FILE}"
   adb logcat -v time 2>&1 \
