@@ -36,6 +36,23 @@ const isUsableUserId = (value: string | null): value is string =>
   typeof value === 'string' && value.length > 0 && value !== UNAUTHENTICATED_USER_ID;
 
 const resolveScopedUserId = async (uid: string): Promise<string> => {
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+  });
+  const sessionUserId = normalizeUserId(session?.user?.id);
+  if (isUsableUserId(sessionUserId)) {
+    const requested = normalizeUserId(uid);
+    if (isUsableUserId(requested) && requested !== sessionUserId) {
+      logger.warn('[Auth] requested user id differs from active session; using session id', {
+        request_id: 'auth-user-id-mismatch',
+        requested_user_id: requested,
+        session_user_id: sessionUserId,
+      });
+    }
+    return sessionUserId;
+  }
+
   const requested = normalizeUserId(uid);
   if (isUsableUserId(requested)) {
     return requested;
@@ -45,16 +62,6 @@ const resolveScopedUserId = async (uid: string): Promise<string> => {
   if (isUsableUserId(current)) {
     logger.info('[Auth] resolved fallback user id from current marker', undefined, 'UserService');
     return current;
-  }
-
-  const session = await restoreSession({
-    clearCurrentUserOnMissing: false,
-    logWarnings: false,
-  });
-  const restored = normalizeUserId(session?.user?.id);
-  if (isUsableUserId(restored)) {
-    logger.info('[Auth] resolved fallback user id from session restore', undefined, 'UserService');
-    return restored;
   }
 
   throw new Error('Authenticated user id is required for profile sync operations.');

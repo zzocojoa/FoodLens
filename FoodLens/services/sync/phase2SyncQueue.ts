@@ -107,6 +107,18 @@ const withDispatchLock = async (runner: () => Promise<void>): Promise<void> => {
 };
 
 const resolveActiveUserId = async (): Promise<string | null> => {
+  const restoredSession = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+  });
+  const restoredUserId = restoredSession?.user?.id;
+  if (typeof restoredUserId === 'string') {
+    const normalizedRestored = restoredUserId.trim();
+    if (normalizedRestored.length > 0) {
+      return normalizedRestored;
+    }
+  }
+
   if (hasAuthenticatedUser()) {
     const userId = getCurrentUserId();
     if (typeof userId === 'string' && userId.trim().length > 0) {
@@ -114,12 +126,7 @@ const resolveActiveUserId = async (): Promise<string | null> => {
     }
   }
 
-  const session = await restoreSession({
-    clearCurrentUserOnMissing: false,
-    logWarnings: false,
-    refreshIfExpired: false,
-  });
-  const fallbackUserId = session?.user?.id;
+  const fallbackUserId = restoredSession?.user?.id;
   if (typeof fallbackUserId !== 'string') return null;
   const normalized = fallbackUserId.trim();
   return normalized.length > 0 ? normalized : null;

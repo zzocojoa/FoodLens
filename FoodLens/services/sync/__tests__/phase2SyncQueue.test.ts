@@ -173,6 +173,20 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].state).toBe('synced');
   });
 
+  it('dispatches using restored session when current marker is stale', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a')];
+    mockedHasAuthenticatedUser.mockReturnValue(true);
+    mockedGetCurrentUserId.mockReturnValue('usr_stale');
+    mockedRestoreSession.mockResolvedValue({
+      user: { id: 'usr_a' },
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('synced');
+  });
+
   it('keeps queue pending when session is unavailable', async () => {
     queueState = [pendingProfileOperation('op-a', 'usr_a')];
     mockedPhase2Api.putProfile.mockRejectedValueOnce(
