@@ -22,6 +22,7 @@ LOG_FILTER_REGEX='request_id|user_id|AuthSession|Phase2Sync|\\[Auth\\]|AUTH_|Saf
 LOG_PID=""
 LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
+MAPS_KEY_PLACEHOLDER="__MISSING_GOOGLE_MAPS_API_KEY__"
 
 redact_sensitive_log_fields() {
   sed -E \
@@ -217,13 +218,19 @@ if [[ "${PLATFORM}" == "android" && -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" &&
     # Strip surrounding quotes if present.
     EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY%\"}"
     EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY#\"}"
+    # Normalize accidental whitespace-only values.
+    EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="$(printf '%s' "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     export EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
     echo "[run-with-logs] Loaded EXPO_PUBLIC_GOOGLE_MAPS_API_KEY from .env for android build."
   fi
 fi
 
 if [[ "${PLATFORM}" == "android" ]]; then
-  if [[ -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" ]]; then
+  maps_key_value="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}"
+  maps_key_value="$(printf '%s' "${maps_key_value}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  export EXPO_PUBLIC_GOOGLE_MAPS_API_KEY="${maps_key_value}"
+
+  if [[ -z "${maps_key_value}" || "${maps_key_value}" == "${MAPS_KEY_PLACEHOLDER}" ]]; then
     echo "[run-with-logs] ERROR: EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is empty."
     echo "[run-with-logs] Set it in FoodLens/.env or current shell env before android build."
     exit 1
@@ -234,7 +241,7 @@ if [[ "${PLATFORM}" == "android" ]]; then
   echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
   npx expo prebuild --platform android --no-install
   if [[ -f "${ANDROID_MANIFEST_PATH}" ]]; then
-    if ! rg -n "com.google.android.geo.API_KEY" "${ANDROID_MANIFEST_PATH}" >/dev/null; then
+    if ! grep -q "com.google.android.geo.API_KEY" "${ANDROID_MANIFEST_PATH}"; then
       echo "[run-with-logs] ERROR: AndroidManifest is missing com.google.android.geo.API_KEY meta-data."
       echo "[run-with-logs] Check app.config.js android.config.googleMaps.apiKey wiring."
       exit 1
