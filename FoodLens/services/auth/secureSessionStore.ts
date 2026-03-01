@@ -6,7 +6,7 @@ const STORAGE_FALLBACK_REQUEST_ID = `auth-secure-store-${Date.now().toString(36)
 const STORAGE_FALLBACK_USER_ID = 'unknown';
 
 type SecureStoreModule = {
-  getItemAsync: (key: string) => Promise<string | null>;
+  getItemAsync: (key: string, options?: Record<string, unknown>) => Promise<string | null>;
   setItemAsync: (key: string, value: string, options?: Record<string, unknown>) => Promise<void>;
   deleteItemAsync: (key: string, options?: Record<string, unknown>) => Promise<void>;
   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY?: string;
@@ -98,7 +98,10 @@ export const AuthSecureSessionStore = {
     }
 
     try {
-      const raw = await secureStore.getItemAsync(SESSION_STORAGE_KEY);
+      const raw = await secureStore.getItemAsync(SESSION_STORAGE_KEY, secureStoreOptions());
+      if (!raw) {
+        return parseSession(volatileSessionJson);
+      }
       volatileSessionJson = raw;
       return parseSession(raw);
     } catch (error) {
