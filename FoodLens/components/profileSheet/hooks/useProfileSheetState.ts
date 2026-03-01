@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Alert } from 'react-native';
 import { DEFAULT_AVATARS } from '@/models/User';
 import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
@@ -6,6 +7,11 @@ import { profileSheetService } from '../services/profileSheetService';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
 import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import {
+    getManualMergeConflictOperationsForUser,
+    resolveManualMergeConflictsForUser,
+} from '@/services/sync/phase2ConflictResolution_Logic';
+import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types_Structure';
 
 export const useProfileSheetState = (userId: string) => {
     const { t } = useI18n();
@@ -16,6 +22,91 @@ export const useProfileSheetState = (userId: string) => {
     const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    const promptConflictResolution = useCallback(
+        (count: number): Promise<Phase2ConflictResolution | null> =>
+            new Promise((resolve) => {
+                let settled = false;
+                const settle = (value: Phase2ConflictResolution | null) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(value);
+                };
+
+                Alert.alert(
+                    t('sync.conflict.title', 'Sync conflict detected'),
+                    t(
+                        'sync.conflict.message',
+                        `Saved locally, but ${count} cloud conflict(s) were found. Choose which data to keep.`,
+                    ),
+                    [
+                        {
+                            text: t('sync.conflict.action.later', 'Later'),
+                            style: 'cancel',
+                            onPress: () => settle(null),
+                        },
+                        {
+                            text: t('sync.conflict.action.keepServer', 'Keep Server'),
+                            onPress: () => settle('use_server'),
+                        },
+                        {
+                            text: t('sync.conflict.action.keepDevice', 'Keep This Device'),
+                            style: 'destructive',
+                            onPress: () => settle('use_local'),
+                        },
+                    ],
+                    {
+                        cancelable: true,
+                        onDismiss: () => settle(null),
+                    },
+                );
+            }),
+        [t],
+    );
+
+    const handlePendingConflicts = useCallback(async (): Promise<void> => {
+        const conflicts = await getManualMergeConflictOperationsForUser(userId);
+        if (conflicts.length === 0) {
+            return;
+        }
+
+        const resolution = await promptConflictResolution(conflicts.length);
+        if (!resolution) {
+            showTranslatedAlert(t, {
+                titleKey: 'sync.conflict.deferredTitle',
+                titleFallback: 'Saved locally',
+                messageKey: 'sync.conflict.deferredMessage',
+                messageFallback:
+                    'Cloud sync has pending conflicts. Resolve them later from this device.',
+            });
+            return;
+        }
+
+        const result = await resolveManualMergeConflictsForUser({
+            userId,
+            resolution,
+        });
+
+        if (result.remaining === 0) {
+            showTranslatedAlert(t, {
+                titleKey: 'sync.conflict.resolvedTitle',
+                titleFallback: 'Conflict resolved',
+                messageKey: 'sync.conflict.resolvedMessage',
+                messageFallback:
+                    resolution === 'use_server'
+                        ? 'Server version was kept for conflicting fields.'
+                        : 'This device version was re-applied to the server.',
+            });
+            return;
+        }
+
+        showTranslatedAlert(t, {
+            titleKey: 'sync.conflict.remainingTitle',
+            titleFallback: 'Conflicts remaining',
+            messageKey: 'sync.conflict.remainingMessage',
+            messageFallback: 'Some conflicts are still pending. Please try again.',
+        });
+    }, [promptConflictResolution, t, userId]);
 
     const loadProfile = useCallback(async () => {
         const profile = await profileSheetService.loadProfile(userId);
@@ -38,6 +129,7 @@ export const useProfileSheetState = (userId: string) => {
                     travelerLanguage,
                     uiLanguage,
                 });
+                await handlePendingConflicts();
                 await Promise.resolve(onUpdate());
                 onClose();
             } catch (error) {
@@ -52,7 +144,7 @@ export const useProfileSheetState = (userId: string) => {
                 setLoading(false);
             }
         },
-        [image, travelerLanguage, name, uiLanguage, userId, t]
+        [handlePendingConflicts, image, travelerLanguage, name, uiLanguage, userId, t]
     );
 
     const pickImage = useCallback(async (useCamera: boolean) => {

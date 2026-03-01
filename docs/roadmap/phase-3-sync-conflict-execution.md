@@ -132,13 +132,25 @@
   - `web-design-guidelines` (Web 표면 작업 시에만)
 
 - 실행 체크:
-  - [ ] Manual Merge UI를 Provider/Compound 구조로 분리 설계
-  - [ ] Queue 상태 모델에 `conflicted` 전이 경로 명시
+  - [x] Manual Merge UI 1차 적용 (Profile/ProfileSheet 저장 시 충돌 선택 팝업)
+  - [x] Queue 상태 모델에 `conflicted` 전이 경로 반영
   - [ ] History/Sync 상태 UI 성능 규칙(`list-performance-*`) 점검
   - [ ] Phase 3 검증 보고서에 외부 스킬 적용/비적용 근거 기록
 
+## 10) 구현 상태 업데이트 (2026-03-02)
+
+- 완료
+  - Sync queue 충돌 상태(`conflicted`) 저장 및 재시도 분리
+  - 민감 엔티티(`profile`, `allergies`, `settings`) 충돌 조회/해소 유틸 추가
+  - Profile 저장 플로우에서 Manual Merge 선택 UX(서버 우선 / 기기 우선 / 나중에) 연결
+  - 충돌 해소 유틸 단위 테스트 추가
+- 남은 작업
+  - History/분석 저장 충돌의 사용자 가시화 정책 확정
+  - 충돌 시나리오 E2E(Android/iOS) 증적 고정
+  - observability 대시보드에 충돌 건수/해소율 패널 추가
+
 ---
 
-문서 버전: v1.1  
+문서 버전: v1.2  
 연결 문서: [Master Plan](./master-plan.md), [Phase 2 실행표](./phase-2-cloud-db-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
-최종 수정: 2026-03-01
+최종 수정: 2026-03-02
