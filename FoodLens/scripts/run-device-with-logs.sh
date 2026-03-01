@@ -85,9 +85,9 @@ start_ios_logs() {
 
   echo "[run-with-logs] iOS runtime logs -> ${LOG_FILE}"
   xcrun devicectl device log stream --device "${udid}" 2>&1 \
-    | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' \
     | redact_sensitive_log_fields \
-    | tee "${LOG_FILE}" >/dev/null &
+    | tee "${LOG_FILE}" \
+    | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' >/dev/null &
   LOG_PID="$!"
 }
 
@@ -105,9 +105,9 @@ start_android_logs() {
 
   echo "[run-with-logs] Android runtime logs -> ${LOG_FILE}"
   adb logcat -v time 2>&1 \
-    | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' \
     | redact_sensitive_log_fields \
-    | tee "${LOG_FILE}" >/dev/null &
+    | tee "${LOG_FILE}" \
+    | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' >/dev/null &
   LOG_PID="$!"
 }
 
@@ -263,7 +263,8 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
   if [[ -n "${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE+x}" ]]; then
     echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE} (user supplied)."
   else
-    echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE not set (default disabled)."
+    export EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=1
+    echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE not set. Enabled default (=1) for release diagnostics."
   fi
   if [[ -z "${SENTRY_ORG:-}" && -z "${SENTRY_PROPERTIES:-}" ]]; then
     echo "[run-with-logs] SENTRY_ORG/SENTRY_PROPERTIES not set. Sentry source map upload is disabled."
