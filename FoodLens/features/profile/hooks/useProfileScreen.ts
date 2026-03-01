@@ -165,55 +165,70 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
     const saveProfile = useCallback(async () => {
         setLoading(true);
+        let saveError: unknown = null;
         try {
             await saveTestUserProfile(allergies, otherRestrictions, severityMap);
+        } catch (error) {
+            saveError = error;
+        }
+
+        try {
             const conflicts = await getManualMergeConflictOperationsForUser(getProfileUserId());
+            if (conflicts.length > 0) {
+                const resolution = await promptConflictResolution(conflicts.length);
+                if (!resolution) {
+                    showTranslatedAlert(t, {
+                        titleKey: 'sync.conflict.deferredTitle',
+                        titleFallback: 'Saved locally',
+                        messageKey: 'sync.conflict.deferredMessage',
+                        messageFallback:
+                            'Cloud sync has pending conflicts. Resolve them later from this device.',
+                    });
+                    return;
+                }
 
-            if (conflicts.length === 0) {
+                const result = await resolveManualMergeConflictsForUser({
+                    userId: getProfileUserId(),
+                    resolution,
+                });
+
+                if (result.remaining === 0) {
+                    showTranslatedAlert(t, {
+                        titleKey: 'sync.conflict.resolvedTitle',
+                        titleFallback: 'Conflict resolved',
+                        messageKey: 'sync.conflict.resolvedMessage',
+                        messageFallback:
+                            resolution === 'use_server'
+                                ? 'Server version was kept for conflicting fields.'
+                                : 'This device version was re-applied to the server.',
+                    });
+                    return;
+                }
+
                 showTranslatedAlert(t, {
-                    titleKey: 'profile.alert.updatedTitle',
-                    titleFallback: 'Updated',
-                    messageKey: 'profile.alert.updatedMessage',
-                    messageFallback: 'Your profile and preferences have been saved.',
+                    titleKey: 'sync.conflict.remainingTitle',
+                    titleFallback: 'Conflicts remaining',
+                    messageKey: 'sync.conflict.remainingMessage',
+                    messageFallback: 'Some conflicts are still pending. Please try again.',
                 });
                 return;
             }
 
-            const resolution = await promptConflictResolution(conflicts.length);
-            if (!resolution) {
+            if (saveError) {
                 showTranslatedAlert(t, {
-                    titleKey: 'sync.conflict.deferredTitle',
-                    titleFallback: 'Saved locally',
-                    messageKey: 'sync.conflict.deferredMessage',
-                    messageFallback:
-                        'Cloud sync has pending conflicts. Resolve them later from this device.',
-                });
-                return;
-            }
-
-            const result = await resolveManualMergeConflictsForUser({
-                userId: getProfileUserId(),
-                resolution,
-            });
-
-            if (result.remaining === 0) {
-                showTranslatedAlert(t, {
-                    titleKey: 'sync.conflict.resolvedTitle',
-                    titleFallback: 'Conflict resolved',
-                    messageKey: 'sync.conflict.resolvedMessage',
-                    messageFallback:
-                        resolution === 'use_server'
-                            ? 'Server version was kept for conflicting fields.'
-                            : 'This device version was re-applied to the server.',
+                    titleKey: 'profile.alert.errorTitle',
+                    titleFallback: 'Error',
+                    messageKey: 'profile.alert.saveFailed',
+                    messageFallback: 'Failed to save.',
                 });
                 return;
             }
 
             showTranslatedAlert(t, {
-                titleKey: 'sync.conflict.remainingTitle',
-                titleFallback: 'Conflicts remaining',
-                messageKey: 'sync.conflict.remainingMessage',
-                messageFallback: 'Some conflicts are still pending. Please try again.',
+                titleKey: 'profile.alert.updatedTitle',
+                titleFallback: 'Updated',
+                messageKey: 'profile.alert.updatedMessage',
+                messageFallback: 'Your profile and preferences have been saved.',
             });
         } catch {
             showTranslatedAlert(t, {
