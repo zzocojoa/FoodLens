@@ -15,12 +15,50 @@ import {
   enqueuePhase2Sync,
   startPhase2SyncRuntime,
 } from './sync/phase2SyncQueue_Logic';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
+import { restoreSession } from './auth/sessionManager_Logic';
 
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
+const UNAUTHENTICATED_USER_ID = 'auth-required';
 
 const profileMigrationMarkerKey = (userId: string): string => `${PROFILE_MIGRATION_MARKER_PREFIX}${userId}`;
 const profileServerSyncMarkerKey = (userId: string): string => `${PROFILE_SERVER_SYNC_MARKER_PREFIX}${userId}`;
+
+const normalizeUserId = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (normalized.length === 0) return null;
+  return normalized;
+};
+
+const isUsableUserId = (value: string | null): value is string =>
+  typeof value === 'string' && value.length > 0 && value !== UNAUTHENTICATED_USER_ID;
+
+const resolveScopedUserId = async (uid: string): Promise<string> => {
+  const requested = normalizeUserId(uid);
+  if (isUsableUserId(requested)) {
+    return requested;
+  }
+
+  const current = hasAuthenticatedUser() ? normalizeUserId(getCurrentUserId()) : null;
+  if (isUsableUserId(current)) {
+    logger.info('[Auth] resolved fallback user id from current marker', undefined, 'UserService');
+    return current;
+  }
+
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+  });
+  const restored = normalizeUserId(session?.user?.id);
+  if (isUsableUserId(restored)) {
+    logger.info('[Auth] resolved fallback user id from session restore', undefined, 'UserService');
+    return restored;
+  }
+
+  throw new Error('Authenticated user id is required for profile sync operations.');
+};
 
 const loadScopedProfile = async (uid: string): Promise<UserProfile | null> => {
   return SafeStorage.get<UserProfile | null>(getUserStorageKey(uid), null);
@@ -112,10 +150,11 @@ export const UserService = {
    * Get user profile from local storage
    */
   async getUserProfile(uid: string): Promise<UserProfile> {
+    const resolvedUserId = await resolveScopedUserId(uid);
     startPhase2SyncRuntime();
-    const migrated = await migrateLegacyProfileIfNeeded(uid);
-    const cachedProfile = migrated || (await loadScopedProfile(uid));
-    const baseProfile = cachedProfile ?? buildDefaultProfile(uid);
+    const migrated = await migrateLegacyProfileIfNeeded(resolvedUserId);
+    const cachedProfile = migrated || (await loadScopedProfile(resolvedUserId));
+    const baseProfile = cachedProfile ?? buildDefaultProfile(resolvedUserId);
 
     const validated = await resolveAndValidateProfileImage(baseProfile);
     const resolvedProfile = validated.profile;
@@ -123,20 +162,20 @@ export const UserService = {
     if (!isValidImage) {
       resolvedProfile.profileImage = '';
     }
-    const hydrated = await ensureProfileImageExists(uid, resolvedProfile);
-    await saveScopedProfile(uid, hydrated);
-    const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(uid), false);
+    const hydrated = await ensureProfileImageExists(resolvedUserId, resolvedProfile);
+    await saveScopedProfile(resolvedUserId, hydrated);
+    const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(resolvedUserId), false);
     if (!serverSynced) {
-      await queueProfileWrites(uid, hydrated);
-      await flushProfileWrites(uid);
-      await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
+      await queueProfileWrites(resolvedUserId, hydrated);
+      await flushProfileWrites(resolvedUserId);
+      await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
     }
 
     if (!cachedProfile) {
-      const remote = await syncProfileFromServer(uid, hydrated);
+      const remote = await syncProfileFromServer(resolvedUserId, hydrated);
       if (remote) return remote;
     } else {
-      void syncProfileFromServer(uid, hydrated);
+      void syncProfileFromServer(resolvedUserId, hydrated);
     }
 
     return hydrated;
@@ -147,13 +186,14 @@ export const UserService = {
    */
   async CreateOrUpdateProfile(uid: string, email: string, profileData: Partial<UserProfile> = {}) {
     try {
+      const resolvedUserId = await resolveScopedUserId(uid);
       const now = new Date().toISOString();
       startPhase2SyncRuntime();
-      const existing = (await migrateLegacyProfileIfNeeded(uid)) || (await loadScopedProfile(uid)) || buildDefaultProfile(uid);
+      const existing = (await migrateLegacyProfileIfNeeded(resolvedUserId)) || (await loadScopedProfile(resolvedUserId)) || buildDefaultProfile(resolvedUserId);
       const isNew = !existing.createdAt;
       const newProfile: UserProfile = {
         ...existing,
-        uid,
+        uid: resolvedUserId,
         email: email || existing.email,
         updatedAt: now,
         createdAt: isNew ? now : existing.createdAt,
@@ -168,11 +208,11 @@ export const UserService = {
         },
       };
 
-      await saveScopedProfile(uid, newProfile);
-      await SafeStorage.set(profileMigrationMarkerKey(uid), true);
-      await queueProfileWrites(uid, newProfile);
-      await flushProfileWrites(uid);
-      await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
+      await saveScopedProfile(resolvedUserId, newProfile);
+      await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
+      await queueProfileWrites(resolvedUserId, newProfile);
+      await flushProfileWrites(resolvedUserId);
+      await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
       return newProfile;
     } catch (error) {
       logger.error('Error saving user profile', error, 'UserService');
