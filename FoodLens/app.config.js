@@ -23,7 +23,17 @@ const EAS_PROJECT_ID = "dab80641-3ca1-4633-a381-36ddbb37a22e";
 const IOS_GOOGLE_SERVICES_FILE = IS_DEV ? DEV_PLIST_PATH : PROD_PLIST_PATH;
 const IOS_BUNDLE_IDENTIFIER = IS_DEV ? IOS_BUNDLE_ID_DEV : IOS_BUNDLE_ID;
 const ANDROID_APP_PACKAGE = IS_DEV ? ANDROID_PACKAGE_DEV : ANDROID_PACKAGE;
-const ANDROID_GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
+const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
+
+if (!ANDROID_GOOGLE_MAPS_API_KEY) {
+  // Keep Android map metadata present even when env wiring is broken.
+  // Build scripts are expected to fail fast before release packaging.
+  console.warn(
+    "[app.config] EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is missing. " +
+      "Using placeholder key; Android map runtime may not function."
+  );
+}
 
 export default {
   expo: {
@@ -48,15 +58,11 @@ export default {
     },
     android: {
       package: ANDROID_APP_PACKAGE,
-      ...(ANDROID_GOOGLE_MAPS_API_KEY
-        ? {
-            config: {
-              googleMaps: {
-                apiKey: ANDROID_GOOGLE_MAPS_API_KEY,
-              },
-            },
-          }
-        : {}),
+      config: {
+        googleMaps: {
+          apiKey: ANDROID_GOOGLE_MAPS_API_KEY || FALLBACK_GOOGLE_MAPS_API_KEY,
+        },
+      },
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/images/android-icon-foreground.png",

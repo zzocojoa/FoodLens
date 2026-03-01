@@ -21,6 +21,16 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 LOG_FILTER_REGEX='request_id|user_id|AuthSession|Phase2Sync|\\[Auth\\]|AUTH_|SafeStorage|MMKV|Session bootstrap|Secure storage|No route named|unmatched route|AndroidRuntime|FATAL EXCEPTION|Process: com\\.hoihou\\.foodlens|Process: com\\.hoihou\\.foodlens\\.dev'
 LOG_PID=""
 LOG_FILE=""
+ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
+
+redact_sensitive_log_fields() {
+  sed -E \
+    -e 's/(code=)[^&[:space:]]+/\1[REDACTED]/g' \
+    -e 's/(state=)[^&[:space:]]+/\1[REDACTED]/g' \
+    -e 's/(access_token=)[^&[:space:]]+/\1[REDACTED]/g' \
+    -e 's/(refresh_token=)[^&[:space:]]+/\1[REDACTED]/g' \
+    -e 's/(id_token=)[^&[:space:]]+/\1[REDACTED]/g'
+}
 
 cleanup() {
   if [[ -n "${LOG_PID}" ]]; then
@@ -75,6 +85,7 @@ start_ios_logs() {
   echo "[run-with-logs] iOS runtime logs -> ${LOG_FILE}"
   xcrun devicectl device log stream --device "${udid}" 2>&1 \
     | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' \
+    | redact_sensitive_log_fields \
     | tee "${LOG_FILE}" >/dev/null &
   LOG_PID="$!"
 }
@@ -94,6 +105,7 @@ start_android_logs() {
   echo "[run-with-logs] Android runtime logs -> ${LOG_FILE}"
   adb logcat -v time 2>&1 \
     | awk -v pattern="${LOG_FILTER_REGEX}" '$0 ~ pattern { print; fflush(); }' \
+    | redact_sensitive_log_fields \
     | tee "${LOG_FILE}" >/dev/null &
   LOG_PID="$!"
 }
@@ -211,8 +223,23 @@ if [[ "${PLATFORM}" == "android" && -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" &&
 fi
 
 if [[ "${PLATFORM}" == "android" ]]; then
+  if [[ -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" ]]; then
+    echo "[run-with-logs] ERROR: EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is empty."
+    echo "[run-with-logs] Set it in FoodLens/.env or current shell env before android build."
+    exit 1
+  fi
+fi
+
+if [[ "${PLATFORM}" == "android" ]]; then
   echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
   npx expo prebuild --platform android --no-install
+  if [[ -f "${ANDROID_MANIFEST_PATH}" ]]; then
+    if ! rg -n "com.google.android.geo.API_KEY" "${ANDROID_MANIFEST_PATH}" >/dev/null; then
+      echo "[run-with-logs] ERROR: AndroidManifest is missing com.google.android.geo.API_KEY meta-data."
+      echo "[run-with-logs] Check app.config.js android.config.googleMaps.apiKey wiring."
+      exit 1
+    fi
+  fi
 fi
 
 if [[ "${PLATFORM}" == "ios" ]]; then

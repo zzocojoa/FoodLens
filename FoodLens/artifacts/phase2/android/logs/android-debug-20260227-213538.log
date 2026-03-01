@@ -1,4 +1,0 @@
-02-27 21:36:46.539 W/ReactNativeJS(24104): '[SafeStorage] MMKV initialization failed. Falling back to AsyncStorage (Internal mode).', { request_id: 'safe-storage-mm4vmhiv',
-02-27 21:36:46.539 W/ReactNativeJS(24104):   user_id: 'unknown',
-02-27 21:36:46.539 W/ReactNativeJS(24104):   hint: 'MMKV native module unavailable in current runtime.',
-02-27 21:36:46.539 W/ReactNativeJS(24104):   error: 'Failed to create a new MMKV instance: React Native is not running on-device. MMKV can only be used when synchronous method invocations (JSI) are possible. If you are using a remote debugger (e.g. Chrome), switch to an on-device debugger (e.g. Flipper) instead.' }, { [Stack] name: 'Stack' }

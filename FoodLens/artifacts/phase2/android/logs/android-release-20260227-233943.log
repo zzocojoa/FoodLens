@@ -1,5 +1,0 @@
-02-27 23:40:35.663 W/ReactNativeJS( 5986): '[SafeStorage] MMKV initialization failed. Falling back to AsyncStorage (Internal mode).', { request_id: 'safe-storage-mm501s4w',
-02-27 23:40:35.663 W/ReactNativeJS( 5986):   user_id: 'unknown',
-02-27 23:40:35.663 W/ReactNativeJS( 5986):   hint: 'MMKV native module unavailable in current runtime.',
-02-27 23:40:35.663 W/ReactNativeJS( 5986):   error: 'Failed to create a new MMKV instance: React Native is not running on-device. MMKV can only be used when synchronous method invocations (JSI) are possible. If you are using a remote debugger (e.g. Chrome), switch to an on-device debugger (e.g. Flipper) instead.' }
-02-27 23:42:09.021 I/ActivityTaskManager( 1059): START u0 {act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=foodlens://oauth/google-callback?request_id=ef0ea844e7f3&code=4/0AfrIepD2pY8BMnT2-0wSFy5pSR_C68YGA1aFhTa9VaFlP6oaCLrBqTZaQDPcY5GR7-Zo7g&state=3b9453b6fdaa8e9a.Zm9vZGxlbnM6Ly9vYXV0aC9nb29nbGUtY2FsbGJhY2s flg=0x14000000 cmp=com.hoihou.foodlens/.MainActivity (has extras)} from uid 10223

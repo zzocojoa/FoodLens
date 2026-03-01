@@ -6,3 +6,4 @@ __pycache__/
 FoodLens/node_modules/
 artifacts/phase2/
 FoodLens/artifacts/phase2-*.log
+FoodLens/artifacts/phase2/
