@@ -4,7 +4,11 @@ import { logger } from '@/services/logger_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
-import type { Phase2SyncEntity, Phase2SyncOperation } from './phase2Sync.types_Structure';
+import type {
+  Phase2ConflictResolution,
+  Phase2SyncEntity,
+  Phase2SyncOperation,
+} from './phase2Sync.types_Structure';
 
 const SYNC_QUEUE_KEY = '@foodlens_phase2_sync_queue_v1';
 const RETRY_LIMIT = 3;
@@ -33,6 +37,11 @@ const shouldDispatch = (item: Phase2SyncOperation): boolean => {
 };
 
 const nextRetryAt = (attempts: number): number => now() + RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1);
+
+const isConflictError = (apiError: Phase2SyncApiError | null): boolean => {
+  if (!apiError) return false;
+  return apiError.status === 409 || apiError.code === 'PHASE2_CONFLICT';
+};
 
 const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
   const synced = queue
@@ -166,9 +175,29 @@ export const dispatchPhase2SyncQueue = async (): Promise<void> =>
             nextAttemptAt: now() + RETRY_BASE_DELAY_MS,
             requestId: apiError.requestId,
             lastError: undefined,
+            conflict: undefined,
           };
           await saveQueue(pruneQueue(mutable));
           break;
+        }
+
+        if (isConflictError(apiError)) {
+          mutable[index] = {
+            ...sending,
+            attempts: previousAttempts,
+            state: 'conflicted',
+            updatedAt: now(),
+            nextAttemptAt: Number.MAX_SAFE_INTEGER,
+            requestId: apiError?.requestId,
+            lastError: apiError?.code || 'PHASE2_CONFLICT',
+            conflict: {
+              code: apiError?.code,
+              message: apiError?.message,
+              detectedAt: now(),
+            },
+          };
+          await saveQueue(pruneQueue(mutable));
+          continue;
         }
 
         const reachedLimit = previousAttempts >= RETRY_LIMIT;
@@ -181,6 +210,7 @@ export const dispatchPhase2SyncQueue = async (): Promise<void> =>
           nextAttemptAt: reachedLimit ? Number.MAX_SAFE_INTEGER : nextRetryAt(previousAttempts),
           requestId: apiError?.requestId,
           lastError: apiError?.code || (error instanceof Error ? error.message : 'unknown'),
+          conflict: undefined,
         };
 
         logger.warn('[Phase2Sync] queue dispatch failed', {
@@ -206,7 +236,10 @@ export const enqueuePhase2Sync = async (
     (item) =>
       item.userId === userId &&
       item.entity === entity &&
-      (item.state === 'pending' || item.state === 'failed' || item.state === 'sending')
+      (item.state === 'pending' ||
+        item.state === 'failed' ||
+        item.state === 'sending' ||
+        item.state === 'conflicted')
   );
   const item: Phase2SyncOperation = {
     id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
@@ -218,6 +251,7 @@ export const enqueuePhase2Sync = async (
     nextAttemptAt: now(),
     createdAt: existingIndex >= 0 ? queue[existingIndex].createdAt : now(),
     updatedAt: now(),
+    conflict: undefined,
   };
   if (existingIndex >= 0) {
     queue[existingIndex] = item;
@@ -254,9 +288,63 @@ export const enqueueHistorySync = async (
     nextAttemptAt: now(),
     createdAt: now(),
     updatedAt: now(),
+    conflict: undefined,
   });
   await saveQueue(pruneQueue(queue));
   void dispatchPhase2SyncQueue();
+};
+
+export const getPhase2ConflictedOperations = async (
+  userId?: string
+): Promise<Phase2SyncOperation[]> => {
+  const queue = await loadQueue();
+  return queue.filter(
+    (item) => item.state === 'conflicted' && (typeof userId !== 'string' || item.userId === userId)
+  );
+};
+
+export const resolvePhase2Conflict = async ({
+  operationId,
+  resolution,
+  mergedPayload,
+}: {
+  operationId: string;
+  resolution: Phase2ConflictResolution;
+  mergedPayload?: Record<string, unknown>;
+}): Promise<boolean> => {
+  const queue = await loadQueue();
+  const index = queue.findIndex((item) => item.id === operationId);
+  if (index < 0) return false;
+
+  const item = queue[index];
+  if (item.state !== 'conflicted') return false;
+
+  if (resolution === 'use_server') {
+    queue[index] = {
+      ...item,
+      state: 'synced',
+      updatedAt: now(),
+      nextAttemptAt: Number.MAX_SAFE_INTEGER,
+      lastError: undefined,
+      conflict: undefined,
+    };
+    await saveQueue(pruneQueue(queue));
+    return true;
+  }
+
+  queue[index] = {
+    ...item,
+    state: 'pending',
+    payload: mergedPayload ?? item.payload,
+    attempts: 0,
+    nextAttemptAt: now(),
+    updatedAt: now(),
+    lastError: undefined,
+    conflict: undefined,
+  };
+  await saveQueue(pruneQueue(queue));
+  await dispatchPhase2SyncQueue();
+  return true;
 };
 
 export const startPhase2SyncRuntime = (): void => {

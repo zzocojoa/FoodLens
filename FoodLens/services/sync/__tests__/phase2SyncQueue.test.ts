@@ -3,7 +3,11 @@ import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentU
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
-import { dispatchPhase2SyncQueue } from '../phase2SyncQueue';
+import {
+  dispatchPhase2SyncQueue,
+  getPhase2ConflictedOperations,
+  resolvePhase2Conflict,
+} from '../phase2SyncQueue';
 import type { Phase2SyncOperation } from '../phase2Sync.types';
 
 jest.mock('@react-native-community/netinfo', () => ({
@@ -181,5 +185,98 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].state).toBe('pending');
     expect(queueState[0].attempts).toBe(0);
     expect(queueState[0].lastError).toBeUndefined();
+  });
+
+  it('moves entry to conflicted on conflict response', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a')];
+    mockedPhase2Api.putProfile.mockRejectedValueOnce(
+      new Phase2SyncApiError('Conflict detected.', 'PHASE2_CONFLICT', 409, 'req-conflict-a')
+    );
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('conflicted');
+    expect(queueState[0].requestId).toBe('req-conflict-a');
+    expect(queueState[0].lastError).toBe('PHASE2_CONFLICT');
+    expect(queueState[0].conflict?.code).toBe('PHASE2_CONFLICT');
+  });
+
+  it('resolves conflict with server precedence without redispatch', async () => {
+    const conflicted: Phase2SyncOperation = {
+      ...pendingProfileOperation('op-a', 'usr_a'),
+      state: 'conflicted',
+      conflict: {
+        code: 'PHASE2_CONFLICT',
+        message: 'Conflict detected.',
+        detectedAt: Date.now(),
+      },
+    };
+    queueState = [conflicted];
+
+    const resolved = await resolvePhase2Conflict({
+      operationId: 'op-a',
+      resolution: 'use_server',
+    });
+
+    expect(resolved).toBe(true);
+    expect(queueState[0].state).toBe('synced');
+    expect(queueState[0].conflict).toBeUndefined();
+    expect(mockedPhase2Api.putProfile).not.toHaveBeenCalled();
+  });
+
+  it('resolves conflict with local precedence and redispatches', async () => {
+    const conflicted: Phase2SyncOperation = {
+      ...pendingProfileOperation('op-a', 'usr_a'),
+      state: 'conflicted',
+      conflict: {
+        code: 'PHASE2_CONFLICT',
+        message: 'Conflict detected.',
+        detectedAt: Date.now(),
+      },
+      payload: { display_name: 'local-value' },
+    };
+    queueState = [conflicted];
+    mockedPhase2Api.putProfile.mockResolvedValueOnce({
+      profile: {
+        user_id: 'usr_a',
+        email: 'a@example.com',
+      },
+      requestId: 'req-profile-retry',
+    });
+
+    const resolved = await resolvePhase2Conflict({
+      operationId: 'op-a',
+      resolution: 'use_local',
+      mergedPayload: { display_name: 'merged-value' },
+    });
+
+    expect(resolved).toBe(true);
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledWith({ display_name: 'merged-value' });
+    expect(queueState[0].state).toBe('synced');
+    expect(queueState[0].requestId).toBe('req-profile-retry');
+  });
+
+  it('returns conflicted entries filtered by user', async () => {
+    queueState = [
+      {
+        ...pendingProfileOperation('op-a', 'usr_a'),
+        state: 'conflicted',
+        conflict: { code: 'PHASE2_CONFLICT', detectedAt: Date.now() },
+      },
+      pendingProfileOperation('op-b', 'usr_a'),
+      {
+        ...pendingProfileOperation('op-c', 'usr_b'),
+        state: 'conflicted',
+        conflict: { code: 'PHASE2_CONFLICT', detectedAt: Date.now() },
+      },
+    ];
+
+    const forAll = await getPhase2ConflictedOperations();
+    const forUserA = await getPhase2ConflictedOperations('usr_a');
+
+    expect(forAll).toHaveLength(2);
+    expect(forUserA).toHaveLength(1);
+    expect(forUserA[0].id).toBe('op-a');
   });
 });

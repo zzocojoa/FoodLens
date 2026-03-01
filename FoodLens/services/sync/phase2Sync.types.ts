@@ -1,6 +1,15 @@
 export type Phase2SyncEntity = 'profile' | 'allergies' | 'settings' | 'history';
 
-export type Phase2SyncState = 'pending' | 'sending' | 'failed' | 'synced';
+export type Phase2SyncState = 'pending' | 'sending' | 'failed' | 'conflicted' | 'synced';
+
+export type Phase2ConflictResolution = 'use_server' | 'use_local';
+
+export type Phase2ConflictMeta = {
+  code?: string;
+  message?: string;
+  detectedAt: number;
+  serverPayload?: Record<string, unknown>;
+};
 
 export type Phase2SyncOperation = {
   id: string;
@@ -13,6 +22,7 @@ export type Phase2SyncOperation = {
   nextAttemptAt: number;
   requestId?: string;
   lastError?: string;
+  conflict?: Phase2ConflictMeta;
   createdAt: number;
   updatedAt: number;
 };
