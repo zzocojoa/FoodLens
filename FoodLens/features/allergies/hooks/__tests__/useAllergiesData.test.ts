@@ -4,6 +4,10 @@ import { renderHook, waitFor } from '@testing-library/react-native';
 import { UserService } from '../../../../services/userService';
 import { useAllergiesData } from '../useAllergiesData';
 
+jest.mock('../../constants/allergies.constants', () => ({
+    getAllergiesUserId: () => 'test-user-v1',
+}));
+
 jest.mock('../../../../services/userService', () => ({
     UserService: {
         getUserProfile: jest.fn(),
@@ -61,4 +65,3 @@ describe('useAllergiesData', () => {
         errorSpy.mockRestore();
     });
 });
-
