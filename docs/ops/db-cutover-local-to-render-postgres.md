@@ -74,7 +74,7 @@ bash backend/scripts/phase2_cutover_rehearsal.sh
 3. 헬스체크 + 핵심 API 스모크 재실행
 4. 장애 원인 분석 후 재시도 시점 재승인
 
-## 8) 검증 체크리스트
+## 8) 검증 체크리스트 (컷오버 당일)
 
 - [ ] 로그인/세션 복구 정상
 - [ ] `/me/profile` 조회/수정 정상
@@ -85,7 +85,24 @@ bash backend/scripts/phase2_cutover_rehearsal.sh
 - [ ] 앱 삭제/재설치 후 로그인 복원 확인(iOS/Android)
 - [ ] 계정 A/B 전환 데이터 분리 확인
 
-## 9) 증적 보관
+## 9) 컷오버 잔여 작업 체크리스트 (2026-03-01 기준)
+
+- 현재 상태 요약:
+  - `docs/roadmap/phase-2-cutover-rehearsal-evidence.md` 기준 Verdict = `PARTIAL`
+  - 미완료 원인: 외부 TLS 경로에서 Render Postgres 복원 리허설 실패
+
+- 잔여 작업:
+  - [ ] Render 측 네트워크 경로(One-off Job 또는 Render 내부 실행 경로)에서 `pg_restore` 리허설 1회 성공
+  - [ ] `pg_restore` 종료코드 `0` 증적 첨부
+  - [ ] 복원 직후 검증 쿼리 증적 첨부 (`select now()`, `auth_runtime_state` row count)
+  - [ ] `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history` 스모크 로그 첨부
+  - [ ] 롤백 리허설(되돌리기) 로그 첨부
+  - [ ] `docs/roadmap/phase-2-cutover-rehearsal-evidence.md`의 Verdict를 `PARTIAL -> PASS`로 갱신
+
+- 완료 기준:
+  - 위 체크리스트 전체 완료 + 증적 파일 경로 명시 시 Phase 2 컷오버 잔여 작업 종료로 판정
+
+## 10) 증적 보관
 
 - 백업 파일 해시, 복원 로그, 스모크 로그, 실패/롤백 로그를 릴리스 증적에 첨부
 - Phase 2 컷오버 리허설 증적 문서:
