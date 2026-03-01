@@ -298,7 +298,7 @@ export const enqueuePhase2Sync = async (
   userId: string,
   entity: Exclude<Phase2SyncEntity, 'history'>,
   payload: Record<string, unknown>
-): Promise<void> => {
+): Promise<string> => {
   const queue = await loadQueue();
   const existingIndex = queue.findIndex(
     (item) =>
@@ -328,6 +328,7 @@ export const enqueuePhase2Sync = async (
   }
   await saveQueue(pruneQueue(queue));
   void dispatchPhase2SyncQueue();
+  return item.id;
 };
 
 export const enqueueHistorySync = async (
@@ -424,6 +425,15 @@ export const startPhase2SyncRuntime = (): void => {
     }
   });
   void dispatchPhase2SyncQueue();
+};
+
+export const getPhase2OperationsByIds = async (
+  operationIds: string[]
+): Promise<Phase2SyncOperation[]> => {
+  if (operationIds.length === 0) return [];
+  const idSet = new Set(operationIds);
+  const queue = await loadQueue();
+  return queue.filter((item) => idSet.has(item.id));
 };
 
 export const getPhase2SyncQueueSnapshot = async (): Promise<Phase2SyncOperation[]> => loadQueue();

@@ -13,6 +13,7 @@ import {
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
+  getPhase2OperationsByIds,
   startPhase2SyncRuntime,
 } from './sync/phase2SyncQueue_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
@@ -131,21 +132,37 @@ const syncProfileFromServer = async (
   }
 };
 
-const flushProfileWrites = async (uid: string): Promise<void> => {
+const flushProfileWrites = async (uid: string, operationIds: string[]): Promise<void> => {
   try {
     await dispatchPhase2SyncQueue();
+    const operations = await getPhase2OperationsByIds(operationIds);
+    const unsynced = operations.filter((item) => item.state !== 'synced');
+    if (unsynced.length > 0) {
+      logger.warn('[Phase2Sync] profile write not confirmed', {
+        request_id: 'phase2-profile-write-not-synced',
+        user_id: uid,
+        operations: unsynced.map((item) => ({
+          id: item.id,
+          entity: item.entity,
+          state: item.state,
+          last_error: item.lastError,
+        })),
+      });
+      throw new Error('PHASE2_SYNC_NOT_CONFIRMED');
+    }
   } catch (error) {
     logger.warn('[Phase2Sync] profile write flush failed', {
       request_id: 'unknown',
       user_id: uid,
       code: error instanceof Error ? error.message : 'PHASE2_PROFILE_FLUSH_FAILED',
     });
+    throw error;
   }
 };
 
-const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<void> => {
+const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<string[]> => {
   const payloads = buildProfileWritePayload(profile);
-  await Promise.all([
+  return Promise.all([
     enqueuePhase2Sync(uid, 'profile', payloads.profile as Record<string, unknown>),
     enqueuePhase2Sync(uid, 'allergies', payloads.allergies as Record<string, unknown>),
     enqueuePhase2Sync(uid, 'settings', payloads.settings as Record<string, unknown>),
@@ -173,8 +190,8 @@ export const UserService = {
     await saveScopedProfile(resolvedUserId, hydrated);
     const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(resolvedUserId), false);
     if (!serverSynced) {
-      await queueProfileWrites(resolvedUserId, hydrated);
-      await flushProfileWrites(resolvedUserId);
+      const operationIds = await queueProfileWrites(resolvedUserId, hydrated);
+      await flushProfileWrites(resolvedUserId, operationIds);
       await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
     }
 
@@ -217,8 +234,8 @@ export const UserService = {
 
       await saveScopedProfile(resolvedUserId, newProfile);
       await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
-      await queueProfileWrites(resolvedUserId, newProfile);
-      await flushProfileWrites(resolvedUserId);
+      const operationIds = await queueProfileWrites(resolvedUserId, newProfile);
+      await flushProfileWrites(resolvedUserId, operationIds);
       await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
       return newProfile;
     } catch (error) {
