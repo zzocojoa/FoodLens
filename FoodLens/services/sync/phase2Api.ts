@@ -13,6 +13,7 @@ type ApiErrorDetail = {
   code?: string;
   message?: string;
   request_id?: string;
+  server_payload?: Record<string, unknown>;
 };
 
 type ApiEnvelope<T> = T & {
@@ -24,14 +25,22 @@ export class Phase2SyncApiError extends Error {
   status: number;
   requestId?: string;
   retryable: boolean;
+  serverPayload?: Record<string, unknown>;
 
-  constructor(message: string, code: string, status: number, requestId?: string) {
+  constructor(
+    message: string,
+    code: string,
+    status: number,
+    requestId?: string,
+    serverPayload?: Record<string, unknown>
+  ) {
     super(message);
     this.name = 'Phase2SyncApiError';
     this.code = code;
     this.status = status;
     this.requestId = requestId;
     this.retryable = status === 0 || status >= 500 || status === 408 || status === 429;
+    this.serverPayload = serverPayload;
   }
 }
 
@@ -52,7 +61,8 @@ const parseError = async (response: Response): Promise<Phase2SyncApiError> => {
     detail?.message || `Phase2 request failed (${response.status}).`,
     detail?.code || 'PHASE2_REQUEST_FAILED',
     response.status,
-    detail?.request_id
+    detail?.request_id,
+    detail?.server_payload
   );
 };
 
@@ -119,6 +129,7 @@ export const Phase2Api = {
     display_name?: string | null;
     locale?: string | null;
     timezone?: string | null;
+    expected_updated_at?: string;
   }): Promise<{ profile: MeProfileResponse; requestId: string }> {
     const { data, requestId } = await authenticatedRequest<{ profile: MeProfileResponse }>('/me/profile', {
       method: 'PUT',
@@ -136,6 +147,7 @@ export const Phase2Api = {
     allergies?: string[];
     dietary_restrictions?: string[];
     severity_map?: Record<string, string>;
+    expected_updated_at?: string;
   }): Promise<{ allergies: MeAllergiesResponse; requestId: string }> {
     const { data, requestId } = await authenticatedRequest<{ allergies: MeAllergiesResponse }>('/me/allergies', {
       method: 'PUT',
@@ -154,6 +166,7 @@ export const Phase2Api = {
     target_language?: string | null;
     auto_play_audio?: boolean;
     selected_emoji?: string | null;
+    expected_updated_at?: string;
   }): Promise<{ settings: MeSettingsResponse; requestId: string }> {
     const { data, requestId } = await authenticatedRequest<{ settings: MeSettingsResponse }>('/me/settings', {
       method: 'PUT',

@@ -121,11 +121,19 @@ describe('phase2Mappers', () => {
     profile.safetyProfile.allergies = ['peanut'];
     profile.safetyProfile.dietaryRestrictions = ['vegan'];
     profile.safetyProfile.severityMap = { peanut: 'severe' };
+    profile.syncVersions = {
+      profileUpdatedAt: '2026-02-25T00:00:00Z',
+      allergiesUpdatedAt: '2026-02-25T00:01:00Z',
+      settingsUpdatedAt: '2026-02-25T00:02:00Z',
+    };
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.display_name).toBe('Queue User');
     expect(payload.settings.language).toBe('en-US');
     expect(payload.allergies.allergies).toEqual(['peanut']);
     expect(payload.allergies.severity_map['peanut']).toBe('severe');
+    expect(payload.profile.expected_updated_at).toBe('2026-02-25T00:00:00Z');
+    expect(payload.allergies.expected_updated_at).toBe('2026-02-25T00:01:00Z');
+    expect(payload.settings.expected_updated_at).toBe('2026-02-25T00:02:00Z');
   });
 });

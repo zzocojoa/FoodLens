@@ -113,6 +113,12 @@ export const mergeRemoteUserSnapshot = (
 
   next.createdAt = input.profile?.created_at || fallback.createdAt;
   next.updatedAt = input.profile?.updated_at || new Date().toISOString();
+  next.syncVersions = {
+    ...(fallback.syncVersions || {}),
+    ...(input.profile?.updated_at ? { profileUpdatedAt: input.profile.updated_at } : {}),
+    ...(input.allergies?.updated_at ? { allergiesUpdatedAt: input.allergies.updated_at } : {}),
+    ...(input.settings?.updated_at ? { settingsUpdatedAt: input.settings.updated_at } : {}),
+  };
   return next;
 };
 
@@ -121,17 +127,20 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     display_name?: string | null;
     locale?: string | null;
     timezone?: string | null;
+    expected_updated_at?: string;
   };
   allergies: {
     allergies: string[];
     dietary_restrictions: string[];
     severity_map: Record<string, string>;
+    expected_updated_at?: string;
   };
   settings: {
     language?: string | null;
     target_language?: string | null;
     auto_play_audio: boolean;
     selected_emoji?: string | null;
+    expected_updated_at?: string;
   };
 } => {
   const locale = profile.settings.language || 'auto';
@@ -140,17 +149,20 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       display_name: profile.name || null,
       locale: locale || null,
       timezone: 'UTC',
+      expected_updated_at: profile.syncVersions?.profileUpdatedAt,
     },
     allergies: {
       allergies: profile.safetyProfile.allergies || [],
       dietary_restrictions: profile.safetyProfile.dietaryRestrictions || [],
       severity_map: (profile.safetyProfile.severityMap || {}) as Record<string, string>,
+      expected_updated_at: profile.syncVersions?.allergiesUpdatedAt,
     },
     settings: {
       language: profile.settings.language || null,
       target_language: profile.settings.targetLanguage || null,
       auto_play_audio: !!profile.settings.autoPlayAudio,
       selected_emoji: profile.settings.selectedEmoji || null,
+      expected_updated_at: profile.syncVersions?.settingsUpdatedAt,
     },
   };
 };

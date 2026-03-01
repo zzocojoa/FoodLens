@@ -177,6 +177,89 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(len(history_b.json()["history"]), 1)
             self.assertNotEqual(history_a.json()["history"][0]["user_id"], history_b.json()["history"][0]["user_id"])
 
+    def test_me_update_conflict_returns_409_with_server_payload(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase3-conflict"))
+            headers = _auth_headers(session["access_token"])
+
+            profile_before = client.get("/me/profile", headers=headers).json()["profile"]
+            profile_initial_updated_at = profile_before["updated_at"]
+            profile_ok = client.put(
+                "/me/profile",
+                json={
+                    "display_name": "First Name",
+                    "expected_updated_at": profile_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(profile_ok.status_code, 200)
+            profile_conflict = client.put(
+                "/me/profile",
+                json={
+                    "display_name": "Stale Name",
+                    "expected_updated_at": profile_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(profile_conflict.status_code, 409)
+            profile_detail = profile_conflict.json()["detail"]
+            self.assertEqual(profile_detail["code"], "PHASE2_CONFLICT")
+            self.assertEqual(profile_detail["entity"], "profile")
+            self.assertIn("server_payload", profile_detail)
+            self.assertEqual(profile_detail["server_payload"]["display_name"], "First Name")
+
+            allergies_before = client.get("/me/allergies", headers=headers).json()["allergies"]
+            allergies_initial_updated_at = allergies_before["updated_at"]
+            allergies_ok = client.put(
+                "/me/allergies",
+                json={
+                    "allergies": ["soy"],
+                    "expected_updated_at": allergies_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(allergies_ok.status_code, 200)
+            allergies_conflict = client.put(
+                "/me/allergies",
+                json={
+                    "allergies": ["soy", "egg"],
+                    "expected_updated_at": allergies_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(allergies_conflict.status_code, 409)
+            allergies_detail = allergies_conflict.json()["detail"]
+            self.assertEqual(allergies_detail["code"], "PHASE2_CONFLICT")
+            self.assertEqual(allergies_detail["entity"], "allergies")
+            self.assertIn("server_payload", allergies_detail)
+            self.assertEqual(allergies_detail["server_payload"]["allergies"], ["soy"])
+
+            settings_before = client.get("/me/settings", headers=headers).json()["settings"]
+            settings_initial_updated_at = settings_before["updated_at"]
+            settings_ok = client.put(
+                "/me/settings",
+                json={
+                    "language": "en-US",
+                    "expected_updated_at": settings_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(settings_ok.status_code, 200)
+            settings_conflict = client.put(
+                "/me/settings",
+                json={
+                    "language": "ko-KR",
+                    "expected_updated_at": settings_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(settings_conflict.status_code, 409)
+            settings_detail = settings_conflict.json()["detail"]
+            self.assertEqual(settings_detail["code"], "PHASE2_CONFLICT")
+            self.assertEqual(settings_detail["entity"], "settings")
+            self.assertIn("server_payload", settings_detail)
+            self.assertEqual(settings_detail["server_payload"]["language"], "en-US")
+
     def test_me_endpoints_require_bearer_token(self):
         with TestClient(app) as client:
             response = client.get("/me/profile")

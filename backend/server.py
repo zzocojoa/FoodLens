@@ -740,12 +740,14 @@ class ProfileUpdateRequest(BaseModel):
     display_name: str | None = None
     locale: str | None = None
     timezone: str | None = None
+    expected_updated_at: str | None = None
 
 
 class AllergiesUpdateRequest(BaseModel):
     allergies: list[str] | None = None
     dietary_restrictions: list[str] | None = None
     severity_map: dict[str, str] | None = None
+    expected_updated_at: str | None = None
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -753,6 +755,7 @@ class SettingsUpdateRequest(BaseModel):
     target_language: str | None = None
     auto_play_audio: bool | None = None
     selected_emoji: str | None = None
+    expected_updated_at: str | None = None
 
 
 class HistoryWriteRequest(BaseModel):
@@ -765,13 +768,16 @@ def _request_id(request: Request) -> str:
 
 
 def _auth_error_to_http_exception(error: AuthServiceError, request_id: str) -> HTTPException:
+    detail = {
+        "message": error.message,
+        "code": error.code,
+        "request_id": request_id,
+    }
+    if isinstance(getattr(error, "details", None), dict):
+        detail.update(error.details)
     return HTTPException(
         status_code=error.status_code,
-        detail={
-            "message": error.message,
-            "code": error.code,
-            "request_id": request_id,
-        },
+        detail=detail,
     )
 
 
@@ -1414,6 +1420,7 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             display_name=payload.display_name,
             locale=payload.locale,
             timezone_name=payload.timezone,
+            expected_updated_at=payload.expected_updated_at,
         )
         _log_phase2_write(
             request_id=request_id,
@@ -1461,6 +1468,7 @@ async def put_me_allergies(payload: AllergiesUpdateRequest, request: Request):
             allergies=payload.allergies,
             dietary_restrictions=payload.dietary_restrictions,
             severity_map=payload.severity_map,
+            expected_updated_at=payload.expected_updated_at,
         )
         _log_phase2_write(
             request_id=request_id,
@@ -1509,6 +1517,7 @@ async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
             target_language=payload.target_language,
             auto_play_audio=payload.auto_play_audio,
             selected_emoji=payload.selected_emoji,
+            expected_updated_at=payload.expected_updated_at,
         )
         _log_phase2_write(
             request_id=request_id,

@@ -1,8 +1,10 @@
 import NetInfo from '@react-native-community/netinfo';
+import type { UserProfile } from '@/models/User';
 import { SafeStorage } from '@/services/storage_Logic';
 import { logger } from '@/services/logger_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
+import { getUserStorageKey } from '@/services/user/constants_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
 import type {
   Phase2ConflictResolution,
@@ -52,10 +54,55 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
   return [...unsynced, ...synced];
 };
 
-const dispatchOperation = async (operation: Phase2SyncOperation): Promise<{ requestId?: string }> => {
+type DispatchResult = {
+  requestId?: string;
+  profileUpdatedAt?: string;
+  allergiesUpdatedAt?: string;
+  settingsUpdatedAt?: string;
+};
+
+const applyServerVersionToLocalProfile = async (
+  userId: string,
+  versionPatch: {
+    profileUpdatedAt?: string;
+    allergiesUpdatedAt?: string;
+    settingsUpdatedAt?: string;
+  }
+): Promise<void> => {
+  if (!versionPatch.profileUpdatedAt && !versionPatch.allergiesUpdatedAt && !versionPatch.settingsUpdatedAt) {
+    return;
+  }
+  const storageKey = getUserStorageKey(userId);
+  const current = await SafeStorage.get<UserProfile | null>(storageKey, null);
+  if (!current) return;
+  const nextSyncVersions = {
+    ...(current.syncVersions || {}),
+    ...(versionPatch.profileUpdatedAt ? { profileUpdatedAt: versionPatch.profileUpdatedAt } : {}),
+    ...(versionPatch.allergiesUpdatedAt ? { allergiesUpdatedAt: versionPatch.allergiesUpdatedAt } : {}),
+    ...(versionPatch.settingsUpdatedAt ? { settingsUpdatedAt: versionPatch.settingsUpdatedAt } : {}),
+  };
+  const nextUpdatedAt = versionPatch.profileUpdatedAt || current.updatedAt;
+  await SafeStorage.set(storageKey, {
+    ...current,
+    updatedAt: nextUpdatedAt,
+    syncVersions: nextSyncVersions,
+  });
+};
+
+const dispatchOperation = async (operation: Phase2SyncOperation): Promise<DispatchResult> => {
   if (operation.entity === 'profile') {
-    const result = await Phase2Api.putProfile(operation.payload as Record<string, string | null>);
-    return { requestId: result.requestId };
+    const result = await Phase2Api.putProfile(
+      operation.payload as {
+        display_name?: string | null;
+        locale?: string | null;
+        timezone?: string | null;
+        expected_updated_at?: string;
+      }
+    );
+    return {
+      requestId: result.requestId,
+      profileUpdatedAt: result.profile.updated_at,
+    };
   }
 
   if (operation.entity === 'allergies') {
@@ -64,9 +111,13 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<{ requ
         allergies?: string[];
         dietary_restrictions?: string[];
         severity_map?: Record<string, string>;
+        expected_updated_at?: string;
       }
     );
-    return { requestId: result.requestId };
+    return {
+      requestId: result.requestId,
+      allergiesUpdatedAt: result.allergies.updated_at,
+    };
   }
 
   if (operation.entity === 'settings') {
@@ -76,9 +127,13 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<{ requ
         target_language?: string | null;
         auto_play_audio?: boolean;
         selected_emoji?: string | null;
+        expected_updated_at?: string;
       }
     );
-    return { requestId: result.requestId };
+    return {
+      requestId: result.requestId,
+      settingsUpdatedAt: result.settings.updated_at,
+    };
   }
 
   const historyResult = await Phase2Api.postHistory({
@@ -170,6 +225,11 @@ export const dispatchPhase2SyncQueue = async (): Promise<void> =>
           requestId: result.requestId,
           lastError: undefined,
         };
+        await applyServerVersionToLocalProfile(sending.userId, {
+          profileUpdatedAt: result.profileUpdatedAt,
+          allergiesUpdatedAt: result.allergiesUpdatedAt,
+          settingsUpdatedAt: result.settingsUpdatedAt,
+        });
       } catch (error) {
         const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;
@@ -201,6 +261,7 @@ export const dispatchPhase2SyncQueue = async (): Promise<void> =>
               code: apiError?.code,
               message: apiError?.message,
               detectedAt: now(),
+              serverPayload: apiError?.serverPayload,
             },
           };
           await saveQueue(pruneQueue(mutable));

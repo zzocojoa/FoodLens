@@ -24,11 +24,18 @@ export interface UserProfile {
 
   createdAt: string;     // ISO Date String
   updatedAt: string;     // ISO Date String
+  syncVersions?: UserSyncVersions;
   
   // Trip Management
   currentTripStart?: string; // ISO Date String of when the current trip started
   currentTripLocation?: string; // e.g. "Tokyo, Japan"
   currentTripCoordinates?: UserCoordinates;
+}
+
+export interface UserSyncVersions {
+  profileUpdatedAt?: string;
+  allergiesUpdatedAt?: string;
+  settingsUpdatedAt?: string;
 }
 
 export interface UserSafetyProfile {

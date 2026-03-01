@@ -53,12 +53,21 @@ def _from_iso8601(raw: str) -> datetime:
 
 
 class AuthServiceError(Exception):
-    def __init__(self, *, code: str, message: str, status_code: int, user_id: str | None = None):
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        status_code: int,
+        user_id: str | None = None,
+        details: dict[str, object] | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
         self.user_id = user_id
+        self.details = details or {}
 
 
 @dataclass(slots=True)
@@ -1060,6 +1069,7 @@ class InMemoryAuthSessionService:
         display_name: str | None,
         locale: str | None,
         timezone_name: str | None,
+        expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
             profile = self._profiles_by_user_id.get(user_id)
@@ -1070,6 +1080,13 @@ class InMemoryAuthSessionService:
                     status_code=404,
                     user_id=user_id,
                 )
+
+            self._assert_expected_updated_at(
+                user_id=user_id,
+                entity="profile",
+                expected_updated_at=expected_updated_at,
+                server_payload=self._serialize_profile(profile),
+            )
 
             if display_name is not None:
                 profile.display_name = display_name.strip() or None
@@ -1107,6 +1124,7 @@ class InMemoryAuthSessionService:
         allergies: list[str] | None,
         dietary_restrictions: list[str] | None,
         severity_map: dict[str, str] | None,
+        expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
             profile = self._allergies_by_user_id.get(user_id)
@@ -1117,6 +1135,13 @@ class InMemoryAuthSessionService:
                     status_code=404,
                     user_id=user_id,
                 )
+
+            self._assert_expected_updated_at(
+                user_id=user_id,
+                entity="allergies",
+                expected_updated_at=expected_updated_at,
+                server_payload=self._serialize_allergies(profile),
+            )
 
             if allergies is not None:
                 profile.allergies = [item.strip() for item in allergies if isinstance(item, str) and item.strip()]
@@ -1157,6 +1182,7 @@ class InMemoryAuthSessionService:
         target_language: str | None,
         auto_play_audio: bool | None,
         selected_emoji: str | None,
+        expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
             settings = self._settings_by_user_id.get(user_id)
@@ -1167,6 +1193,13 @@ class InMemoryAuthSessionService:
                     status_code=404,
                     user_id=user_id,
                 )
+
+            self._assert_expected_updated_at(
+                user_id=user_id,
+                entity="settings",
+                expected_updated_at=expected_updated_at,
+                server_payload=self._serialize_settings(settings),
+            )
 
             if language is not None:
                 normalized_language = language.strip()
@@ -1482,6 +1515,47 @@ class InMemoryAuthSessionService:
             "created_at": _to_iso8601(item.created_at),
             "updated_at": _to_iso8601(item.updated_at),
         }
+
+    def _assert_expected_updated_at(
+        self,
+        *,
+        user_id: str,
+        entity: str,
+        expected_updated_at: str | None,
+        server_payload: dict[str, object],
+    ) -> None:
+        raw_expected = (expected_updated_at or "").strip()
+        if not raw_expected:
+            return
+
+        try:
+            normalized_expected = _to_iso8601(_from_iso8601(raw_expected))
+        except Exception as exc:  # pragma: no cover - defensive parse guard
+            raise AuthServiceError(
+                code="PHASE2_EXPECTED_VERSION_INVALID",
+                message="expected_updated_at must be an ISO-8601 UTC timestamp.",
+                status_code=400,
+                user_id=user_id,
+            ) from exc
+
+        server_updated_at = str(server_payload.get("updated_at") or "").strip()
+        if not server_updated_at:
+            return
+        if normalized_expected == server_updated_at:
+            return
+
+        raise AuthServiceError(
+            code="PHASE2_CONFLICT",
+            message=f"{entity} was updated on another device.",
+            status_code=409,
+            user_id=user_id,
+            details={
+                "entity": entity,
+                "expected_updated_at": normalized_expected,
+                "server_updated_at": server_updated_at,
+                "server_payload": server_payload,
+            },
+        )
 
     def _validate_password(self, password: str) -> None:
         if len(password) < 8:

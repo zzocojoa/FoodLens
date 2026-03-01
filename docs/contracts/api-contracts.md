@@ -122,6 +122,15 @@
 - `GET /me/history`, `POST /me/history`
 - `GET /me/settings`, `PUT /me/settings`
 
+동기화 충돌(Phase 3):
+- `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원
+- 서버 최신 `updated_at`와 불일치 시 `409 PHASE2_CONFLICT` 반환
+- 충돌 응답 detail 필드:
+  - `entity`
+  - `expected_updated_at`
+  - `server_updated_at`
+  - `server_payload` (서버 최신 스냅샷)
+
 비개발자 설명:
 - `me`는 "지금 로그인한 사용자"를 뜻합니다.
 - 타인의 데이터는 접근할 수 없어야 합니다.

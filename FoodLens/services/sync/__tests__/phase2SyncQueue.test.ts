@@ -46,12 +46,20 @@ jest.mock('../phase2Api_Logic', () => ({
     code: string;
     status: number;
     requestId?: string;
+    serverPayload?: Record<string, unknown>;
 
-    constructor(message: string, code: string, status: number, requestId?: string) {
+    constructor(
+      message: string,
+      code: string,
+      status: number,
+      requestId?: string,
+      serverPayload?: Record<string, unknown>
+    ) {
       super(message);
       this.code = code;
       this.status = status;
       this.requestId = requestId;
+      this.serverPayload = serverPayload;
     }
   },
 }));
@@ -204,7 +212,10 @@ describe('phase2SyncQueue', () => {
   it('moves entry to conflicted on conflict response', async () => {
     queueState = [pendingProfileOperation('op-a', 'usr_a')];
     mockedPhase2Api.putProfile.mockRejectedValueOnce(
-      new Phase2SyncApiError('Conflict detected.', 'PHASE2_CONFLICT', 409, 'req-conflict-a')
+      new Phase2SyncApiError('Conflict detected.', 'PHASE2_CONFLICT', 409, 'req-conflict-a', {
+        user_id: 'usr_a',
+        display_name: 'server-name',
+      })
     );
 
     await dispatchPhase2SyncQueue();
@@ -214,6 +225,10 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].requestId).toBe('req-conflict-a');
     expect(queueState[0].lastError).toBe('PHASE2_CONFLICT');
     expect(queueState[0].conflict?.code).toBe('PHASE2_CONFLICT');
+    expect(queueState[0].conflict?.serverPayload).toEqual({
+      user_id: 'usr_a',
+      display_name: 'server-name',
+    });
   });
 
   it('resolves conflict with server precedence without redispatch', async () => {
