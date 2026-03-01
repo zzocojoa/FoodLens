@@ -151,9 +151,8 @@ const isNetworkAvailable = async (): Promise<boolean> => {
 };
 
 const withDispatchLock = async (runner: () => Promise<void>): Promise<void> => {
-  if (dispatchInFlight) {
+  while (dispatchInFlight) {
     await dispatchInFlight;
-    return;
   }
   dispatchInFlight = runner().finally(() => {
     dispatchInFlight = null;

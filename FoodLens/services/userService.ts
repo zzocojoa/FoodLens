@@ -162,11 +162,10 @@ const flushProfileWrites = async (uid: string, operationIds: string[]): Promise<
 
 const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<string[]> => {
   const payloads = buildProfileWritePayload(profile);
-  return Promise.all([
-    enqueuePhase2Sync(uid, 'profile', payloads.profile as Record<string, unknown>),
-    enqueuePhase2Sync(uid, 'allergies', payloads.allergies as Record<string, unknown>),
-    enqueuePhase2Sync(uid, 'settings', payloads.settings as Record<string, unknown>),
-  ]);
+  const profileOpId = await enqueuePhase2Sync(uid, 'profile', payloads.profile as Record<string, unknown>);
+  const allergiesOpId = await enqueuePhase2Sync(uid, 'allergies', payloads.allergies as Record<string, unknown>);
+  const settingsOpId = await enqueuePhase2Sync(uid, 'settings', payloads.settings as Record<string, unknown>);
+  return [profileOpId, allergiesOpId, settingsOpId];
 };
 
 export const UserService = {
