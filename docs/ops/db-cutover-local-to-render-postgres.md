@@ -8,6 +8,7 @@
 ## 2) 관련 파일 경로
 
 - `docs/ops/db-cutover-local-to-render-postgres.md`
+- `docs/ops/phase2-cutover-remaining-work-execution.md`
 - `docs/roadmap/cloud-decision-record.md`
 - `docs/roadmap/phase-2-cloud-db-execution.md`
 - `docs/roadmap/phase-2-validation-context-prompt.md`
@@ -111,3 +112,4 @@ bash backend/scripts/phase2_cutover_rehearsal.sh
   - `docs/roadmap/cloud-decision-record.md`
   - `docs/roadmap/phase-2-cloud-db-execution.md`
   - `docs/roadmap/phase-2-validation-context-prompt.md`
+  - `docs/ops/phase2-cutover-remaining-work-execution.md`
