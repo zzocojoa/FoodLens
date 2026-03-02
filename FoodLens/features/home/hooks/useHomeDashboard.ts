@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
@@ -11,6 +11,9 @@ import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+
+const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
@@ -37,6 +40,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const [safeCount, setSafeCount] = useState(0);
   const [activeModal, setActiveModal] = useState<HomeModalType>('NONE');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
@@ -71,6 +75,26 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       return () => task.cancel();
     }, [loadDashboardData]),
   );
+
+  useEffect(() => {
+    const userId = getCurrentUserId();
+    const unsubscribe = subscribeUserProfileUpdated(userId, () => {
+      if (profileRefreshTimerRef.current) {
+        clearTimeout(profileRefreshTimerRef.current);
+      }
+      profileRefreshTimerRef.current = setTimeout(() => {
+        void loadDashboardData();
+      }, PROFILE_REFRESH_DEBOUNCE_MS);
+    });
+
+    return () => {
+      unsubscribe();
+      if (profileRefreshTimerRef.current) {
+        clearTimeout(profileRefreshTimerRef.current);
+        profileRefreshTimerRef.current = null;
+      }
+    };
+  }, [loadDashboardData]);
 
   const handleDeleteItem = useCallback(
     async (itemId: string) => {

@@ -231,6 +231,8 @@
   "emojiPicker.title": "이모지 선택",
   "emojiPicker.preview": "미리보기",
   "emojiPicker.section.title": "이모지 선택",
+  "sync.pending.title": "로컬에 저장됨",
+  "sync.pending.message": "변경사항이 이 기기에 저장되었고 곧 클라우드에 동기화됩니다.",
 
   "onboarding.welcome.title": "FoodLens에 오신 것을 환영합니다",
   "onboarding.welcome.subtitle": "AI 기반 음식 분석으로 전 세계 어디서든 알레르기로부터 안전하게 식사하세요.",

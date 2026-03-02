@@ -20,7 +20,9 @@ export const profileSheetService = {
     uiLanguage?: string;
   }) {
     const profileImageToSave = await persistProfileImageIfNeeded(params.image);
-    const existing = await UserService.getUserProfile(params.userId);
+    const existing = await UserService.getUserProfile(params.userId, {
+      allowBackgroundRefresh: false,
+    });
     const normalizedUiLanguage = normalizeCanonicalLocale(
       params.uiLanguage || existing.settings?.language || 'auto'
     );

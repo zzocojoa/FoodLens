@@ -231,6 +231,8 @@
   "emojiPicker.title": "Emoji Selection",
   "emojiPicker.preview": "Preview",
   "emojiPicker.section.title": "Choose an Emoji",
+  "sync.pending.title": "Saved locally",
+  "sync.pending.message": "Your changes were saved on this device and will sync to the cloud shortly.",
 
   "onboarding.welcome.title": "Welcome to FoodLens",
   "onboarding.welcome.subtitle": "AI-powered food analysis to keep you safe from allergens, anywhere in the world.",

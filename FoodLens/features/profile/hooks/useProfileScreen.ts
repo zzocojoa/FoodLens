@@ -29,6 +29,11 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
     const scrollViewRef = useRef<ScrollView>(null);
     const shouldScrollRef = useRef(false);
+    const isSyncNotConfirmedError = useCallback(
+        (error: unknown): boolean =>
+            error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
+        [],
+    );
 
     const loadProfile = useCallback(async () => {
         setLoading(true);
@@ -215,6 +220,17 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             }
 
             if (saveError) {
+                if (isSyncNotConfirmedError(saveError)) {
+                    showTranslatedAlert(t, {
+                        titleKey: 'sync.pending.title',
+                        titleFallback: 'Saved locally',
+                        messageKey: 'sync.pending.message',
+                        messageFallback:
+                            'Your changes were saved on this device and will sync to the cloud shortly.',
+                    });
+                    return;
+                }
+
                 showTranslatedAlert(t, {
                     titleKey: 'profile.alert.errorTitle',
                     titleFallback: 'Error',
@@ -240,7 +256,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         } finally {
             setLoading(false);
         }
-    }, [allergies, otherRestrictions, promptConflictResolution, severityMap, t]);
+    }, [allergies, otherRestrictions, promptConflictResolution, severityMap, t, isSyncNotConfirmedError]);
 
     return {
         loading,

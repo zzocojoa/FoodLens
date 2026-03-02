@@ -3,6 +3,7 @@ import { SafeStorage } from './storage_Logic';
 import { USER_STORAGE_KEY, getUserStorageKey } from './user/constants_Logic';
 import { buildDefaultProfile } from './user/profileFactory_Logic';
 import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage_Logic';
+import { publishUserProfileUpdated } from './user/userProfileStore_Logic';
 import { logger } from './logger_Logic';
 import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
 import {
@@ -117,6 +118,7 @@ const syncProfileFromServer = async (
     });
     await saveScopedProfile(uid, merged);
     await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
+    publishUserProfileUpdated(uid, 'server_pull');
     return merged;
   } catch (error) {
     const apiError = error instanceof Phase2SyncApiError ? error : null;
@@ -168,11 +170,16 @@ const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<st
   return [profileOpId, allergiesOpId, settingsOpId];
 };
 
+type GetUserProfileOptions = {
+  allowBackgroundRefresh?: boolean;
+};
+
 export const UserService = {
   /**
    * Get user profile from local storage
    */
-  async getUserProfile(uid: string): Promise<UserProfile> {
+  async getUserProfile(uid: string, options: GetUserProfileOptions = {}): Promise<UserProfile> {
+    const allowBackgroundRefresh = options.allowBackgroundRefresh !== false;
     const resolvedUserId = await resolveScopedUserId(uid);
     startPhase2SyncRuntime();
     const migrated = await migrateLegacyProfileIfNeeded(resolvedUserId);
@@ -192,12 +199,13 @@ export const UserService = {
       const operationIds = await queueProfileWrites(resolvedUserId, hydrated);
       await flushProfileWrites(resolvedUserId, operationIds);
       await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
+      publishUserProfileUpdated(resolvedUserId, 'sync_apply');
     }
 
     if (!cachedProfile) {
       const remote = await syncProfileFromServer(resolvedUserId, hydrated);
       if (remote) return remote;
-    } else {
+    } else if (allowBackgroundRefresh) {
       void syncProfileFromServer(resolvedUserId, hydrated);
     }
 
@@ -232,10 +240,12 @@ export const UserService = {
       };
 
       await saveScopedProfile(resolvedUserId, newProfile);
+      publishUserProfileUpdated(resolvedUserId, 'local_write');
       await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
       const operationIds = await queueProfileWrites(resolvedUserId, newProfile);
       await flushProfileWrites(resolvedUserId, operationIds);
       await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
+      publishUserProfileUpdated(resolvedUserId, 'sync_apply');
       return newProfile;
     } catch (error) {
       logger.error('Error saving user profile', error, 'UserService');

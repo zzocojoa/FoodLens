@@ -23,6 +23,11 @@ export const useProfileSheetState = (userId: string) => {
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    const isSyncNotConfirmedError = useCallback(
+        (error: unknown): boolean => error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
+        [],
+    );
+
     const promptConflictResolution = useCallback(
         (count: number): Promise<Phase2ConflictResolution | null> =>
             new Promise((resolve) => {
@@ -122,13 +127,23 @@ export const useProfileSheetState = (userId: string) => {
         async (onUpdate: () => void | Promise<void>, onClose: () => void) => {
             setLoading(true);
             try {
-                await profileSheetService.updateProfile({
-                    userId,
-                    name,
-                    image,
-                    travelerLanguage,
-                    uiLanguage,
-                });
+                let updateError: unknown = null;
+                try {
+                    await profileSheetService.updateProfile({
+                        userId,
+                        name,
+                        image,
+                        travelerLanguage,
+                        uiLanguage,
+                    });
+                } catch (error) {
+                    updateError = error;
+                }
+
+                if (updateError && !isSyncNotConfirmedError(updateError)) {
+                    throw updateError;
+                }
+
                 await handlePendingConflicts();
                 await Promise.resolve(onUpdate());
                 onClose();
@@ -144,7 +159,7 @@ export const useProfileSheetState = (userId: string) => {
                 setLoading(false);
             }
         },
-        [handlePendingConflicts, image, travelerLanguage, name, uiLanguage, userId, t]
+        [handlePendingConflicts, image, travelerLanguage, name, uiLanguage, userId, t, isSyncNotConfirmedError]
     );
 
     const pickImage = useCallback(async (useCamera: boolean) => {
