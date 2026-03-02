@@ -77,4 +77,18 @@ describe('lookupBarcodeWithAllergyContext request ids', () => {
     expect(secondHeaders['X-Request-Id']).toBeDefined();
     expect(firstHeaders['X-Request-Id']).not.toBe(secondHeaders['X-Request-Id']);
   });
+
+  it('deduplicates concurrent lookup calls with the same cache key', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(response(200, { found: false, message: 'ok' }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const [resultA, resultB] = await Promise.all([
+      lookupBarcodeWithAllergyContext('8801043015981'),
+      lookupBarcodeWithAllergyContext('8801043015981'),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(resultA.found).toBe(false);
+    expect(resultB.found).toBe(false);
+  });
 });

@@ -14,6 +14,7 @@ const isAbortError = (error: unknown): boolean =>
   error instanceof Error && (error.name === 'AbortError' || error.message.includes('timed out'));
 
 const TRACE_TAG = '[AI][BarcodeLookup]';
+const inflightBarcodeLookups = new Map<string, Promise<BarcodeLookupResult>>();
 
 const maskBarcode = (barcode: string): string => {
   if (!barcode) return 'unknown';
@@ -144,51 +145,77 @@ export const lookupBarcodeWithAllergyContext = async (
     return cached;
   }
 
-  const formData = new FormData();
-  formData.append('barcode', barcode);
-  formData.append('allergy_info', allergyString);
-  formData.append('locale', locale);
+  const inflight = inflightBarcodeLookups.get(cacheKey);
+  if (inflight) {
+    console.log(`${TRACE_TAG} lookup:join-inflight`, {
+      barcode: maskedBarcode,
+      rootRequestId,
+    });
+    return inflight;
+  }
+  const lookupPromise = (async (): Promise<BarcodeLookupResult> => {
+    const formData = new FormData();
+    formData.append('barcode', barcode);
+    formData.append('allergy_info', allergyString);
+    formData.append('locale', locale);
 
-  const url = `${activeServerUrl}/lookup/barcode`;
-  let lastError: Error | null = null;
+    const url = `${activeServerUrl}/lookup/barcode`;
+    let lastError: Error | null = null;
 
-  console.log(`${TRACE_TAG} lookup:init`, {
-    barcode: maskedBarcode,
-    locale,
-    serverHost: extractHost(activeServerUrl),
-    rootRequestId,
-    timeoutMs: BARCODE_LOOKUP_TIMEOUT_MS,
-    maxRetries: BARCODE_LOOKUP_MAX_RETRIES,
-    allergyItemCount: allergyString === 'None' ? 0 : allergyString.split(',').map((v) => v.trim()).filter(Boolean).length,
-  });
+    console.log(`${TRACE_TAG} lookup:init`, {
+      barcode: maskedBarcode,
+      locale,
+      serverHost: extractHost(activeServerUrl),
+      rootRequestId,
+      timeoutMs: BARCODE_LOOKUP_TIMEOUT_MS,
+      maxRetries: BARCODE_LOOKUP_MAX_RETRIES,
+      allergyItemCount:
+        allergyString === 'None' ? 0 : allergyString.split(',').map((v) => v.trim()).filter(Boolean).length,
+    });
 
-  for (let attempt = 1; attempt <= BARCODE_LOOKUP_MAX_RETRIES; attempt++) {
-    const attemptRequestId = createAttemptRequestId(rootRequestId, attempt);
-    const attemptStartedAt = Date.now();
-    try {
-      const response = await fetchBarcodeWithTimeout(url, formData, BARCODE_LOOKUP_TIMEOUT_MS, {
-        attempt,
-        barcode,
-        rootRequestId,
-        attemptRequestId,
-      });
-      const elapsedMs = Date.now() - attemptStartedAt;
-      console.log(`${TRACE_TAG} request:response`, {
-        attempt,
-        barcode: maskedBarcode,
-        rootRequestId,
-        attemptRequestId,
-        status: response.status,
-        ok: response.ok,
-        elapsedMs,
-      });
+    for (let attempt = 1; attempt <= BARCODE_LOOKUP_MAX_RETRIES; attempt++) {
+      const attemptRequestId = createAttemptRequestId(rootRequestId, attempt);
+      const attemptStartedAt = Date.now();
+      try {
+        const response = await fetchBarcodeWithTimeout(url, formData, BARCODE_LOOKUP_TIMEOUT_MS, {
+          attempt,
+          barcode,
+          rootRequestId,
+          attemptRequestId,
+        });
+        const elapsedMs = Date.now() - attemptStartedAt;
+        console.log(`${TRACE_TAG} request:response`, {
+          attempt,
+          barcode: maskedBarcode,
+          rootRequestId,
+          attemptRequestId,
+          status: response.status,
+          ok: response.ok,
+          elapsedMs,
+        });
 
-      if (!response.ok) {
-        const detail = await parseErrorDetail(response);
-        const retryAfterSeconds = parseRetryAfterSeconds(response, detail);
+        if (!response.ok) {
+          const detail = await parseErrorDetail(response);
+          const retryAfterSeconds = parseRetryAfterSeconds(response, detail);
 
-        if (response.status >= 400 && response.status < 500 && !isRetryableStatus(response.status)) {
-          console.warn(`${TRACE_TAG} request:non-retryable-status`, {
+          if (response.status >= 400 && response.status < 500 && !isRetryableStatus(response.status)) {
+            console.warn(`${TRACE_TAG} request:non-retryable-status`, {
+              attempt,
+              barcode: maskedBarcode,
+              rootRequestId,
+              attemptRequestId,
+              status: response.status,
+              code: detail?.code,
+              upstreamRequestId: detail?.request_id,
+            });
+            throw new Error(
+              `Barcode lookup rejected (${response.status})` +
+                `${detail?.code ? ` code=${detail.code}` : ''}` +
+                `${detail?.request_id ? ` request_id=${detail.request_id}` : ''}`
+            );
+          }
+
+          console.warn(`${TRACE_TAG} request:retryable-status`, {
             attempt,
             barcode: maskedBarcode,
             rootRequestId,
@@ -196,87 +223,79 @@ export const lookupBarcodeWithAllergyContext = async (
             status: response.status,
             code: detail?.code,
             upstreamRequestId: detail?.request_id,
+            retryAfterSeconds,
           });
-          throw new Error(
-            `Barcode lookup rejected (${response.status})` +
+          const retryableError = new Error(
+            `Barcode lookup failed with status ${response.status}` +
               `${detail?.code ? ` code=${detail.code}` : ''}` +
               `${detail?.request_id ? ` request_id=${detail.request_id}` : ''}`
-          );
+          ) as Error & { retryAfterMs?: number };
+          if (retryAfterSeconds && retryAfterSeconds > 0) {
+            retryableError.retryAfterMs = retryAfterSeconds * 1000;
+          }
+          throw retryableError;
         }
 
-        console.warn(`${TRACE_TAG} request:retryable-status`, {
+        const result = assertBarcodeLookupContract(await response.json());
+        if (result.found && result.data) {
+          result.data = mapBarcodeToAnalyzedData(result.data);
+          result.data.isBarcode = true;
+        }
+        await setAiCacheValue(cacheKey, result);
+
+        console.log(`${TRACE_TAG} lookup:success`, {
           attempt,
           barcode: maskedBarcode,
           rootRequestId,
           attemptRequestId,
-          status: response.status,
-          code: detail?.code,
-          upstreamRequestId: detail?.request_id,
-          retryAfterSeconds,
+          found: result.found,
         });
-        const retryableError = new Error(
-          `Barcode lookup failed with status ${response.status}` +
-            `${detail?.code ? ` code=${detail.code}` : ''}` +
-            `${detail?.request_id ? ` request_id=${detail.request_id}` : ''}`
-        ) as Error & { retryAfterMs?: number };
-        if (retryAfterSeconds && retryAfterSeconds > 0) {
-          retryableError.retryAfterMs = retryAfterSeconds * 1000;
-        }
-        throw retryableError;
+        return result;
+      } catch (error) {
+        const normalizedError =
+          error instanceof Error ? error : new Error('Barcode lookup failed due to unknown error');
+        lastError = normalizedError;
+        const elapsedMs = Date.now() - attemptStartedAt;
+        console.warn(`${TRACE_TAG} lookup:attempt-failed`, {
+          attempt,
+          barcode: maskedBarcode,
+          rootRequestId,
+          attemptRequestId,
+          elapsedMs,
+          name: normalizedError.name,
+          message: normalizedError.message,
+        });
+
+        const isLastAttempt = attempt === BARCODE_LOOKUP_MAX_RETRIES;
+        if (isLastAttempt) break;
+
+        const retryAfterMs =
+          normalizedError &&
+          typeof (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs === 'number'
+            ? (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs
+            : undefined;
+        const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.pow(2, attempt - 1) * 500;
+        console.log(`${TRACE_TAG} lookup:retry-scheduled`, {
+          attempt,
+          barcode: maskedBarcode,
+          rootRequestId,
+          nextAttempt: attempt + 1,
+          delayMs,
+        });
+        await sleep(delayMs);
       }
-
-      const result = assertBarcodeLookupContract(await response.json());
-      if (result.found && result.data) {
-        result.data = mapBarcodeToAnalyzedData(result.data);
-        result.data.isBarcode = true;
-      }
-      await setAiCacheValue(cacheKey, result);
-
-      console.log(`${TRACE_TAG} lookup:success`, {
-        attempt,
-        barcode: maskedBarcode,
-        rootRequestId,
-        attemptRequestId,
-        found: result.found,
-      });
-      return result;
-    } catch (error) {
-      const normalizedError =
-        error instanceof Error ? error : new Error('Barcode lookup failed due to unknown error');
-      lastError = normalizedError;
-      const elapsedMs = Date.now() - attemptStartedAt;
-      console.warn(`${TRACE_TAG} lookup:attempt-failed`, {
-        attempt,
-        barcode: maskedBarcode,
-        rootRequestId,
-        attemptRequestId,
-        elapsedMs,
-        name: normalizedError.name,
-        message: normalizedError.message,
-      });
-
-      const isLastAttempt = attempt === BARCODE_LOOKUP_MAX_RETRIES;
-      if (isLastAttempt) break;
-
-      const retryAfterMs =
-        normalizedError &&
-        typeof (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs === 'number'
-          ? (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs
-          : undefined;
-      const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.pow(2, attempt - 1) * 500;
-      console.log(`${TRACE_TAG} lookup:retry-scheduled`, {
-        attempt,
-        barcode: maskedBarcode,
-        rootRequestId,
-        nextAttempt: attempt + 1,
-        delayMs,
-      });
-      await sleep(delayMs);
     }
-  }
 
-  if (lastError && isAbortError(lastError)) {
-    throw new Error('Barcode lookup timed out. Please try again.');
+    if (lastError && isAbortError(lastError)) {
+      throw new Error('Barcode lookup timed out. Please try again.');
+    }
+    throw lastError || new Error('Barcode lookup failed. Please try again.');
+  })();
+
+  inflightBarcodeLookups.set(cacheKey, lookupPromise);
+  try {
+    return await lookupPromise;
+  } finally {
+    inflightBarcodeLookups.delete(cacheKey);
   }
-  throw lastError || new Error('Barcode lookup failed. Please try again.');
 };
