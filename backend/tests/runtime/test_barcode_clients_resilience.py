@@ -1,4 +1,5 @@
 import unittest
+import os
 from unittest.mock import patch
 
 from backend.modules.barcode.clients.datago_client import DatagoClient
@@ -65,6 +66,22 @@ class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
             result = await client.get_nutrition_by_name("신라면")
         self.assertIsNone(result)
         self.assertGreater(client._auth_disabled_until, before)
+
+    async def test_datago_client_uses_configured_upstream_timeout(self):
+        with patch.dict(os.environ, {"BARCODE_UPSTREAM_TIMEOUT_SECONDS": "3"}):
+            client = DatagoClient()
+        payload = '{"C005":{"RESULT":{"CODE":"INFO-000","MSG":"ok"},"row":[{"PRDLST_NM":"A"}]}}'
+        fake_response = _FakeResponse(status=200, text=payload, content_type="application/json")
+        with patch(
+            "backend.modules.barcode.clients.datago_client.aiohttp.ClientSession",
+            return_value=_FakeSession(fake_response),
+        ) as mocked_session:
+            result = await client._request_service("http://example.com", "C005", log_prefix="")
+        self.assertIsNotNone(result)
+        self.assertIsNotNone(mocked_session.call_args)
+        timeout = mocked_session.call_args.kwargs.get("timeout")
+        self.assertIsNotNone(timeout)
+        self.assertEqual(timeout.total, 3.0)
 
 
 if __name__ == "__main__":

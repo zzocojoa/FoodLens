@@ -22,9 +22,15 @@ class DatagoClient:
     BARCODE_SERVICE_ID: Final[str] = "C005"
     REPORT_SERVICE_ID: Final[str] = "I2790"
     RAW_MATERIAL_SERVICE_ID: Final[str] = "C002"
+    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
     
     def __init__(self) -> None:
         self.api_key = os.getenv("DATAGO_API_KEY")
+        raw_timeout = os.getenv("BARCODE_UPSTREAM_TIMEOUT_SECONDS", str(self.DEFAULT_REQUEST_TIMEOUT_SECONDS))
+        try:
+            self.request_timeout_seconds = max(1.0, float(raw_timeout))
+        except ValueError:
+            self.request_timeout_seconds = self.DEFAULT_REQUEST_TIMEOUT_SECONDS
         self.last_failure_kind: str | None = None
         self.last_failure_message: str | None = None
         if not self.api_key:
@@ -75,7 +81,8 @@ class DatagoClient:
     async def _request_service(self, url: str, service_id: str, log_prefix: str) -> JSONDict | None:
         self._clear_failure()
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url) as response:
                     if response.status != 200:
                         self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")

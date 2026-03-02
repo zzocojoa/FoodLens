@@ -1,5 +1,6 @@
 
 import aiohttp
+import os
 from typing import Any, Final
 
 JSONDict = dict[str, Any]
@@ -12,8 +13,14 @@ class OpenFoodFactsClient:
     BASE_URL: Final[str] = "https://world.openfoodfacts.org/api/v2/product"
     USER_AGENT: Final[str] = "FoodLens - Android/iOS - Version 1.0 (contact@foodlens.app)"
     REQUEST_HEADERS: Final[dict[str, str]] = {"User-Agent": USER_AGENT}
+    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
 
     def __init__(self) -> None:
+        raw_timeout = os.getenv("BARCODE_UPSTREAM_TIMEOUT_SECONDS", str(self.DEFAULT_REQUEST_TIMEOUT_SECONDS))
+        try:
+            self.request_timeout_seconds = max(1.0, float(raw_timeout))
+        except ValueError:
+            self.request_timeout_seconds = self.DEFAULT_REQUEST_TIMEOUT_SECONDS
         self.last_failure_kind: str | None = None
         self.last_failure_message: str | None = None
 
@@ -43,7 +50,8 @@ class OpenFoodFactsClient:
         url = f"{self.BASE_URL}/{barcode}.json"
         
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 # User-Agent is required by OFF policy
                 async with session.get(url, headers=self.REQUEST_HEADERS) as response:
                     if response.status != 200:

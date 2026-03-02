@@ -19,10 +19,16 @@ class PublicDataClient:
     DEFAULT_SERVING_SIZE: Final[str] = "100g"
     DEFAULT_DATA_SOURCE: Final[str] = "FoodNutritionDB_Unified"
     DEFAULT_AUTH_COOLDOWN_SECONDS: Final[int] = 900
+    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
 
     def __init__(self, api_key: str | None = None):
         raw_key = api_key or os.getenv("KOREAN_FDA_API_KEY")
         self.api_key = self._decode_api_key(raw_key)
+        raw_timeout = os.getenv("BARCODE_UPSTREAM_TIMEOUT_SECONDS", str(self.DEFAULT_REQUEST_TIMEOUT_SECONDS))
+        try:
+            self.request_timeout_seconds = max(1.0, float(raw_timeout))
+        except ValueError:
+            self.request_timeout_seconds = self.DEFAULT_REQUEST_TIMEOUT_SECONDS
         self._auth_disabled_until: float = 0.0
         self._auth_cooldown_seconds = max(
             60,
@@ -83,7 +89,8 @@ class PublicDataClient:
         print(f"[PublicData] Requesting (Unified Service) for: {clean_name}")
 
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Manual URL construction to control serviceKey encoding exactly
                 full_url = self._build_request_url(clean_name)
                 
