@@ -23,17 +23,48 @@ export const isBarcodeInCenteredRoi = (
 
   const origin = scanningResult.bounds?.origin;
   const size = scanningResult.bounds?.size;
-  if (!origin || !size) return false;
+  // Some devices/providers do not return bounds consistently.
+  // In that case we skip ROI gating instead of blocking auto-scan.
+  if (!origin || !size) return true;
 
-  const barcodeCenterX = origin.x + size.width / 2;
-  const barcodeCenterY = origin.y + size.height / 2;
+  const rawCenterX = origin.x + size.width / 2;
+  const rawCenterY = origin.y + size.height / 2;
+  const maybeNormalized =
+    rawCenterX >= 0 &&
+    rawCenterX <= 1 &&
+    rawCenterY >= 0 &&
+    rawCenterY <= 1 &&
+    size.width > 0 &&
+    size.width <= 1 &&
+    size.height > 0 &&
+    size.height <= 1;
 
-  return (
-    barcodeCenterX >= horizontalMargin &&
-    barcodeCenterX <= horizontalMargin + viewfinderSize &&
-    barcodeCenterY >= verticalMargin &&
-    barcodeCenterY <= verticalMargin + viewfinderSize
+  const candidates = maybeNormalized
+    ? [
+        { x: rawCenterX * width, y: rawCenterY * height },
+        { x: rawCenterY * width, y: rawCenterX * height },
+      ]
+    : [
+        { x: rawCenterX, y: rawCenterY },
+        { x: rawCenterY, y: rawCenterX },
+      ];
+
+  const isInsideRoi = candidates.some(
+    ({ x, y }) =>
+      x >= horizontalMargin &&
+      x <= horizontalMargin + viewfinderSize &&
+      y >= verticalMargin &&
+      y <= verticalMargin + viewfinderSize
   );
+
+  if (isInsideRoi) return true;
+
+  const isMismatchedCoordinateSpace = !maybeNormalized && (rawCenterX > width * 1.5 || rawCenterY > height * 1.5);
+  if (isMismatchedCoordinateSpace) {
+    return true;
+  }
+
+  return false;
 };
 
 export const evaluateScanConfidence = ({
