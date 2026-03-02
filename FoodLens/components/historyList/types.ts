@@ -16,6 +16,7 @@ export interface HistoryListProps {
     onToggleCountry: (id: string) => void;
     isEditMode: boolean;
     selectedItems: Set<string>;
+    onReplaceSelection: (ids: Set<string>) => void;
     onToggleItem: (id: string) => void;
     onDelete: (id: string) => void;
     onBulkDelete: (ids: Set<string>) => void;

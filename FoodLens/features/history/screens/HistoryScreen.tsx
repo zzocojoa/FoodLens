@@ -108,6 +108,7 @@ export default function HistoryScreen() {
                         onToggleCountry={handleToggleCountry}
                         isEditMode={ui.isEditMode}
                         selectedItems={ui.selectedItems}
+                        onReplaceSelection={ui.replaceSelection}
                         onToggleItem={ui.toggleSelectItem}
                         onDelete={(id) => deleteItem(id)}
                         onBulkDelete={ui.handleBulkDelete}

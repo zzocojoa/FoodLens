@@ -50,6 +50,7 @@ export const uploadWithRetry = async (
     imageUri: string,
     options: any,
     maxRetries = 3,
+    timeoutMs?: number,
     onProgress?: (progress: number) => void
 ): Promise<FileSystem.FileSystemUploadResult> => {
     let lastError: any;
@@ -66,7 +67,7 @@ export const uploadWithRetry = async (
                 if (onProgress) onProgress(progress);
             });
 
-            const result = await runWithAnalysisTimeout(task.uploadAsync());
+            const result = await runWithAnalysisTimeout(task.uploadAsync(), timeoutMs);
 
             if (!result) throw new Error('Upload failed: No result');
 

@@ -113,6 +113,13 @@ export const useScanCameraGateway = () => {
                     messageKey: 'scan.alert.serverTemporary',
                     messageFallback: 'A temporary server issue occurred.',
                 });
+            } else if (errorMessage.includes('timed out')) {
+                showTranslatedAlert(t, {
+                    titleKey: 'camera.alert.analysisFailedTitle',
+                    titleFallback: 'Analysis Failed',
+                    messageKey: 'scan.alert.analysisTimeout',
+                    messageFallback: 'Analysis is taking longer than expected. Please try again.',
+                });
             } else {
                 showTranslatedAlert(t, {
                     titleKey: 'camera.alert.analysisFailedTitle',

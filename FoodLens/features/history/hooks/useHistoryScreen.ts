@@ -32,6 +32,10 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         setSelectedItems((prev) => toggleInSet(prev, id));
     }, []);
 
+    const replaceSelection = useCallback((ids: Set<string>) => {
+        setSelectedItems(new Set(ids));
+    }, []);
+
     const handleBulkDelete = useCallback(() => {
         if (selectedItems.size === 0) return;
 
@@ -49,6 +53,7 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         isMapModeAvailable,
         handleSwitchMode,
         toggleEditMode,
+        replaceSelection,
         toggleSelectItem,
         handleBulkDelete,
     }), [
@@ -59,6 +64,7 @@ export const useHistoryScreen = ({ deleteMultipleItems }: UseHistoryScreenOption
         isMapModeAvailable,
         handleSwitchMode,
         toggleEditMode,
+        replaceSelection,
         toggleSelectItem,
         handleBulkDelete,
     ]);

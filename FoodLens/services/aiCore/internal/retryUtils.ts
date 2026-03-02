@@ -15,7 +15,9 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const runWithAnalysisTimeout = <T>(promise: Promise<T>): Promise<T> => {
-  return withTimeout(promise, ANALYSIS_TIMEOUT_MS);
+export const runWithAnalysisTimeout = <T>(
+  promise: Promise<T>,
+  timeoutMs: number = ANALYSIS_TIMEOUT_MS
+): Promise<T> => {
+  return withTimeout(promise, timeoutMs);
 };
-

@@ -20,6 +20,7 @@ export default function HistoryListItemRenderer({
   onToggleCountry,
   isEditMode,
   selectedItems,
+  onToggleItem,
   onDelete,
   onFoodItemPress,
 }: HistoryListItemRendererProps) {
@@ -73,32 +74,38 @@ export default function HistoryListItemRenderer({
               hapticType="light"
               onPress={() => onFoodItemPress(item.data)}
             >
-              <View style={styles.itemMainContent} pointerEvents="none">
+              <View style={styles.itemMainContent}>
                 {isEditMode && (
-                  <View style={{ marginRight: 8 }}>
+                  <TouchableOpacity
+                    style={styles.selectionToggleButton}
+                    onPress={() => onToggleItem(item.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
                     {selectedItems.has(item.id) ? (
                       <CheckCircle size={22} color="#2563EB" fill="#EFF6FF" />
                     ) : (
                       <Circle size={22} color="#CBD5E1" />
                     )}
-                  </View>
+                  </TouchableOpacity>
                 )}
-                <View style={[styles.emojiBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                  <FoodThumbnail
-                    uri={item.data.imageUri}
-                    emoji={item.data.emoji}
-                    style={{ width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent' }}
-                    imageStyle={{ borderRadius: 12 }}
-                    fallbackFontSize={20}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-                    {item.data.name}
-                  </Text>
-                  <Text style={[styles.itemDate, { color: theme.textSecondary }]}>
-                    {formatCalendarDate(item.data.timestamp, locale)}
-                  </Text>
+                <View style={styles.itemBody} pointerEvents="none">
+                  <View style={[styles.emojiBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                    <FoodThumbnail
+                      uri={item.data.imageUri}
+                      emoji={item.data.emoji}
+                      style={{ width: '100%', height: '100%', borderRadius: 16, backgroundColor: 'transparent' }}
+                      imageStyle={{ borderRadius: 12 }}
+                      fallbackFontSize={20}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                      {item.data.name}
+                    </Text>
+                    <Text style={[styles.itemDate, { color: theme.textSecondary }]}>
+                      {formatCalendarDate(item.data.timestamp, locale)}
+                    </Text>
+                  </View>
                 </View>
               </View>
               <View style={[styles.statusIconBox, statusMeta.containerStyle]} pointerEvents="none">

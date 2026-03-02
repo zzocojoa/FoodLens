@@ -37,6 +37,14 @@ export const useHistoryListController = (props: HistoryListProps) => {
     [data, expandedCountries, filter, matchesFilter, isAllowedItemType]
   );
 
+  const selectableItemIds = useMemo(
+    () =>
+      flattenedData
+        .filter((item): item is FlattenedHistoryItem & { type: 'food-item' } => item.type === 'food-item')
+        .map((item) => item.id),
+    [flattenedData]
+  );
+
   const handleFoodItemPress = useCallback(
     (item: any) => {
       if (isEditMode) {
@@ -63,6 +71,7 @@ export const useHistoryListController = (props: HistoryListProps) => {
     colorScheme,
     theme,
     flattenedData,
+    selectableItemIds,
     hasSelection,
     handleFoodItemPress,
     keyExtractor,

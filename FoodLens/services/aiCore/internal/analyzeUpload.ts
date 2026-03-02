@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { ANALYSIS_TIMEOUT_MS } from '../constants_Logic';
+import { ANALYSIS_IMAGE_TIMEOUT_MS, ANALYSIS_TIMEOUT_MS } from '../constants_Logic';
 import { getAllergyString } from '../allergy_Logic';
 import { uploadWithRetry } from '../upload_Logic';
 import { ServerConfig } from '../serverConfig_Logic';
@@ -83,6 +83,9 @@ export const performMultipartAnalysisUpload = async ({
       },
     },
     3,
+    endpointPath === '/analyze' || endpointPath === '/analyze/smart'
+      ? ANALYSIS_IMAGE_TIMEOUT_MS
+      : ANALYSIS_TIMEOUT_MS,
     onProgress,
   );
 
@@ -107,7 +110,9 @@ export const rethrowTimeoutAsColdStartMessage = (
   customMessage: string,
 ): never => {
   if (error.message?.includes('timed out')) {
-    throw new Error(customMessage.replace('{timeout}', String(ANALYSIS_TIMEOUT_MS / 1000)));
+    const parsed = /after\s+(\d+)\s*ms/i.exec(String(error.message));
+    const timeoutSeconds = parsed ? Math.round(Number(parsed[1]) / 1000) : Math.round(ANALYSIS_TIMEOUT_MS / 1000);
+    throw new Error(customMessage.replace('{timeout}', String(timeoutSeconds)));
   }
   throw error;
 };

@@ -69,6 +69,35 @@ export const historyListStyles = StyleSheet.create({
 export const historyListViewStyles = StyleSheet.create({
   container: { flex: 1 },
   headerComponent: { marginBottom: 16 },
+  editSelectionBar: {
+    marginBottom: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editSelectionCount: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  editSelectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editSelectionButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  editSelectionButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   countryHeaderContainer: { marginBottom: 12 },
   regionTitle: {
     fontSize: 13,
@@ -88,6 +117,12 @@ export const historyListViewStyles = StyleSheet.create({
     borderWidth: 1,
   },
   itemMainContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  selectionToggleButton: {
+    marginRight: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  itemBody: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   emojiBox: {
     width: 44,
     height: 44,
