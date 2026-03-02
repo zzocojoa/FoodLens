@@ -5,9 +5,12 @@ import { LocationData } from './types';
 import { mapPlaceToLocationData } from './locationMapper_Logic';
 import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService_Logic';
 
-const LOCATION_TIMEOUT_MS = 3000;
+const LOCATION_TIMEOUT_MS = Number(process.env['EXPO_PUBLIC_LOCATION_TIMEOUT_MS'] || '7000');
+const REVERSE_GEOCODE_TIMEOUT_MS = 2500;
+const LAST_KNOWN_MAX_AGE_MS = 15 * 60 * 1000;
 const EXIF_DEFAULT_ISO = 'US';
 const EMPTY_LOCATION_TEXT = '';
+let lastResolvedLocation: LocationData | null = null;
 
 type ExifLocationInput = {
   GPSLatitude?: unknown;
@@ -58,39 +61,43 @@ export const getLocationData = async (): Promise<LocationData | null> => {
     const permission = await ensureForegroundLocationPermission();
     if (!permission.granted) return null;
 
+    const lastKnownPosition = await Location.getLastKnownPositionAsync({
+      maxAge: LAST_KNOWN_MAX_AGE_MS,
+      requiredAccuracy: 5000,
+    }).catch(() => null);
+
     const locationResult = await withTimeout(
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
       LOCATION_TIMEOUT_MS,
     );
 
-    if (!locationResult) return null;
+    const activePosition = locationResult ?? lastKnownPosition;
 
-    const { latitude, longitude } = locationResult.coords;
+    if (!activePosition) {
+      return lastResolvedLocation;
+    }
 
-    let mappedLocation: LocationData = {
-      latitude,
-      longitude,
-      country: null,
-      city: null,
-      district: EMPTY_LOCATION_TEXT,
-      subregion: EMPTY_LOCATION_TEXT,
-      isoCountryCode: undefined,
-      formattedAddress: EMPTY_LOCATION_TEXT,
-    };
+    const { latitude, longitude } = activePosition.coords;
+
+    let mappedLocation: LocationData = buildFallbackLocation(latitude, longitude);
 
     try {
-      const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (hasGeocodeResult(reverseGeocode)) {
+      const reverseGeocode = await withTimeout(
+        Location.reverseGeocodeAsync({ latitude, longitude }),
+        REVERSE_GEOCODE_TIMEOUT_MS,
+      );
+      if (Array.isArray(reverseGeocode) && hasGeocodeResult(reverseGeocode)) {
         mappedLocation = mapPlaceToLocationData(reverseGeocode[0], latitude, longitude);
       }
     } catch (error) {
       console.warn('Reverse geocode failed', error);
     }
 
+    lastResolvedLocation = mappedLocation;
     return mappedLocation;
   } catch (error) {
     console.error('getLocationData failed', error);
-    return null;
+    return lastResolvedLocation;
   }
 };
 
