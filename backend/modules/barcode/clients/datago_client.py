@@ -24,8 +24,21 @@ class DatagoClient:
     
     def __init__(self) -> None:
         self.api_key = os.getenv("DATAGO_API_KEY")
+        self.last_failure_kind: str | None = None
+        self.last_failure_message: str | None = None
         if not self.api_key:
             print("WARNING: DATAGO_API_KEY not found in environment variables.")
+
+    def _clear_failure(self) -> None:
+        self.last_failure_kind = None
+        self.last_failure_message = None
+
+    def _set_failure(self, *, kind: str, message: str) -> None:
+        self.last_failure_kind = kind
+        self.last_failure_message = message
+
+    def had_upstream_failure(self) -> bool:
+        return self.last_failure_kind is not None
 
     @staticmethod
     def _mask_api_key(url: str, api_key: str | None) -> str:
@@ -59,15 +72,23 @@ class DatagoClient:
         return rows[0]
 
     async def _request_service(self, url: str, service_id: str, log_prefix: str) -> JSONDict | None:
+        self._clear_failure()
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
+                        self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")
                         print(f"[Datago] {log_prefix}Error: Status {response.status}")
                         return None
                     data = await response.json()
+                    if service_id not in data and "RESULT" in data:
+                        result = data.get("RESULT", {})
+                        code = result.get("CODE")
+                        msg = result.get("MSG")
+                        self._set_failure(kind=f"result_{code or 'unknown'}", message=str(msg or "unknown"))
                     return self._extract_first_row(data, service_id)
         except Exception as error:
+            self._set_failure(kind="network", message=str(error))
             print(f"[Datago] {log_prefix}Request Failed: {error}")
             return None
 

@@ -1,4 +1,7 @@
-
+import json
+import os
+import time
+from pathlib import Path
 from .clients.datago_client_Logic import DatagoClient
 from .clients.openfoodfacts_client_Logic import OpenFoodFactsClient
 from .clients.public_data_client_Logic import PublicDataClient
@@ -20,6 +23,73 @@ class BarcodeService:
         self.datago_client = DatagoClient()
         self.off_client = OpenFoodFactsClient()
         self.public_data_client = PublicDataClient()
+        self.cache_ttl_seconds = max(300, int(os.getenv("BARCODE_LOOKUP_CACHE_TTL_SECONDS", "604800")))
+        self.cache_max_entries = max(100, int(os.getenv("BARCODE_LOOKUP_CACHE_MAX_ENTRIES", "1000")))
+        cache_path = os.getenv("BARCODE_LOOKUP_CACHE_PATH", "/tmp/foodlens_barcode_lookup_cache.json").strip()
+        self.cache_path = Path(cache_path) if cache_path else None
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._load_cache()
+
+    def _load_cache(self) -> None:
+        if self.cache_path is None or not self.cache_path.exists():
+            return
+        try:
+            loaded = json.loads(self.cache_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                self._cache = loaded
+        except Exception:
+            self._cache = {}
+
+    def _persist_cache(self) -> None:
+        if self.cache_path is None:
+            return
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.cache_path.write_text(json.dumps(self._cache, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            return
+
+    def _cache_get(self, barcode: str) -> Optional[Dict[str, Any]]:
+        entry = self._cache.get(barcode)
+        if not isinstance(entry, dict):
+            return None
+        stored_at = entry.get("stored_at")
+        data = entry.get("data")
+        if not isinstance(stored_at, (int, float)) or not isinstance(data, dict):
+            return None
+        if time.time() - float(stored_at) > self.cache_ttl_seconds:
+            self._cache.pop(barcode, None)
+            self._persist_cache()
+            return None
+        cached = dict(data)
+        source = str(cached.get("source") or "BARCODE_CACHE")
+        if not source.endswith("_CACHE"):
+            source = f"{source}_CACHE"
+        cached["source"] = source
+        return cached
+
+    def _cache_set(self, barcode: str, data: Dict[str, Any]) -> None:
+        if not barcode or not isinstance(data, dict):
+            return
+        self._cache[barcode] = {"stored_at": time.time(), "data": data}
+        if len(self._cache) > self.cache_max_entries:
+            ordered = sorted(
+                self._cache.items(),
+                key=lambda item: float(item[1].get("stored_at", 0)) if isinstance(item[1], dict) else 0,
+                reverse=True,
+            )
+            self._cache = dict(ordered[: self.cache_max_entries])
+        self._persist_cache()
+
+    @staticmethod
+    def _client_unavailable(client: Any) -> bool:
+        checker = getattr(client, "had_upstream_failure", None)
+        if callable(checker):
+            try:
+                return bool(checker())
+            except Exception:
+                return False
+        return False
 
     async def get_product_info(self, barcode: str) -> Optional[Dict[str, Any]]:
         """
@@ -32,7 +102,9 @@ class BarcodeService:
         # 1. Try Data.go.kr
         print(f"\n[BarcodeTrace] >>> Starting lookup for: {barcode}")
         print(f"[BarcodeTrace] Step 1: Querying Data.go.kr (C005)...")
-        korean_data = await self.datago_client.get_product_by_barcode(barcode)
+        clean_barcode = barcode.strip()
+        korean_data = await self.datago_client.get_product_by_barcode(clean_barcode)
+        datago_unavailable = self._client_unavailable(self.datago_client)
         
         if korean_data:
             print(f"[BarcodeTrace] ✓ Found in Data.go.kr (C005)")
@@ -77,18 +149,30 @@ class BarcodeService:
                             korean_data['enrichment_nutr'] = "PublicData"
 
             normalized = normalize_datago(korean_data)
+            self._cache_set(clean_barcode, normalized)
             print(f"[BarcodeTrace] Final Result (KR): {normalized.get('food_name')} ({normalized.get('calories')} kcal)")
             return normalized
             
         # 2. Try Open Food Facts
         print(f"[BarcodeTrace] Step 2: Not found in KR DB. Trying OpenFoodFacts...")
-        off_data = await self.off_client.get_product_by_barcode(barcode)
+        off_data = await self.off_client.get_product_by_barcode(clean_barcode)
+        off_unavailable = self._client_unavailable(self.off_client)
         
         if off_data:
             print(f"[BarcodeTrace] ✓ Found in OpenFoodFacts")
             normalized = normalize_off(off_data)
+            self._cache_set(clean_barcode, normalized)
             print(f"[BarcodeTrace] Final Result (OFF): {normalized.get('food_name')} ({normalized.get('calories')} kcal)")
             return normalized
-            
+
+        if datago_unavailable or off_unavailable:
+            cached = self._cache_get(clean_barcode)
+            if cached:
+                print(
+                    f"[BarcodeTrace] ⚠ Upstream unavailable. Serving cached product for {clean_barcode} "
+                    f"(source={cached.get('source')})"
+                )
+                return cached
+
         print(f"[BarcodeTrace] ✗ Barcode {barcode} not found in any DB.")
         return None
