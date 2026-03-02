@@ -795,6 +795,13 @@ class HistoryWriteRequest(BaseModel):
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
+def _parent_request_id(request: Request) -> str | None:
+    parent = request.headers.get("X-Parent-Request-Id")
+    if not parent:
+        return None
+    cleaned = parent.strip()
+    return cleaned or None
+
 
 def _auth_error_to_http_exception(error: AuthServiceError, request_id: str) -> HTTPException:
     detail = {
@@ -1966,13 +1973,15 @@ async def lookup_barcode(
     If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
     request_id = _request_id(request)
+    parent_request_id = _parent_request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/lookup/barcode", request_id=request_id)
     started_at = time.perf_counter()
     try:
         barcode_service = _service("barcode_service")
         logger.info(
-            "[Server] Lookup request request_id=%s barcode=%s allergy_info=%s locale=%s",
+            "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_info=%s locale=%s",
             request_id,
+            parent_request_id or "none",
             barcode,
             allergy_info,
             locale,

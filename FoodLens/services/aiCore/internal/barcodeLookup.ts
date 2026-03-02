@@ -65,11 +65,16 @@ const createRequestId = (): string => {
   return `bc-${Date.now().toString(36)}-${rand}`;
 };
 
+const createAttemptRequestId = (rootRequestId: string, attempt: number): string => {
+  const rand = Math.random().toString(16).slice(2, 6);
+  return `${rootRequestId}-a${attempt}-${rand}`;
+};
+
 const fetchBarcodeWithTimeout = async (
   url: string,
   formData: FormData,
   timeoutMs: number,
-  meta: { attempt: number; barcode: string; requestId: string }
+  meta: { attempt: number; barcode: string; rootRequestId: string; attemptRequestId: string }
 ): Promise<Response> => {
   const controller = new AbortController();
   const startedAt = Date.now();
@@ -82,7 +87,8 @@ const fetchBarcodeWithTimeout = async (
     console.log(`${TRACE_TAG} request:start`, {
       attempt: meta.attempt,
       barcode: maskBarcode(meta.barcode),
-      requestId: meta.requestId,
+      rootRequestId: meta.rootRequestId,
+      attemptRequestId: meta.attemptRequestId,
       timeoutMs,
     });
     return await fetch(url, {
@@ -90,7 +96,8 @@ const fetchBarcodeWithTimeout = async (
       body: formData,
       signal: controller.signal,
       headers: {
-        'X-Request-Id': meta.requestId,
+        'X-Request-Id': meta.attemptRequestId,
+        'X-Parent-Request-Id': meta.rootRequestId,
       },
     });
   } catch (error) {
@@ -98,7 +105,8 @@ const fetchBarcodeWithTimeout = async (
     console.warn(`${TRACE_TAG} request:error`, {
       attempt: meta.attempt,
       barcode: maskBarcode(meta.barcode),
-      requestId: meta.requestId,
+      rootRequestId: meta.rootRequestId,
+      attemptRequestId: meta.attemptRequestId,
       elapsedMs,
       didTimeout,
       name: error instanceof Error ? error.name : 'UnknownError',
@@ -119,7 +127,7 @@ export const lookupBarcodeWithAllergyContext = async (
   const activeServerUrl = await ServerConfig.getServerUrl();
   const allergyString = await getAllergyString();
   const locale = await resolveRequestLocale();
-  const requestId = createRequestId();
+  const rootRequestId = createRequestId();
   const maskedBarcode = maskBarcode(barcode);
   const cacheKey = buildBarcodeCacheKey({
     barcode,
@@ -131,7 +139,7 @@ export const lookupBarcodeWithAllergyContext = async (
   if (cached) {
     console.log(`${TRACE_TAG} cache_hit=true`, {
       barcode: maskedBarcode,
-      requestId,
+      rootRequestId,
     });
     return cached;
   }
@@ -148,25 +156,28 @@ export const lookupBarcodeWithAllergyContext = async (
     barcode: maskedBarcode,
     locale,
     serverHost: extractHost(activeServerUrl),
-    requestId,
+    rootRequestId,
     timeoutMs: BARCODE_LOOKUP_TIMEOUT_MS,
     maxRetries: BARCODE_LOOKUP_MAX_RETRIES,
     allergyItemCount: allergyString === 'None' ? 0 : allergyString.split(',').map((v) => v.trim()).filter(Boolean).length,
   });
 
   for (let attempt = 1; attempt <= BARCODE_LOOKUP_MAX_RETRIES; attempt++) {
+    const attemptRequestId = createAttemptRequestId(rootRequestId, attempt);
     const attemptStartedAt = Date.now();
     try {
       const response = await fetchBarcodeWithTimeout(url, formData, BARCODE_LOOKUP_TIMEOUT_MS, {
         attempt,
         barcode,
-        requestId,
+        rootRequestId,
+        attemptRequestId,
       });
       const elapsedMs = Date.now() - attemptStartedAt;
       console.log(`${TRACE_TAG} request:response`, {
         attempt,
         barcode: maskedBarcode,
-        requestId,
+        rootRequestId,
+        attemptRequestId,
         status: response.status,
         ok: response.ok,
         elapsedMs,
@@ -180,7 +191,8 @@ export const lookupBarcodeWithAllergyContext = async (
           console.warn(`${TRACE_TAG} request:non-retryable-status`, {
             attempt,
             barcode: maskedBarcode,
-            requestId,
+            rootRequestId,
+            attemptRequestId,
             status: response.status,
             code: detail?.code,
             upstreamRequestId: detail?.request_id,
@@ -195,7 +207,8 @@ export const lookupBarcodeWithAllergyContext = async (
         console.warn(`${TRACE_TAG} request:retryable-status`, {
           attempt,
           barcode: maskedBarcode,
-          requestId,
+          rootRequestId,
+          attemptRequestId,
           status: response.status,
           code: detail?.code,
           upstreamRequestId: detail?.request_id,
@@ -222,7 +235,8 @@ export const lookupBarcodeWithAllergyContext = async (
       console.log(`${TRACE_TAG} lookup:success`, {
         attempt,
         barcode: maskedBarcode,
-        requestId,
+        rootRequestId,
+        attemptRequestId,
         found: result.found,
       });
       return result;
@@ -234,7 +248,8 @@ export const lookupBarcodeWithAllergyContext = async (
       console.warn(`${TRACE_TAG} lookup:attempt-failed`, {
         attempt,
         barcode: maskedBarcode,
-        requestId,
+        rootRequestId,
+        attemptRequestId,
         elapsedMs,
         name: normalizedError.name,
         message: normalizedError.message,
@@ -252,7 +267,7 @@ export const lookupBarcodeWithAllergyContext = async (
       console.log(`${TRACE_TAG} lookup:retry-scheduled`, {
         attempt,
         barcode: maskedBarcode,
-        requestId,
+        rootRequestId,
         nextAttempt: attempt + 1,
         delayMs,
       });
