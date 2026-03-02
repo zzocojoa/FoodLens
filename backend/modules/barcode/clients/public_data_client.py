@@ -45,6 +45,19 @@ class PublicDataClient:
             return urllib.parse.unquote(raw_key)
         return raw_key
 
+    @staticmethod
+    def _mask_api_key(url: str, api_key: str | None) -> str:
+        if not api_key:
+            return url
+        return url.replace(api_key, "API_KEY_MASKED")
+
+    @staticmethod
+    def _safe_body_preview(raw_text: str, *, max_len: int = 180) -> str:
+        one_line = " ".join(raw_text.split())
+        if len(one_line) <= max_len:
+            return one_line
+        return f"{one_line[:max_len]}..."
+
     def _build_request_url(self, clean_name: str) -> str:
         params = {
             "FOOD_NM_KR": clean_name,
@@ -93,18 +106,27 @@ class PublicDataClient:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Manual URL construction to control serviceKey encoding exactly
                 full_url = self._build_request_url(clean_name)
+                safe_url = self._mask_api_key(full_url, self.api_key)
                 
                 async with session.get(full_url) as response:
                     if response.status != 200:
+                        raw_text = await response.text()
+                        preview = self._safe_body_preview(raw_text)
+                        content_type = response.headers.get("Content-Type")
                         if response.status in (401, 403):
                             self._auth_disabled_until = time.time() + self._auth_cooldown_seconds
                             print(
                                 "[PublicData] API Error: Unauthorized. "
                                 "Check KOREAN_FDA_API_KEY validity/permission. "
-                                f"cooldown={self._auth_cooldown_seconds}s"
+                                f"cooldown={self._auth_cooldown_seconds}s "
+                                f"status={response.status} content_type={content_type} "
+                                f"url={safe_url} body_preview={preview}"
                             )
                             return None
-                        print(f"[PublicData] API Error: Status {response.status}")
+                        print(
+                            f"[PublicData] API Error: status={response.status} "
+                            f"content_type={content_type} url={safe_url} body_preview={preview}"
+                        )
                         return None
                     
                     data = await response.json(content_type=None)
