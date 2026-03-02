@@ -135,7 +135,8 @@
   - [x] Manual Merge UI 1차 적용 (Profile/ProfileSheet 저장 시 충돌 선택 팝업)
   - [x] Queue 상태 모델에 `conflicted` 전이 경로 반영
   - [ ] History/Sync 상태 UI 성능 규칙(`list-performance-*`) 점검
-  - [ ] Phase 3 검증 보고서에 외부 스킬 적용/비적용 근거 기록
+  - [x] Phase 3 검증 보고서에 외부 스킬 적용/비적용 근거 기록
+    - `docs/roadmap/phase-3-sync-conflict-evidence.md`
 
 ## 10) 구현 상태 업데이트 (2026-03-02)
 
@@ -146,11 +147,10 @@
   - 충돌 해소 유틸 단위 테스트 추가
 - 남은 작업
   - History/분석 저장 충돌의 사용자 가시화 정책 확정
-  - 충돌 시나리오 E2E(Android/iOS) 증적 고정
   - observability 대시보드에 충돌 건수/해소율 패널 추가
 
 ---
 
-문서 버전: v1.2  
-연결 문서: [Master Plan](./master-plan.md), [Phase 2 실행표](./phase-2-cloud-db-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
+문서 버전: v1.3  
+연결 문서: [Master Plan](./master-plan.md), [Phase 2 실행표](./phase-2-cloud-db-execution.md), [Phase 3 증적](./phase-3-sync-conflict-evidence.md), [API 계약 기준서](../contracts/api-contracts.md)  
 최종 수정: 2026-03-02
