@@ -123,6 +123,16 @@ class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.get("PRDLST_NM"), "A")
 
+    async def test_public_data_build_url_accepts_decoded_service_key(self):
+        client = PublicDataClient(api_key="abc+def=")
+        built = client._build_request_url("신라면")
+        self.assertIn("serviceKey=abc%2Bdef%3D", built)
+
+    async def test_public_data_build_url_accepts_encoded_service_key(self):
+        client = PublicDataClient(api_key="abc%2Bdef%3D")
+        built = client._build_request_url("신라면")
+        self.assertIn("serviceKey=abc%2Bdef%3D", built)
+
 
 if __name__ == "__main__":
     unittest.main()
