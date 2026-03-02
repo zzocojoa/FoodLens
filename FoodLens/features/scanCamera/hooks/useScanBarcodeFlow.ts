@@ -35,6 +35,8 @@ const getRawImageUrl = (product: { raw_data?: Record<string, unknown> }): string
   return typeof candidate === 'string' ? candidate : null;
 };
 
+const BARCODE_ACCEPT_DEDUP_WINDOW_MS = 6_000;
+
 export const useScanBarcodeFlow = ({
   mode,
   scanned,
@@ -52,6 +54,7 @@ export const useScanBarcodeFlow = ({
 }: UseScanBarcodeFlowParams) => {
   const [consecutiveScans, setConsecutiveScans] = useState(0);
   const lastScannedData = useRef<string | null>(null);
+  const lastAcceptedBarcodeRef = useRef<{ value: string; at: number } | null>(null);
 
   const processBarcode = useCallback(
     async (barcode: string) => {
@@ -76,6 +79,10 @@ export const useScanBarcodeFlow = ({
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           const product = normalizeBarcodeIngredients(result.data) as AnalyzedData & {
             raw_data?: Record<string, unknown>;
+          };
+          product.raw_data = {
+            ...(product.raw_data || {}),
+            scanned_barcode: barcode,
           };
 
           const locationData = cachedLocation.current || createFallbackLocation(0, 0, 'US');
@@ -157,6 +164,19 @@ export const useScanBarcodeFlow = ({
       setConsecutiveScans(confidence.nextCount);
 
       if (confidence.action === 'accept') {
+        const now = Date.now();
+        const lastAccepted = lastAcceptedBarcodeRef.current;
+        if (
+          lastAccepted &&
+          lastAccepted.value === scanningResult.data &&
+          now - lastAccepted.at < BARCODE_ACCEPT_DEDUP_WINDOW_MS
+        ) {
+          return;
+        }
+        lastAcceptedBarcodeRef.current = {
+          value: scanningResult.data,
+          at: now,
+        };
         isProcessingRef.current = true;
         setScanned(true);
         void processBarcode(scanningResult.data);

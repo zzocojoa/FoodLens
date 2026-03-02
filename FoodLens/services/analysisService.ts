@@ -14,6 +14,7 @@ export type { AnalysisRecord } from './analysis/types_Structure';
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
 const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
+const BARCODE_SAVE_DEDUP_WINDOW_MS = 10_000;
 
 const historyServerPullInFlight = new Map<string, Promise<AnalysisRecord[] | null>>();
 const historyServerPullLastAt = new Map<string, number>();
@@ -137,6 +138,54 @@ const deleteHistoryItemsFromServer = async (
   }
 };
 
+const extractBarcodeMarker = (rawData: unknown): string | null => {
+  if (!rawData || typeof rawData !== 'object') return null;
+  const payload = rawData as Record<string, unknown>;
+  const candidates = [
+    payload['scanned_barcode'],
+    payload['barcode'],
+    payload['BAR_CD'],
+    payload['bar_cd'],
+    payload['code'],
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const normalized = candidate.trim();
+    if (normalized.length > 0) return normalized;
+  }
+  return null;
+};
+
+const isDuplicateRecentBarcodeSave = ({
+  latestRecord,
+  incomingData,
+  incomingTimestamp,
+}: {
+  latestRecord: AnalysisRecord;
+  incomingData: AnalyzedData;
+  incomingTimestamp: Date;
+}): boolean => {
+  if (incomingData.isBarcode !== true || latestRecord.isBarcode !== true) return false;
+  const elapsed = Math.abs(incomingTimestamp.getTime() - latestRecord.timestamp.getTime());
+  if (elapsed > BARCODE_SAVE_DEDUP_WINDOW_MS) return false;
+
+  const incomingBarcode = extractBarcodeMarker(incomingData.raw_data);
+  const latestBarcode = extractBarcodeMarker(latestRecord.raw_data);
+  if (incomingBarcode && latestBarcode) {
+    return incomingBarcode === latestBarcode;
+  }
+
+  const incomingName = incomingData.foodName?.trim() || '';
+  const latestName = latestRecord.foodName?.trim() || '';
+  if (!incomingName || !latestName || incomingName !== latestName) return false;
+
+  const incomingSource =
+    incomingData.nutrition?.dataSource || (incomingData.raw_data as Record<string, unknown> | undefined)?.['source'];
+  const latestSource =
+    latestRecord.nutrition?.dataSource || (latestRecord.raw_data as Record<string, unknown> | undefined)?.['source'];
+  return typeof incomingSource === 'string' && incomingSource === latestSource;
+};
+
 export const AnalysisService = {
     /**
      * Save a new analysis result to local storage
@@ -146,6 +195,19 @@ export const AnalysisService = {
             startPhase2SyncRuntime();
             const analyses = await getStoredAnalyses(userId);
             const finalDate = resolveRecordTimestamp(originalTimestamp);
+
+            const latest = analyses[0];
+            if (latest && isDuplicateRecentBarcodeSave({
+              latestRecord: latest,
+              incomingData: data,
+              incomingTimestamp: finalDate,
+            })) {
+              logger.info('[Dedupe] Skipping duplicate barcode save in short window', {
+                user_id: userId,
+                barcode: extractBarcodeMarker(data.raw_data) || 'unknown',
+              });
+              return latest;
+            }
 
             const newRecord: AnalysisRecord = {
                 ...data,
