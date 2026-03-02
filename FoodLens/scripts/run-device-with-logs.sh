@@ -96,7 +96,9 @@ start_ios_logs() {
     return
   fi
 
-  if ! xcrun devicectl help device 2>/dev/null | grep -q "log"; then
+  local device_help
+  device_help="$(xcrun devicectl help device 2>/dev/null || true)"
+  if ! printf '%s\n' "${device_help}" | grep -Eq '^[[:space:]]+log([[:space:]]|$)'; then
     echo "[run-with-logs] Current devicectl does not support 'device log stream'."
     echo "[run-with-logs] iOS runtime log capture is skipped on this Xcode toolchain."
     {
