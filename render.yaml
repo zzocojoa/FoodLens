@@ -89,6 +89,20 @@ services:
         sync: false
       - key: AUTH_EMAIL_SENDER_NAME
         value: FoodLens
+      - key: DATAGO_API_KEY
+        sync: false
+      - key: DATAGO_I2790_API_KEY
+        sync: false
+      - key: KOREAN_FDA_API_KEY
+        sync: false
+      - key: PUBLIC_DATA_AUTH_COOLDOWN_SECONDS
+        value: "900"
+      - key: BARCODE_LOOKUP_CACHE_TTL_SECONDS
+        value: "604800"
+      - key: BARCODE_LOOKUP_CACHE_MAX_ENTRIES
+        value: "1000"
+      - key: BARCODE_LOOKUP_CACHE_PATH
+        value: "/tmp/foodlens_barcode_lookup_cache.json"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
