@@ -22,6 +22,9 @@ class _FakeDatagoClient:
                 "RAWMTRL_NM": "밀가루, 팜유, 향신료",
                 "PRDLST_REPORT_NO": "197201540011",
             }
+        if self.mode == "no_data":
+            self.last_failure_kind = None
+            return None
         self.last_failure_kind = "network"
         return None
 
@@ -97,6 +100,31 @@ class BarcodeCacheFallbackTests(unittest.IsolatedAsyncioTestCase):
 
             result = await service.get_product_info("8801043026505")
             self.assertIsNone(result)
+
+    async def test_returns_cached_product_when_sources_miss_without_failure(self):
+        with TemporaryDirectory() as tmp_dir:
+            service = BarcodeService()
+            service.cache_path = Path(tmp_dir) / "barcode-cache.json"
+            service.cache_ttl_seconds = 60
+            service.cache_max_entries = 100
+            service._cache = {}
+
+            datago = _FakeDatagoClient()
+            off = _FakeOpenFoodFactsClient()
+            service.datago_client = datago
+            service.off_client = off
+            service.public_data_client = _FakePublicDataClient()
+
+            barcode = "8801043015981"
+            first = await service.get_product_info(barcode)
+            self.assertIsNotNone(first)
+            self.assertEqual(first.get("food_name"), "신라면")
+
+            datago.mode = "no_data"
+            second = await service.get_product_info(barcode)
+            self.assertIsNotNone(second)
+            self.assertEqual(second.get("food_name"), "신라면")
+            self.assertTrue(str(second.get("source", "")).endswith("_CACHE"))
 
 
 if __name__ == "__main__":

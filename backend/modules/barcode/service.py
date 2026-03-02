@@ -165,14 +165,19 @@ class BarcodeService:
             print(f"[BarcodeTrace] Final Result (OFF): {normalized.get('food_name')} ({normalized.get('calories')} kcal)")
             return normalized
 
-        if datago_unavailable or off_unavailable:
-            cached = self._cache_get(clean_barcode)
-            if cached:
+        cached = self._cache_get(clean_barcode)
+        if cached:
+            if datago_unavailable or off_unavailable:
                 print(
                     f"[BarcodeTrace] ⚠ Upstream unavailable. Serving cached product for {clean_barcode} "
                     f"(source={cached.get('source')})"
                 )
-                return cached
+            else:
+                print(
+                    f"[BarcodeTrace] ⚠ Source miss. Serving recent cached product for {clean_barcode} "
+                    f"(source={cached.get('source')})"
+                )
+            return cached
 
         print(f"[BarcodeTrace] ✗ Barcode {barcode} not found in any DB.")
         return None
