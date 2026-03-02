@@ -104,7 +104,7 @@ services:
       - key: BARCODE_LOOKUP_CACHE_PATH
         value: "/tmp/foodlens_barcode_lookup_cache.json"
       - key: BARCODE_UPSTREAM_TIMEOUT_SECONDS
-        value: "4"
+        value: "10"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
