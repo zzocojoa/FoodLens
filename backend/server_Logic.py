@@ -17,7 +17,6 @@ from .server import (
     _extract_bearer_token,
     _is_google_code_verification_enabled,
     _is_kakao_code_verification_enabled,
-    _is_label_429_returns_503_enabled,
     _is_label_cost_guardrail_enabled,
     _is_label_rollout_auto_enabled,
     _is_openapi_export_mode,

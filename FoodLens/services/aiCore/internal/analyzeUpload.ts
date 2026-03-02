@@ -6,6 +6,12 @@ import { ServerConfig } from '../serverConfig_Logic';
 import { resolveRequestLocale } from './requestLocale_Logic';
 import { assertAnalysisResponseContract } from '../contracts_Logic';
 import { compressForUpload } from './imageCompress_Logic';
+import {
+  buildImageCacheKey,
+  buildImageContentHash,
+  getAiCacheValue,
+  setAiCacheValue,
+} from '../cache_Logic';
 
 type ProgressCallback = (progress: number) => void;
 
@@ -14,6 +20,12 @@ type AnalyzeUploadParams = {
   imageUri: string;
   isoCountryCode: string;
   onProgress?: ProgressCallback;
+};
+
+const createRequestId = (endpointPath: AnalyzeUploadParams['endpointPath']): string => {
+  const suffix = Math.random().toString(16).slice(2, 10);
+  const endpoint = endpointPath.replace(/\//g, '-') || 'analyze';
+  return `${endpoint}-${Date.now().toString(36)}-${suffix}`;
 };
 
 export const performMultipartAnalysisUpload = async ({
@@ -28,6 +40,31 @@ export const performMultipartAnalysisUpload = async ({
 
   // Compress image before upload (resizes to 1536px, JPEG 80%)
   const compressedUri = await compressForUpload(imageUri);
+  const requestId = createRequestId(endpointPath);
+  let cacheKey: string | null = null;
+  try {
+    const imageHash = await buildImageContentHash(compressedUri);
+    cacheKey = buildImageCacheKey({
+      endpoint: endpointPath,
+      imageHash,
+      allergyInfo: allergyString,
+      locale,
+      isoCountryCode,
+    });
+    const cached = await getAiCacheValue<unknown>(cacheKey);
+    if (cached) {
+      console.log('[AI Cache] cache_hit=true', { endpointPath, request_id: requestId });
+      assertAnalysisResponseContract(cached, endpointPath);
+      return cached;
+    }
+  } catch (cacheError) {
+    console.warn('[AI Cache] key/hash read failed, skipping cache for this request', {
+      endpointPath,
+      request_id: requestId,
+      error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+    });
+    cacheKey = null;
+  }
 
   const uploadResult = await uploadWithRetry(
     `${activeServerUrl}${endpointPath}`,
@@ -36,6 +73,9 @@ export const performMultipartAnalysisUpload = async ({
       httpMethod: 'POST',
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       fieldName: 'file',
+      headers: {
+        'X-Request-Id': requestId,
+      },
       parameters: {
         allergy_info: allergyString,
         iso_country_code: isoCountryCode,
@@ -48,6 +88,17 @@ export const performMultipartAnalysisUpload = async ({
 
   const parsed = JSON.parse(uploadResult.body) as unknown;
   assertAnalysisResponseContract(parsed, endpointPath);
+  if (cacheKey) {
+    try {
+      await setAiCacheValue(cacheKey, parsed);
+    } catch (cacheWriteError) {
+      console.warn('[AI Cache] write failed', {
+        endpointPath,
+        request_id: requestId,
+        error: cacheWriteError instanceof Error ? cacheWriteError.message : String(cacheWriteError),
+      });
+    }
+  }
   return parsed;
 };
 

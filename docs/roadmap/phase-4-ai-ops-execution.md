@@ -115,8 +115,39 @@
 - 신규 인증 공급자 추가(Phase 1 범위)
 - 대규모 DB 구조 재설계(Phase 2 범위)
 
+## 9) 구현 기준 고정값 (2026-03-02)
+
+- CORS: Allowlist + LAN regex 허용
+  - `ANALYSIS_CORS_ALLOWED_ORIGINS`
+  - `ANALYSIS_CORS_ALLOW_ORIGIN_REGEX`
+- Rate limit 기본값
+  - `/analyze`: 15 rpm
+  - `/analyze/label`: 15 rpm
+  - `/analyze/smart`: 15 rpm
+  - `/lookup/barcode`: 30 rpm
+- 429 계약
+  - HTTP 429 + `Retry-After`
+  - `detail.code`: `API_RATE_LIMITED | UPSTREAM_RATE_LIMITED`
+  - `detail.request_id`, `detail.retry_after_seconds`
+- Timeout/Retry
+  - 서버: `GEMINI_RETRY_TIMEOUT_SECONDS=15`
+  - 모바일: `ANALYSIS_TIMEOUT_MS=15000`, 재시도 최대 3회
+- On-device cache
+  - 이미지/바코드 모두 적용
+  - TTL 24h (`EXPO_PUBLIC_AI_CACHE_TTL_SECONDS=86400`)
+  - LRU 200 entries
+
+## 10) Phase 4 완료 증적 체크
+
+- [ ] Render 로그에 request_id 기반 시작/완료/오류 추적 가능
+- [ ] 429 유도 시 `Retry-After`와 표준 detail 응답 확인
+- [ ] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
+- [ ] label 공급자 429가 API 429로 통일되는지 확인
+- [ ] 모바일 로그에 `cache_hit=true` 확인
+- [ ] 백엔드/모바일 테스트 PASS 로그 첨부
+
 ---
 
-문서 버전: v1.0  
+문서 버전: v1.1  
 연결 문서: [Master Plan](./master-plan.md), [Phase 3 실행표](./phase-3-sync-conflict-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
-최종 수정: 2026-02-19
+최종 수정: 2026-03-02

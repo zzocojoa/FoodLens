@@ -3,6 +3,7 @@ from typing import Final
 
 LABEL_PROMPT_VERSION: Final[str] = "label-v1.1-locale-country"
 LABEL_2PASS_PROMPT_VERSION: Final[str] = "label-v1.2-2pass-locale-country"
+ANALYSIS_PROMPT_VERSION: Final[str] = "food-v3.2-context-engineered"
 
 ANALYSIS_PROMPT_TEMPLATE: Final[str] = """
         # [System Prompt: Food Lens Expert Engine v3.2 - Context Engineered]

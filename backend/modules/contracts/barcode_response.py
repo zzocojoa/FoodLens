@@ -58,3 +58,4 @@ class BarcodeLookupResponseContract(BaseModel):
     data: Optional[BarcodeDataContract] = None
     message: Optional[str] = None
     error: Optional[str] = None
+    request_id: Optional[str] = None

@@ -11,6 +11,7 @@ import tempfile
 from backend.modules.analyst_core.allergen_utils_Logic import format_allergens_for_prompt
 from backend.modules.analyst_core.postprocess_Logic import enrich_with_nutrition
 from backend.modules.analyst_core.prompts_Structure import (
+    ANALYSIS_PROMPT_VERSION,
     LABEL_2PASS_PROMPT_VERSION,
     LABEL_PROMPT_VERSION,
 )
@@ -431,6 +432,7 @@ class FoodAnalyst:
             
             # Attach model info for debugging/verification
             result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+            result["prompt_version"] = ANALYSIS_PROMPT_VERSION
             
             return result
             
@@ -450,7 +452,10 @@ class FoodAnalyst:
                 user_msg = "이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요."
             
             # Return unified fallback schema (reuse existing method)
-            return self._get_safe_fallback_response(user_msg)
+            fallback = self._get_safe_fallback_response(user_msg)
+            fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+            fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+            return fallback
 
     def analyze_barcode_ingredients(self, ingredients: list, allergy_info: str = "None") -> dict:
         """

@@ -70,12 +70,11 @@ class Label429PolicyTests(unittest.TestCase):
         self.assertEqual(result, {"ok": True})
         self.assertEqual(model.generate_content.call_count, 3)
 
-    def test_429_returns_503_when_flag_enabled(self):
+    def test_429_returns_standard_429_response(self):
         with (
             patch.dict(
                 os.environ,
                 {
-                    "LABEL_429_RETURNS_503_ENABLED": "1",
                     "LABEL_COST_GUARDRAIL_ENABLED": "1",
                 },
                 clear=False,
@@ -93,14 +92,17 @@ class Label429PolicyTests(unittest.TestCase):
                 data={"allergy_info": "None", "locale": "ko-KR"},
             )
 
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers.get("Retry-After"), "15")
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "UPSTREAM_RATE_LIMITED")
+        self.assertIn("request_id", detail)
 
     def test_non_chargeable_result_skips_cost_record(self):
         with (
             patch.dict(
                 os.environ,
                 {
-                    "LABEL_429_RETURNS_503_ENABLED": "0",
                     "LABEL_COST_GUARDRAIL_ENABLED": "1",
                 },
                 clear=False,
@@ -123,7 +125,7 @@ class Label429PolicyTests(unittest.TestCase):
             period_key = service._period_key()
             usage = storage.get(period_key)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 429)
         self.assertEqual(usage.total_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 0)
 

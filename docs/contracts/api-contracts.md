@@ -49,6 +49,7 @@
   - locale, allergy context
 - 출력(핵심):
   - 상품명/성분/안전도/요약
+  - `request_id`
 - 비개발자 설명:
   - 바코드 번호로 공공/사내 데이터와 AI를 조합해 결과를 반환합니다.
 
@@ -155,6 +156,15 @@
 - timeout: 재시도 정책 제한, 사용자에게 재시도 안내
 - 계약 불일치: 즉시 롤백 또는 server-side compatibility patch
 
+### 429 표준 에러 계약 (Phase 4)
+- HTTP Status: `429`
+- Header: `Retry-After: <seconds>`
+- Body:
+  - `detail.message`
+  - `detail.code` (`API_RATE_LIMITED` | `UPSTREAM_RATE_LIMITED`)
+  - `detail.request_id`
+  - `detail.retry_after_seconds`
+
 ## 8) QA 체크리스트 (릴리스 전)
 - 라벨/음식/바코드 응답에 필수 필드 누락이 없는가?
 - `request_id`로 로그 추적이 가능한가?
@@ -163,6 +173,6 @@
 
 ---
 
-문서 버전: v1.2  
+문서 버전: v1.3  
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-02-21
+최종 수정: 2026-03-02

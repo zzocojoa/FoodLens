@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 import base64
@@ -50,6 +51,14 @@ from backend.modules.ops.rollout_control_Structure import (
     KpiThresholds,
     RolloutConfig,
 )
+from backend.modules.ops.api_edge_guard_Logic import (
+    InMemorySlidingWindowRateLimiter,
+    build_cors_config_from_env,
+    build_rate_limit_http_exception,
+    build_rate_limit_settings_from_env,
+    build_rate_limit_subject,
+    extract_client_ip,
+)
 from backend.modules.quality.label_quality_gate_Logic import evaluate_label_image_quality
 from backend.modules.runtime_guardrails_Structure import ErrorCode
 from backend.modules.runtime_guardrails_Logic import (
@@ -66,6 +75,16 @@ load_environment()
 log_environment_debug()
 
 app = FastAPI()
+_cors_config = build_cors_config_from_env()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_config.allow_origins,
+    allow_origin_regex=_cors_config.allow_origin_regex,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-Id", "X-Device-Id"],
+    expose_headers=["Retry-After"],
+)
 
 logger = logging.getLogger("foodlens.api")
 if not logging.getLogger().handlers:
@@ -109,10 +128,6 @@ def _env_str(name: str, default: str) -> str:
 
 def _is_label_rollout_auto_enabled() -> bool:
     return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
-
-
-def _is_label_429_returns_503_enabled() -> bool:
-    return os.environ.get("LABEL_429_RETURNS_503_ENABLED", "0").strip() == "1"
 
 
 @app.on_event("startup")
@@ -181,6 +196,20 @@ async def _startup() -> None:
         deletion_storage = InMemoryDeletionQueueStorage()
     app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
     app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, NoOpDeletionHandler())
+    rate_limit_settings = build_rate_limit_settings_from_env()
+    if rate_limit_settings.enabled:
+        app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
+            endpoint_limits_per_minute=rate_limit_settings.endpoint_limits_per_minute,
+            window_seconds=rate_limit_settings.window_seconds,
+        )
+        logger.info(
+            "[RateLimit] enabled window_seconds=%d limits=%s",
+            rate_limit_settings.window_seconds,
+            rate_limit_settings.endpoint_limits_per_minute,
+        )
+    else:
+        app.state.analysis_rate_limiter = None
+        logger.info("[RateLimit] disabled")
 
 
 def _service(name: str) -> Any:
@@ -822,6 +851,54 @@ def _extract_bearer_token(request: Request) -> str | None:
         return None
     token = header[len(prefix) :].strip()
     return token or None
+
+
+def _resolve_rate_limit_subject(request: Request) -> tuple[str, str | None]:
+    access_token = _extract_bearer_token(request)
+    user_id: str | None = None
+    if access_token:
+        auth_service = getattr(app.state, "auth_service", None)
+        if auth_service is not None:
+            try:
+                user = auth_service.authenticate_access_token(access_token=access_token)
+                user_id = user.user_id
+            except AuthServiceError:
+                user_id = None
+
+    device_id = (request.headers.get("X-Device-Id") or "").strip() or None
+    client_ip = extract_client_ip(request)
+    subject = build_rate_limit_subject(
+        user_id=user_id,
+        device_id=device_id,
+        client_ip=client_ip,
+    )
+    return subject, user_id
+
+
+def _apply_analysis_rate_limit(*, request: Request, endpoint: str, request_id: str) -> None:
+    limiter = getattr(app.state, "analysis_rate_limiter", None)
+    if limiter is None:
+        return
+
+    subject, user_id = _resolve_rate_limit_subject(request)
+    decision = limiter.evaluate(endpoint=endpoint, subject=subject)
+    if decision.allowed:
+        return
+
+    logger.warning(
+        "[RateLimit] blocked request_id=%s endpoint=%s subject=%s user_id=%s retry_after_seconds=%d",
+        request_id,
+        endpoint,
+        subject,
+        user_id or "unknown",
+        decision.retry_after_seconds,
+    )
+    raise build_rate_limit_http_exception(
+        request_id=request_id,
+        retry_after_seconds=decision.retry_after_seconds,
+        code="API_RATE_LIMITED",
+        message="Too many requests. Please retry shortly.",
+    )
 
 
 def _resolve_authenticated_user(request: Request, request_id: str):
@@ -1584,11 +1661,16 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
 
 @app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(
+    request: Request,
     file: UploadFile = File(...), 
     allergy_info: str = Form("None"),
     iso_country_code: str = Form("US"),
     locale: str | None = Form(None),
 ):
+    request_id = _request_id(request)
+    _apply_analysis_rate_limit(request=request, endpoint="/analyze", request_id=request_id)
+    started_at = time.perf_counter()
+
     async def _operation():
         analyst = _service("analyst")
         contents = await file.read()
@@ -1602,11 +1684,23 @@ async def analyze_food(
             prompt_country_code,
         )
 
-    return await run_with_error_policy(
+    result = await run_with_error_policy(
         endpoint="/analyze",
         policy=EndpointErrorPolicy(code=ErrorCode.ANALYZE_FAILED, status_code=500, user_message="Analyze failed"),
         operation=_operation,
+        request_id=request_id,
     )
+    if isinstance(result, dict):
+        result["request_id"] = request_id
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "[Server] Analyze completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
+        request_id,
+        result.get("prompt_version") if isinstance(result, dict) else None,
+        result.get("used_model") if isinstance(result, dict) else None,
+        elapsed_ms,
+    )
+    return result
 
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
@@ -1619,7 +1713,8 @@ async def analyze_label(
     """
     Perform OCR nutrition analysis on a label image.
     """
-    request_id = request.headers.get("X-Request-Id") or os.urandom(4).hex()
+    request_id = _request_id(request)
+    _apply_analysis_rate_limit(request=request, endpoint="/analyze/label", request_id=request_id)
     total_started_at = time.perf_counter()
 
     async def _operation():
@@ -1751,22 +1846,22 @@ async def analyze_label(
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
         result["request_id"] = request_id
 
-        if label_error_type == "quota_exhausted_429" and _is_label_429_returns_503_enabled():
+        if label_error_type == "quota_exhausted_429":
+            retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
             logger.warning(
-                "[Server] Label analysis quota-429 request_id=%s returning=503 elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+                "[Server] Label analysis quota-429 request_id=%s returning=429 retry_after_seconds=%d elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
                 request_id,
+                retry_after_seconds,
                 preprocess_elapsed_ms,
                 extract_elapsed_ms,
                 assess_elapsed_ms,
                 total_elapsed_ms,
             )
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "message": "Label analysis is temporarily rate-limited. Please retry shortly.",
-                    "code": ErrorCode.ANALYZE_LABEL_FAILED,
-                    "request_id": request_id,
-                },
+            raise build_rate_limit_http_exception(
+                request_id=request_id,
+                retry_after_seconds=retry_after_seconds,
+                code="UPSTREAM_RATE_LIMITED",
+                message="Label analysis is temporarily rate-limited. Please retry shortly.",
             )
 
         logger.info(
@@ -1803,10 +1898,12 @@ async def analyze_label(
             user_message="Label analysis failed",
         ),
         operation=_operation,
+        request_id=request_id,
     )
 
 @app.post("/analyze/smart", response_model=AnalysisResponseContract)
 async def analyze_smart(
+    request: Request,
     file: UploadFile = File(...),
     allergy_info: str = Form("None"),
     iso_country_code: str = Form("US"),
@@ -1816,9 +1913,13 @@ async def analyze_smart(
     Smart routing endpoint for Gallery uploads.
     Classifies image (Food vs Label) and routes to specific analysis.
     """
+    request_id = _request_id(request)
+    _apply_analysis_rate_limit(request=request, endpoint="/analyze/smart", request_id=request_id)
+    started_at = time.perf_counter()
+
     async def _operation():
         smart_router = _service("smart_router")
-        logger.info("[Server] Smart analysis request received.")
+        logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
         contents = await file.read()
         image = await run_in_threadpool(decode_upload_to_image, contents)
 
@@ -1830,7 +1931,7 @@ async def analyze_smart(
             locale=locale,
         )
 
-    return await run_with_error_policy(
+    result = await run_with_error_policy(
         endpoint="/analyze/smart",
         policy=EndpointErrorPolicy(
             code=ErrorCode.ANALYZE_SMART_FAILED,
@@ -1838,7 +1939,19 @@ async def analyze_smart(
             user_message="Smart analysis failed",
         ),
         operation=_operation,
+        request_id=request_id,
     )
+    if isinstance(result, dict):
+        result["request_id"] = request_id
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "[Server] Smart analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
+        request_id,
+        result.get("prompt_version") if isinstance(result, dict) else None,
+        result.get("used_model") if isinstance(result, dict) else None,
+        elapsed_ms,
+    )
+    return result
 
 @app.post("/lookup/barcode", response_model=BarcodeLookupResponseContract)
 async def lookup_barcode(
@@ -1852,7 +1965,8 @@ async def lookup_barcode(
     Full SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)
     If ingredients are found and user has allergies, run Gemini allergen analysis.
     """
-    request_id = request.headers.get("X-Request-Id") or os.urandom(4).hex()
+    request_id = _request_id(request)
+    _apply_analysis_rate_limit(request=request, endpoint="/lookup/barcode", request_id=request_id)
     started_at = time.perf_counter()
     try:
         barcode_service = _service("barcode_service")
@@ -1878,7 +1992,7 @@ async def lookup_barcode(
                 request_id,
                 int((time.perf_counter() - started_at) * 1000),
             )
-            return {"found": False, "message": "Product not found in any database"}
+            return {"found": False, "message": "Product not found in any database", "request_id": request_id}
         
         # Run allergen analysis if ingredients exist and user has allergies
         if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
@@ -1911,7 +2025,7 @@ async def lookup_barcode(
             request_id,
             int((time.perf_counter() - started_at) * 1000),
         )
-        return {"found": True, "data": result}
+        return {"found": True, "data": result, "request_id": request_id}
         
     except HTTPException:
         raise
