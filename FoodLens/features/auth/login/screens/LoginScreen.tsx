@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -53,6 +54,22 @@ export default function LoginScreen() {
     handleSubmit,
     handleOAuthSignIn,
   } = useLoginScreen();
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const onBackPress = () => {
+      BackHandler.exitApp();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
