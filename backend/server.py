@@ -1666,6 +1666,33 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
         raise _auth_error_to_http_exception(error, request_id) from error
 
 
+@app.delete("/me/history/{history_item_id}")
+async def delete_me_history(history_item_id: str, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        deleted = auth_service.delete_history_item(
+            user_id=user.user_id,
+            history_item_id=history_item_id,
+        )
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="DELETE",
+            path="/me/history",
+        )
+        return {"deleted": deleted, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
 @app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(
     request: Request,

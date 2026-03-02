@@ -177,6 +177,39 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(len(history_b.json()["history"]), 1)
             self.assertNotEqual(history_a.json()["history"][0]["user_id"], history_b.json()["history"][0]["user_id"])
 
+    def test_history_delete_by_entry_id_is_idempotent(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase2-history-delete"))
+            headers = _auth_headers(session["access_token"])
+
+            post_history = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "entry-delete-1",
+                        "foodName": "Delete Target",
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    },
+                    "idempotency_key": "idem-history-delete-1",
+                },
+                headers=headers,
+            )
+            self.assertEqual(post_history.status_code, 200)
+
+            first_delete = client.delete("/me/history/entry-delete-1", headers=headers)
+            self.assertEqual(first_delete.status_code, 200)
+            first_payload = first_delete.json()
+            self.assertTrue(first_payload["deleted"])
+            self.assertIn("request_id", first_payload)
+
+            second_delete = client.delete("/me/history/entry-delete-1", headers=headers)
+            self.assertEqual(second_delete.status_code, 200)
+            self.assertFalse(second_delete.json()["deleted"])
+
+            history = client.get("/me/history", headers=headers)
+            self.assertEqual(history.status_code, 200)
+            self.assertEqual(history.json()["history"], [])
+
     def test_me_update_conflict_returns_409_with_server_payload(self):
         with TestClient(app) as client:
             session = self._signup_and_verify(client, email=self._unique_email("phase3-conflict"))

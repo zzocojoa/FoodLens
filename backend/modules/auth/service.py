@@ -1273,6 +1273,44 @@ class InMemoryAuthSessionService:
             self._persist_state_unlocked()
             return payload
 
+    def delete_history_item(self, *, user_id: str, history_item_id: str) -> bool:
+        with self._lock:
+            records = self._history_by_user_id.get(user_id)
+            if records is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            normalized_history_id = history_item_id.strip()
+            if not normalized_history_id:
+                return False
+
+            target_index = -1
+            for index, record in enumerate(records):
+                entry_id = record.entry.get("id") if isinstance(record.entry, dict) else None
+                if record.history_id == normalized_history_id or entry_id == normalized_history_id:
+                    target_index = index
+                    break
+
+            if target_index < 0:
+                return False
+
+            deleted = records.pop(target_index)
+            user_map = self._history_idempotency_by_user_id.get(user_id)
+            if user_map:
+                # Clear the direct key first, then defensive cleanup by value.
+                if deleted.idempotency_key:
+                    user_map.pop(deleted.idempotency_key, None)
+                stale_keys = [key for key, value in user_map.items() if value == deleted.history_id]
+                for key in stale_keys:
+                    user_map.pop(key, None)
+
+            self._persist_state_unlocked()
+            return True
+
     def _create_user(
         self,
         *,

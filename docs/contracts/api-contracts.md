@@ -120,7 +120,7 @@
 ### B. 사용자 데이터(Profile/Settings/History)
 - `GET /me/profile`, `PUT /me/profile`
 - `GET /me/allergies`, `PUT /me/allergies`
-- `GET /me/history`, `POST /me/history`
+- `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
 - `GET /me/settings`, `PUT /me/settings`
 
 동기화 충돌(Phase 3):
@@ -135,6 +135,8 @@
 비개발자 설명:
 - `me`는 "지금 로그인한 사용자"를 뜻합니다.
 - 타인의 데이터는 접근할 수 없어야 합니다.
+- `/me/history/{history_item_id}` 삭제는 idempotent입니다.
+  - 이미 삭제된 항목이거나 없는 항목이어도 `200` + `{"deleted": false}`를 반환할 수 있습니다.
 
 ## 5) 버전/변경 정책
 - 계약 버전 표기:

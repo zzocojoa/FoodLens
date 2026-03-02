@@ -41,6 +41,7 @@ jest.mock('../phase2Api_Logic', () => ({
     putAllergies: jest.fn(),
     putSettings: jest.fn(),
     postHistory: jest.fn(),
+    deleteHistory: jest.fn(),
   },
   Phase2SyncApiError: class MockPhase2SyncApiError extends Error {
     code: string;

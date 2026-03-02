@@ -191,4 +191,15 @@ export const Phase2Api = {
     });
     return { historyItem: data.history_item, requestId };
   },
+
+  async deleteHistory(
+    historyItemId: string
+  ): Promise<{ deleted: boolean; requestId: string }> {
+    const encodedHistoryId = encodeURIComponent(historyItemId);
+    const { data, requestId } = await authenticatedRequest<{ deleted?: boolean }>(
+      `/me/history/${encodedHistoryId}`,
+      { method: 'DELETE' }
+    );
+    return { deleted: data.deleted !== false, requestId };
+  },
 };
