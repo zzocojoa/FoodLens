@@ -1,4 +1,5 @@
 import aiohttp
+import json
 import os
 from typing import Any, Final
 
@@ -80,7 +81,22 @@ class DatagoClient:
                         self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")
                         print(f"[Datago] {log_prefix}Error: Status {response.status}")
                         return None
-                    data = await response.json()
+                    # Some FoodSafety endpoints return JSON payloads with text/html content-type.
+                    # Parse text manually as a fallback before marking it as failure.
+                    raw_text = await response.text()
+                    try:
+                        data = json.loads(raw_text)
+                    except Exception:
+                        preview = raw_text[:120].replace("\n", " ")
+                        self._set_failure(
+                            kind="invalid_json",
+                            message=f"content_type={response.headers.get('Content-Type')} preview={preview}",
+                        )
+                        print(
+                            f"[Datago] {log_prefix}Invalid JSON payload: "
+                            f"content_type={response.headers.get('Content-Type')} preview={preview}"
+                        )
+                        return None
                     if service_id not in data and "RESULT" in data:
                         result = data.get("RESULT", {})
                         code = result.get("CODE")

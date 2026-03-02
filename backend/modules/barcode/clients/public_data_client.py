@@ -1,5 +1,6 @@
 import aiohttp
 import os
+import time
 import urllib.parse
 from typing import Any, Final
 
@@ -17,10 +18,16 @@ class PublicDataClient:
     DEFAULT_PAGE_NO: Final[int] = 1
     DEFAULT_SERVING_SIZE: Final[str] = "100g"
     DEFAULT_DATA_SOURCE: Final[str] = "FoodNutritionDB_Unified"
+    DEFAULT_AUTH_COOLDOWN_SECONDS: Final[int] = 900
 
     def __init__(self, api_key: str | None = None):
         raw_key = api_key or os.getenv("KOREAN_FDA_API_KEY")
         self.api_key = self._decode_api_key(raw_key)
+        self._auth_disabled_until: float = 0.0
+        self._auth_cooldown_seconds = max(
+            60,
+            int(os.getenv("PUBLIC_DATA_AUTH_COOLDOWN_SECONDS", str(self.DEFAULT_AUTH_COOLDOWN_SECONDS))),
+        )
 
     @staticmethod
     def _decode_api_key(raw_key: str | None) -> str | None:
@@ -59,6 +66,15 @@ class PublicDataClient:
         if not self.api_key or not food_name:
             return None
 
+        now_ts = time.time()
+        if self._auth_disabled_until > now_ts:
+            remaining = int(self._auth_disabled_until - now_ts)
+            print(
+                f"[PublicData] Skipping request due to previous auth failure. "
+                f"retry_in={remaining}s"
+            )
+            return None
+
         clean_name = food_name.strip()
         
         # Parameters match FoodNtrCpntDbInfo02
@@ -73,6 +89,14 @@ class PublicDataClient:
                 
                 async with session.get(full_url) as response:
                     if response.status != 200:
+                        if response.status in (401, 403):
+                            self._auth_disabled_until = time.time() + self._auth_cooldown_seconds
+                            print(
+                                "[PublicData] API Error: Unauthorized. "
+                                "Check KOREAN_FDA_API_KEY validity/permission. "
+                                f"cooldown={self._auth_cooldown_seconds}s"
+                            )
+                            return None
                         print(f"[PublicData] API Error: Status {response.status}")
                         return None
                     
