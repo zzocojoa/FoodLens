@@ -11,6 +11,7 @@ type ProfileIdentitySectionProps = {
     image: string;
     avatars: string[];
     onChangeName: (value: string) => void;
+    onClearName: () => void;
     onPickCamera: () => void;
     onPickLibrary: () => void;
     onSelectPreset: (url: string) => void;
@@ -23,6 +24,7 @@ export default function ProfileIdentitySection({
     image,
     avatars,
     onChangeName,
+    onClearName,
     onPickCamera,
     onPickLibrary,
     onSelectPreset,
@@ -55,7 +57,15 @@ export default function ProfileIdentitySection({
                         placeholder="Enter your name"
                         placeholderTextColor={theme.textSecondary}
                     />
-                    <Edit3 size={16} color={theme.textSecondary} style={{ position: 'absolute', right: 20 }} />
+                    <HapticTouchableOpacity
+                        onPress={onClearName}
+                        style={{ position: 'absolute', right: 20, padding: 4 }}
+                        hapticType="selection"
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear display name"
+                    >
+                        <Edit3 size={16} color={theme.textSecondary} />
+                    </HapticTouchableOpacity>
                 </View>
             </View>
 

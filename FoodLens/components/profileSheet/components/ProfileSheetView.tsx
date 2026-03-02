@@ -121,6 +121,7 @@ export default function ProfileSheetView({
             image={state.image}
             avatars={state.avatars}
             onChangeName={state.setName}
+            onClearName={() => state.setName('')}
             onPickCamera={() => void state.pickImage(true)}
             onPickLibrary={() => void state.pickImage(false)}
             onSelectPreset={state.setImage}

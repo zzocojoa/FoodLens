@@ -14,6 +14,7 @@ import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
+const DASHBOARD_BACKGROUND_REFRESH_MS = 5000;
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
@@ -41,12 +42,17 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const [activeModal, setActiveModal] = useState<HomeModalType>('NONE');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadInFlightRef = useRef(false);
 
   useEffect(() => {
     setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
   }, [allHistoryCache, selectedDate]);
 
   const loadDashboardData = useCallback(async () => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+    loadInFlightRef.current = true;
     try {
       const snapshot = await fetchHomeDashboardData(getCurrentUserId());
       const { recentData: fetchedRecent, allHistory, profile, weeklyStats, safeCount } = snapshot;
@@ -64,15 +70,23 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       }
     } catch (error) {
       console.error(error);
+    } finally {
+      loadInFlightRef.current = false;
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       const task = InteractionManager.runAfterInteractions(() => {
-        loadDashboardData();
+        void loadDashboardData();
       });
-      return () => task.cancel();
+      const intervalId = setInterval(() => {
+        void loadDashboardData();
+      }, DASHBOARD_BACKGROUND_REFRESH_MS);
+      return () => {
+        task.cancel();
+        clearInterval(intervalId);
+      };
     }, [loadDashboardData]),
   );
 
