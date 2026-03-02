@@ -13,6 +13,10 @@ export type { AnalysisRecord } from './analysis/types_Structure';
 
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
+const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
+
+const historyServerPullInFlight = new Map<string, Promise<AnalysisRecord[] | null>>();
+const historyServerPullLastAt = new Map<string, number>();
 
 const historyMigrationMarkerKey = (userId: string): string => `${HISTORY_MIGRATION_MARKER_PREFIX}${userId}`;
 const historyDeleteTombstoneKey = (userId: string): string => `${HISTORY_DELETE_TOMBSTONE_PREFIX}${userId}`;
@@ -26,30 +30,52 @@ const saveHistoryDeleteSet = async (userId: string, deleteSet: Set<string>): Pro
   await SafeStorage.set(historyDeleteTombstoneKey(userId), [...deleteSet]);
 };
 
-const syncHistoryFromServer = async (userId: string, local: AnalysisRecord[]): Promise<AnalysisRecord[] | null> => {
-  try {
-    const deleteSet = await getHistoryDeleteSet(userId);
-    const remote = await Phase2Api.getHistory();
-    const filteredRemote = remote.history.filter((item) => {
-      const remoteEntryId =
-        typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
-      return !deleteSet.has(remoteEntryId);
-    });
-    const merged = mergeRemoteHistory(local, filteredRemote);
-    await saveAnalyses(userId, merged);
-    return merged;
-  } catch (error) {
-    const apiError = error instanceof Phase2SyncApiError ? error : null;
-    if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
-      return null;
-    }
-    logger.warn('[Phase2Sync] history pull failed', {
-      request_id: apiError?.requestId || 'unknown',
-      user_id: userId,
-      code: apiError?.code || 'PHASE2_HISTORY_PULL_FAILED',
-    });
+const syncHistoryFromServer = async (
+  userId: string,
+  local: AnalysisRecord[],
+  options: { force?: boolean } = {}
+): Promise<AnalysisRecord[] | null> => {
+  const force = options.force === true;
+  const activePull = historyServerPullInFlight.get(userId);
+  if (activePull) {
+    return activePull;
+  }
+
+  const lastPulledAt = historyServerPullLastAt.get(userId);
+  if (!force && typeof lastPulledAt === 'number' && Date.now() - lastPulledAt < HISTORY_SERVER_PULL_COOLDOWN_MS) {
     return null;
   }
+  historyServerPullLastAt.set(userId, Date.now());
+
+  const pullPromise = (async (): Promise<AnalysisRecord[] | null> => {
+    try {
+      const deleteSet = await getHistoryDeleteSet(userId);
+      const remote = await Phase2Api.getHistory();
+      const filteredRemote = remote.history.filter((item) => {
+        const remoteEntryId =
+          typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
+        return !deleteSet.has(remoteEntryId);
+      });
+      const merged = mergeRemoteHistory(local, filteredRemote);
+      await saveAnalyses(userId, merged);
+      return merged;
+    } catch (error) {
+      const apiError = error instanceof Phase2SyncApiError ? error : null;
+      if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
+        return null;
+      }
+      logger.warn('[Phase2Sync] history pull failed', {
+        request_id: apiError?.requestId || 'unknown',
+        user_id: userId,
+        code: apiError?.code || 'PHASE2_HISTORY_PULL_FAILED',
+      });
+      return null;
+    } finally {
+      historyServerPullInFlight.delete(userId);
+    }
+  })();
+  historyServerPullInFlight.set(userId, pullPromise);
+  return pullPromise;
 };
 
 const enqueueHistoryMigrationIfNeeded = async (userId: string, records: AnalysisRecord[]): Promise<void> => {
@@ -148,10 +174,10 @@ export const AnalysisService = {
             await dispatchPhase2SyncQueue();
 
             if (local.length === 0) {
-              const remote = await syncHistoryFromServer(userId, local);
+              const remote = await syncHistoryFromServer(userId, local, { force: true });
               if (Array.isArray(remote)) return remote;
             } else {
-              void syncHistoryFromServer(userId, local);
+              void syncHistoryFromServer(userId, local, { force: false });
             }
             return local;
         } catch (error) {

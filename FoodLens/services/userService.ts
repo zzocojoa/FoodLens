@@ -23,6 +23,10 @@ import { restoreSession } from './auth/sessionManager_Logic';
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
 const UNAUTHENTICATED_USER_ID = 'auth-required';
+const PROFILE_SERVER_PULL_COOLDOWN_MS = 15_000;
+
+const profileServerPullInFlight = new Map<string, Promise<UserProfile | null>>();
+const profileServerPullLastAt = new Map<string, number>();
 
 const profileMigrationMarkerKey = (userId: string): string => `${PROFILE_MIGRATION_MARKER_PREFIX}${userId}`;
 const profileServerSyncMarkerKey = (userId: string): string => `${PROFILE_SERVER_SYNC_MARKER_PREFIX}${userId}`;
@@ -103,35 +107,54 @@ const migrateLegacyProfileIfNeeded = async (uid: string): Promise<UserProfile | 
 
 const syncProfileFromServer = async (
   uid: string,
-  fallbackProfile: UserProfile
+  fallbackProfile: UserProfile,
+  options: { force?: boolean } = {}
 ): Promise<UserProfile | null> => {
-  try {
-    const [profileResult, allergiesResult, settingsResult] = await Promise.all([
-      Phase2Api.getProfile(),
-      Phase2Api.getAllergies(),
-      Phase2Api.getSettings(),
-    ]);
-    const merged = mergeRemoteUserSnapshot(uid, fallbackProfile, {
-      profile: profileResult.profile,
-      allergies: allergiesResult.allergies,
-      settings: settingsResult.settings,
-    });
-    await saveScopedProfile(uid, merged);
-    await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
-    publishUserProfileUpdated(uid, 'server_pull');
-    return merged;
-  } catch (error) {
-    const apiError = error instanceof Phase2SyncApiError ? error : null;
-    if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
-      return null;
-    }
-    logger.warn('[Phase2Sync] profile pull failed', {
-      request_id: apiError?.requestId || 'unknown',
-      user_id: uid,
-      code: apiError?.code || 'PHASE2_PROFILE_PULL_FAILED',
-    });
+  const force = options.force === true;
+  const activePull = profileServerPullInFlight.get(uid);
+  if (activePull) {
+    return activePull;
+  }
+
+  const lastPulledAt = profileServerPullLastAt.get(uid);
+  if (!force && typeof lastPulledAt === 'number' && Date.now() - lastPulledAt < PROFILE_SERVER_PULL_COOLDOWN_MS) {
     return null;
   }
+  profileServerPullLastAt.set(uid, Date.now());
+
+  const pullPromise = (async (): Promise<UserProfile | null> => {
+    try {
+      const [profileResult, allergiesResult, settingsResult] = await Promise.all([
+        Phase2Api.getProfile(),
+        Phase2Api.getAllergies(),
+        Phase2Api.getSettings(),
+      ]);
+      const merged = mergeRemoteUserSnapshot(uid, fallbackProfile, {
+        profile: profileResult.profile,
+        allergies: allergiesResult.allergies,
+        settings: settingsResult.settings,
+      });
+      await saveScopedProfile(uid, merged);
+      await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
+      publishUserProfileUpdated(uid, 'server_pull');
+      return merged;
+    } catch (error) {
+      const apiError = error instanceof Phase2SyncApiError ? error : null;
+      if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
+        return null;
+      }
+      logger.warn('[Phase2Sync] profile pull failed', {
+        request_id: apiError?.requestId || 'unknown',
+        user_id: uid,
+        code: apiError?.code || 'PHASE2_PROFILE_PULL_FAILED',
+      });
+      return null;
+    } finally {
+      profileServerPullInFlight.delete(uid);
+    }
+  })();
+  profileServerPullInFlight.set(uid, pullPromise);
+  return pullPromise;
 };
 
 const flushProfileWrites = async (uid: string, operationIds: string[]): Promise<void> => {
@@ -203,10 +226,10 @@ export const UserService = {
     }
 
     if (!cachedProfile) {
-      const remote = await syncProfileFromServer(resolvedUserId, hydrated);
+      const remote = await syncProfileFromServer(resolvedUserId, hydrated, { force: true });
       if (remote) return remote;
     } else if (allowBackgroundRefresh) {
-      void syncProfileFromServer(resolvedUserId, hydrated);
+      void syncProfileFromServer(resolvedUserId, hydrated, { force: false });
     }
 
     return hydrated;
