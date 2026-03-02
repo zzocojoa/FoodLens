@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import json
 import os
@@ -23,6 +24,8 @@ class DatagoClient:
     REPORT_SERVICE_ID: Final[str] = "I2790"
     RAW_MATERIAL_SERVICE_ID: Final[str] = "C002"
     DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
+    DEFAULT_RETRY_COUNT: Final[int] = 2
+    DEFAULT_RETRY_BACKOFF_SECONDS: Final[float] = 0.6
     
     def __init__(self) -> None:
         self.api_key = os.getenv("DATAGO_API_KEY")
@@ -31,6 +34,19 @@ class DatagoClient:
             self.request_timeout_seconds = max(1.0, float(raw_timeout))
         except ValueError:
             self.request_timeout_seconds = self.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        raw_retry_count = os.getenv("BARCODE_UPSTREAM_RETRY_COUNT", str(self.DEFAULT_RETRY_COUNT))
+        try:
+            self.retry_count = max(0, int(raw_retry_count))
+        except ValueError:
+            self.retry_count = self.DEFAULT_RETRY_COUNT
+        raw_retry_backoff = os.getenv(
+            "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS",
+            str(self.DEFAULT_RETRY_BACKOFF_SECONDS),
+        )
+        try:
+            self.retry_backoff_seconds = max(0.0, float(raw_retry_backoff))
+        except ValueError:
+            self.retry_backoff_seconds = self.DEFAULT_RETRY_BACKOFF_SECONDS
         self.last_failure_kind: str | None = None
         self.last_failure_message: str | None = None
         if not self.api_key:
@@ -80,40 +96,56 @@ class DatagoClient:
 
     async def _request_service(self, url: str, service_id: str, log_prefix: str) -> JSONDict | None:
         self._clear_failure()
-        try:
-            timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")
-                        print(f"[Datago] {log_prefix}Error: Status {response.status}")
-                        return None
-                    # Some FoodSafety endpoints return JSON payloads with text/html content-type.
-                    # Parse text manually as a fallback before marking it as failure.
-                    raw_text = await response.text()
-                    try:
-                        data = json.loads(raw_text)
-                    except Exception:
-                        preview = raw_text[:120].replace("\n", " ")
-                        self._set_failure(
-                            kind="invalid_json",
-                            message=f"content_type={response.headers.get('Content-Type')} preview={preview}",
-                        )
-                        print(
-                            f"[Datago] {log_prefix}Invalid JSON payload: "
-                            f"content_type={response.headers.get('Content-Type')} preview={preview}"
-                        )
-                        return None
-                    if service_id not in data and "RESULT" in data:
-                        result = data.get("RESULT", {})
-                        code = result.get("CODE")
-                        msg = result.get("MSG")
-                        self._set_failure(kind=f"result_{code or 'unknown'}", message=str(msg or "unknown"))
-                    return self._extract_first_row(data, service_id)
-        except Exception as error:
-            self._set_failure(kind="network", message=str(error))
-            print(f"[Datago] {log_prefix}Request Failed: {error}")
-            return None
+        attempts = self.retry_count + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as response:
+                        if response.status != 200:
+                            self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")
+                            print(f"[Datago] {log_prefix}Error: Status {response.status}")
+                            if response.status >= 500 and attempt < attempts:
+                                delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                                if delay > 0:
+                                    await asyncio.sleep(delay)
+                                continue
+                            return None
+                        # Some FoodSafety endpoints return JSON payloads with text/html content-type.
+                        # Parse text manually as a fallback before marking it as failure.
+                        raw_text = await response.text()
+                        try:
+                            data = json.loads(raw_text)
+                        except Exception:
+                            preview = raw_text[:120].replace("\n", " ")
+                            self._set_failure(
+                                kind="invalid_json",
+                                message=f"content_type={response.headers.get('Content-Type')} preview={preview}",
+                            )
+                            print(
+                                f"[Datago] {log_prefix}Invalid JSON payload: "
+                                f"content_type={response.headers.get('Content-Type')} preview={preview}"
+                            )
+                            return None
+                        if service_id not in data and "RESULT" in data:
+                            result = data.get("RESULT", {})
+                            code = result.get("CODE")
+                            msg = result.get("MSG")
+                            self._set_failure(kind=f"result_{code or 'unknown'}", message=str(msg or "unknown"))
+                        return self._extract_first_row(data, service_id)
+            except Exception as error:
+                self._set_failure(kind="network", message=f"{type(error).__name__}: {error!r}")
+                print(
+                    f"[Datago] {log_prefix}Request Failed "
+                    f"(attempt {attempt}/{attempts}): {type(error).__name__}: {error!r}"
+                )
+                if attempt < attempts:
+                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    continue
+                return None
+        return None
 
     async def get_product_by_barcode(self, barcode: str) -> JSONDict | None:
         """

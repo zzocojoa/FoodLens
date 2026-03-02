@@ -36,6 +36,25 @@ class _FakeSession:
         return False
 
 
+class _FlakySession:
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    def get(self, _url: str):
+        if not self._responses:
+            raise RuntimeError("no more responses")
+        next_item = self._responses.pop(0)
+        if isinstance(next_item, Exception):
+            raise next_item
+        return next_item
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
 class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
     async def test_datago_parses_json_payload_even_with_text_html_content_type(self):
         client = DatagoClient()
@@ -82,6 +101,27 @@ class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
         timeout = mocked_session.call_args.kwargs.get("timeout")
         self.assertIsNotNone(timeout)
         self.assertEqual(timeout.total, 3.0)
+
+    async def test_datago_retries_on_transient_failure_then_succeeds(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BARCODE_UPSTREAM_RETRY_COUNT": "2",
+                "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS": "0",
+            },
+        ):
+            client = DatagoClient()
+
+        payload = '{"C005":{"RESULT":{"CODE":"INFO-000","MSG":"ok"},"row":[{"PRDLST_NM":"A"}]}}'
+        fake_response = _FakeResponse(status=200, text=payload, content_type="application/json")
+        timeout_error = TimeoutError("timed out")
+        with patch(
+            "backend.modules.barcode.clients.datago_client.aiohttp.ClientSession",
+            side_effect=[_FlakySession([timeout_error]), _FlakySession([fake_response])],
+        ):
+            result = await client._request_service("http://example.com", "C005", log_prefix="")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("PRDLST_NM"), "A")
 
 
 if __name__ == "__main__":
