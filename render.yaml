@@ -109,6 +109,10 @@ services:
         value: "2"
       - key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS
         value: "0.6"
+      - key: BARCODE_DATAGO_FAILURE_THRESHOLD
+        value: "2"
+      - key: BARCODE_DATAGO_UNHEALTHY_COOLDOWN_SECONDS
+        value: "120"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

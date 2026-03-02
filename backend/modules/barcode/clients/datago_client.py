@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import json
 import os
+import time
 from typing import Any, Final
 
 JSONDict = dict[str, Any]
@@ -26,6 +27,8 @@ class DatagoClient:
     DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
     DEFAULT_RETRY_COUNT: Final[int] = 2
     DEFAULT_RETRY_BACKOFF_SECONDS: Final[float] = 0.6
+    DEFAULT_FAILURE_THRESHOLD: Final[int] = 2
+    DEFAULT_UNHEALTHY_COOLDOWN_SECONDS: Final[int] = 120
     
     def __init__(self) -> None:
         self.api_key = os.getenv("DATAGO_API_KEY")
@@ -47,6 +50,24 @@ class DatagoClient:
             self.retry_backoff_seconds = max(0.0, float(raw_retry_backoff))
         except ValueError:
             self.retry_backoff_seconds = self.DEFAULT_RETRY_BACKOFF_SECONDS
+        raw_failure_threshold = os.getenv(
+            "BARCODE_DATAGO_FAILURE_THRESHOLD",
+            str(self.DEFAULT_FAILURE_THRESHOLD),
+        )
+        try:
+            self.failure_threshold = max(1, int(raw_failure_threshold))
+        except ValueError:
+            self.failure_threshold = self.DEFAULT_FAILURE_THRESHOLD
+        raw_unhealthy_cooldown_seconds = os.getenv(
+            "BARCODE_DATAGO_UNHEALTHY_COOLDOWN_SECONDS",
+            str(self.DEFAULT_UNHEALTHY_COOLDOWN_SECONDS),
+        )
+        try:
+            self.unhealthy_cooldown_seconds = max(5, int(raw_unhealthy_cooldown_seconds))
+        except ValueError:
+            self.unhealthy_cooldown_seconds = self.DEFAULT_UNHEALTHY_COOLDOWN_SECONDS
+        self._consecutive_failures = 0
+        self._unhealthy_until = 0.0
         self.last_failure_kind: str | None = None
         self.last_failure_message: str | None = None
         if not self.api_key:
@@ -55,6 +76,23 @@ class DatagoClient:
     def _clear_failure(self) -> None:
         self.last_failure_kind = None
         self.last_failure_message = None
+
+    def _clear_health_penalty(self) -> None:
+        self._consecutive_failures = 0
+        self._unhealthy_until = 0.0
+
+    def _mark_failure_for_health(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures < self.failure_threshold:
+            return
+        self._unhealthy_until = time.time() + self.unhealthy_cooldown_seconds
+        print(
+            f"[Datago] Marked upstream unhealthy. cooldown={self.unhealthy_cooldown_seconds}s "
+            f"failures={self._consecutive_failures}"
+        )
+
+    def _is_unhealthy(self) -> bool:
+        return time.time() < self._unhealthy_until
 
     def _set_failure(self, *, kind: str, message: str) -> None:
         self.last_failure_kind = kind
@@ -96,6 +134,12 @@ class DatagoClient:
 
     async def _request_service(self, url: str, service_id: str, log_prefix: str) -> JSONDict | None:
         self._clear_failure()
+        if self._is_unhealthy():
+            retry_in = max(0, int(self._unhealthy_until - time.time()))
+            self._set_failure(kind="upstream_unhealthy", message=f"retry_in={retry_in}s")
+            print(f"[Datago] {log_prefix}Skipping request due to unhealthy upstream. retry_in={retry_in}s")
+            return None
+
         attempts = self.retry_count + 1
         for attempt in range(1, attempts + 1):
             try:
@@ -110,6 +154,7 @@ class DatagoClient:
                                 if delay > 0:
                                     await asyncio.sleep(delay)
                                 continue
+                            self._mark_failure_for_health()
                             return None
                         # Some FoodSafety endpoints return JSON payloads with text/html content-type.
                         # Parse text manually as a fallback before marking it as failure.
@@ -126,13 +171,21 @@ class DatagoClient:
                                 f"[Datago] {log_prefix}Invalid JSON payload: "
                                 f"content_type={response.headers.get('Content-Type')} preview={preview}"
                             )
+                            self._mark_failure_for_health()
                             return None
                         if service_id not in data and "RESULT" in data:
                             result = data.get("RESULT", {})
                             code = result.get("CODE")
                             msg = result.get("MSG")
                             self._set_failure(kind=f"result_{code or 'unknown'}", message=str(msg or "unknown"))
-                        return self._extract_first_row(data, service_id)
+                        extracted = self._extract_first_row(data, service_id)
+                        if extracted is not None:
+                            self._clear_health_penalty()
+                        else:
+                            # INFO-200/No rows are source miss, not transport failures.
+                            if self.last_failure_kind and self.last_failure_kind.startswith("result_INFO-200"):
+                                self._clear_health_penalty()
+                        return extracted
             except Exception as error:
                 self._set_failure(kind="network", message=f"{type(error).__name__}: {error!r}")
                 print(
@@ -144,6 +197,7 @@ class DatagoClient:
                     if delay > 0:
                         await asyncio.sleep(delay)
                     continue
+                self._mark_failure_for_health()
                 return None
         return None
 

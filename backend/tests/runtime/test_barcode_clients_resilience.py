@@ -133,6 +133,34 @@ class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
         built = client._build_request_url("신라면")
         self.assertIn("serviceKey=abc%2Bdef%3D", built)
 
+    async def test_datago_marks_unhealthy_and_skips_until_cooldown_expires(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BARCODE_UPSTREAM_RETRY_COUNT": "0",
+                "BARCODE_DATAGO_FAILURE_THRESHOLD": "1",
+                "BARCODE_DATAGO_UNHEALTHY_COOLDOWN_SECONDS": "60",
+            },
+        ):
+            client = DatagoClient()
+
+        timeout_error = TimeoutError("timed out")
+        with patch(
+            "backend.modules.barcode.clients.datago_client.aiohttp.ClientSession",
+            side_effect=[_FlakySession([timeout_error])],
+        ) as mocked_session:
+            first_result = await client._request_service("http://example.com", "C005", log_prefix="")
+        self.assertIsNone(first_result)
+        self.assertEqual(mocked_session.call_count, 1)
+        self.assertTrue(client.had_upstream_failure())
+        self.assertEqual(client.last_failure_kind, "network")
+
+        with patch("backend.modules.barcode.clients.datago_client.aiohttp.ClientSession") as skipped_session:
+            second_result = await client._request_service("http://example.com", "C005", log_prefix="")
+        self.assertIsNone(second_result)
+        skipped_session.assert_not_called()
+        self.assertEqual(client.last_failure_kind, "upstream_unhealthy")
+
 
 if __name__ == "__main__":
     unittest.main()
