@@ -52,8 +52,10 @@ from backend.modules.ops.rollout_control_Structure import (
     RolloutConfig,
 )
 from backend.modules.ops.api_edge_guard_Logic import (
+    InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
     build_cors_config_from_env,
+    build_inflight_admission_settings_from_env,
     build_rate_limit_http_exception,
     build_rate_limit_settings_from_env,
     build_rate_limit_subject,
@@ -210,6 +212,22 @@ async def _startup() -> None:
     else:
         app.state.analysis_rate_limiter = None
         logger.info("[RateLimit] disabled")
+
+    inflight_settings = build_inflight_admission_settings_from_env()
+    if inflight_settings.enabled:
+        app.state.analysis_admission_limiter = InMemoryEndpointAdmissionLimiter(
+            endpoint_max_inflight=inflight_settings.endpoint_max_inflight,
+        )
+        app.state.analysis_admission_retry_after_seconds = inflight_settings.retry_after_seconds
+        logger.info(
+            "[Admission] enabled retry_after_seconds=%d limits=%s",
+            inflight_settings.retry_after_seconds,
+            inflight_settings.endpoint_max_inflight,
+        )
+    else:
+        app.state.analysis_admission_limiter = None
+        app.state.analysis_admission_retry_after_seconds = 1
+        logger.info("[Admission] disabled")
 
 
 def _service(name: str) -> Any:
@@ -906,6 +924,37 @@ def _apply_analysis_rate_limit(*, request: Request, endpoint: str, request_id: s
         code="API_RATE_LIMITED",
         message="Too many requests. Please retry shortly.",
     )
+
+
+def _try_acquire_analysis_slot(*, endpoint: str, request_id: str) -> bool:
+    limiter = getattr(app.state, "analysis_admission_limiter", None)
+    if limiter is None:
+        return False
+
+    if limiter.try_acquire(endpoint=endpoint):
+        return True
+
+    retry_after_seconds = max(1, int(getattr(app.state, "analysis_admission_retry_after_seconds", 1)))
+    logger.warning(
+        "[Admission] blocked request_id=%s endpoint=%s inflight=%d retry_after_seconds=%d",
+        request_id,
+        endpoint,
+        limiter.inflight_count(endpoint=endpoint),
+        retry_after_seconds,
+    )
+    raise build_rate_limit_http_exception(
+        request_id=request_id,
+        retry_after_seconds=retry_after_seconds,
+        code="API_RATE_LIMITED",
+        message="Server is busy. Please retry shortly.",
+    )
+
+
+def _release_analysis_slot(*, endpoint: str) -> None:
+    limiter = getattr(app.state, "analysis_admission_limiter", None)
+    if limiter is None:
+        return
+    limiter.release(endpoint=endpoint)
 
 
 def _resolve_authenticated_user(request: Request, request_id: str):
@@ -1703,38 +1752,43 @@ async def analyze_food(
 ):
     request_id = _request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/analyze", request_id=request_id)
+    slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze", request_id=request_id)
     started_at = time.perf_counter()
 
-    async def _operation():
-        analyst = _service("analyst")
-        contents = await file.read()
-        image = await run_in_threadpool(decode_upload_to_image, contents)
+    try:
+        async def _operation():
+            analyst = _service("analyst")
+            contents = await file.read()
+            image = await run_in_threadpool(decode_upload_to_image, contents)
 
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-        return await run_in_threadpool(
-            analyst.analyze_food_json,
-            image,
-            allergy_info,
-            prompt_country_code,
+            prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+            return await run_in_threadpool(
+                analyst.analyze_food_json,
+                image,
+                allergy_info,
+                prompt_country_code,
+            )
+
+        result = await run_with_error_policy(
+            endpoint="/analyze",
+            policy=EndpointErrorPolicy(code=ErrorCode.ANALYZE_FAILED, status_code=500, user_message="Analyze failed"),
+            operation=_operation,
+            request_id=request_id,
         )
-
-    result = await run_with_error_policy(
-        endpoint="/analyze",
-        policy=EndpointErrorPolicy(code=ErrorCode.ANALYZE_FAILED, status_code=500, user_message="Analyze failed"),
-        operation=_operation,
-        request_id=request_id,
-    )
-    if isinstance(result, dict):
-        result["request_id"] = request_id
-    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-    logger.info(
-        "[Server] Analyze completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
-        request_id,
-        result.get("prompt_version") if isinstance(result, dict) else None,
-        result.get("used_model") if isinstance(result, dict) else None,
-        elapsed_ms,
-    )
-    return result
+        if isinstance(result, dict):
+            result["request_id"] = request_id
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "[Server] Analyze completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
+            request_id,
+            result.get("prompt_version") if isinstance(result, dict) else None,
+            result.get("used_model") if isinstance(result, dict) else None,
+            elapsed_ms,
+        )
+        return result
+    finally:
+        if slot_acquired:
+            _release_analysis_slot(endpoint="/analyze")
 
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
@@ -1749,6 +1803,7 @@ async def analyze_label(
     """
     request_id = _request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/analyze/label", request_id=request_id)
+    slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/label", request_id=request_id)
     total_started_at = time.perf_counter()
 
     async def _operation():
@@ -1924,16 +1979,20 @@ async def analyze_label(
             )
         return result
 
-    return await run_with_error_policy(
-        endpoint="/analyze/label",
-        policy=EndpointErrorPolicy(
-            code=ErrorCode.ANALYZE_LABEL_FAILED,
-            status_code=500,
-            user_message="Label analysis failed",
-        ),
-        operation=_operation,
-        request_id=request_id,
-    )
+    try:
+        return await run_with_error_policy(
+            endpoint="/analyze/label",
+            policy=EndpointErrorPolicy(
+                code=ErrorCode.ANALYZE_LABEL_FAILED,
+                status_code=500,
+                user_message="Label analysis failed",
+            ),
+            operation=_operation,
+            request_id=request_id,
+        )
+    finally:
+        if slot_acquired:
+            _release_analysis_slot(endpoint="/analyze/label")
 
 @app.post("/analyze/smart", response_model=AnalysisResponseContract)
 async def analyze_smart(
@@ -1949,43 +2008,48 @@ async def analyze_smart(
     """
     request_id = _request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/analyze/smart", request_id=request_id)
+    slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/smart", request_id=request_id)
     started_at = time.perf_counter()
 
-    async def _operation():
-        smart_router = _service("smart_router")
-        logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
-        contents = await file.read()
-        image = await run_in_threadpool(decode_upload_to_image, contents)
+    try:
+        async def _operation():
+            smart_router = _service("smart_router")
+            logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
+            contents = await file.read()
+            image = await run_in_threadpool(decode_upload_to_image, contents)
 
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-        return await smart_router.route_analysis(
-            image=image,
-            allergy_info=allergy_info,
-            iso_country_code=prompt_country_code,
-            locale=locale,
+            prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+            return await smart_router.route_analysis(
+                image=image,
+                allergy_info=allergy_info,
+                iso_country_code=prompt_country_code,
+                locale=locale,
+            )
+
+        result = await run_with_error_policy(
+            endpoint="/analyze/smart",
+            policy=EndpointErrorPolicy(
+                code=ErrorCode.ANALYZE_SMART_FAILED,
+                status_code=500,
+                user_message="Smart analysis failed",
+            ),
+            operation=_operation,
+            request_id=request_id,
         )
-
-    result = await run_with_error_policy(
-        endpoint="/analyze/smart",
-        policy=EndpointErrorPolicy(
-            code=ErrorCode.ANALYZE_SMART_FAILED,
-            status_code=500,
-            user_message="Smart analysis failed",
-        ),
-        operation=_operation,
-        request_id=request_id,
-    )
-    if isinstance(result, dict):
-        result["request_id"] = request_id
-    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-    logger.info(
-        "[Server] Smart analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
-        request_id,
-        result.get("prompt_version") if isinstance(result, dict) else None,
-        result.get("used_model") if isinstance(result, dict) else None,
-        elapsed_ms,
-    )
-    return result
+        if isinstance(result, dict):
+            result["request_id"] = request_id
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "[Server] Smart analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
+            request_id,
+            result.get("prompt_version") if isinstance(result, dict) else None,
+            result.get("used_model") if isinstance(result, dict) else None,
+            elapsed_ms,
+        )
+        return result
+    finally:
+        if slot_acquired:
+            _release_analysis_slot(endpoint="/analyze/smart")
 
 @app.post("/lookup/barcode", response_model=BarcodeLookupResponseContract)
 async def lookup_barcode(
@@ -2002,84 +2066,89 @@ async def lookup_barcode(
     request_id = _request_id(request)
     parent_request_id = _parent_request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/lookup/barcode", request_id=request_id)
+    slot_acquired = _try_acquire_analysis_slot(endpoint="/lookup/barcode", request_id=request_id)
     started_at = time.perf_counter()
     try:
-        barcode_service = _service("barcode_service")
-        logger.info(
-            "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_info=%s locale=%s",
-            request_id,
-            parent_request_id or "none",
-            barcode,
-            allergy_info,
-            locale,
-        )
-        lookup_started_at = time.perf_counter()
-        result = await barcode_service.get_product_info(barcode)
-        logger.info(
-            "[Server] Barcode source lookup done request_id=%s elapsed_ms=%d found=%s",
-            request_id,
-            int((time.perf_counter() - lookup_started_at) * 1000),
-            bool(result),
-        )
-        
-        if not result:
+        try:
+            barcode_service = _service("barcode_service")
             logger.info(
-                "[Server] Lookup complete request_id=%s elapsed_ms=%d found=false",
+                "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_info=%s locale=%s",
+                request_id,
+                parent_request_id or "none",
+                barcode,
+                allergy_info,
+                locale,
+            )
+            lookup_started_at = time.perf_counter()
+            result = await barcode_service.get_product_info(barcode)
+            logger.info(
+                "[Server] Barcode source lookup done request_id=%s elapsed_ms=%d found=%s",
+                request_id,
+                int((time.perf_counter() - lookup_started_at) * 1000),
+                bool(result),
+            )
+
+            if not result:
+                logger.info(
+                    "[Server] Lookup complete request_id=%s elapsed_ms=%d found=false",
+                    request_id,
+                    int((time.perf_counter() - started_at) * 1000),
+                )
+                return {"found": False, "message": "Product not found in any database", "request_id": request_id}
+
+            # Run allergen analysis if ingredients exist and user has allergies
+            if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
+                logger.info(
+                    "[Server] Running allergen analysis request_id=%s ingredient_count=%d",
+                    request_id,
+                    len(result["ingredients"]),
+                )
+                analyst = _service("analyst")
+                analysis_started_at = time.perf_counter()
+                allergen_result = await run_in_threadpool(
+                    analyst.analyze_barcode_ingredients,
+                    result["ingredients"],
+                    allergy_info,
+                )
+                logger.info(
+                    "[Server] Allergen analysis done request_id=%s elapsed_ms=%d",
+                    request_id,
+                    int((time.perf_counter() - analysis_started_at) * 1000),
+                )
+
+                # Merge allergen analysis into result
+                result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
+                result["coachMessage"] = allergen_result.get("coachMessage", "")
+
+                # Replace simple string list with enriched ingredient objects
+                result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
+            logger.info(
+                "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true",
                 request_id,
                 int((time.perf_counter() - started_at) * 1000),
             )
-            return {"found": False, "message": "Product not found in any database", "request_id": request_id}
-        
-        # Run allergen analysis if ingredients exist and user has allergies
-        if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
-            logger.info(
-                "[Server] Running allergen analysis request_id=%s ingredient_count=%d",
+            return {"found": True, "data": result, "request_id": request_id}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception(
+                "[Server] Barcode Lookup Error request_id=%s code=%s error=%s",
                 request_id,
-                len(result["ingredients"]),
+                ErrorCode.BARCODE_LOOKUP_FAILED,
+                e,
             )
-            analyst = _service("analyst")
-            analysis_started_at = time.perf_counter()
-            allergen_result = await run_in_threadpool(
-                analyst.analyze_barcode_ingredients,
-                result["ingredients"],
-                allergy_info,
-            )
-            logger.info(
-                "[Server] Allergen analysis done request_id=%s elapsed_ms=%d",
-                request_id,
-                int((time.perf_counter() - analysis_started_at) * 1000),
-            )
-            
-            # Merge allergen analysis into result
-            result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
-            result["coachMessage"] = allergen_result.get("coachMessage", "")
-            
-            # Replace simple string list with enriched ingredient objects
-            result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
-        logger.info(
-            "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true",
-            request_id,
-            int((time.perf_counter() - started_at) * 1000),
-        )
-        return {"found": True, "data": result, "request_id": request_id}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(
-            "[Server] Barcode Lookup Error request_id=%s code=%s error=%s",
-            request_id,
-            ErrorCode.BARCODE_LOOKUP_FAILED,
-            e,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": "Barcode lookup failed",
-                "code": ErrorCode.BARCODE_LOOKUP_FAILED,
-                "request_id": request_id,
-            },
-        ) from e
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "Barcode lookup failed",
+                    "code": ErrorCode.BARCODE_LOOKUP_FAILED,
+                    "request_id": request_id,
+                },
+            ) from e
+    finally:
+        if slot_acquired:
+            _release_analysis_slot(endpoint="/lookup/barcode")
 
 if __name__ == "__main__":
     import uvicorn

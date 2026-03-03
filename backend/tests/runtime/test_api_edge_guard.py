@@ -2,11 +2,16 @@ import os
 import unittest
 from unittest.mock import patch
 
+from starlette.requests import Request
+
 from backend.modules.ops.api_edge_guard import (
+    InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
     build_cors_config_from_env,
+    build_inflight_admission_settings_from_env,
     build_rate_limit_settings_from_env,
     build_rate_limit_subject,
+    extract_client_ip,
 )
 
 
@@ -65,6 +70,44 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertTrue(second.allowed)
         self.assertFalse(third.allowed)
         self.assertGreaterEqual(third.retry_after_seconds, 1)
+
+    def test_inflight_admission_settings_defaults(self):
+        with patch.dict(os.environ, {}, clear=True):
+            settings = build_inflight_admission_settings_from_env()
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.retry_after_seconds, 2)
+        self.assertEqual(settings.endpoint_max_inflight["/analyze"], 3)
+        self.assertEqual(settings.endpoint_max_inflight["/analyze/label"], 3)
+        self.assertEqual(settings.endpoint_max_inflight["/lookup/barcode"], 6)
+
+    def test_admission_limiter_blocks_after_capacity(self):
+        limiter = InMemoryEndpointAdmissionLimiter(endpoint_max_inflight={"/analyze/label": 1})
+        self.assertTrue(limiter.try_acquire(endpoint="/analyze/label"))
+        self.assertFalse(limiter.try_acquire(endpoint="/analyze/label"))
+        limiter.release(endpoint="/analyze/label")
+        self.assertTrue(limiter.try_acquire(endpoint="/analyze/label"))
+
+    def test_extract_client_ip_prefers_global_x_forwarded_for(self):
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"x-forwarded-for", b"10.0.0.2, 8.8.8.8")],
+            "client": ("10.1.1.1", 12345),
+        }
+        request = Request(scope)
+        self.assertEqual(extract_client_ip(request), "8.8.8.8")
+
+    def test_extract_client_ip_uses_forwarded_header(self):
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"forwarded", b"for=1.1.1.1;proto=https")],
+            "client": ("10.1.1.1", 12345),
+        }
+        request = Request(scope)
+        self.assertEqual(extract_client_ip(request), "1.1.1.1")
 
 
 if __name__ == "__main__":

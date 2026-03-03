@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from ipaddress import ip_address
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from threading import Lock
@@ -33,6 +34,13 @@ class RateLimitSettings:
     enabled: bool
     window_seconds: int
     endpoint_limits_per_minute: dict[str, int]
+
+
+@dataclass(frozen=True)
+class InflightAdmissionSettings:
+    enabled: bool
+    retry_after_seconds: int
+    endpoint_max_inflight: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -92,14 +100,97 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
     )
 
 
+def build_inflight_admission_settings_from_env() -> InflightAdmissionSettings:
+    enabled = (os.environ.get("ANALYSIS_INFLIGHT_GUARD_ENABLED", "1").strip() != "0")
+    retry_after_seconds = _env_int("ANALYSIS_INFLIGHT_RETRY_AFTER_SECONDS", 2)
+    analyze_max = _env_int("ANALYSIS_INFLIGHT_MAX_ANALYZE", 3)
+    label_max = _env_int("ANALYSIS_INFLIGHT_MAX_LABEL", 3)
+    smart_max = _env_int("ANALYSIS_INFLIGHT_MAX_SMART", analyze_max)
+    barcode_max = _env_int("ANALYSIS_INFLIGHT_MAX_BARCODE", 6)
+    return InflightAdmissionSettings(
+        enabled=enabled,
+        retry_after_seconds=retry_after_seconds,
+        endpoint_max_inflight={
+            "/analyze": analyze_max,
+            "/analyze/label": label_max,
+            "/analyze/smart": smart_max,
+            "/lookup/barcode": barcode_max,
+        },
+    )
+
+
+def _normalize_ip(candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+
+    value = candidate.strip().strip('"').strip("'")
+    if not value:
+        return None
+
+    if value.startswith("[") and "]" in value:
+        value = value[1 : value.index("]")]
+    elif value.count(":") == 1 and "." in value:
+        value = value.split(":", 1)[0]
+
+    try:
+        return ip_address(value).compressed
+    except ValueError:
+        return None
+
+
+def _select_client_ip(candidates: list[str]) -> str | None:
+    fallback: str | None = None
+    for candidate in candidates:
+        normalized = _normalize_ip(candidate)
+        if not normalized:
+            continue
+        if fallback is None:
+            fallback = normalized
+        parsed = ip_address(normalized)
+        if parsed.is_global:
+            return normalized
+    return fallback
+
+
+def _extract_forwarded_for_candidates(forwarded_header: str | None) -> list[str]:
+    if not forwarded_header:
+        return []
+    candidates: list[str] = []
+    for item in forwarded_header.split(","):
+        for part in item.split(";"):
+            token = part.strip()
+            if token.lower().startswith("for="):
+                candidates.append(token[4:].strip())
+    return candidates
+
+
 def extract_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        first = forwarded_for.split(",")[0].strip()
-        if first:
-            return first
+    prioritized_headers = (
+        "CF-Connecting-IP",
+        "True-Client-IP",
+        "Fly-Client-IP",
+        "X-Real-IP",
+    )
+    for header_name in prioritized_headers:
+        selected = _select_client_ip([request.headers.get(header_name) or ""])
+        if selected:
+            return selected
+
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    selected_forwarded_for = _select_client_ip(x_forwarded_for.split(",") if x_forwarded_for else [])
+    if selected_forwarded_for:
+        return selected_forwarded_for
+
+    selected_forwarded = _select_client_ip(
+        _extract_forwarded_for_candidates(request.headers.get("Forwarded"))
+    )
+    if selected_forwarded:
+        return selected_forwarded
+
     if request.client and request.client.host:
-        return request.client.host
+        selected_client_host = _select_client_ip([request.client.host])
+        if selected_client_host:
+            return selected_client_host
     return "unknown"
 
 
@@ -152,6 +243,48 @@ class InMemorySlidingWindowRateLimiter:
 
             retry_after_seconds = max(1, int(bucket[0] + self._window_seconds - current_ts))
             return RateLimitDecision(allowed=False, retry_after_seconds=retry_after_seconds)
+
+
+class InMemoryEndpointAdmissionLimiter:
+    """
+    Thread-safe in-flight admission control.
+    """
+
+    def __init__(self, *, endpoint_max_inflight: dict[str, int]) -> None:
+        self._endpoint_max_inflight = {
+            endpoint: max(1, int(limit))
+            for endpoint, limit in endpoint_max_inflight.items()
+            if int(limit) > 0
+        }
+        self._inflight: dict[str, int] = defaultdict(int)
+        self._lock = Lock()
+
+    def try_acquire(self, *, endpoint: str) -> bool:
+        limit = self._endpoint_max_inflight.get(endpoint)
+        if limit is None:
+            return True
+
+        with self._lock:
+            current = self._inflight[endpoint]
+            if current >= limit:
+                return False
+            self._inflight[endpoint] = current + 1
+            return True
+
+    def release(self, *, endpoint: str) -> None:
+        if endpoint not in self._endpoint_max_inflight:
+            return
+
+        with self._lock:
+            current = self._inflight.get(endpoint, 0)
+            if current <= 1:
+                self._inflight.pop(endpoint, None)
+                return
+            self._inflight[endpoint] = current - 1
+
+    def inflight_count(self, *, endpoint: str) -> int:
+        with self._lock:
+            return int(self._inflight.get(endpoint, 0))
 
 
 def build_rate_limit_http_exception(
