@@ -309,4 +309,37 @@ describe('phase2SyncQueue', () => {
     expect(forUserA).toHaveLength(1);
     expect(forUserA[0].id).toBe('op-a');
   });
+
+  it('dispatches history entries with portable image URI as-is', async () => {
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-a',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        id: 'analysis_1',
+        foodName: 'Sushi',
+        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+      },
+      idempotencyKey: 'analysis_1',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.postHistory).toHaveBeenCalledTimes(1);
+    expect(mockedPhase2Api.postHistory).toHaveBeenCalledWith({
+      entry: {
+        id: 'analysis_1',
+        foodName: 'Sushi',
+        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+      },
+      idempotency_key: 'analysis_1',
+    });
+    expect(queueState[0].state).toBe('synced');
+  });
 });

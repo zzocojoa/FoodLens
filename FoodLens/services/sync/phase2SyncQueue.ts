@@ -5,6 +5,7 @@ import { logger } from '@/services/logger_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { getUserStorageKey } from '@/services/user/constants_Logic';
+import { resolveImageUri } from '@/services/imageStorage_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
 import type {
   Phase2ConflictResolution,
@@ -16,6 +17,9 @@ const SYNC_QUEUE_KEY = '@foodlens_phase2_sync_queue_v1';
 const RETRY_LIMIT = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_SYNCED_HISTORY = 30;
+const HISTORY_IMAGE_SYNC_MAX_DIMENSION = 360;
+const HISTORY_IMAGE_SYNC_JPEG_QUALITY = 0.62;
+const HISTORY_IMAGE_SYNC_MAX_BASE64_CHARS = 600_000;
 
 let runtimeStarted = false;
 let dispatchInFlight: Promise<void> | null = null;
@@ -89,6 +93,81 @@ const applyServerVersionToLocalProfile = async (
   });
 };
 
+const isPortableImageUri = (uri: string): boolean => {
+  const normalized = uri.toLowerCase();
+  return (
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('data:image/')
+  );
+};
+
+const isUnsupportedHistoryImageScheme = (uri: string): boolean => {
+  const normalized = uri.toLowerCase();
+  return normalized.startsWith('barcode://');
+};
+
+const resolveHistoryImageFileUri = (rawUri: string): string | null => {
+  if (!rawUri) return null;
+  if (isPortableImageUri(rawUri) || isUnsupportedHistoryImageScheme(rawUri)) {
+    return null;
+  }
+
+  const resolved = resolveImageUri(rawUri) || rawUri;
+  if (resolved.startsWith('file://') || resolved.startsWith('/')) {
+    return resolved;
+  }
+  return null;
+};
+
+const toPortableHistoryImageDataUrl = async (fileUri: string): Promise<string | null> => {
+  try {
+    const imageManipulator = await import('expo-image-manipulator');
+    const compressed = await imageManipulator.manipulateAsync(
+      fileUri,
+      [{ resize: { width: HISTORY_IMAGE_SYNC_MAX_DIMENSION } }],
+      {
+        compress: HISTORY_IMAGE_SYNC_JPEG_QUALITY,
+        format: imageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+    const base64 = compressed.base64?.trim() || '';
+    if (!base64) return null;
+    if (base64.length > HISTORY_IMAGE_SYNC_MAX_BASE64_CHARS) {
+      logger.warn('[Phase2Sync] history image payload too large; skipping portable sync', {
+        image_base64_len: base64.length,
+      });
+      return null;
+    }
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error) {
+    logger.warn('[Phase2Sync] failed to build portable history image payload', {
+      code: error instanceof Error ? error.message : 'HISTORY_IMAGE_SYNC_FAILED',
+    });
+    return null;
+  }
+};
+
+const normalizeHistoryEntryForSync = async (
+  entry: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+  const imageUri = typeof entry['imageUri'] === 'string' ? entry['imageUri'].trim() : '';
+  if (!imageUri) return entry;
+  if (isPortableImageUri(imageUri) || isUnsupportedHistoryImageScheme(imageUri)) {
+    return entry;
+  }
+
+  const fileUri = resolveHistoryImageFileUri(imageUri);
+  if (!fileUri) return entry;
+  const portableDataUrl = await toPortableHistoryImageDataUrl(fileUri);
+  if (!portableDataUrl) return entry;
+  return {
+    ...entry,
+    imageUri: portableDataUrl,
+  };
+};
+
 const dispatchOperation = async (operation: Phase2SyncOperation): Promise<DispatchResult> => {
   if (operation.entity === 'profile') {
     const result = await Phase2Api.putProfile(
@@ -148,8 +227,9 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
     };
   }
 
+  const historyEntry = await normalizeHistoryEntryForSync(operation.payload);
   const historyResult = await Phase2Api.postHistory({
-    entry: operation.payload,
+    entry: historyEntry,
     idempotency_key: operation.idempotencyKey,
   });
   return { requestId: historyResult.requestId };

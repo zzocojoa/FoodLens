@@ -129,6 +129,9 @@
   - `gender`, `birth_year`
   - `disliked_ingredients`
   - `current_trip_start`, `current_trip_location`, `current_trip_coordinates {latitude, longitude}`
+- `POST /me/history.entry.imageUri`:
+  - 기기 간 동기화를 위해 `data:image/...;base64,...` 전송 허용
+  - 로컬 파일 경로(`file://`, managed filename)는 전송 시 portable 형식으로 변환하는 것을 권장
 
 동기화 충돌(Phase 3):
 - `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원
