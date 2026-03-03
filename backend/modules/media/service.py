@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -98,6 +99,7 @@ class GcsMediaStorage:
         bucket_name: str,
         object_prefix: str = "media",
         max_upload_bytes: int = 10 * 1024 * 1024,
+        service_account_json: str | None = None,
     ):
         self.bucket_name = bucket_name
         self.object_prefix = object_prefix.strip().strip("/") or "media"
@@ -113,8 +115,25 @@ class GcsMediaStorage:
             ) from exc
 
         self._storage = storage
-        self._client = storage.Client()
-        self._bucket = self._client.bucket(self.bucket_name)
+        try:
+            if service_account_json:
+                from google.oauth2 import service_account  # type: ignore
+
+                info = json.loads(service_account_json)
+                credentials = service_account.Credentials.from_service_account_info(info)
+                self._client = storage.Client(
+                    project=info.get("project_id"),
+                    credentials=credentials,
+                )
+            else:
+                self._client = storage.Client()
+            self._bucket = self._client.bucket(self.bucket_name)
+        except Exception as exc:
+            raise MediaStorageError(
+                code="MEDIA_STORAGE_INIT_FAILED",
+                message="Failed to initialize GCS media storage client.",
+                status_code=503,
+            ) from exc
 
     def upload_original(
         self,
@@ -191,10 +210,14 @@ def build_media_storage_from_env(
     except ValueError:
         max_upload_mb = 10.0
     max_upload_bytes = int(max(1.0, max_upload_mb) * 1024 * 1024)
+    service_account_json = (get_env("GCP_SERVICE_ACCOUNT_JSON", None) or "").strip() or None
 
-    return GcsMediaStorage(
-        bucket_name=bucket_name,
-        object_prefix=object_prefix,
-        max_upload_bytes=max_upload_bytes,
-    )
-
+    try:
+        return GcsMediaStorage(
+            bucket_name=bucket_name,
+            object_prefix=object_prefix,
+            max_upload_bytes=max_upload_bytes,
+            service_account_json=service_account_json,
+        )
+    except MediaStorageError:
+        return DisabledMediaStorage()
