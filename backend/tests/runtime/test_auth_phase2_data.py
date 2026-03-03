@@ -71,7 +71,13 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 json={
                     "display_name": "Phase2 Updated",
                     "profile_image_url": "https://cdn.example.com/profile/phase2.png",
+                    "gender": "female",
+                    "birth_year": 1995,
+                    "disliked_ingredients": ["coriander", "celery"],
                     "timezone": "Asia/Seoul",
+                    "current_trip_start": "2026-03-03T10:00:00Z",
+                    "current_trip_location": "Seoul, KR",
+                    "current_trip_coordinates": {"latitude": 37.5665, "longitude": 126.9780},
                 },
                 headers=headers,
             )
@@ -80,6 +86,16 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 put_profile.json()["profile"]["profile_image_url"],
                 "https://cdn.example.com/profile/phase2.png",
+            )
+            self.assertEqual(put_profile.json()["profile"]["gender"], "female")
+            self.assertEqual(put_profile.json()["profile"]["birth_year"], 1995)
+            self.assertEqual(
+                put_profile.json()["profile"]["disliked_ingredients"],
+                ["coriander", "celery"],
+            )
+            self.assertEqual(
+                put_profile.json()["profile"]["current_trip_location"],
+                "Seoul, KR",
             )
 
             get_profile = client.get("/me/profile", headers=headers)
@@ -90,6 +106,24 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 profile_payload["profile"]["profile_image_url"],
                 "https://cdn.example.com/profile/phase2.png",
+            )
+            self.assertEqual(profile_payload["profile"]["gender"], "female")
+            self.assertEqual(profile_payload["profile"]["birth_year"], 1995)
+            self.assertEqual(
+                profile_payload["profile"]["disliked_ingredients"],
+                ["coriander", "celery"],
+            )
+            self.assertEqual(
+                profile_payload["profile"]["current_trip_start"],
+                "2026-03-03T10:00:00Z",
+            )
+            self.assertEqual(
+                profile_payload["profile"]["current_trip_location"],
+                "Seoul, KR",
+            )
+            self.assertEqual(
+                profile_payload["profile"]["current_trip_coordinates"],
+                {"latitude": 37.5665, "longitude": 126.978},
             )
 
             put_allergies = client.put(

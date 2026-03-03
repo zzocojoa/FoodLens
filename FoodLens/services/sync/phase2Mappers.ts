@@ -31,6 +31,29 @@ const normalizeProfileImageForSync = (value: string | undefined): string | null 
   return null;
 };
 
+const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
+  if (value === 'male' || value === 'female') return value;
+  return undefined;
+};
+
+const normalizeBirthYear = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const asInt = Math.trunc(value);
+  if (asInt < 1900 || asInt > 2100) return undefined;
+  return asInt;
+};
+
+const normalizeTripCoordinates = (
+  value: unknown
+): UserProfile['currentTripCoordinates'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const payload = value as Record<string, unknown>;
+  const latitude = typeof payload['latitude'] === 'number' ? payload['latitude'] : null;
+  const longitude = typeof payload['longitude'] === 'number' ? payload['longitude'] : null;
+  if (latitude === null || longitude === null) return undefined;
+  return { latitude, longitude };
+};
+
 const normalizeStringArray = (values: unknown): string[] => {
   if (!Array.isArray(values)) return [];
   return values
@@ -97,12 +120,20 @@ export const mergeRemoteUserSnapshot = (
   next.name = input.profile?.display_name ?? fallback.name;
   next.profileImage = input.profile?.profile_image_url ?? fallback.profileImage;
   next.photoURL = next.profileImage;
+  next.gender = normalizeGender(input.profile?.gender) ?? fallback.gender;
+  next.birthYear = normalizeBirthYear(input.profile?.birth_year) ?? fallback.birthYear;
+  next.currentTripStart = input.profile?.current_trip_start ?? fallback.currentTripStart;
+  next.currentTripLocation = input.profile?.current_trip_location ?? fallback.currentTripLocation;
+  next.currentTripCoordinates =
+    normalizeTripCoordinates(input.profile?.current_trip_coordinates) ?? fallback.currentTripCoordinates;
 
   next.safetyProfile = {
     ...fallback.safetyProfile,
     allergies: input.allergies?.allergies ?? fallback.safetyProfile.allergies ?? [],
     dietaryRestrictions:
       input.allergies?.dietary_restrictions ?? fallback.safetyProfile.dietaryRestrictions ?? [],
+    dislikedIngredients:
+      input.profile?.disliked_ingredients ?? fallback.safetyProfile.dislikedIngredients ?? [],
     severityMap: {
       ...(fallback.safetyProfile.severityMap || {}),
       ...normalizeSeverityMap(input.allergies?.severity_map || {}),
@@ -138,8 +169,19 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   profile: {
     display_name?: string | null;
     profile_image_url?: string | null;
+    gender?: string | null;
+    birth_year?: number | null;
+    disliked_ingredients?: string[];
     locale?: string | null;
     timezone?: string | null;
+    current_trip_start?: string | null;
+    current_trip_location?: string | null;
+    current_trip_coordinates?:
+      | {
+          latitude: number;
+          longitude: number;
+        }
+      | null;
     expected_updated_at?: string;
   };
   allergies: {
@@ -161,8 +203,14 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     profile: {
       display_name: profile.name || null,
       profile_image_url: normalizeProfileImageForSync(profile.profileImage),
+      gender: profile.gender || null,
+      birth_year: profile.birthYear ?? null,
+      disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
       locale: locale || null,
       timezone: 'UTC',
+      current_trip_start: profile.currentTripStart || null,
+      current_trip_location: profile.currentTripLocation || null,
+      current_trip_coordinates: profile.currentTripCoordinates || null,
       expected_updated_at: profile.syncVersions?.profileUpdatedAt,
     },
     allergies: {

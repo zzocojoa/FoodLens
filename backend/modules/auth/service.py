@@ -93,6 +93,12 @@ class UserProfile:
     locale: str
     timezone: str
     profile_image_url: str | None = None
+    gender: str | None = None
+    birth_year: int | None = None
+    disliked_ingredients: list[str] = field(default_factory=list)
+    current_trip_start: str | None = None
+    current_trip_location: str | None = None
+    current_trip_coordinates: dict[str, float] | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
 
@@ -1069,8 +1075,14 @@ class InMemoryAuthSessionService:
         user_id: str,
         display_name: str | None = None,
         profile_image_url: str | None = None,
+        gender: str | None = None,
+        birth_year: int | None = None,
+        disliked_ingredients: list[str] | None = None,
         locale: str | None = None,
         timezone_name: str | None = None,
+        current_trip_start: str | None = None,
+        current_trip_location: str | None = None,
+        current_trip_coordinates: dict[str, float] | None = None,
         expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
@@ -1094,10 +1106,30 @@ class InMemoryAuthSessionService:
                 profile.display_name = display_name.strip() or None
             if profile_image_url is not None:
                 profile.profile_image_url = profile_image_url.strip() or None
+            if gender is not None:
+                normalized_gender = gender.strip().lower()
+                profile.gender = normalized_gender or None
+            if birth_year is not None:
+                profile.birth_year = int(birth_year)
+            if disliked_ingredients is not None:
+                profile.disliked_ingredients = [
+                    value.strip()
+                    for value in disliked_ingredients
+                    if isinstance(value, str) and value.strip()
+                ]
             if locale is not None:
                 profile.locale = locale.strip() or profile.locale
             if timezone_name is not None:
                 profile.timezone = timezone_name.strip() or profile.timezone
+            if current_trip_start is not None:
+                profile.current_trip_start = current_trip_start.strip() or None
+            if current_trip_location is not None:
+                profile.current_trip_location = current_trip_location.strip() or None
+            if current_trip_coordinates is not None:
+                profile.current_trip_coordinates = {
+                    "latitude": float(current_trip_coordinates["latitude"]),
+                    "longitude": float(current_trip_coordinates["longitude"]),
+                }
             profile.updated_at = _utc_now()
 
             user = self._users_by_id[user_id]
@@ -1524,8 +1556,18 @@ class InMemoryAuthSessionService:
             "email": profile.email,
             "display_name": profile.display_name,
             "profile_image_url": profile.profile_image_url,
+            "gender": profile.gender,
+            "birth_year": profile.birth_year,
+            "disliked_ingredients": [*profile.disliked_ingredients],
             "locale": profile.locale,
             "timezone": profile.timezone,
+            "current_trip_start": profile.current_trip_start,
+            "current_trip_location": profile.current_trip_location,
+            "current_trip_coordinates": (
+                {**profile.current_trip_coordinates}
+                if isinstance(profile.current_trip_coordinates, dict)
+                else None
+            ),
             "created_at": _to_iso8601(profile.created_at),
             "updated_at": _to_iso8601(profile.updated_at),
         }

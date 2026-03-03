@@ -95,8 +95,19 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
       operation.payload as {
         display_name?: string | null;
         profile_image_url?: string | null;
+        gender?: string | null;
+        birth_year?: number | null;
+        disliked_ingredients?: string[];
         locale?: string | null;
         timezone?: string | null;
+        current_trip_start?: string | null;
+        current_trip_location?: string | null;
+        current_trip_coordinates?:
+          | {
+              latitude: number;
+              longitude: number;
+            }
+          | null;
         expected_updated_at?: string;
       }
     );

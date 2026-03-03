@@ -97,6 +97,9 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 json={
                     "display_name": "Alpha Prime",
                     "profile_image_url": "https://cdn.example.com/profile/alpha.png",
+                    "gender": "male",
+                    "birth_year": 1990,
+                    "disliked_ingredients": ["coriander"],
                     "timezone": "Asia/Seoul",
                 },
                 headers=_auth_headers(session_body["access_token"]),
@@ -108,6 +111,9 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 updated_profile["profile_image_url"],
                 "https://cdn.example.com/profile/alpha.png",
             )
+            self.assertEqual(updated_profile["gender"], "male")
+            self.assertEqual(updated_profile["birth_year"], 1990)
+            self.assertEqual(updated_profile["disliked_ingredients"], ["coriander"])
             self.assertEqual(updated_profile["timezone"], "Asia/Seoul")
 
             refresh_response = client.post(

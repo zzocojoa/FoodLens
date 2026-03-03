@@ -32,8 +32,17 @@ export type MeProfileResponse = {
   email: string;
   display_name?: string | null;
   profile_image_url?: string | null;
+  gender?: string | null;
+  birth_year?: number | null;
+  disliked_ingredients?: string[];
   locale?: string;
   timezone?: string;
+  current_trip_start?: string | null;
+  current_trip_location?: string | null;
+  current_trip_coordinates?: {
+    latitude: number;
+    longitude: number;
+  } | null;
   created_at?: string;
   updated_at?: string;
 };

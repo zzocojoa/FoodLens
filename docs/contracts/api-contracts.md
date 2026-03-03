@@ -125,6 +125,10 @@
 - `PUT /me/profile.profile_image_url`:
   - 원격 URL(`https://...`) 또는 이미지 Data URL(`data:image/...;base64,...`) 허용
   - 로컬 파일 경로(`file://`, `ph://`)는 기기 간 공유 불가이므로 서버 저장값으로 사용하지 않음
+- `PUT /me/profile` 동기화 필드(추가):
+  - `gender`, `birth_year`
+  - `disliked_ingredients`
+  - `current_trip_start`, `current_trip_location`, `current_trip_coordinates {latitude, longitude}`
 
 동기화 충돌(Phase 3):
 - `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원

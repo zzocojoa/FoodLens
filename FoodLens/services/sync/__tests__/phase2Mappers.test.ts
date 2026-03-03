@@ -13,6 +13,7 @@ describe('phase2Mappers', () => {
     local.name = 'Local Name';
     local.settings.language = 'ko-KR';
     local.safetyProfile.allergies = ['egg'];
+    local.safetyProfile.dislikedIngredients = ['coriander'];
 
     const merged = mergeRemoteUserSnapshot('usr_local', local, {
       profile: {
@@ -20,6 +21,15 @@ describe('phase2Mappers', () => {
         email: 'remote@example.com',
         display_name: 'Remote Name',
         profile_image_url: 'https://cdn.example.com/avatar-remote.png',
+        gender: 'female',
+        birth_year: 1992,
+        disliked_ingredients: ['cucumber'],
+        current_trip_start: '2026-03-01T00:00:00Z',
+        current_trip_location: 'Seoul, KR',
+        current_trip_coordinates: {
+          latitude: 37.5665,
+          longitude: 126.978,
+        },
         locale: 'en-US',
         updated_at: '2026-02-25T00:00:00Z',
       },
@@ -42,6 +52,15 @@ describe('phase2Mappers', () => {
     expect(merged.email).toBe('remote@example.com');
     expect(merged.name).toBe('Remote Name');
     expect(merged.profileImage).toBe('https://cdn.example.com/avatar-remote.png');
+    expect(merged.gender).toBe('female');
+    expect(merged.birthYear).toBe(1992);
+    expect(merged.safetyProfile.dislikedIngredients).toEqual(['cucumber']);
+    expect(merged.currentTripStart).toBe('2026-03-01T00:00:00Z');
+    expect(merged.currentTripLocation).toBe('Seoul, KR');
+    expect(merged.currentTripCoordinates).toEqual({
+      latitude: 37.5665,
+      longitude: 126.978,
+    });
     expect(merged.settings.language).toBe('en-US');
     expect(merged.settings.targetLanguage).toBe('ja-JP');
     expect(merged.settings.autoPlayAudio).toBe(true);
@@ -121,9 +140,15 @@ describe('phase2Mappers', () => {
     profile.settings.autoPlayAudio = true;
     profile.settings.selectedEmoji = '🍎';
     profile.profileImage = 'https://cdn.example.com/avatar-a.png';
+    profile.gender = 'male';
+    profile.birthYear = 1988;
     profile.safetyProfile.allergies = ['peanut'];
+    profile.safetyProfile.dislikedIngredients = ['celery'];
     profile.safetyProfile.dietaryRestrictions = ['vegan'];
     profile.safetyProfile.severityMap = { peanut: 'severe' };
+    profile.currentTripStart = '2026-03-02T10:00:00Z';
+    profile.currentTripLocation = 'Tokyo, JP';
+    profile.currentTripCoordinates = { latitude: 35.6764, longitude: 139.6500 };
     profile.syncVersions = {
       profileUpdatedAt: '2026-02-25T00:00:00Z',
       allergiesUpdatedAt: '2026-02-25T00:01:00Z',
@@ -133,6 +158,15 @@ describe('phase2Mappers', () => {
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.display_name).toBe('Queue User');
     expect(payload.profile.profile_image_url).toBe('https://cdn.example.com/avatar-a.png');
+    expect(payload.profile.gender).toBe('male');
+    expect(payload.profile.birth_year).toBe(1988);
+    expect(payload.profile.disliked_ingredients).toEqual(['celery']);
+    expect(payload.profile.current_trip_start).toBe('2026-03-02T10:00:00Z');
+    expect(payload.profile.current_trip_location).toBe('Tokyo, JP');
+    expect(payload.profile.current_trip_coordinates).toEqual({
+      latitude: 35.6764,
+      longitude: 139.65,
+    });
     expect(payload.settings.language).toBe('en-US');
     expect(payload.allergies.allergies).toEqual(['peanut']);
     expect(payload.allergies.severity_map['peanut']).toBe('severe');

@@ -783,11 +783,22 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
+class TripCoordinatesRequest(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class ProfileUpdateRequest(BaseModel):
     display_name: str | None = None
     profile_image_url: str | None = None
+    gender: str | None = None
+    birth_year: int | None = None
+    disliked_ingredients: list[str] | None = None
     locale: str | None = None
     timezone: str | None = None
+    current_trip_start: str | None = None
+    current_trip_location: str | None = None
+    current_trip_coordinates: TripCoordinatesRequest | None = None
     expected_updated_at: str | None = None
 
 
@@ -1549,12 +1560,25 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
     auth_service = _service("auth_service")
     user = _resolve_authenticated_user(request, request_id)
     try:
+        current_trip_coordinates = None
+        if payload.current_trip_coordinates is not None:
+            if hasattr(payload.current_trip_coordinates, "model_dump"):
+                current_trip_coordinates = payload.current_trip_coordinates.model_dump()
+            else:  # pragma: no cover - pydantic v1 compatibility
+                current_trip_coordinates = payload.current_trip_coordinates.dict()
+
         profile = auth_service.update_profile(
             user_id=user.user_id,
             display_name=payload.display_name,
             profile_image_url=payload.profile_image_url,
+            gender=payload.gender,
+            birth_year=payload.birth_year,
+            disliked_ingredients=payload.disliked_ingredients,
             locale=payload.locale,
             timezone_name=payload.timezone,
+            current_trip_start=payload.current_trip_start,
+            current_trip_location=payload.current_trip_location,
+            current_trip_coordinates=current_trip_coordinates,
             expected_updated_at=payload.expected_updated_at,
         )
         _log_phase2_write(
