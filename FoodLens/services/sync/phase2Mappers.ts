@@ -27,8 +27,17 @@ const normalizeProfileImageForSync = (value: string | undefined): string | null 
   if (!trimmed) return null;
   const lower = trimmed.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
-  if (lower.startsWith('data:image/')) return trimmed;
   return null;
+};
+
+const normalizeProfileImageForUpload = (value: string | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return null;
+  if (lower.startsWith('barcode://')) return null;
+  return trimmed;
 };
 
 const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
@@ -118,7 +127,11 @@ export const mergeRemoteUserSnapshot = (
   next.uid = userId;
   next.email = input.profile?.email || fallback.email;
   next.name = input.profile?.display_name ?? fallback.name;
-  next.profileImage = input.profile?.profile_image_url ?? fallback.profileImage;
+  next.profileImageAssetId = input.profile?.profile_image_asset_id ?? fallback.profileImageAssetId;
+  next.profileImage =
+    input.profile?.profile_image_render_url ??
+    input.profile?.profile_image_url ??
+    fallback.profileImage;
   next.photoURL = next.profileImage;
   next.gender = normalizeGender(input.profile?.gender) ?? fallback.gender;
   next.birthYear = normalizeBirthYear(input.profile?.birth_year) ?? fallback.birthYear;
@@ -169,6 +182,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   profile: {
     display_name?: string | null;
     profile_image_url?: string | null;
+    profile_image_asset_id?: string | null;
+    profile_image_local_uri?: string | null;
     gender?: string | null;
     birth_year?: number | null;
     disliked_ingredients?: string[];
@@ -202,7 +217,13 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   return {
     profile: {
       display_name: profile.name || null,
-      profile_image_url: normalizeProfileImageForSync(profile.profileImage),
+      profile_image_url: profile.profileImageAssetId
+        ? null
+        : normalizeProfileImageForSync(profile.profileImage),
+      profile_image_asset_id: profile.profileImageAssetId || null,
+      profile_image_local_uri: profile.profileImageAssetId
+        ? null
+        : normalizeProfileImageForUpload(profile.profileImage),
       gender: profile.gender || null,
       birth_year: profile.birthYear ?? null,
       disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
@@ -229,10 +250,19 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   };
 };
 
-export const serializeHistoryRecord = (record: AnalysisRecord): Record<string, unknown> => ({
-  ...record,
-  timestamp: record.timestamp.toISOString(),
-});
+export const serializeHistoryRecord = (record: AnalysisRecord): Record<string, unknown> => {
+  const payload: Record<string, unknown> = {
+    ...record,
+    timestamp: record.timestamp.toISOString(),
+  };
+  if (record.imageAssetId) {
+    payload['image_asset_id'] = record.imageAssetId;
+  }
+  if (record.imageRenderUrl) {
+    payload['image_render_url'] = record.imageRenderUrl;
+  }
+  return payload;
+};
 
 export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRecord | null => {
   if (!item.entry || typeof item.entry !== 'object') return null;
@@ -264,7 +294,12 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
     raw_data: (entry['raw_data'] as Record<string, unknown>) || undefined,
     used_model: toStringOrNull(entry['used_model']) ?? undefined,
     isBarcode: typeof entry['isBarcode'] === 'boolean' ? entry['isBarcode'] : undefined,
-    imageUri: toStringOrNull(entry['imageUri']) ?? undefined,
+    imageUri:
+      toStringOrNull(entry['image_render_url']) ??
+      toStringOrNull(entry['imageUri']) ??
+      undefined,
+    imageAssetId: toStringOrNull(entry['image_asset_id']) ?? undefined,
+    imageRenderUrl: toStringOrNull(entry['image_render_url']) ?? undefined,
     location: normalizeLocation(entry['location']),
     timestamp: parseTimestamp(entry['timestamp']),
   };
@@ -280,7 +315,7 @@ export const mergeRemoteHistory = (
   if (parsed.length === 0) return current;
 
   const byId = new Map<string, AnalysisRecord>();
-  [...parsed, ...current].forEach((item) => {
+  [...current, ...parsed].forEach((item) => {
     byId.set(item.id, item);
   });
   return [...byId.values()].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());

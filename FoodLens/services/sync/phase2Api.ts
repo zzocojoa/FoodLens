@@ -1,6 +1,8 @@
 import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import type {
+  MediaAssetResponse,
+  MediaUploadScope,
   MeAllergiesResponse,
   MeHistoryItemResponse,
   MeProfileResponse,
@@ -91,7 +93,7 @@ const authenticatedRequest = async <T>(
         ...(init.headers || {}),
         'X-Request-Id': requestId,
         Authorization: `Bearer ${session.accessToken}`,
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       },
       signal: controller.signal,
     });
@@ -128,6 +130,7 @@ export const Phase2Api = {
   async putProfile(input: {
     display_name?: string | null;
     profile_image_url?: string | null;
+    profile_image_asset_id?: string | null;
     gender?: string | null;
     birth_year?: number | null;
     disliked_ingredients?: string[];
@@ -213,5 +216,96 @@ export const Phase2Api = {
       { method: 'DELETE' }
     );
     return { deleted: data.deleted !== false, requestId };
+  },
+
+  async postMediaUpload(input: {
+    fileUri: string;
+    fileName?: string;
+    contentType?: string;
+    scope: MediaUploadScope;
+    linkedEntryId?: string;
+  }): Promise<{ asset: MediaAssetResponse; requestId: string }> {
+    const session = await restoreSession({
+      clearCurrentUserOnMissing: false,
+      logWarnings: false,
+    });
+    if (!session) {
+      throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
+    }
+
+    const requestId = createRequestId();
+    const baseUrl = await ServerConfig.getServerUrl();
+    const endpoint = `${baseUrl}/me/media/upload`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), PHASE2_TIMEOUT_MS);
+
+    const normalizedFileUri =
+      input.fileUri.startsWith('file://') ||
+      input.fileUri.startsWith('content://') ||
+      input.fileUri.startsWith('ph://') ||
+      input.fileUri.startsWith('assets-library://')
+        ? input.fileUri
+        : `file://${input.fileUri}`;
+    const form = new FormData();
+    form.append('scope', input.scope);
+    if (input.linkedEntryId) {
+      form.append('linked_entry_id', input.linkedEntryId);
+    }
+    form.append(
+      'file',
+      {
+        uri: normalizedFileUri,
+        name: input.fileName || `upload-${Date.now().toString(36)}.jpg`,
+        type: input.contentType || 'image/jpeg',
+      } as unknown as Blob
+    );
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'X-Request-Id': requestId,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: form,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw await parseError(response);
+      }
+      const payload = (await response.json()) as ApiEnvelope<{ asset: MediaAssetResponse }>;
+      return {
+        asset: payload.asset,
+        requestId: payload.request_id || requestId,
+      };
+    } catch (error) {
+      if (error instanceof Phase2SyncApiError) throw error;
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Phase2SyncApiError('Phase2 request timed out.', 'PHASE2_TIMEOUT', 408, requestId);
+      }
+      throw new Phase2SyncApiError(
+        error instanceof Error ? error.message : 'Unknown phase2 network error',
+        'PHASE2_NETWORK_ERROR',
+        0,
+        requestId
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
+
+  async patchHistoryImage(
+    historyItemId: string,
+    imageAssetId: string
+  ): Promise<{ historyItem: MeHistoryItemResponse; requestId: string }> {
+    const encodedHistoryId = encodeURIComponent(historyItemId);
+    const { data, requestId } = await authenticatedRequest<{ history_item: MeHistoryItemResponse }>(
+      `/me/history/${encodedHistoryId}/image`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ image_asset_id: imageAssetId }),
+      }
+    );
+    return { historyItem: data.history_item, requestId };
   },
 };

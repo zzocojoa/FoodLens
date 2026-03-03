@@ -93,6 +93,7 @@ class UserProfile:
     locale: str
     timezone: str
     profile_image_url: str | None = None
+    profile_image_asset_id: str | None = None
     gender: str | None = None
     birth_year: int | None = None
     disliked_ingredients: list[str] = field(default_factory=list)
@@ -130,6 +131,20 @@ class UserHistoryRecord:
     idempotency_key: str | None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(slots=True)
+class UserMediaAsset:
+    asset_id: str
+    user_id: str
+    scope: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    object_key: str
+    created_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
+    last_accessed_at: datetime = field(default_factory=_utc_now)
 
 
 @dataclass(slots=True)
@@ -198,6 +213,7 @@ AUTH_STATE_DATACLASSES = {
     "UserAllergiesProfile": UserAllergiesProfile,
     "UserSettingsProfile": UserSettingsProfile,
     "UserHistoryRecord": UserHistoryRecord,
+    "UserMediaAsset": UserMediaAsset,
     "SessionRecord": SessionRecord,
     "AccessTokenRecord": AccessTokenRecord,
     "RefreshTokenRecord": RefreshTokenRecord,
@@ -249,6 +265,7 @@ class InMemoryAuthSessionService:
         self._settings_by_user_id: dict[str, UserSettingsProfile] = {}
         self._history_by_user_id: dict[str, list[UserHistoryRecord]] = {}
         self._history_idempotency_by_user_id: dict[str, dict[str, str]] = {}
+        self._media_assets_by_id: dict[str, UserMediaAsset] = {}
 
         self._sessions: dict[str, SessionRecord] = {}
         self._session_ids_by_family: dict[str, set[str]] = {}
@@ -355,6 +372,7 @@ class InMemoryAuthSessionService:
             "_settings_by_user_id": self._settings_by_user_id,
             "_history_by_user_id": self._history_by_user_id,
             "_history_idempotency_by_user_id": self._history_idempotency_by_user_id,
+            "_media_assets_by_id": self._media_assets_by_id,
             "_sessions": self._sessions,
             "_session_ids_by_family": self._session_ids_by_family,
             "_access_tokens": self._access_tokens,
@@ -391,6 +409,7 @@ class InMemoryAuthSessionService:
         self._settings_by_user_id = dict(state.get("_settings_by_user_id", {}))
         self._history_by_user_id = dict(state.get("_history_by_user_id", {}))
         self._history_idempotency_by_user_id = dict(state.get("_history_idempotency_by_user_id", {}))
+        self._media_assets_by_id = dict(state.get("_media_assets_by_id", {}))
         self._sessions = dict(state.get("_sessions", {}))
         self._session_ids_by_family = dict(state.get("_session_ids_by_family", {}))
         self._access_tokens = dict(state.get("_access_tokens", {}))
@@ -1075,6 +1094,7 @@ class InMemoryAuthSessionService:
         user_id: str,
         display_name: str | None = None,
         profile_image_url: str | None = None,
+        profile_image_asset_id: str | None = None,
         gender: str | None = None,
         birth_year: int | None = None,
         disliked_ingredients: list[str] | None = None,
@@ -1106,6 +1126,11 @@ class InMemoryAuthSessionService:
                 profile.display_name = display_name.strip() or None
             if profile_image_url is not None:
                 profile.profile_image_url = profile_image_url.strip() or None
+            if profile_image_asset_id is not None:
+                profile.profile_image_asset_id = profile_image_asset_id.strip() or None
+                if profile.profile_image_asset_id:
+                    # Asset-backed image takes precedence over raw URL.
+                    profile.profile_image_url = None
             if gender is not None:
                 normalized_gender = gender.strip().lower()
                 profile.gender = normalized_gender or None
@@ -1347,6 +1372,158 @@ class InMemoryAuthSessionService:
             self._persist_state_unlocked()
             return True
 
+    def register_media_asset(
+        self,
+        *,
+        user_id: str,
+        scope: str,
+        mime_type: str,
+        size_bytes: int,
+        sha256: str,
+        object_key: str,
+        asset_id: str,
+    ) -> dict[str, object]:
+        with self._lock:
+            if user_id not in self._users_by_id:
+                raise AuthServiceError(
+                    code="AUTH_USER_NOT_FOUND",
+                    message="User not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            now = _utc_now()
+            record = UserMediaAsset(
+                asset_id=asset_id,
+                user_id=user_id,
+                scope=scope.strip().lower(),
+                mime_type=mime_type.strip().lower(),
+                size_bytes=int(size_bytes),
+                sha256=sha256.strip().lower(),
+                object_key=object_key.strip(),
+                created_at=now,
+                updated_at=now,
+                last_accessed_at=now,
+            )
+            self._media_assets_by_id[record.asset_id] = record
+            payload = self._serialize_media_asset(record)
+            self._persist_state_unlocked()
+            return payload
+
+    def get_media_asset(
+        self,
+        *,
+        asset_id: str,
+        user_id: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            record = self._media_assets_by_id.get(asset_id.strip())
+            if record is None:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_NOT_FOUND",
+                    message="Media asset not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            if user_id and record.user_id != user_id:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_FORBIDDEN",
+                    message="Media asset access is forbidden.",
+                    status_code=403,
+                    user_id=user_id,
+                )
+            return self._serialize_media_asset(record)
+
+    def assert_media_asset_owner(
+        self,
+        *,
+        user_id: str,
+        asset_id: str,
+    ) -> None:
+        self.get_media_asset(asset_id=asset_id, user_id=user_id)
+
+    def touch_media_asset(self, *, asset_id: str) -> dict[str, object]:
+        with self._lock:
+            record = self._media_assets_by_id.get(asset_id.strip())
+            if record is None:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_NOT_FOUND",
+                    message="Media asset not found.",
+                    status_code=404,
+                )
+            now = _utc_now()
+            record.updated_at = now
+            record.last_accessed_at = now
+            payload = self._serialize_media_asset(record)
+            self._persist_state_unlocked()
+            return payload
+
+    def patch_history_image(
+        self,
+        *,
+        user_id: str,
+        history_item_id: str,
+        image_asset_id: str,
+    ) -> dict[str, object]:
+        with self._lock:
+            records = self._history_by_user_id.get(user_id)
+            if records is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            normalized_history_id = history_item_id.strip()
+            normalized_asset_id = image_asset_id.strip()
+            if not normalized_history_id or not normalized_asset_id:
+                raise AuthServiceError(
+                    code="AUTH_HISTORY_INVALID_REQUEST",
+                    message="history_item_id and image_asset_id are required.",
+                    status_code=400,
+                    user_id=user_id,
+                )
+
+            record = self._media_assets_by_id.get(normalized_asset_id)
+            if record is None:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_NOT_FOUND",
+                    message="Media asset not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            if record.user_id != user_id:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_FORBIDDEN",
+                    message="Media asset access is forbidden.",
+                    status_code=403,
+                    user_id=user_id,
+                )
+
+            target: UserHistoryRecord | None = None
+            for item in records:
+                entry_id = item.entry.get("id") if isinstance(item.entry, dict) else None
+                if item.history_id == normalized_history_id or entry_id == normalized_history_id:
+                    target = item
+                    break
+
+            if target is None:
+                raise AuthServiceError(
+                    code="AUTH_HISTORY_NOT_FOUND",
+                    message="History item not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            entry = dict(target.entry)
+            entry["image_asset_id"] = normalized_asset_id
+            entry.pop("imageUri", None)
+            entry.pop("image_render_url", None)
+            target.entry = entry
+            target.updated_at = _utc_now()
+            payload = self._serialize_history_item(target)
+            self._persist_state_unlocked()
+            return payload
+
     def _create_user(
         self,
         *,
@@ -1411,6 +1588,13 @@ class InMemoryAuthSessionService:
         self._settings_by_user_id.pop(user.user_id, None)
         self._history_by_user_id.pop(user.user_id, None)
         self._history_idempotency_by_user_id.pop(user.user_id, None)
+        stale_asset_ids = [
+            asset_id
+            for asset_id, record in self._media_assets_by_id.items()
+            if record.user_id == user.user_id
+        ]
+        for asset_id in stale_asset_ids:
+            self._media_assets_by_id.pop(asset_id, None)
         self._users_by_id.pop(user.user_id, None)
         if self._user_id_by_email.get(user.email) == user.user_id:
             self._user_id_by_email.pop(user.email, None)
@@ -1556,6 +1740,7 @@ class InMemoryAuthSessionService:
             "email": profile.email,
             "display_name": profile.display_name,
             "profile_image_url": profile.profile_image_url,
+            "profile_image_asset_id": profile.profile_image_asset_id,
             "gender": profile.gender,
             "birth_year": profile.birth_year,
             "disliked_ingredients": [*profile.disliked_ingredients],
@@ -1599,6 +1784,20 @@ class InMemoryAuthSessionService:
             "idempotency_key": item.idempotency_key,
             "created_at": _to_iso8601(item.created_at),
             "updated_at": _to_iso8601(item.updated_at),
+        }
+
+    def _serialize_media_asset(self, record: UserMediaAsset) -> dict[str, object]:
+        return {
+            "asset_id": record.asset_id,
+            "user_id": record.user_id,
+            "scope": record.scope,
+            "mime_type": record.mime_type,
+            "size_bytes": record.size_bytes,
+            "sha256": record.sha256,
+            "object_key": record.object_key,
+            "created_at": _to_iso8601(record.created_at),
+            "updated_at": _to_iso8601(record.updated_at),
+            "last_accessed_at": _to_iso8601(record.last_accessed_at),
         }
 
     def _assert_expected_updated_at(

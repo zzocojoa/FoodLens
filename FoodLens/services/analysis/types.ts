@@ -8,6 +8,8 @@ export interface AnalysisRecord extends AnalyzedData {
   id: string;
   timestamp: Date;
   imageUri?: string;
+  imageAssetId?: string;
+  imageRenderUrl?: string;
   location?: {
     latitude: number;
     longitude: number;

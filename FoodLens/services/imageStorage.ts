@@ -34,6 +34,13 @@ const ensureDir = async (): Promise<void> => {
 
 const LOG_PREFIX = '[ImageStorage]';
 const MIN_REQUIRED_SPACE = 50 * 1024 * 1024; // 50MB
+const isExternalImageReference = (value: string): boolean => {
+    const normalized = value.toLowerCase();
+    return normalized.startsWith('http://') ||
+        normalized.startsWith('https://') ||
+        normalized.startsWith('data:image/') ||
+        normalized.startsWith('barcode://');
+};
 
 /**
  * Check if there is enough disk space for saving a new image.
@@ -118,7 +125,7 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
         const referencedFiles = new Set(
             analyses
                 .map(a => a.imageUri)
-                .filter(uri => uri && !isLegacyAbsoluteUri(uri))
+                .filter(uri => uri && !isLegacyAbsoluteUri(uri) && !isExternalImageReference(uri))
         );
 
         // Preserve current profile image as well (it is not part of analysis history).
@@ -130,7 +137,7 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
                 if (profileFilename) {
                     referencedFiles.add(profileFilename);
                 }
-            } else if (!isLegacyAbsoluteUri(profileImage)) {
+            } else if (!isLegacyAbsoluteUri(profileImage) && !isExternalImageReference(profileImage)) {
                 referencedFiles.add(profileImage);
             }
         }
@@ -176,6 +183,7 @@ export const getBarcodeImageUri = (): string => 'barcode://pattern';
  */
 export const deleteImage = async (stored: string | undefined | null): Promise<void> => {
     if (!stored) return;
+    if (isExternalImageReference(stored)) return;
 
     // Only delete files in our managed directory
     if (isLegacyAbsoluteUri(stored)) {

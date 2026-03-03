@@ -55,6 +55,30 @@ services:
         value: "15"
       - key: AUTH_PUBLIC_BASE_URL
         sync: false
+      - key: MEDIA_PUBLIC_BASE_URL
+        sync: false
+      - key: MEDIA_STORAGE_BACKEND
+        value: gcs
+      - key: MEDIA_GCS_BUCKET
+        sync: false
+      - key: MEDIA_GCS_PREFIX
+        value: media
+      - key: MEDIA_MAX_UPLOAD_MB
+        value: "10"
+      - key: MEDIA_RENDER_SIGNING_SECRET
+        sync: false
+      - key: MEDIA_RENDER_URL_TTL_SECONDS
+        value: "86400"
+      - key: MEDIA_RENDER_ALLOWED_WIDTHS
+        value: "128,256,512,1024"
+      - key: MEDIA_RENDER_QUALITY_MIN
+        value: "50"
+      - key: MEDIA_RENDER_QUALITY_MAX
+        value: "85"
+      - key: MEDIA_RENDER_DEFAULT_WIDTH
+        value: "512"
+      - key: MEDIA_RENDER_DEFAULT_QUALITY
+        value: "75"
       - key: AUTH_APP_ALLOWED_REDIRECT_URIS
         sync: false
       - key: AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS

@@ -32,6 +32,8 @@ export type MeProfileResponse = {
   email: string;
   display_name?: string | null;
   profile_image_url?: string | null;
+  profile_image_render_url?: string | null;
+  profile_image_asset_id?: string | null;
   gender?: string | null;
   birth_year?: number | null;
   disliked_ingredients?: string[];
@@ -71,4 +73,21 @@ export type MeHistoryItemResponse = {
   idempotency_key?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+
+export type MediaUploadScope = 'profile' | 'history';
+
+export type MediaAssetResponse = {
+  asset_id: string;
+  user_id: string;
+  scope: MediaUploadScope;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  object_key: string;
+  created_at?: string;
+  updated_at?: string;
+  last_accessed_at?: string;
+  render_url?: string;
+  linked_entry_id?: string | null;
 };

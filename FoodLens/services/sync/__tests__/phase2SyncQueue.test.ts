@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
@@ -16,6 +17,26 @@ jest.mock('@react-native-community/netinfo', () => ({
     fetch: jest.fn(),
     addEventListener: jest.fn(),
   },
+}));
+
+jest.mock('expo-file-system/legacy', () => ({
+  __esModule: true,
+  default: {
+    cacheDirectory: '/tmp/',
+    documentDirectory: '/tmp/',
+    EncodingType: {
+      Base64: 'base64',
+    },
+    writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+    deleteAsync: jest.fn().mockResolvedValue(undefined),
+  },
+  cacheDirectory: '/tmp/',
+  documentDirectory: '/tmp/',
+  EncodingType: {
+    Base64: 'base64',
+  },
+  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+  deleteAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/services/auth/currentUser_Logic', () => ({
@@ -41,6 +62,8 @@ jest.mock('../phase2Api_Logic', () => ({
     putAllergies: jest.fn(),
     putSettings: jest.fn(),
     postHistory: jest.fn(),
+    postMediaUpload: jest.fn(),
+    patchHistoryImage: jest.fn(),
     deleteHistory: jest.fn(),
   },
   Phase2SyncApiError: class MockPhase2SyncApiError extends Error {
@@ -66,6 +89,10 @@ jest.mock('../phase2Api_Logic', () => ({
 }));
 
 const mockedNetInfo = NetInfo as unknown as { fetch: jest.Mock };
+const mockedFileSystem = FileSystem as unknown as {
+  writeAsStringAsync: jest.Mock;
+  deleteAsync: jest.Mock;
+};
 const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.Mock;
 const mockedGetCurrentUserId = getCurrentUserId as jest.Mock;
@@ -89,6 +116,8 @@ const pendingProfileOperation = (id: string, userId: string): Phase2SyncOperatio
 beforeEach(() => {
   jest.clearAllMocks();
   queueState = [];
+  mockedFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
+  mockedFileSystem.deleteAsync.mockResolvedValue(undefined);
 
   mockedNetInfo.fetch.mockResolvedValue({
     isConnected: true,
@@ -139,6 +168,27 @@ beforeEach(() => {
       entry: {},
     },
     requestId: 'req-history-a',
+  });
+  mockedPhase2Api.postMediaUpload.mockResolvedValue({
+    asset: {
+      asset_id: 'asset_history_1',
+      user_id: 'usr_a',
+      scope: 'history',
+      mime_type: 'image/jpeg',
+      size_bytes: 1234,
+      sha256: 'hash',
+      object_key: 'media/usr_a/history/asset_history_1/original.jpg',
+      render_url: 'https://cdn.example.com/media/render/asset_history_1',
+    },
+    requestId: 'req-media-a',
+  });
+  mockedPhase2Api.patchHistoryImage.mockResolvedValue({
+    historyItem: {
+      id: 'his_1',
+      user_id: 'usr_a',
+      entry: {},
+    },
+    requestId: 'req-history-image-a',
   });
 });
 
@@ -310,7 +360,7 @@ describe('phase2SyncQueue', () => {
     expect(forUserA[0].id).toBe('op-a');
   });
 
-  it('dispatches history entries with portable image URI as-is', async () => {
+  it('uploads local/data history images first and dispatches image_asset_id', async () => {
     const historyOp: Phase2SyncOperation = {
       id: 'op-history-a',
       userId: 'usr_a',
@@ -331,12 +381,14 @@ describe('phase2SyncQueue', () => {
 
     await dispatchPhase2SyncQueue();
 
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
     expect(mockedPhase2Api.postHistory).toHaveBeenCalledTimes(1);
     expect(mockedPhase2Api.postHistory).toHaveBeenCalledWith({
       entry: {
         id: 'analysis_1',
         foodName: 'Sushi',
-        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        image_asset_id: 'asset_history_1',
+        image_render_url: 'https://cdn.example.com/media/render/asset_history_1',
       },
       idempotency_key: 'analysis_1',
     });

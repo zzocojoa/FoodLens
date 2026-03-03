@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { UserProfile } from '@/models/User';
 import { SafeStorage } from '@/services/storage_Logic';
 import { logger } from '@/services/logger_Logic';
@@ -6,6 +7,7 @@ import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentU
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { getUserStorageKey } from '@/services/user/constants_Logic';
 import { resolveImageUri } from '@/services/imageStorage_Logic';
+import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
 import type {
   Phase2ConflictResolution,
@@ -14,12 +16,10 @@ import type {
 } from './phase2Sync.types_Structure';
 
 const SYNC_QUEUE_KEY = '@foodlens_phase2_sync_queue_v1';
+const MEDIA_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_media_migrated:';
 const RETRY_LIMIT = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_SYNCED_HISTORY = 30;
-const HISTORY_IMAGE_SYNC_MAX_DIMENSION = 360;
-const HISTORY_IMAGE_SYNC_JPEG_QUALITY = 0.62;
-const HISTORY_IMAGE_SYNC_MAX_BASE64_CHARS = 600_000;
 
 let runtimeStarted = false;
 let dispatchInFlight: Promise<void> | null = null;
@@ -58,11 +58,50 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
   return [...unsynced, ...synced];
 };
 
+const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
+
+const upsertPendingEntityOperation = async (
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>,
+  payload: Record<string, unknown>
+): Promise<void> => {
+  const queue = await loadQueue();
+  const existingIndex = queue.findIndex(
+    (item) =>
+      item.userId === userId &&
+      item.entity === entity &&
+      (item.state === 'pending' ||
+        item.state === 'failed' ||
+        item.state === 'sending' ||
+        item.state === 'conflicted')
+  );
+  const item: Phase2SyncOperation = {
+    id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
+    userId,
+    entity,
+    payload,
+    attempts: 0,
+    state: 'pending',
+    nextAttemptAt: now(),
+    createdAt: existingIndex >= 0 ? queue[existingIndex].createdAt : now(),
+    updatedAt: now(),
+    conflict: undefined,
+  };
+  if (existingIndex >= 0) {
+    queue[existingIndex] = item;
+  } else {
+    queue.push(item);
+  }
+  await saveQueue(pruneQueue(queue));
+};
+
 type DispatchResult = {
   requestId?: string;
   profileUpdatedAt?: string;
   allergiesUpdatedAt?: string;
   settingsUpdatedAt?: string;
+  profileImageAssetId?: string;
+  profileImageRenderUrl?: string;
 };
 
 const applyServerVersionToLocalProfile = async (
@@ -71,9 +110,17 @@ const applyServerVersionToLocalProfile = async (
     profileUpdatedAt?: string;
     allergiesUpdatedAt?: string;
     settingsUpdatedAt?: string;
+    profileImageAssetId?: string;
+    profileImageRenderUrl?: string;
   }
 ): Promise<void> => {
-  if (!versionPatch.profileUpdatedAt && !versionPatch.allergiesUpdatedAt && !versionPatch.settingsUpdatedAt) {
+  if (
+    !versionPatch.profileUpdatedAt &&
+    !versionPatch.allergiesUpdatedAt &&
+    !versionPatch.settingsUpdatedAt &&
+    !versionPatch.profileImageAssetId &&
+    !versionPatch.profileImageRenderUrl
+  ) {
     return;
   }
   const storageKey = getUserStorageKey(userId);
@@ -88,19 +135,20 @@ const applyServerVersionToLocalProfile = async (
   const nextUpdatedAt = versionPatch.profileUpdatedAt || current.updatedAt;
   await SafeStorage.set(storageKey, {
     ...current,
+    profileImageAssetId: versionPatch.profileImageAssetId ?? current.profileImageAssetId,
+    profileImage: versionPatch.profileImageRenderUrl ?? current.profileImage,
+    photoURL: versionPatch.profileImageRenderUrl ?? current.photoURL,
     updatedAt: nextUpdatedAt,
     syncVersions: nextSyncVersions,
   });
 };
 
-const isPortableImageUri = (uri: string): boolean => {
+const isRemoteImageUri = (uri: string): boolean => {
   const normalized = uri.toLowerCase();
-  return (
-    normalized.startsWith('http://') ||
-    normalized.startsWith('https://') ||
-    normalized.startsWith('data:image/')
-  );
+  return normalized.startsWith('http://') || normalized.startsWith('https://');
 };
+
+const isDataImageUri = (uri: string): boolean => uri.toLowerCase().startsWith('data:image/');
 
 const isUnsupportedHistoryImageScheme = (uri: string): boolean => {
   const normalized = uri.toLowerCase();
@@ -109,90 +157,348 @@ const isUnsupportedHistoryImageScheme = (uri: string): boolean => {
 
 const resolveHistoryImageFileUri = (rawUri: string): string | null => {
   if (!rawUri) return null;
-  if (isPortableImageUri(rawUri) || isUnsupportedHistoryImageScheme(rawUri)) {
+  if (isRemoteImageUri(rawUri) || isUnsupportedHistoryImageScheme(rawUri)) {
     return null;
   }
 
   const resolved = resolveImageUri(rawUri) || rawUri;
-  if (resolved.startsWith('file://') || resolved.startsWith('/')) {
+  if (
+    resolved.startsWith('file://') ||
+    resolved.startsWith('/') ||
+    resolved.startsWith('content://') ||
+    resolved.startsWith('ph://') ||
+    resolved.startsWith('assets-library://')
+  ) {
     return resolved;
   }
   return null;
 };
 
-const toPortableHistoryImageDataUrl = async (fileUri: string): Promise<string | null> => {
-  try {
-    const imageManipulator = await import('expo-image-manipulator');
-    const compressed = await imageManipulator.manipulateAsync(
-      fileUri,
-      [{ resize: { width: HISTORY_IMAGE_SYNC_MAX_DIMENSION } }],
-      {
-        compress: HISTORY_IMAGE_SYNC_JPEG_QUALITY,
-        format: imageManipulator.SaveFormat.JPEG,
-        base64: true,
-      }
-    );
-    const base64 = compressed.base64?.trim() || '';
-    if (!base64) return null;
-    if (base64.length > HISTORY_IMAGE_SYNC_MAX_BASE64_CHARS) {
-      logger.warn('[Phase2Sync] history image payload too large; skipping portable sync', {
-        image_base64_len: base64.length,
-      });
-      return null;
-    }
-    return `data:image/jpeg;base64,${base64}`;
-  } catch (error) {
-    logger.warn('[Phase2Sync] failed to build portable history image payload', {
-      code: error instanceof Error ? error.message : 'HISTORY_IMAGE_SYNC_FAILED',
-    });
+const inferContentTypeFromDataUrl = (value: string): string => {
+  const matched = value.match(/^data:([^;,]+);base64,/i);
+  return matched?.[1]?.trim().toLowerCase() || 'image/jpeg';
+};
+
+const inferContentTypeFromUri = (value: string): string => {
+  const normalized = value.toLowerCase();
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+};
+
+const extensionFromContentType = (contentType: string): string => {
+  if (contentType === 'image/png') return 'png';
+  if (contentType === 'image/webp') return 'webp';
+  return 'jpg';
+};
+
+type PreparedUploadSource = {
+  fileUri: string;
+  contentType: string;
+  cleanup?: () => Promise<void>;
+};
+
+const writeDataUrlToTempFile = async (dataUrl: string): Promise<PreparedUploadSource | null> => {
+  const matched = dataUrl.match(/^data:([^;,]+);base64,(.+)$/i);
+  if (!matched) return null;
+  const contentType = matched[1].trim().toLowerCase();
+  const base64Payload = matched[2].trim();
+  if (!base64Payload) return null;
+
+  const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!baseDir) return null;
+  const ext = extensionFromContentType(contentType);
+  const fileUri = `${baseDir}phase2-media-${Date.now().toString(36)}-${Math.random()
+    .toString(16)
+    .slice(2, 10)}.${ext}`;
+
+  await FileSystem.writeAsStringAsync(fileUri, base64Payload, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  return {
+    fileUri,
+    contentType,
+    cleanup: async () => {
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    },
+  };
+};
+
+const prepareUploadSource = async (rawUri: string): Promise<PreparedUploadSource | null> => {
+  if (!rawUri) return null;
+  const trimmed = rawUri.trim();
+  if (!trimmed || isUnsupportedHistoryImageScheme(trimmed) || isRemoteImageUri(trimmed)) {
     return null;
+  }
+
+  if (isDataImageUri(trimmed)) {
+    return writeDataUrlToTempFile(trimmed);
+  }
+
+  const resolved = resolveHistoryImageFileUri(trimmed);
+  if (!resolved) return null;
+  const contentType = inferContentTypeFromUri(resolved);
+  const fileUri = resolved.startsWith('file://') ? resolved : `file://${resolved}`;
+  return { fileUri, contentType };
+};
+
+const uploadMediaSource = async (
+  userId: string,
+  scope: 'profile' | 'history',
+  rawUri: string,
+  linkedEntryId?: string
+): Promise<{ assetId: string; renderUrl?: string } | null> => {
+  const prepared = await prepareUploadSource(rawUri);
+  if (!prepared) return null;
+  try {
+    const result = await Phase2Api.postMediaUpload({
+      fileUri: prepared.fileUri,
+      contentType: prepared.contentType,
+      fileName: `foodlens-${scope}.${extensionFromContentType(prepared.contentType)}`,
+      scope,
+      linkedEntryId,
+    });
+    return {
+      assetId: result.asset.asset_id,
+      renderUrl: result.asset.render_url,
+    };
+  } catch (error) {
+    logger.warn('[Phase2Sync] media upload failed', {
+      request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
+      user_id: userId,
+      scope,
+      code:
+        error instanceof Phase2SyncApiError
+          ? error.code
+          : error instanceof Error
+            ? error.message
+            : 'MEDIA_UPLOAD_FAILED',
+    });
+    throw error;
+  } finally {
+    if (prepared.cleanup) {
+      await prepared.cleanup().catch(() => {});
+    }
   }
 };
 
-const normalizeHistoryEntryForSync = async (
-  entry: Record<string, unknown>
-): Promise<Record<string, unknown>> => {
-  const imageUri = typeof entry['imageUri'] === 'string' ? entry['imageUri'].trim() : '';
-  if (!imageUri) return entry;
-  if (isPortableImageUri(imageUri) || isUnsupportedHistoryImageScheme(imageUri)) {
-    return entry;
+const normalizeProfilePayloadForSync = async (
+  payload: Record<string, unknown>,
+  userId: string
+): Promise<{
+  display_name?: string | null;
+  profile_image_url?: string | null;
+  profile_image_asset_id?: string | null;
+  gender?: string | null;
+  birth_year?: number | null;
+  disliked_ingredients?: string[];
+  locale?: string | null;
+  timezone?: string | null;
+  current_trip_start?: string | null;
+  current_trip_location?: string | null;
+  current_trip_coordinates?:
+    | {
+        latitude: number;
+        longitude: number;
+      }
+    | null;
+  expected_updated_at?: string;
+}> => {
+  const next = { ...payload } as Record<string, unknown>;
+  const existingAssetId =
+    typeof next['profile_image_asset_id'] === 'string'
+      ? next['profile_image_asset_id'].trim()
+      : '';
+  const localCandidateRaw =
+    typeof next['profile_image_local_uri'] === 'string'
+      ? next['profile_image_local_uri'].trim()
+      : typeof next['profile_image_url'] === 'string'
+        ? next['profile_image_url'].trim()
+        : '';
+
+  if (!existingAssetId && localCandidateRaw && !isRemoteImageUri(localCandidateRaw)) {
+    const uploaded = await uploadMediaSource(userId, 'profile', localCandidateRaw);
+    if (uploaded?.assetId) {
+      next['profile_image_asset_id'] = uploaded.assetId;
+      next['profile_image_url'] = null;
+    }
   }
 
-  const fileUri = resolveHistoryImageFileUri(imageUri);
-  if (!fileUri) return entry;
-  const portableDataUrl = await toPortableHistoryImageDataUrl(fileUri);
-  if (!portableDataUrl) return entry;
-  return {
-    ...entry,
-    imageUri: portableDataUrl,
+  if (typeof next['profile_image_url'] === 'string') {
+    const currentImageUrl = next['profile_image_url'].trim();
+    if (!currentImageUrl || !isRemoteImageUri(currentImageUrl)) {
+      next['profile_image_url'] = null;
+    }
+  }
+  if (typeof next['profile_image_asset_id'] === 'string' && next['profile_image_asset_id'].trim()) {
+    next['profile_image_url'] = null;
+  }
+  delete next['profile_image_local_uri'];
+
+  return next as {
+    display_name?: string | null;
+    profile_image_url?: string | null;
+    profile_image_asset_id?: string | null;
+    gender?: string | null;
+    birth_year?: number | null;
+    disliked_ingredients?: string[];
+    locale?: string | null;
+    timezone?: string | null;
+    current_trip_start?: string | null;
+    current_trip_location?: string | null;
+    current_trip_coordinates?:
+      | {
+          latitude: number;
+          longitude: number;
+        }
+      | null;
+    expected_updated_at?: string;
   };
+};
+
+const normalizeHistoryEntryForSync = async (
+  entry: Record<string, unknown>,
+  userId: string
+): Promise<Record<string, unknown>> => {
+  const next = { ...entry };
+  const existingAssetId = typeof next['image_asset_id'] === 'string' ? next['image_asset_id'].trim() : '';
+  if (existingAssetId) {
+    delete next['imageUri'];
+    delete next['image_render_url'];
+    return next;
+  }
+
+  const imageUri = typeof entry['imageUri'] === 'string' ? entry['imageUri'].trim() : '';
+  if (!imageUri || isRemoteImageUri(imageUri) || isUnsupportedHistoryImageScheme(imageUri)) {
+    return next;
+  }
+
+  const linkedEntryId = typeof next['id'] === 'string' ? next['id'] : undefined;
+  const uploaded = await uploadMediaSource(userId, 'history', imageUri, linkedEntryId);
+  if (!uploaded?.assetId) {
+    return next;
+  }
+
+  next['image_asset_id'] = uploaded.assetId;
+  next['image_render_url'] = uploaded.renderUrl || next['image_render_url'];
+  delete next['imageUri'];
+  return next;
+};
+
+const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
+  const alreadyMigrated = await SafeStorage.get<boolean>(mediaMigrationMarkerKey(userId), false);
+  if (alreadyMigrated) return;
+
+  let shouldMarkDone = true;
+
+  const storageKey = getUserStorageKey(userId);
+  const profile = await SafeStorage.get<UserProfile | null>(storageKey, null);
+  if (profile?.profileImage && !profile.profileImageAssetId && !isRemoteImageUri(profile.profileImage)) {
+    try {
+      const uploaded = await uploadMediaSource(userId, 'profile', profile.profileImage);
+      if (uploaded?.assetId) {
+        const nextProfile: UserProfile = {
+          ...profile,
+          profileImageAssetId: uploaded.assetId,
+          profileImage: uploaded.renderUrl || profile.profileImage,
+          photoURL: uploaded.renderUrl || profile.photoURL,
+          updatedAt: new Date().toISOString(),
+        };
+        await SafeStorage.set(storageKey, nextProfile);
+        await upsertPendingEntityOperation(userId, 'profile', {
+          profile_image_asset_id: uploaded.assetId,
+          profile_image_url: null,
+          expected_updated_at: profile.syncVersions?.profileUpdatedAt,
+        });
+      }
+    } catch (error) {
+      shouldMarkDone = false;
+      logger.warn('[Phase2Sync] profile media migration deferred', {
+        request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
+        user_id: userId,
+        code:
+          error instanceof Phase2SyncApiError
+            ? error.code
+            : error instanceof Error
+              ? error.message
+              : 'PHASE2_MEDIA_MIGRATION_FAILED',
+      });
+    }
+  }
+
+  const analyses = await getStoredAnalyses(userId);
+  if (analyses.length > 0) {
+    let changed = false;
+    for (const record of analyses) {
+      const rawImageUri = typeof record.imageUri === 'string' ? record.imageUri.trim() : '';
+      if (!rawImageUri || isRemoteImageUri(rawImageUri) || record.imageAssetId) {
+        continue;
+      }
+      try {
+        const uploaded = await uploadMediaSource(userId, 'history', rawImageUri, record.id);
+        if (!uploaded?.assetId) {
+          continue;
+        }
+        record.imageAssetId = uploaded.assetId;
+        record.imageRenderUrl = uploaded.renderUrl || record.imageRenderUrl;
+        if (uploaded.renderUrl) {
+          record.imageUri = uploaded.renderUrl;
+        }
+        changed = true;
+
+        try {
+          await Phase2Api.patchHistoryImage(record.id, uploaded.assetId);
+        } catch (patchError) {
+          const apiError = patchError instanceof Phase2SyncApiError ? patchError : null;
+          if (apiError?.code === 'AUTH_SESSION_REQUIRED' || apiError?.status === 0) {
+            shouldMarkDone = false;
+            continue;
+          }
+          logger.warn('[Phase2Sync] history media patch skipped', {
+            request_id: apiError?.requestId || 'unknown',
+            user_id: userId,
+            code: apiError?.code || 'PHASE2_HISTORY_MEDIA_PATCH_FAILED',
+            history_id: record.id,
+          });
+        }
+      } catch (error) {
+        shouldMarkDone = false;
+        logger.warn('[Phase2Sync] history media migration deferred', {
+          request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
+          user_id: userId,
+          code:
+            error instanceof Phase2SyncApiError
+              ? error.code
+              : error instanceof Error
+                ? error.message
+                : 'PHASE2_MEDIA_MIGRATION_FAILED',
+          history_id: record.id,
+        });
+      }
+    }
+    if (changed) {
+      await saveAnalyses(userId, analyses);
+    }
+  }
+
+  if (shouldMarkDone) {
+    await SafeStorage.set(mediaMigrationMarkerKey(userId), true);
+  }
 };
 
 const dispatchOperation = async (operation: Phase2SyncOperation): Promise<DispatchResult> => {
   if (operation.entity === 'profile') {
+    const profilePayload = await normalizeProfilePayloadForSync(operation.payload, operation.userId);
     const result = await Phase2Api.putProfile(
-      operation.payload as {
-        display_name?: string | null;
-        profile_image_url?: string | null;
-        gender?: string | null;
-        birth_year?: number | null;
-        disliked_ingredients?: string[];
-        locale?: string | null;
-        timezone?: string | null;
-        current_trip_start?: string | null;
-        current_trip_location?: string | null;
-        current_trip_coordinates?:
-          | {
-              latitude: number;
-              longitude: number;
-            }
-          | null;
-        expected_updated_at?: string;
-      }
+      profilePayload
     );
     return {
       requestId: result.requestId,
       profileUpdatedAt: result.profile.updated_at,
+      profileImageAssetId: result.profile.profile_image_asset_id || undefined,
+      profileImageRenderUrl:
+        result.profile.profile_image_render_url || result.profile.profile_image_url || undefined,
     };
   }
 
@@ -227,7 +533,7 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
     };
   }
 
-  const historyEntry = await normalizeHistoryEntryForSync(operation.payload);
+  const historyEntry = await normalizeHistoryEntryForSync(operation.payload, operation.userId);
   const historyResult = await Phase2Api.postHistory({
     entry: historyEntry,
     idempotency_key: operation.idempotencyKey,
@@ -290,6 +596,7 @@ export const dispatchPhase2SyncQueue = async (
     if (!options.force && !(await isNetworkAvailable())) return;
     const activeUserId = await resolveActiveUserId();
     if (!activeUserId) return;
+    await migrateLegacyMediaIfNeeded(activeUserId);
 
     const queue = await loadQueue();
     if (queue.length === 0) return;
@@ -327,6 +634,8 @@ export const dispatchPhase2SyncQueue = async (
           profileUpdatedAt: result.profileUpdatedAt,
           allergiesUpdatedAt: result.allergiesUpdatedAt,
           settingsUpdatedAt: result.settingsUpdatedAt,
+          profileImageAssetId: result.profileImageAssetId,
+          profileImageRenderUrl: result.profileImageRenderUrl,
         });
       } catch (error) {
         const previousAttempts = sending.attempts + 1;

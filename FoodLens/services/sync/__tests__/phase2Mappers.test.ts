@@ -21,6 +21,8 @@ describe('phase2Mappers', () => {
         email: 'remote@example.com',
         display_name: 'Remote Name',
         profile_image_url: 'https://cdn.example.com/avatar-remote.png',
+        profile_image_render_url: 'https://cdn.example.com/media/render/asset_remote',
+        profile_image_asset_id: 'asset_remote',
         gender: 'female',
         birth_year: 1992,
         disliked_ingredients: ['cucumber'],
@@ -51,7 +53,8 @@ describe('phase2Mappers', () => {
     expect(merged.uid).toBe('usr_local');
     expect(merged.email).toBe('remote@example.com');
     expect(merged.name).toBe('Remote Name');
-    expect(merged.profileImage).toBe('https://cdn.example.com/avatar-remote.png');
+    expect(merged.profileImage).toBe('https://cdn.example.com/media/render/asset_remote');
+    expect(merged.profileImageAssetId).toBe('asset_remote');
     expect(merged.gender).toBe('female');
     expect(merged.birthYear).toBe(1992);
     expect(merged.safetyProfile.dislikedIngredients).toEqual(['cucumber']);
@@ -140,6 +143,7 @@ describe('phase2Mappers', () => {
     profile.settings.autoPlayAudio = true;
     profile.settings.selectedEmoji = '🍎';
     profile.profileImage = 'https://cdn.example.com/avatar-a.png';
+    profile.profileImageAssetId = 'asset_profile_a';
     profile.gender = 'male';
     profile.birthYear = 1988;
     profile.safetyProfile.allergies = ['peanut'];
@@ -157,7 +161,9 @@ describe('phase2Mappers', () => {
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.display_name).toBe('Queue User');
-    expect(payload.profile.profile_image_url).toBe('https://cdn.example.com/avatar-a.png');
+    expect(payload.profile.profile_image_url).toBeNull();
+    expect(payload.profile.profile_image_asset_id).toBe('asset_profile_a');
+    expect(payload.profile.profile_image_local_uri).toBeNull();
     expect(payload.profile.gender).toBe('male');
     expect(payload.profile.birth_year).toBe(1988);
     expect(payload.profile.disliked_ingredients).toEqual(['celery']);
@@ -181,13 +187,15 @@ describe('phase2Mappers', () => {
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.profile_image_url).toBeNull();
+    expect(payload.profile.profile_image_local_uri).toBe('file:///var/mobile/Containers/Data/profile.jpg');
   });
 
-  it('syncs base64 data-url profile images to server payload', () => {
+  it('queues base64 data-url profile image for upload-first sync', () => {
     const profile = buildDefaultProfile('usr_data_url');
     profile.profileImage = 'data:image/jpeg;base64,Zm9vYmFy';
 
     const payload = buildProfileWritePayload(profile);
-    expect(payload.profile.profile_image_url).toBe('data:image/jpeg;base64,Zm9vYmFy');
+    expect(payload.profile.profile_image_url).toBeNull();
+    expect(payload.profile.profile_image_local_uri).toBe('data:image/jpeg;base64,Zm9vYmFy');
   });
 });

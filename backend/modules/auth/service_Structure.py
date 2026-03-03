@@ -12,6 +12,7 @@ from .service import (
     SessionRecord,
     UserAllergiesProfile,
     UserHistoryRecord,
+    UserMediaAsset,
     UserProfile,
     UserSettingsProfile,
 )

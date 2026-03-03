@@ -1,6 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { resolveImageUri, saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
 
@@ -11,48 +10,10 @@ type CameraPermissionDialogTexts = {
   settingsLabel: string;
 };
 
-const PROFILE_SYNC_MAX_DIMENSION = 320;
-const PROFILE_SYNC_JPEG_QUALITY = 0.65;
-const PROFILE_SYNC_MAX_BASE64_CHARS = 500_000;
-
 const isRemoteImage = (image: string): boolean =>
   image.startsWith('http://') || image.startsWith('https://');
 
 const isDataImage = (image: string): boolean => image.toLowerCase().startsWith('data:image/');
-
-const toPortableProfileImageDataUrl = async (imageUri: string): Promise<string | null> => {
-  if (!imageUri || isRemoteImage(imageUri) || isDataImage(imageUri)) {
-    return null;
-  }
-
-  const resolvedUri = resolveImageUri(imageUri) || imageUri;
-  const isFileBased = resolvedUri.startsWith('file://') || resolvedUri.startsWith('/');
-  if (!isFileBased) {
-    return null;
-  }
-
-  try {
-    const compressed = await manipulateAsync(
-      resolvedUri,
-      [{ resize: { width: PROFILE_SYNC_MAX_DIMENSION } }],
-      {
-        compress: PROFILE_SYNC_JPEG_QUALITY,
-        format: SaveFormat.JPEG,
-        base64: true,
-      }
-    );
-    const base64 = compressed.base64?.trim() || '';
-    if (!base64) return null;
-    if (base64.length > PROFILE_SYNC_MAX_BASE64_CHARS) {
-      console.warn('[ProfileImage] Portable image payload too large. Keeping local reference only.');
-      return null;
-    }
-    return `data:image/jpeg;base64,${base64}`;
-  } catch (error) {
-    console.warn('[ProfileImage] Failed to build portable data URL:', error);
-    return null;
-  }
-};
 
 const resolveAssetUriForPersistence = async (
   asset: ImagePicker.ImagePickerAsset
@@ -87,8 +48,6 @@ export const persistProfileImageIfNeeded = async (image: string): Promise<string
     console.warn('[ProfileImage] Falling back to original URI without persistence:', error);
   }
 
-  const portableDataUrl = await toPortableProfileImageDataUrl(savedReference);
-  if (portableDataUrl) return portableDataUrl;
   return savedReference;
 };
 

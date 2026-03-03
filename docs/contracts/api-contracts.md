@@ -121,17 +121,23 @@
 - `GET /me/profile`, `PUT /me/profile`
 - `GET /me/allergies`, `PUT /me/allergies`
 - `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
+- `POST /me/media/upload` (multipart: `file`, `scope=profile|history`, `linked_entry_id?`)
+- `GET /media/render/{asset_id}?w=<preset>&q=<50~85>&fmt=auto`
+- `PATCH /me/history/{history_item_id}/image` (`image_asset_id`)
 - `GET /me/settings`, `PUT /me/settings`
-- `PUT /me/profile.profile_image_url`:
-  - 원격 URL(`https://...`) 또는 이미지 Data URL(`data:image/...;base64,...`) 허용
-  - 로컬 파일 경로(`file://`, `ph://`)는 기기 간 공유 불가이므로 서버 저장값으로 사용하지 않음
+- `PUT /me/profile.profile_image_asset_id`:
+  - 서버 업로드 후 받은 `asset_id`를 우선 사용
+  - 응답은 `profile_image_asset_id`, `profile_image_render_url`를 포함
 - `PUT /me/profile` 동기화 필드(추가):
   - `gender`, `birth_year`
   - `disliked_ingredients`
   - `current_trip_start`, `current_trip_location`, `current_trip_coordinates {latitude, longitude}`
-- `POST /me/history.entry.imageUri`:
-  - 기기 간 동기화를 위해 `data:image/...;base64,...` 전송 허용
-  - 로컬 파일 경로(`file://`, managed filename)는 전송 시 portable 형식으로 변환하는 것을 권장
+- `POST /me/history.entry.image_asset_id`:
+  - 히스토리 이미지는 `image_asset_id` 기반 동기화
+  - 응답/조회 시 `entry.image_render_url`(신규) + `entry.imageUri`(하위호환)를 함께 제공
+- 하위호환(과도기):
+  - 기존 `profile_image_url`, `entry.imageUri` 입력은 허용
+  - 서버는 가능하면 `*_asset_id` 기반으로 정규화
 
 동기화 충돌(Phase 3):
 - `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원
@@ -185,6 +191,6 @@
 
 ---
 
-문서 버전: v1.3  
+문서 버전: v1.4  
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-03-02
+최종 수정: 2026-03-04

@@ -245,6 +245,14 @@ export const UserService = {
       startPhase2SyncRuntime();
       const existing = (await migrateLegacyProfileIfNeeded(resolvedUserId)) || (await loadScopedProfile(resolvedUserId)) || buildDefaultProfile(resolvedUserId);
       const isNew = !existing.createdAt;
+      const hasIncomingProfileImage = typeof profileData.profileImage === 'string';
+      const profileImageChanged =
+        hasIncomingProfileImage && profileData.profileImage !== existing.profileImage;
+      const nextProfileImageAssetId = profileData.profileImageAssetId
+        ? profileData.profileImageAssetId
+        : profileImageChanged
+          ? undefined
+          : existing.profileImageAssetId;
       const newProfile: UserProfile = {
         ...existing,
         uid: resolvedUserId,
@@ -252,6 +260,7 @@ export const UserService = {
         updatedAt: now,
         createdAt: isNew ? now : existing.createdAt,
         ...profileData,
+        profileImageAssetId: nextProfileImageAssetId,
         safetyProfile: {
           ...existing.safetyProfile,
           ...(profileData.safetyProfile || {}),

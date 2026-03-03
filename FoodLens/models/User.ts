@@ -12,6 +12,7 @@ export interface UserProfile {
   email: string;
   name?: string;         // Display Name
   profileImage?: string; // Avatar URL
+  profileImageAssetId?: string;
   photoURL?: string;     // Legacy support
   gender?: Gender;       // 성별
   birthYear?: number;    // 출생연도 (데이터 최소화 원칙)

@@ -1,15 +1,20 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 import base64
+import hashlib
+import hmac
+import io
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 from typing import Any
 import requests
 from pydantic import BaseModel
+from PIL import Image, ImageOps
 
 from backend.modules.server_bootstrap_Logic import (
     decode_upload_to_image,
@@ -72,6 +77,10 @@ from backend.modules.runtime_guardrails_Structure import EndpointErrorPolicy
 from backend.modules.contracts.analysis_response_Structure import AnalysisResponseContract
 from backend.modules.contracts.barcode_response_Structure import BarcodeLookupResponseContract
 from backend.modules.auth.service_Logic import AuthServiceError, InMemoryAuthSessionService
+from backend.modules.media.service_Logic import (
+    MediaStorageError,
+    build_media_storage_from_env,
+)
 
 load_environment()
 log_environment_debug()
@@ -83,7 +92,7 @@ app.add_middleware(
     allow_origins=_cors_config.allow_origins,
     allow_origin_regex=_cors_config.allow_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-Id", "X-Device-Id"],
     expose_headers=["Retry-After"],
 )
@@ -135,9 +144,29 @@ def _is_label_rollout_auto_enabled() -> bool:
 @app.on_event("startup")
 async def _startup() -> None:
     app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
+    app.state.media_storage = build_media_storage_from_env(os.environ.get)
+    app.state.media_render_signing_secret = _env_str(
+        "MEDIA_RENDER_SIGNING_SECRET",
+        _env_str("AUTH_STATE_KEY", "foodlens-media-dev-secret"),
+    )
+    app.state.media_render_url_ttl_seconds = max(60, _env_int("MEDIA_RENDER_URL_TTL_SECONDS", 86_400))
+    app.state.media_render_allowed_widths = {
+        int(part.strip())
+        for part in _env_str("MEDIA_RENDER_ALLOWED_WIDTHS", "128,256,512,1024").split(",")
+        if part.strip().isdigit()
+    } or {128, 256, 512, 1024}
+    app.state.media_render_quality_min = max(1, _env_int("MEDIA_RENDER_QUALITY_MIN", 50))
+    app.state.media_render_quality_max = min(100, _env_int("MEDIA_RENDER_QUALITY_MAX", 85))
+    app.state.media_public_base_url = _env_str("MEDIA_PUBLIC_BASE_URL", _env_str("AUTH_PUBLIC_BASE_URL", ""))
+    app.state.media_render_default_width = _env_int("MEDIA_RENDER_DEFAULT_WIDTH", 512)
+    app.state.media_render_default_quality = _env_int("MEDIA_RENDER_DEFAULT_QUALITY", 75)
     logger.info(
         "[Auth] state backend initialized backend=%s",
         getattr(app.state.auth_service, "state_backend", "memory"),
+    )
+    logger.info(
+        "[Media] storage enabled=%s",
+        getattr(app.state.media_storage, "enabled", False),
     )
 
     if _is_openapi_export_mode():
@@ -266,6 +295,110 @@ OAUTH_PROVIDER_CONFIG = {
 
 DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
 DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
+MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _is_local_media_reference(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    return (
+        normalized.startswith("file://")
+        or normalized.startswith("ph://")
+        or normalized.startswith("content://")
+        or normalized.startswith("assets-library://")
+        or normalized.startswith("/")
+    )
+
+
+def _resolve_media_public_base_url(request: Request) -> str:
+    configured = getattr(app.state, "media_public_base_url", "").strip().rstrip("/")
+    if configured:
+        return configured
+    return str(request.base_url).rstrip("/")
+
+
+def _media_render_signature(asset_id: str, width: int, quality: int, fmt: str, exp: int) -> str:
+    secret = getattr(app.state, "media_render_signing_secret", "")
+    payload = f"{asset_id}:{width}:{quality}:{fmt}:{exp}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _build_media_render_url(
+    request: Request,
+    *,
+    asset_id: str,
+    width: int | None = None,
+    quality: int | None = None,
+    fmt: str = "auto",
+) -> str:
+    default_width = int(getattr(app.state, "media_render_default_width", 512))
+    default_quality = int(getattr(app.state, "media_render_default_quality", 75))
+    final_width = width or default_width
+    final_quality = quality or default_quality
+    ttl_seconds = int(getattr(app.state, "media_render_url_ttl_seconds", 86_400))
+    exp = int(time.time()) + max(60, ttl_seconds)
+    sig = _media_render_signature(asset_id, final_width, final_quality, fmt, exp)
+    base_url = _resolve_media_public_base_url(request)
+    query = urlencode({"w": final_width, "q": final_quality, "fmt": fmt, "exp": exp, "sig": sig})
+    return f"{base_url}/media/render/{asset_id}?{query}"
+
+
+def _verify_media_render_signature(
+    *,
+    asset_id: str,
+    width: int,
+    quality: int,
+    fmt: str,
+    exp: int,
+    sig: str,
+) -> bool:
+    expected = _media_render_signature(asset_id, width, quality, fmt, exp)
+    return hmac.compare_digest(expected, sig)
+
+
+def _resolve_media_format(fmt: str, accept_header: str) -> str:
+    requested = (fmt or "auto").strip().lower()
+    if requested == "auto":
+        if "image/webp" in (accept_header or "").lower():
+            return "webp"
+        return "jpeg"
+    if requested in {"jpg", "jpeg"}:
+        return "jpeg"
+    if requested in {"webp", "png"}:
+        return requested
+    return "jpeg"
+
+
+def _render_image_bytes(
+    *,
+    source_bytes: bytes,
+    target_width: int,
+    target_quality: int,
+    target_format: str,
+) -> tuple[bytes, str]:
+    with Image.open(io.BytesIO(source_bytes)) as image:
+        image = ImageOps.exif_transpose(image)
+        if target_width > 0 and image.width > target_width:
+            ratio = target_width / float(image.width)
+            target_height = max(1, int(round(image.height * ratio)))
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+        out = io.BytesIO()
+        if target_format == "webp":
+            image.save(out, format="WEBP", quality=target_quality, method=6)
+            return out.getvalue(), "image/webp"
+        if target_format == "png":
+            image.save(out, format="PNG", optimize=True)
+            return out.getvalue(), "image/png"
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        image.save(out, format="JPEG", quality=target_quality, optimize=True, progressive=True)
+        return out.getvalue(), "image/jpeg"
 
 
 def _oauth_provider_config(provider: str) -> dict[str, str]:
@@ -791,6 +924,7 @@ class TripCoordinatesRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     display_name: str | None = None
     profile_image_url: str | None = None
+    profile_image_asset_id: str | None = None
     gender: str | None = None
     birth_year: int | None = None
     disliked_ingredients: list[str] | None = None
@@ -820,6 +954,10 @@ class SettingsUpdateRequest(BaseModel):
 class HistoryWriteRequest(BaseModel):
     entry: dict[str, Any]
     idempotency_key: str | None = None
+
+
+class HistoryImagePatchRequest(BaseModel):
+    image_asset_id: str
 
 
 def _request_id(request: Request) -> str:
@@ -877,6 +1015,41 @@ def _log_phase2_write(
         method,
         path,
     )
+
+
+def _decorate_profile_media(profile: dict[str, Any], request: Request) -> dict[str, Any]:
+    payload = dict(profile)
+    asset_id = str(payload.get("profile_image_asset_id") or "").strip()
+    if not asset_id:
+        return payload
+    render_url = _build_media_render_url(request, asset_id=asset_id)
+    payload["profile_image_render_url"] = render_url
+    # Keep backward-compat by exposing render url through legacy field.
+    payload["profile_image_url"] = render_url
+    return payload
+
+
+def _decorate_history_media_entry(entry: dict[str, Any], request: Request) -> dict[str, Any]:
+    payload = dict(entry)
+    asset_id = str(payload.get("image_asset_id") or "").strip()
+    if not asset_id:
+        return payload
+    render_url = _build_media_render_url(request, asset_id=asset_id)
+    payload["image_render_url"] = render_url
+    # Backward compat for existing clients that only read imageUri.
+    payload["imageUri"] = render_url
+    return payload
+
+
+def _sanitize_history_entry_for_persistence(entry: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(entry)
+    image_uri = payload.get("imageUri")
+    if isinstance(image_uri, str) and _is_local_media_reference(image_uri):
+        payload.pop("imageUri", None)
+    image_asset_id = payload.get("image_asset_id")
+    if isinstance(image_asset_id, str) and image_asset_id.strip():
+        payload.pop("imageUri", None)
+    return payload
 
 
 def _extract_bearer_token(request: Request) -> str | None:
@@ -1536,6 +1709,222 @@ async def auth_logout(payload: LogoutRequest, request: Request):
         raise _auth_error_to_http_exception(error, request_id) from error
 
 
+@app.post("/me/media/upload")
+async def post_me_media_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    scope: str = Form(...),
+    linked_entry_id: str | None = Form(default=None),
+):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    media_storage = _service("media_storage")
+    user = _resolve_authenticated_user(request, request_id)
+    normalized_scope = (scope or "").strip().lower()
+    if normalized_scope not in {"profile", "history"}:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "scope must be one of: profile, history",
+                "code": "MEDIA_INVALID_SCOPE",
+                "request_id": request_id,
+            },
+        )
+
+    mime_type = (file.content_type or "").strip().lower()
+    if mime_type not in MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail={
+                "message": "Unsupported media content type.",
+                "code": "MEDIA_UNSUPPORTED_CONTENT_TYPE",
+                "request_id": request_id,
+            },
+        )
+
+    try:
+        payload = await file.read()
+        upload = media_storage.upload_original(
+            user_id=user.user_id,
+            scope=normalized_scope,
+            mime_type=mime_type,
+            payload=payload,
+            filename=file.filename,
+        )
+        asset = auth_service.register_media_asset(
+            user_id=user.user_id,
+            scope=normalized_scope,
+            mime_type=upload.mime_type,
+            size_bytes=upload.size_bytes,
+            sha256=upload.sha256,
+            object_key=upload.object_key,
+            asset_id=upload.asset_id,
+        )
+        render_url = _build_media_render_url(request, asset_id=upload.asset_id)
+        logger.info(
+            "[Media] upload success request_id=%s user_id=%s asset_id=%s scope=%s bytes=%s",
+            request_id,
+            user.user_id,
+            upload.asset_id,
+            normalized_scope,
+            upload.size_bytes,
+        )
+        return {
+            "asset": {
+                **asset,
+                "render_url": render_url,
+                "linked_entry_id": (linked_entry_id or "").strip() or None,
+            },
+            "request_id": request_id,
+        }
+    except MediaStorageError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={
+                "message": error.message,
+                "code": error.code,
+                "request_id": request_id,
+            },
+        ) from error
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.get("/media/render/{asset_id}")
+async def get_media_render(
+    asset_id: str,
+    request: Request,
+    w: int = Query(default=512),
+    q: int = Query(default=75),
+    fmt: str = Query(default="auto"),
+    exp: int = Query(default=0),
+    sig: str = Query(default=""),
+):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    media_storage = _service("media_storage")
+    now_ts = int(time.time())
+    if not exp or not sig or exp < now_ts:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Render URL is expired or invalid.",
+                "code": "MEDIA_RENDER_FORBIDDEN",
+                "request_id": request_id,
+            },
+        )
+
+    allowed_widths = set(getattr(app.state, "media_render_allowed_widths", {128, 256, 512, 1024}))
+    final_width = w if w in allowed_widths else int(getattr(app.state, "media_render_default_width", 512))
+    quality_min = int(getattr(app.state, "media_render_quality_min", 50))
+    quality_max = int(getattr(app.state, "media_render_quality_max", 85))
+    final_quality = max(quality_min, min(quality_max, q))
+    final_fmt = _resolve_media_format(fmt, request.headers.get("accept", ""))
+
+    if not _verify_media_render_signature(
+        asset_id=asset_id,
+        width=final_width,
+        quality=final_quality,
+        fmt=fmt,
+        exp=exp,
+        sig=sig,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Render signature verification failed.",
+                "code": "MEDIA_RENDER_FORBIDDEN",
+                "request_id": request_id,
+            },
+        )
+
+    try:
+        started_at = time.time()
+        asset = auth_service.get_media_asset(asset_id=asset_id)
+        source = media_storage.fetch_original(object_key=str(asset["object_key"]))
+        rendered_bytes, content_type = await run_in_threadpool(
+            _render_image_bytes,
+            source_bytes=source.bytes_data,
+            target_width=final_width,
+            target_quality=final_quality,
+            target_format=final_fmt,
+        )
+        auth_service.touch_media_asset(asset_id=asset_id)
+        remaining_ttl = max(1, exp - now_ts)
+        logger.info(
+            "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
+            request_id,
+            str(asset.get("user_id") or "unknown"),
+            asset_id,
+            str(asset.get("scope") or "unknown"),
+            content_type,
+            int((time.time() - started_at) * 1000),
+            False,
+        )
+        return Response(
+            content=rendered_bytes,
+            media_type=content_type,
+            headers={
+                "Cache-Control": f"public, max-age={remaining_ttl}",
+                "Vary": "Accept",
+                "X-Request-Id": request_id,
+            },
+        )
+    except MediaStorageError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={
+                "message": error.message,
+                "code": error.code,
+                "request_id": request_id,
+            },
+        ) from error
+    except AuthServiceError as error:
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.patch("/me/history/{history_item_id}/image")
+async def patch_me_history_image(
+    history_item_id: str,
+    payload: HistoryImagePatchRequest,
+    request: Request,
+):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        auth_service.assert_media_asset_owner(user_id=user.user_id, asset_id=payload.image_asset_id)
+        history_item = auth_service.patch_history_image(
+            user_id=user.user_id,
+            history_item_id=history_item_id,
+            image_asset_id=payload.image_asset_id,
+        )
+        entry = history_item.get("entry")
+        if isinstance(entry, dict):
+            history_item["entry"] = _decorate_history_media_entry(entry, request)
+        _log_phase2_write(
+            request_id=request_id,
+            user_id=user.user_id,
+            method="PATCH",
+            path="/me/history/{history_item_id}/image",
+        )
+        return {"history_item": history_item, "request_id": request_id}
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
 @app.get("/me/profile")
 async def get_me_profile(request: Request):
     request_id = _request_id(request)
@@ -1543,6 +1932,7 @@ async def get_me_profile(request: Request):
     user = _resolve_authenticated_user(request, request_id)
     try:
         profile = auth_service.get_profile(user_id=user.user_id)
+        profile = _decorate_profile_media(profile, request)
         return {"profile": profile, "request_id": request_id}
     except AuthServiceError as error:
         _log_auth_failure(
@@ -1567,10 +1957,15 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             else:  # pragma: no cover - pydantic v1 compatibility
                 current_trip_coordinates = payload.current_trip_coordinates.dict()
 
+        sanitized_profile_image_url = payload.profile_image_url
+        if _is_local_media_reference(sanitized_profile_image_url):
+            sanitized_profile_image_url = None
+
         profile = auth_service.update_profile(
             user_id=user.user_id,
             display_name=payload.display_name,
-            profile_image_url=payload.profile_image_url,
+            profile_image_url=sanitized_profile_image_url,
+            profile_image_asset_id=payload.profile_image_asset_id,
             gender=payload.gender,
             birth_year=payload.birth_year,
             disliked_ingredients=payload.disliked_ingredients,
@@ -1581,6 +1976,7 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             current_trip_coordinates=current_trip_coordinates,
             expected_updated_at=payload.expected_updated_at,
         )
+        profile = _decorate_profile_media(profile, request)
         _log_phase2_write(
             request_id=request_id,
             user_id=user.user_id,
@@ -1702,7 +2098,13 @@ async def get_me_history(request: Request, limit: int | None = None):
     user = _resolve_authenticated_user(request, request_id)
     try:
         history = auth_service.get_history(user_id=user.user_id, limit=limit)
-        return {"history": history, "request_id": request_id}
+        decorated_history: list[dict[str, Any]] = []
+        for item in history:
+            entry = item.get("entry")
+            if isinstance(entry, dict):
+                item = {**item, "entry": _decorate_history_media_entry(entry, request)}
+            decorated_history.append(item)
+        return {"history": decorated_history, "request_id": request_id}
     except AuthServiceError as error:
         _log_auth_failure(
             request_id=request_id,
@@ -1719,11 +2121,21 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
     auth_service = _service("auth_service")
     user = _resolve_authenticated_user(request, request_id)
     try:
+        entry = _sanitize_history_entry_for_persistence(payload.entry)
+        image_asset_id = entry.get("image_asset_id")
+        if isinstance(image_asset_id, str) and image_asset_id.strip():
+            auth_service.assert_media_asset_owner(
+                user_id=user.user_id,
+                asset_id=image_asset_id,
+            )
         history_item = auth_service.append_history(
             user_id=user.user_id,
-            entry=payload.entry,
+            entry=entry,
             idempotency_key=payload.idempotency_key,
         )
+        item_entry = history_item.get("entry")
+        if isinstance(item_entry, dict):
+            history_item["entry"] = _decorate_history_media_entry(item_entry, request)
         _log_phase2_write(
             request_id=request_id,
             user_id=user.user_id,
