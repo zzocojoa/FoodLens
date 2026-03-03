@@ -24,6 +24,39 @@ def _safe_ext_from_mime(mime_type: str) -> str:
     return ".bin"
 
 
+def _coerce_status_code(raw_value: object) -> int | None:
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value.isdigit():
+        return int(raw_value)
+    enum_value = getattr(raw_value, "value", None)
+    if isinstance(enum_value, int):
+        return enum_value
+    if isinstance(enum_value, str) and enum_value.isdigit():
+        return int(enum_value)
+    return None
+
+
+def _status_code_from_error(exc: Exception) -> int | None:
+    for attr_name in ("status_code", "status"):
+        candidate = _coerce_status_code(getattr(exc, attr_name, None))
+        if candidate is not None:
+            return candidate
+
+    candidate = _coerce_status_code(getattr(exc, "code", None))
+    if candidate is not None:
+        return candidate
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        for attr_name in ("status_code", "status"):
+            candidate = _coerce_status_code(getattr(response, attr_name, None))
+            if candidate is not None:
+                return candidate
+
+    return None
+
+
 class MediaStorageError(Exception):
     def __init__(self, *, code: str, message: str, status_code: int = 500):
         super().__init__(message)
@@ -167,7 +200,27 @@ class GcsMediaStorage:
 
         blob = self._bucket.blob(object_key)
         blob.cache_control = "private, max-age=0, no-store"
-        blob.upload_from_string(payload, content_type=mime_type)
+        try:
+            blob.upload_from_string(payload, content_type=mime_type)
+        except Exception as exc:
+            status_code = _status_code_from_error(exc)
+            if status_code == 404:
+                raise MediaStorageError(
+                    code="MEDIA_GCS_BUCKET_NOT_FOUND",
+                    message="Configured media bucket was not found.",
+                    status_code=503,
+                ) from exc
+            if status_code in {401, 403}:
+                raise MediaStorageError(
+                    code="MEDIA_GCS_PERMISSION_DENIED",
+                    message="Media bucket access denied.",
+                    status_code=503,
+                ) from exc
+            raise MediaStorageError(
+                code="MEDIA_UPLOAD_FAILED",
+                message="Failed to upload media to storage.",
+                status_code=502,
+            ) from exc
 
         return MediaUploadResult(
             asset_id=asset_id,
@@ -183,6 +236,19 @@ class GcsMediaStorage:
         try:
             payload = blob.download_as_bytes()
         except Exception as exc:
+            status_code = _status_code_from_error(exc)
+            if status_code in {401, 403}:
+                raise MediaStorageError(
+                    code="MEDIA_GCS_PERMISSION_DENIED",
+                    message="Media bucket access denied.",
+                    status_code=503,
+                ) from exc
+            if status_code is not None and status_code != 404:
+                raise MediaStorageError(
+                    code="MEDIA_FETCH_FAILED",
+                    message="Failed to fetch media object from storage.",
+                    status_code=502,
+                ) from exc
             raise MediaStorageError(
                 code="MEDIA_NOT_FOUND",
                 message="Media object not found.",
