@@ -148,4 +148,12 @@ describe('phase2Mappers', () => {
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.profile_image_url).toBeNull();
   });
+
+  it('syncs base64 data-url profile images to server payload', () => {
+    const profile = buildDefaultProfile('usr_data_url');
+    profile.profileImage = 'data:image/jpeg;base64,Zm9vYmFy';
+
+    const payload = buildProfileWritePayload(profile);
+    expect(payload.profile.profile_image_url).toBe('data:image/jpeg;base64,Zm9vYmFy');
+  });
 });

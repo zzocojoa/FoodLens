@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { resolveImageUri, saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
 
 type CameraPermissionDialogTexts = {
@@ -8,6 +9,49 @@ type CameraPermissionDialogTexts = {
   message: string;
   cancelLabel: string;
   settingsLabel: string;
+};
+
+const PROFILE_SYNC_MAX_DIMENSION = 320;
+const PROFILE_SYNC_JPEG_QUALITY = 0.65;
+const PROFILE_SYNC_MAX_BASE64_CHARS = 500_000;
+
+const isRemoteImage = (image: string): boolean =>
+  image.startsWith('http://') || image.startsWith('https://');
+
+const isDataImage = (image: string): boolean => image.toLowerCase().startsWith('data:image/');
+
+const toPortableProfileImageDataUrl = async (imageUri: string): Promise<string | null> => {
+  if (!imageUri || isRemoteImage(imageUri) || isDataImage(imageUri)) {
+    return null;
+  }
+
+  const resolvedUri = resolveImageUri(imageUri) || imageUri;
+  const isFileBased = resolvedUri.startsWith('file://') || resolvedUri.startsWith('/');
+  if (!isFileBased) {
+    return null;
+  }
+
+  try {
+    const compressed = await manipulateAsync(
+      resolvedUri,
+      [{ resize: { width: PROFILE_SYNC_MAX_DIMENSION } }],
+      {
+        compress: PROFILE_SYNC_JPEG_QUALITY,
+        format: SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+    const base64 = compressed.base64?.trim() || '';
+    if (!base64) return null;
+    if (base64.length > PROFILE_SYNC_MAX_BASE64_CHARS) {
+      console.warn('[ProfileImage] Portable image payload too large. Keeping local reference only.');
+      return null;
+    }
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error) {
+    console.warn('[ProfileImage] Failed to build portable data URL:', error);
+    return null;
+  }
 };
 
 const resolveAssetUriForPersistence = async (
@@ -32,16 +76,20 @@ const resolveAssetUriForPersistence = async (
 };
 
 export const persistProfileImageIfNeeded = async (image: string): Promise<string> => {
-  const isRemoteImage = image.startsWith('http://') || image.startsWith('https://');
-  if (isRemoteImage) return image;
+  if (isRemoteImage(image) || isDataImage(image)) return image;
+
+  let savedReference = image;
   try {
-    return await saveImagePermanentlyOrThrow(image, '이미지 저장에 실패했습니다.');
+    savedReference = await saveImagePermanentlyOrThrow(image, '이미지 저장에 실패했습니다.');
   } catch (error) {
     // Release on iOS may return ph:// URI that copyAsync cannot persist.
     // Keep original URI to avoid dropping the user's profile photo update.
     console.warn('[ProfileImage] Falling back to original URI without persistence:', error);
-    return image;
   }
+
+  const portableDataUrl = await toPortableProfileImageDataUrl(savedReference);
+  if (portableDataUrl) return portableDataUrl;
+  return savedReference;
 };
 
 export const pickProfileImageUri = async (

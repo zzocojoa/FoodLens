@@ -16,7 +16,8 @@ export const isLegacyAbsoluteUri = (uri: string): boolean =>
   uri.startsWith('content://') ||
   uri.startsWith('assets-library://') ||
   uri.startsWith('http://') ||
-  uri.startsWith('https://');
+  uri.startsWith('https://') ||
+  uri.toLowerCase().startsWith('data:image/');
 
 export const isManagedImageReference = (uri: string): boolean => uri.includes(IMAGE_DIR);
 

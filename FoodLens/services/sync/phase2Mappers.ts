@@ -27,6 +27,7 @@ const normalizeProfileImageForSync = (value: string | undefined): string | null 
   if (!trimmed) return null;
   const lower = trimmed.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
+  if (lower.startsWith('data:image/')) return trimmed;
   return null;
 };
 

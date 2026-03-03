@@ -122,6 +122,9 @@
 - `GET /me/allergies`, `PUT /me/allergies`
 - `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
 - `GET /me/settings`, `PUT /me/settings`
+- `PUT /me/profile.profile_image_url`:
+  - 원격 URL(`https://...`) 또는 이미지 Data URL(`data:image/...;base64,...`) 허용
+  - 로컬 파일 경로(`file://`, `ph://`)는 기기 간 공유 불가이므로 서버 저장값으로 사용하지 않음
 
 동기화 충돌(Phase 3):
 - `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원
