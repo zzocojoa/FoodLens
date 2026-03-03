@@ -1,6 +1,6 @@
 aiohttp==3.10.5
 fastapi==0.128.0
-google-api-core==2.25.2
+google-api-core==2.27.0
 google-auth==2.48.0
 google-cloud-aiplatform==1.135.0
 google-cloud-storage==3.5.0
