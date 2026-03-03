@@ -31,6 +31,7 @@ export type MeProfileResponse = {
   user_id: string;
   email: string;
   display_name?: string | null;
+  profile_image_url?: string | null;
   locale?: string;
   timezone?: string;
   created_at?: string;

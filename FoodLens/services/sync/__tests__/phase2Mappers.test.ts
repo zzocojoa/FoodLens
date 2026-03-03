@@ -19,6 +19,7 @@ describe('phase2Mappers', () => {
         user_id: 'usr_local',
         email: 'remote@example.com',
         display_name: 'Remote Name',
+        profile_image_url: 'https://cdn.example.com/avatar-remote.png',
         locale: 'en-US',
         updated_at: '2026-02-25T00:00:00Z',
       },
@@ -40,6 +41,7 @@ describe('phase2Mappers', () => {
     expect(merged.uid).toBe('usr_local');
     expect(merged.email).toBe('remote@example.com');
     expect(merged.name).toBe('Remote Name');
+    expect(merged.profileImage).toBe('https://cdn.example.com/avatar-remote.png');
     expect(merged.settings.language).toBe('en-US');
     expect(merged.settings.targetLanguage).toBe('ja-JP');
     expect(merged.settings.autoPlayAudio).toBe(true);
@@ -118,6 +120,7 @@ describe('phase2Mappers', () => {
     profile.settings.targetLanguage = 'ko-KR';
     profile.settings.autoPlayAudio = true;
     profile.settings.selectedEmoji = '🍎';
+    profile.profileImage = 'https://cdn.example.com/avatar-a.png';
     profile.safetyProfile.allergies = ['peanut'];
     profile.safetyProfile.dietaryRestrictions = ['vegan'];
     profile.safetyProfile.severityMap = { peanut: 'severe' };
@@ -129,11 +132,20 @@ describe('phase2Mappers', () => {
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.display_name).toBe('Queue User');
+    expect(payload.profile.profile_image_url).toBe('https://cdn.example.com/avatar-a.png');
     expect(payload.settings.language).toBe('en-US');
     expect(payload.allergies.allergies).toEqual(['peanut']);
     expect(payload.allergies.severity_map['peanut']).toBe('severe');
     expect(payload.profile.expected_updated_at).toBe('2026-02-25T00:00:00Z');
     expect(payload.allergies.expected_updated_at).toBe('2026-02-25T00:01:00Z');
     expect(payload.settings.expected_updated_at).toBe('2026-02-25T00:02:00Z');
+  });
+
+  it('does not sync local file profile image uri to server payload', () => {
+    const profile = buildDefaultProfile('usr_local_only');
+    profile.profileImage = 'file:///var/mobile/Containers/Data/profile.jpg';
+
+    const payload = buildProfileWritePayload(profile);
+    expect(payload.profile.profile_image_url).toBeNull();
   });
 });

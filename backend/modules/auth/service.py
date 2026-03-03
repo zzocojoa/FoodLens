@@ -92,6 +92,7 @@ class UserProfile:
     display_name: str | None
     locale: str
     timezone: str
+    profile_image_url: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
 
@@ -1066,9 +1067,10 @@ class InMemoryAuthSessionService:
         self,
         *,
         user_id: str,
-        display_name: str | None,
-        locale: str | None,
-        timezone_name: str | None,
+        display_name: str | None = None,
+        profile_image_url: str | None = None,
+        locale: str | None = None,
+        timezone_name: str | None = None,
         expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
@@ -1090,6 +1092,8 @@ class InMemoryAuthSessionService:
 
             if display_name is not None:
                 profile.display_name = display_name.strip() or None
+            if profile_image_url is not None:
+                profile.profile_image_url = profile_image_url.strip() or None
             if locale is not None:
                 profile.locale = locale.strip() or profile.locale
             if timezone_name is not None:
@@ -1519,6 +1523,7 @@ class InMemoryAuthSessionService:
             "user_id": profile.user_id,
             "email": profile.email,
             "display_name": profile.display_name,
+            "profile_image_url": profile.profile_image_url,
             "locale": profile.locale,
             "timezone": profile.timezone,
             "created_at": _to_iso8601(profile.created_at),

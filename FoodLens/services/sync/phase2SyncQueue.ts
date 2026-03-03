@@ -94,6 +94,7 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
     const result = await Phase2Api.putProfile(
       operation.payload as {
         display_name?: string | null;
+        profile_image_url?: string | null;
         locale?: string | null;
         timezone?: string | null;
         expected_updated_at?: string;

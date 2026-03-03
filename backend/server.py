@@ -785,6 +785,7 @@ class LogoutRequest(BaseModel):
 
 class ProfileUpdateRequest(BaseModel):
     display_name: str | None = None
+    profile_image_url: str | None = None
     locale: str | None = None
     timezone: str | None = None
     expected_updated_at: str | None = None
@@ -1551,6 +1552,7 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
         profile = auth_service.update_profile(
             user_id=user.user_id,
             display_name=payload.display_name,
+            profile_image_url=payload.profile_image_url,
             locale=payload.locale,
             timezone_name=payload.timezone,
             expected_updated_at=payload.expected_updated_at,

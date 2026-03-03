@@ -66,6 +66,32 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             session = self._signup_and_verify(client, email=self._unique_email("phase2-roundtrip"))
             headers = _auth_headers(session["access_token"])
 
+            put_profile = client.put(
+                "/me/profile",
+                json={
+                    "display_name": "Phase2 Updated",
+                    "profile_image_url": "https://cdn.example.com/profile/phase2.png",
+                    "timezone": "Asia/Seoul",
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_profile.status_code, 200)
+            self.assertIn("request_id", put_profile.json())
+            self.assertEqual(
+                put_profile.json()["profile"]["profile_image_url"],
+                "https://cdn.example.com/profile/phase2.png",
+            )
+
+            get_profile = client.get("/me/profile", headers=headers)
+            self.assertEqual(get_profile.status_code, 200)
+            profile_payload = get_profile.json()
+            self.assertIn("request_id", profile_payload)
+            self.assertEqual(profile_payload["profile"]["display_name"], "Phase2 Updated")
+            self.assertEqual(
+                profile_payload["profile"]["profile_image_url"],
+                "https://cdn.example.com/profile/phase2.png",
+            )
+
             put_allergies = client.put(
                 "/me/allergies",
                 json={

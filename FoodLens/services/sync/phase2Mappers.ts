@@ -21,6 +21,15 @@ const toStringOrNull = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizeProfileImageForSync = (value: string | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
+  return null;
+};
+
 const normalizeStringArray = (values: unknown): string[] => {
   if (!Array.isArray(values)) return [];
   return values
@@ -85,6 +94,8 @@ export const mergeRemoteUserSnapshot = (
   next.uid = userId;
   next.email = input.profile?.email || fallback.email;
   next.name = input.profile?.display_name ?? fallback.name;
+  next.profileImage = input.profile?.profile_image_url ?? fallback.profileImage;
+  next.photoURL = next.profileImage;
 
   next.safetyProfile = {
     ...fallback.safetyProfile,
@@ -125,6 +136,7 @@ export const mergeRemoteUserSnapshot = (
 export const buildProfileWritePayload = (profile: UserProfile): {
   profile: {
     display_name?: string | null;
+    profile_image_url?: string | null;
     locale?: string | null;
     timezone?: string | null;
     expected_updated_at?: string;
@@ -147,6 +159,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   return {
     profile: {
       display_name: profile.name || null,
+      profile_image_url: normalizeProfileImageForSync(profile.profileImage),
       locale: locale || null,
       timezone: 'UTC',
       expected_updated_at: profile.syncVersions?.profileUpdatedAt,

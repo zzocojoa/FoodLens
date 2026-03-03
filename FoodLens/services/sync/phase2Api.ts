@@ -127,6 +127,7 @@ export const Phase2Api = {
 
   async putProfile(input: {
     display_name?: string | null;
+    profile_image_url?: string | null;
     locale?: string | null;
     timezone?: string | null;
     expected_updated_at?: string;

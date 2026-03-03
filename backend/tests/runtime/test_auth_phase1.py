@@ -94,12 +94,20 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
 
             update_response = client.put(
                 "/me/profile",
-                json={"display_name": "Alpha Prime", "timezone": "Asia/Seoul"},
+                json={
+                    "display_name": "Alpha Prime",
+                    "profile_image_url": "https://cdn.example.com/profile/alpha.png",
+                    "timezone": "Asia/Seoul",
+                },
                 headers=_auth_headers(session_body["access_token"]),
             )
             self.assertEqual(update_response.status_code, 200)
             updated_profile = update_response.json()["profile"]
             self.assertEqual(updated_profile["display_name"], "Alpha Prime")
+            self.assertEqual(
+                updated_profile["profile_image_url"],
+                "https://cdn.example.com/profile/alpha.png",
+            )
             self.assertEqual(updated_profile["timezone"], "Asia/Seoul")
 
             refresh_response = client.post(
