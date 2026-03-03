@@ -394,4 +394,80 @@ describe('phase2SyncQueue', () => {
     });
     expect(queueState[0].state).toBe('synced');
   });
+
+  it('continues profile sync without image when media upload is non-blocking failure', async () => {
+    queueState = [
+      {
+        ...pendingProfileOperation('op-profile-media-fallback', 'usr_a'),
+        payload: {
+          display_name: 'usr_a-name',
+          profile_image_url: 'file:///tmp/profile.jpg',
+          profile_image_local_uri: 'file:///tmp/profile.jpg',
+        },
+      },
+    ];
+
+    mockedPhase2Api.postMediaUpload.mockRejectedValueOnce(
+      new Phase2SyncApiError(
+        'Configured media bucket was not found.',
+        'MEDIA_GCS_BUCKET_NOT_FOUND',
+        503,
+        'req-media-fallback-a'
+      )
+    );
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    const sentPayload = mockedPhase2Api.putProfile.mock.calls[0][0] as Record<string, unknown>;
+    expect(sentPayload['display_name']).toBe('usr_a-name');
+    expect(sentPayload['profile_image_url']).toBeUndefined();
+    expect(sentPayload['profile_image_local_uri']).toBeUndefined();
+    expect(sentPayload['profile_image_asset_id']).toBeUndefined();
+    expect(queueState[0].state).toBe('synced');
+  });
+
+  it('continues history sync without image when media upload is non-blocking failure', async () => {
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-media-fallback',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        id: 'analysis_2',
+        foodName: 'Pasta',
+        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+      },
+      idempotencyKey: 'analysis_2',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+
+    mockedPhase2Api.postMediaUpload.mockRejectedValueOnce(
+      new Phase2SyncApiError(
+        'Configured media bucket was not found.',
+        'MEDIA_GCS_BUCKET_NOT_FOUND',
+        503,
+        'req-media-fallback-b'
+      )
+    );
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.postHistory).toHaveBeenCalledTimes(1);
+    const sent = mockedPhase2Api.postHistory.mock.calls[0][0] as {
+      entry: Record<string, unknown>;
+      idempotency_key?: string;
+    };
+    expect(sent.idempotency_key).toBe('analysis_2');
+    expect(sent.entry['id']).toBe('analysis_2');
+    expect(sent.entry['foodName']).toBe('Pasta');
+    expect(sent.entry['imageUri']).toBeUndefined();
+    expect(sent.entry['image_asset_id']).toBeUndefined();
+    expect(sent.entry['image_render_url']).toBeUndefined();
+    expect(queueState[0].state).toBe('synced');
+  });
 });

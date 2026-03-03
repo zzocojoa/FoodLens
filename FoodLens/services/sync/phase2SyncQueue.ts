@@ -60,6 +60,13 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
 
 const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
 
+const isNonBlockingMediaUploadError = (error: unknown): boolean => {
+  if (!(error instanceof Phase2SyncApiError)) return false;
+  const code = (error.code || '').trim().toUpperCase();
+  if (code.startsWith('MEDIA_')) return true;
+  return false;
+};
+
 const upsertPendingEntityOperation = async (
   userId: string,
   entity: Exclude<Phase2SyncEntity, 'history'>,
@@ -318,10 +325,29 @@ const normalizeProfilePayloadForSync = async (
         : '';
 
   if (!existingAssetId && localCandidateRaw && !isRemoteImageUri(localCandidateRaw)) {
-    const uploaded = await uploadMediaSource(userId, 'profile', localCandidateRaw);
-    if (uploaded?.assetId) {
-      next['profile_image_asset_id'] = uploaded.assetId;
-      next['profile_image_url'] = null;
+    try {
+      const uploaded = await uploadMediaSource(userId, 'profile', localCandidateRaw);
+      if (uploaded?.assetId) {
+        next['profile_image_asset_id'] = uploaded.assetId;
+        next['profile_image_url'] = null;
+      }
+    } catch (error) {
+      if (!isNonBlockingMediaUploadError(error)) {
+        throw error;
+      }
+      logger.warn('[Phase2Sync] profile media upload bypassed; syncing profile without image', {
+        request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
+        user_id: userId,
+        code:
+          error instanceof Phase2SyncApiError
+            ? error.code
+            : error instanceof Error
+              ? error.message
+              : 'MEDIA_UPLOAD_FAILED',
+      });
+      delete next['profile_image_url'];
+      delete next['profile_image_asset_id'];
+      delete next['profile_image_local_uri'];
     }
   }
 
@@ -375,7 +401,30 @@ const normalizeHistoryEntryForSync = async (
   }
 
   const linkedEntryId = typeof next['id'] === 'string' ? next['id'] : undefined;
-  const uploaded = await uploadMediaSource(userId, 'history', imageUri, linkedEntryId);
+  let uploaded: { assetId: string; renderUrl?: string } | null = null;
+  try {
+    uploaded = await uploadMediaSource(userId, 'history', imageUri, linkedEntryId);
+  } catch (error) {
+    if (!isNonBlockingMediaUploadError(error)) {
+      throw error;
+    }
+    logger.warn('[Phase2Sync] history media upload bypassed; syncing entry without image', {
+      request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
+      user_id: userId,
+      history_id: linkedEntryId || 'unknown',
+      code:
+        error instanceof Phase2SyncApiError
+          ? error.code
+          : error instanceof Error
+            ? error.message
+            : 'MEDIA_UPLOAD_FAILED',
+    });
+    delete next['imageUri'];
+    delete next['image_asset_id'];
+    delete next['image_render_url'];
+    return next;
+  }
+
   if (!uploaded?.assetId) {
     return next;
   }
