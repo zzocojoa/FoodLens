@@ -147,4 +147,116 @@ describe('UserService bootstrap sync guard', () => {
     expect(profile.uid).toBe('usr_a');
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
   });
+
+  it('returns remote snapshot on background refresh when already server-synced', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(9_999_999_999_999);
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          safetyProfile: {
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedPhase2Api.getProfile.mockResolvedValue({
+      profile: {
+        user_id: 'usr_a',
+        email: 'server@example.com',
+        display_name: 'Server Name',
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-profile',
+    } as never);
+    mockedPhase2Api.getAllergies.mockResolvedValue({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: ['egg'],
+        dietary_restrictions: [],
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-allergies',
+    } as never);
+    mockedPhase2Api.getSettings.mockResolvedValue({
+      settings: {
+        user_id: 'usr_a',
+        language: 'ko-KR',
+        auto_play_audio: false,
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-settings',
+    } as never);
+
+    const profile = await UserService.getUserProfile('usr_a');
+
+    expect(profile.name).toBe('Server Name');
+    expect(profile.email).toBe('server@example.com');
+    expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
+  it('skips enqueue when profile update has no effective changes', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Same Name',
+          profileImage: 'https://cdn.example.com/a.jpg',
+          profileImageAssetId: 'asset_1',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: [],
+            severityMap: { egg: 'moderate' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    const profile = await UserService.CreateOrUpdateProfile('usr_a', 'local@example.com', {
+      name: 'Same Name',
+      safetyProfile: {
+        allergies: ['egg'],
+        dietaryRestrictions: [],
+        severityMap: { egg: 'moderate' } as never,
+        dislikedIngredients: [],
+      },
+      settings: {
+        language: 'ko-KR',
+        autoPlayAudio: false,
+      },
+      profileImage: 'https://cdn.example.com/a.jpg',
+      profileImageAssetId: 'asset_1',
+    });
+
+    expect(profile.name).toBe('Same Name');
+    expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
+  });
 });

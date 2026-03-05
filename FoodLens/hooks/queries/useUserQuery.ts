@@ -14,6 +14,9 @@ export const useUserQuery = (uid: string) => {
   return useQuery({
     queryKey: userKeys.profile(uid),
     queryFn: () => UserService.getUserProfile(uid),
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 15, // 15 seconds
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 };

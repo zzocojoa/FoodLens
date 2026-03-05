@@ -20,9 +20,11 @@ const MEDIA_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_media_migrated:';
 const RETRY_LIMIT = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_SYNCED_HISTORY = 30;
+const MEDIA_UPLOAD_COOLDOWN_MS = 5 * 60 * 1_000;
 
 let runtimeStarted = false;
 let dispatchInFlight: Promise<void> | null = null;
+const mediaUploadCooldownUntil = new Map<string, number>();
 
 const now = (): number => Date.now();
 
@@ -59,6 +61,8 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
 };
 
 const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
+const mediaCooldownKey = (userId: string, scope: 'profile' | 'history'): string =>
+  `${userId}:${scope}`;
 
 const isNonBlockingMediaUploadError = (error: unknown): boolean => {
   if (!(error instanceof Phase2SyncApiError)) return false;
@@ -256,6 +260,16 @@ const uploadMediaSource = async (
   rawUri: string,
   linkedEntryId?: string
 ): Promise<{ assetId: string; renderUrl?: string } | null> => {
+  const cooldownKey = mediaCooldownKey(userId, scope);
+  const cooldownUntil = mediaUploadCooldownUntil.get(cooldownKey) || 0;
+  if (cooldownUntil > now()) {
+    throw new Phase2SyncApiError(
+      'Media backend is cooling down.',
+      'MEDIA_BACKEND_UNAVAILABLE',
+      503
+    );
+  }
+
   const prepared = await prepareUploadSource(rawUri);
   if (!prepared) return null;
   try {
@@ -271,6 +285,12 @@ const uploadMediaSource = async (
       renderUrl: result.asset.render_url,
     };
   } catch (error) {
+    if (error instanceof Phase2SyncApiError) {
+      const code = (error.code || '').trim().toUpperCase();
+      if (error.status === 503 || code.startsWith('MEDIA_')) {
+        mediaUploadCooldownUntil.set(cooldownKey, now() + MEDIA_UPLOAD_COOLDOWN_MS);
+      }
+    }
     logger.warn('[Phase2Sync] media upload failed', {
       request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
       user_id: userId,

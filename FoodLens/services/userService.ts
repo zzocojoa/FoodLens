@@ -193,6 +193,34 @@ const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<st
   return [profileOpId, allergiesOpId, settingsOpId];
 };
 
+const profileSyncComparableShape = (profile: UserProfile) => ({
+  uid: profile.uid || '',
+  email: profile.email || '',
+  name: profile.name || '',
+  profileImage: profile.profileImage || '',
+  profileImageAssetId: profile.profileImageAssetId || '',
+  gender: profile.gender || null,
+  birthYear: profile.birthYear ?? null,
+  currentTripStart: profile.currentTripStart || null,
+  currentTripLocation: profile.currentTripLocation || null,
+  currentTripCoordinates: profile.currentTripCoordinates || null,
+  safetyProfile: {
+    allergies: profile.safetyProfile?.allergies || [],
+    dietaryRestrictions: profile.safetyProfile?.dietaryRestrictions || [],
+    dislikedIngredients: profile.safetyProfile?.dislikedIngredients || [],
+    severityMap: profile.safetyProfile?.severityMap || {},
+  },
+  settings: {
+    language: profile.settings?.language || 'auto',
+    targetLanguage: profile.settings?.targetLanguage || null,
+    autoPlayAudio: !!profile.settings?.autoPlayAudio,
+    selectedEmoji: profile.settings?.selectedEmoji || null,
+  },
+});
+
+const isProfileSyncNoop = (before: UserProfile, after: UserProfile): boolean =>
+  JSON.stringify(profileSyncComparableShape(before)) === JSON.stringify(profileSyncComparableShape(after));
+
 type GetUserProfileOptions = {
   allowBackgroundRefresh?: boolean;
 };
@@ -236,7 +264,10 @@ export const UserService = {
     }
 
     if (allowBackgroundRefresh) {
-      void syncProfileFromServer(resolvedUserId, hydrated, { force: false });
+      const remote = await syncProfileFromServer(resolvedUserId, hydrated, { force: false });
+      if (remote) {
+        return remote;
+      }
     }
 
     return hydrated;
@@ -260,12 +291,10 @@ export const UserService = {
         : profileImageChanged
           ? undefined
           : existing.profileImageAssetId;
-      const newProfile: UserProfile = {
+      const candidateProfile: UserProfile = {
         ...existing,
         uid: resolvedUserId,
         email: email || existing.email,
-        updatedAt: now,
-        createdAt: isNew ? now : existing.createdAt,
         ...profileData,
         profileImageAssetId: nextProfileImageAssetId,
         safetyProfile: {
@@ -276,6 +305,15 @@ export const UserService = {
           ...existing.settings,
           ...(profileData.settings || {}),
         },
+      };
+      if (isProfileSyncNoop(existing, candidateProfile)) {
+        return existing;
+      }
+
+      const newProfile: UserProfile = {
+        ...candidateProfile,
+        updatedAt: now,
+        createdAt: isNew ? now : existing.createdAt,
       };
 
       await saveScopedProfile(resolvedUserId, newProfile);
