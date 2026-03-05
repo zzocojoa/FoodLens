@@ -8,6 +8,10 @@ const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
 
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: () => {},
+}));
+
 jest.mock('../../utils/profilePersistence', () => ({
   loadTestUserProfile: (...args: unknown[]) => mockLoadTestUserProfile(...args),
   saveTestUserProfile: (...args: unknown[]) => mockSaveTestUserProfile(...args),
@@ -49,6 +53,10 @@ jest.mock('@/services/sync/phase2ConflictResolution_Logic', () => ({
     mockGetManualMergeConflictOperationsForUser(...args),
   resolveManualMergeConflictsForUser: (...args: unknown[]) =>
     mockResolveManualMergeConflictsForUser(...args),
+}));
+
+jest.mock('@/services/user/userProfileStore_Logic', () => ({
+  subscribeUserProfileUpdated: () => () => {},
 }));
 
 describe('useProfileScreen saveProfile sync handling', () => {

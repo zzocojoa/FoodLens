@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AllergySeverity, UseProfileScreenResult } from '../types/profile.types';
 import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
@@ -12,9 +13,12 @@ import {
     getManualMergeConflictOperationsForUser,
     resolveManualMergeConflictsForUser,
 } from '@/services/sync/phase2ConflictResolution_Logic';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
 import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types_Structure';
 
 const normalizeAllergyKey = (value: string) => value.trim().toLowerCase();
+const PROFILE_SCREEN_REFRESH_INTERVAL_MS = 5000;
+const PROFILE_SCREEN_REFRESH_DEBOUNCE_MS = 250;
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
@@ -26,6 +30,8 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<string[]>([]);
+    const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const loadInFlightRef = useRef(false);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const shouldScrollRef = useRef(false);
@@ -35,8 +41,15 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         [],
     );
 
-    const loadProfile = useCallback(async () => {
-        setLoading(true);
+    const loadProfile = useCallback(async (options: { silent?: boolean } = {}) => {
+        if (loadInFlightRef.current) {
+            return;
+        }
+        loadInFlightRef.current = true;
+        const silent = options.silent === true;
+        if (!silent) {
+            setLoading(true);
+        }
         try {
             const user = await loadTestUserProfile();
             if (user) {
@@ -47,12 +60,47 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         } catch {
             // Keep current behavior: ignore load errors.
         } finally {
-            setLoading(false);
+            loadInFlightRef.current = false;
+            if (!silent) {
+                setLoading(false);
+            }
         }
     }, []);
 
     useEffect(() => {
         loadProfile();
+    }, [loadProfile]);
+
+    useFocusEffect(
+        useCallback(() => {
+            void loadProfile({ silent: true });
+            const intervalId = setInterval(() => {
+                void loadProfile({ silent: true });
+            }, PROFILE_SCREEN_REFRESH_INTERVAL_MS);
+            return () => {
+                clearInterval(intervalId);
+            };
+        }, [loadProfile]),
+    );
+
+    useEffect(() => {
+        const userId = getProfileUserId();
+        const unsubscribe = subscribeUserProfileUpdated(userId, () => {
+            if (profileRefreshTimerRef.current) {
+                clearTimeout(profileRefreshTimerRef.current);
+            }
+            profileRefreshTimerRef.current = setTimeout(() => {
+                void loadProfile({ silent: true });
+            }, PROFILE_SCREEN_REFRESH_DEBOUNCE_MS);
+        });
+
+        return () => {
+            unsubscribe();
+            if (profileRefreshTimerRef.current) {
+                clearTimeout(profileRefreshTimerRef.current);
+                profileRefreshTimerRef.current = null;
+            }
+        };
     }, [loadProfile]);
 
     const promptConflictResolution = useCallback(

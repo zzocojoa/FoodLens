@@ -4,8 +4,16 @@ import { renderHook, waitFor } from '@testing-library/react-native';
 import { UserService } from '../../../../services/userService';
 import { useAllergiesData } from '../useAllergiesData';
 
+jest.mock('@react-navigation/native', () => ({
+    useFocusEffect: () => {},
+}));
+
 jest.mock('../../constants/allergies.constants', () => ({
     getAllergiesUserId: () => 'test-user-v1',
+}));
+
+jest.mock('@/services/user/userProfileStore_Logic', () => ({
+    subscribeUserProfileUpdated: () => () => {},
 }));
 
 jest.mock('../../../../services/userService', () => ({
