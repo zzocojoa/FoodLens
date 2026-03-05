@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Protocol
 from uuid import uuid4
+
+logger = logging.getLogger("foodlens.media")
 
 
 def _utc_now_iso() -> str:
@@ -285,5 +288,11 @@ def build_media_storage_from_env(
             max_upload_bytes=max_upload_bytes,
             service_account_json=service_account_json,
         )
-    except MediaStorageError:
+    except MediaStorageError as error:
+        logger.warning(
+            "[Media] storage fallback to disabled backend=gcs code=%s status=%s bucket=%s",
+            error.code,
+            error.status_code,
+            bucket_name,
+        )
         return DisabledMediaStorage()

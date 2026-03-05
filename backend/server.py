@@ -1778,6 +1778,14 @@ async def post_me_media_upload(
             "request_id": request_id,
         }
     except MediaStorageError as error:
+        logger.warning(
+            "[Media] upload failed request_id=%s user_id=%s scope=%s code=%s status=%s",
+            request_id,
+            user.user_id,
+            normalized_scope,
+            error.code,
+            error.status_code,
+        )
         raise HTTPException(
             status_code=error.status_code,
             detail={
@@ -1877,6 +1885,13 @@ async def get_media_render(
             },
         )
     except MediaStorageError as error:
+        logger.warning(
+            "[Media] render failed request_id=%s asset_id=%s code=%s status=%s",
+            request_id,
+            asset_id,
+            error.code,
+            error.status_code,
+        )
         raise HTTPException(
             status_code=error.status_code,
             detail={
