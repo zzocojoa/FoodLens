@@ -15,6 +15,32 @@ import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Lo
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_BACKGROUND_REFRESH_MS = 5000;
+const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
+
+const extractSignedExpiryMs = (uri: string): number | null => {
+  const match = uri.match(/[?&]exp=(\d{10,13})/);
+  if (!match) return null;
+  const raw = Number(match[1]);
+  if (!Number.isFinite(raw)) return null;
+  return raw > 1_000_000_000_000 ? raw : raw * 1000;
+};
+
+const shouldKeepExistingProfileImage = (
+  previous: UserProfile | null,
+  next: UserProfile
+): boolean => {
+  if (!previous?.profileImage || !next.profileImage) return false;
+  if (!previous.profileImageAssetId || !next.profileImageAssetId) return false;
+  if (previous.profileImageAssetId !== next.profileImageAssetId) return false;
+  if (previous.profileImage === next.profileImage) return true;
+
+  const expiryMs = extractSignedExpiryMs(previous.profileImage);
+  if (expiryMs === null) {
+    // Non-signed/static URLs are stable and should not churn.
+    return true;
+  }
+  return expiryMs - Date.now() > PROFILE_IMAGE_REUSE_BUFFER_MS;
+};
 
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
@@ -65,7 +91,16 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       setSafeCount(safeCount);
 
       if (profile) {
-        setUserProfile(profile);
+        setUserProfile((previous) => {
+          if (!shouldKeepExistingProfileImage(previous, profile)) {
+            return profile;
+          }
+          return {
+            ...profile,
+            profileImage: previous?.profileImage || profile.profileImage,
+            photoURL: previous?.profileImage || profile.profileImage,
+          };
+        });
         setAllergyCount(getProfileRestrictionCount(profile));
       }
     } catch (error) {

@@ -31,6 +31,19 @@ type RefreshSessionOptions = {
   reason?: string;
 };
 
+const TERMINAL_REFRESH_ERROR_CODES = new Set([
+  'AUTH_REFRESH_INVALID',
+  'AUTH_REFRESH_REUSED',
+  'AUTH_REFRESH_EXPIRED',
+  'AUTH_SESSION_REVOKED',
+]);
+
+const shouldForceClearOnRefreshFailure = (error: unknown): boolean => {
+  if (!(error instanceof AuthApiError)) return false;
+  if (TERMINAL_REFRESH_ERROR_CODES.has(error.code)) return true;
+  return error.status === 401 && error.code !== 'AUTH_TIMEOUT' && error.code !== 'AUTH_NETWORK_ERROR';
+};
+
 let refreshInFlight: Promise<AuthSessionTokens | null> | null = null;
 
 export const persistSession = async (
@@ -108,7 +121,7 @@ const runRefreshNow = async (options: RefreshSessionOptions = {}): Promise<AuthS
         });
       }
     }
-    if (clearOnFailure) {
+    if (clearOnFailure || shouldForceClearOnRefreshFailure(error)) {
       await clearSession();
     }
     return null;

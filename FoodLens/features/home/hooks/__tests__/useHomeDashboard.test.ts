@@ -163,4 +163,53 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
+    const firstProfile = {
+      uid: 'usr_home',
+      name: 'Tester',
+      email: 'user@example.com',
+      profileImageAssetId: 'asset_profile_1',
+      profileImage:
+        'https://cdn.example.com/media/render/asset_profile_1?w=512&q=75&fmt=auto&exp=4102444800&sig=old',
+      safetyProfile: { allergies: ['egg'], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const secondProfile = {
+      ...firstProfile,
+      profileImage:
+        'https://cdn.example.com/media/render/asset_profile_1?w=512&q=75&fmt=auto&exp=4102444801&sig=new',
+      updatedAt: new Date(Date.now() + 1000).toISOString(),
+    };
+
+    mockFetchHomeDashboardData
+      .mockResolvedValueOnce({
+        recentData: [],
+        allHistory: [],
+        profile: firstProfile,
+        weeklyStats: [],
+        safeCount: 0,
+      })
+      .mockResolvedValueOnce({
+        recentData: [],
+        allHistory: [],
+        profile: secondProfile,
+        weeklyStats: [],
+        safeCount: 0,
+      });
+
+    const { result } = renderHook(() => useHomeDashboard());
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+      expect(result.current.userProfile?.profileImage).toBe(firstProfile.profileImage);
+    });
+
+    await act(async () => {
+      await result.current.loadDashboardData();
+    });
+
+    expect(result.current.userProfile?.profileImage).toBe(firstProfile.profileImage);
+  });
 });

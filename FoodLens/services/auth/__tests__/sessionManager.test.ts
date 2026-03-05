@@ -2,7 +2,7 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from '../authApi';
 import { AuthSecureSessionStore } from '../secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from '../currentUser';
 import { queryClient } from '../../queryClient';
-import { clearSession, persistSession, restoreSession } from '../sessionManager';
+import { clearSession, persistSession, refreshSessionNow, restoreSession } from '../sessionManager';
 
 jest.mock('../authApi', () => ({
   AuthApi: {
@@ -161,6 +161,17 @@ describe('sessionManager', () => {
     mockedAuthApi.refresh.mockRejectedValue(new AuthApiError('reuse', 'AUTH_REFRESH_REUSED', 401));
 
     const restored = await restoreSession();
+
+    expect(restored).toBeNull();
+    expect(mockedStore.clear).toHaveBeenCalledTimes(1);
+    expect(mockedClearCurrentUserId).toHaveBeenCalledTimes(1);
+  });
+
+  it('forces session clear on terminal refresh invalid even when clearOnFailure is disabled', async () => {
+    mockedStore.read.mockResolvedValue(expiredSession);
+    mockedAuthApi.refresh.mockRejectedValue(new AuthApiError('invalid', 'AUTH_REFRESH_INVALID', 401));
+
+    const restored = await refreshSessionNow({ clearOnFailure: false, logWarnings: false });
 
     expect(restored).toBeNull();
     expect(mockedStore.clear).toHaveBeenCalledTimes(1);
