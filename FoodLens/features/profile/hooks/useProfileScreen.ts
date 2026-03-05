@@ -32,6 +32,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<string[]>([]);
     const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
+    const hasLocalEditsRef = useRef(false);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const shouldScrollRef = useRef(false);
@@ -53,6 +54,10 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         try {
             const user = await loadTestUserProfile();
             if (user) {
+                // Avoid overwriting in-progress local edits with periodic silent refresh payloads.
+                if (silent && hasLocalEditsRef.current) {
+                    return;
+                }
                 setAllergies(user.safetyProfile.allergies);
                 setSeverityMap(user.safetyProfile.severityMap ?? {});
                 setOtherRestrictions(user.safetyProfile.dietaryRestrictions);
@@ -160,6 +165,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     });
 
     const toggleAllergen = useCallback((id: string) => {
+        hasLocalEditsRef.current = true;
         setCustomAllergenInputValue('');
         setCustomAllergenSuggestions([]);
 
@@ -179,6 +185,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     }, []);
 
     const cycleSeverity = useCallback((id: string) => {
+        hasLocalEditsRef.current = true;
         setSeverityMap((prev) => {
             const current = prev[id] || 'moderate';
             const next: AllergySeverity =
@@ -200,6 +207,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         if (!item) {
             return;
         }
+        hasLocalEditsRef.current = true;
 
         const normalizedItem = normalizeAllergyKey(item);
 
@@ -221,6 +229,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         let saveError: unknown = null;
         try {
             await saveTestUserProfile(allergies, otherRestrictions, severityMap);
+            hasLocalEditsRef.current = false;
         } catch (error) {
             saveError = error;
         }

@@ -152,4 +152,26 @@ describe('useProfileScreen saveProfile sync handling', () => {
 
     alertSpy.mockRestore();
   });
+
+  it('keeps local allergy edits when silent refresh runs', async () => {
+    mockLoadTestUserProfile.mockResolvedValue({
+      safetyProfile: { allergies: ['egg'], severityMap: { egg: 'moderate' }, dietaryRestrictions: [] },
+    });
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.toggleAllergen('milk');
+    });
+
+    await act(async () => {
+      await result.current.loadProfile({ silent: true });
+    });
+
+    expect(result.current.allergies).toContain('milk');
+  });
 });
