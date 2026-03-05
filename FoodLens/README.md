@@ -79,9 +79,16 @@ npx expo prebuild --clean
 # 로그 기록용
 npm run ios:device:logs
 npm run ios:release:device:logs
+
 npm run android:device:logs
 npm run android:release:device:logs
-````
+```
+
+```
+cd /Users/beatlefeed/Documents/FoodLens-project/FoodLens
+EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=0 IOS_DEVICE_UDID=00008140-000E5DAE1ABB001C npm run ios:release:device:logs
+EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=0 npm run android:release:device:logs
+```
 
 ### 3. 🚨 문제 해결 (Troubleshooting)
 
@@ -104,3 +111,4 @@ iOS 빌드 실패 시 (인증서 만료, Hermes 에러 등) 아래 가이드를 
 ## 📜 라이선스
 
 개인 학습 및 테스트 목적으로 제작된 프로젝트입니다.
+````

@@ -1,5 +1,5 @@
 import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { restoreSession } from '@/services/auth/sessionManager_Logic';
+import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager_Logic';
 import type {
   MediaAssetResponse,
   MediaUploadScope,
@@ -10,6 +10,7 @@ import type {
 } from './phase2Sync.types_Structure';
 
 const PHASE2_TIMEOUT_MS = 15_000;
+const AUTH_RETRY_ERROR_CODES = new Set(['AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED', 'AUTH_SESSION_REVOKED']);
 
 type ApiErrorDetail = {
   code?: string;
@@ -68,11 +69,26 @@ const parseError = async (response: Response): Promise<Phase2SyncApiError> => {
   );
 };
 
+const isRecoverableAuthError = (error: Phase2SyncApiError): boolean => {
+  if (error.status !== 401) return false;
+  if (error.code === 'AUTH_SESSION_REQUIRED') return true;
+  if (AUTH_RETRY_ERROR_CODES.has(error.code)) return true;
+  // Some proxies can strip structured error payloads and only preserve status.
+  return error.code === 'PHASE2_REQUEST_FAILED';
+};
+
+const requestSessionRefresh = (): ReturnType<typeof refreshSessionNow> =>
+  refreshSessionNow({
+    clearOnFailure: false,
+    logWarnings: false,
+    reason: 'phase2-401-retry',
+  });
+
 const authenticatedRequest = async <T>(
   path: string,
   init: RequestInit = {}
 ): Promise<{ data: T; requestId: string }> => {
-  const session = await restoreSession({
+  let session = await restoreSession({
     clearCurrentUserOnMissing: false,
     logWarnings: false,
   });
@@ -80,45 +96,72 @@ const authenticatedRequest = async <T>(
     throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
   }
 
-  const requestId = createRequestId();
   const baseUrl = await ServerConfig.getServerUrl();
   const endpoint = `${baseUrl}${path}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PHASE2_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(endpoint, {
-      ...init,
-      headers: {
-        ...(init.headers || {}),
-        'X-Request-Id': requestId,
-        Authorization: `Bearer ${session.accessToken}`,
-        ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw await parseError(response);
+  let attempt = 0;
+  while (attempt < 2) {
+    const requestId = createRequestId();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), PHASE2_TIMEOUT_MS);
+    try {
+      const response = await fetch(endpoint, {
+        ...init,
+        headers: {
+          ...(init.headers || {}),
+          'X-Request-Id': requestId,
+          Authorization: `Bearer ${session.accessToken}`,
+          ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw await parseError(response);
+      }
+      const payload = (await response.json()) as ApiEnvelope<T>;
+      return {
+        data: payload as T,
+        requestId: payload.request_id || requestId,
+      };
+    } catch (error) {
+      if (error instanceof Phase2SyncApiError) {
+        if (attempt === 0 && isRecoverableAuthError(error)) {
+          const refreshed = await requestSessionRefresh();
+          if (refreshed) {
+            session = refreshed;
+            attempt += 1;
+            continue;
+          }
+          throw new Phase2SyncApiError(
+            'Session is not available.',
+            'AUTH_SESSION_REQUIRED',
+            401,
+            error.requestId
+          );
+        }
+        if (attempt === 1 && isRecoverableAuthError(error)) {
+          throw new Phase2SyncApiError(
+            'Session is not available.',
+            'AUTH_SESSION_REQUIRED',
+            401,
+            error.requestId
+          );
+        }
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Phase2SyncApiError('Phase2 request timed out.', 'PHASE2_TIMEOUT', 408, requestId);
+      }
+      throw new Phase2SyncApiError(
+        error instanceof Error ? error.message : 'Unknown phase2 network error',
+        'PHASE2_NETWORK_ERROR',
+        0,
+        requestId
+      );
+    } finally {
+      clearTimeout(timeoutId);
     }
-    const payload = (await response.json()) as ApiEnvelope<T>;
-    return {
-      data: payload as T,
-      requestId: payload.request_id || requestId,
-    };
-  } catch (error) {
-    if (error instanceof Phase2SyncApiError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Phase2SyncApiError('Phase2 request timed out.', 'PHASE2_TIMEOUT', 408, requestId);
-    }
-    throw new Phase2SyncApiError(
-      error instanceof Error ? error.message : 'Unknown phase2 network error',
-      'PHASE2_NETWORK_ERROR',
-      0,
-      requestId
-    );
-  } finally {
-    clearTimeout(timeoutId);
   }
+  throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
 };
 
 export const Phase2Api = {
@@ -225,7 +268,7 @@ export const Phase2Api = {
     scope: MediaUploadScope;
     linkedEntryId?: string;
   }): Promise<{ asset: MediaAssetResponse; requestId: string }> {
-    const session = await restoreSession({
+    let session = await restoreSession({
       clearCurrentUserOnMissing: false,
       logWarnings: false,
     });
@@ -233,12 +276,8 @@ export const Phase2Api = {
       throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
     }
 
-    const requestId = createRequestId();
     const baseUrl = await ServerConfig.getServerUrl();
     const endpoint = `${baseUrl}/me/media/upload`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), PHASE2_TIMEOUT_MS);
-
     const normalizedFileUri =
       input.fileUri.startsWith('file://') ||
       input.fileUri.startsWith('content://') ||
@@ -246,52 +285,79 @@ export const Phase2Api = {
       input.fileUri.startsWith('assets-library://')
         ? input.fileUri
         : `file://${input.fileUri}`;
-    const form = new FormData();
-    form.append('scope', input.scope);
-    if (input.linkedEntryId) {
-      form.append('linked_entry_id', input.linkedEntryId);
-    }
-    form.append(
-      'file',
-      {
-        uri: normalizedFileUri,
-        name: input.fileName || `upload-${Date.now().toString(36)}.jpg`,
-        type: input.contentType || 'image/jpeg',
-      } as unknown as Blob
-    );
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'X-Request-Id': requestId,
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-        body: form,
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw await parseError(response);
+    const createFormData = (): FormData => {
+      const form = new FormData();
+      form.append('scope', input.scope);
+      if (input.linkedEntryId) {
+        form.append('linked_entry_id', input.linkedEntryId);
       }
-      const payload = (await response.json()) as ApiEnvelope<{ asset: MediaAssetResponse }>;
-      return {
-        asset: payload.asset,
-        requestId: payload.request_id || requestId,
-      };
-    } catch (error) {
-      if (error instanceof Phase2SyncApiError) throw error;
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Phase2SyncApiError('Phase2 request timed out.', 'PHASE2_TIMEOUT', 408, requestId);
-      }
-      throw new Phase2SyncApiError(
-        error instanceof Error ? error.message : 'Unknown phase2 network error',
-        'PHASE2_NETWORK_ERROR',
-        0,
-        requestId
+      form.append(
+        'file',
+        {
+          uri: normalizedFileUri,
+          name: input.fileName || `upload-${Date.now().toString(36)}.jpg`,
+          type: input.contentType || 'image/jpeg',
+        } as unknown as Blob
       );
-    } finally {
-      clearTimeout(timeoutId);
+      return form;
+    };
+    let attempt = 0;
+    while (attempt < 2) {
+      const requestId = createRequestId();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), PHASE2_TIMEOUT_MS);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'X-Request-Id': requestId,
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+          body: createFormData(),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw await parseError(response);
+        }
+        const payload = (await response.json()) as ApiEnvelope<{ asset: MediaAssetResponse }>;
+        return {
+          asset: payload.asset,
+          requestId: payload.request_id || requestId,
+        };
+      } catch (error) {
+        if (error instanceof Phase2SyncApiError) {
+          if (attempt === 0 && isRecoverableAuthError(error)) {
+            const refreshed = await requestSessionRefresh();
+            if (refreshed) {
+              session = refreshed;
+              attempt += 1;
+              continue;
+            }
+          }
+          if (attempt === 1 && isRecoverableAuthError(error)) {
+            throw new Phase2SyncApiError(
+              'Session is not available.',
+              'AUTH_SESSION_REQUIRED',
+              401,
+              error.requestId
+            );
+          }
+          throw error;
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Phase2SyncApiError('Phase2 request timed out.', 'PHASE2_TIMEOUT', 408, requestId);
+        }
+        throw new Phase2SyncApiError(
+          error instanceof Error ? error.message : 'Unknown phase2 network error',
+          'PHASE2_NETWORK_ERROR',
+          0,
+          requestId
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+    throw new Phase2SyncApiError('Session is not available.', 'AUTH_SESSION_REQUIRED', 401);
   },
 
   async patchHistoryImage(

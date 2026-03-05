@@ -51,6 +51,16 @@ const isConflictError = (apiError: Phase2SyncApiError | null): boolean => {
   return apiError.status === 409 || apiError.code === 'PHASE2_CONFLICT';
 };
 
+const isAuthRecoveryError = (apiError: Phase2SyncApiError | null): boolean => {
+  if (!apiError) return false;
+  return (
+    apiError.code === 'AUTH_SESSION_REQUIRED' ||
+    apiError.code === 'AUTH_TOKEN_INVALID' ||
+    apiError.code === 'AUTH_TOKEN_EXPIRED' ||
+    apiError.code === 'AUTH_SESSION_REVOKED'
+  );
+};
+
 const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
   const synced = queue
     .filter((item) => item.state === 'synced')
@@ -520,7 +530,7 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
           await Phase2Api.patchHistoryImage(record.id, uploaded.assetId);
         } catch (patchError) {
           const apiError = patchError instanceof Phase2SyncApiError ? patchError : null;
-          if (apiError?.code === 'AUTH_SESSION_REQUIRED' || apiError?.status === 0) {
+          if (isAuthRecoveryError(apiError) || apiError?.status === 0) {
             shouldMarkDone = false;
             continue;
           }
@@ -710,7 +720,7 @@ export const dispatchPhase2SyncQueue = async (
         const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;
 
-        if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
+        if (isAuthRecoveryError(apiError)) {
           mutable[index] = {
             ...sending,
             state: 'pending',

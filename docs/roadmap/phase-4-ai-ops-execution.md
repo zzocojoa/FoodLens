@@ -140,11 +140,33 @@
 ## 10) Phase 4 완료 증적 체크
 
 - [ ] Render 로그에 request_id 기반 시작/완료/오류 추적 가능
-- [ ] 429 유도 시 `Retry-After`와 표준 detail 응답 확인
-- [ ] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
-- [ ] label 공급자 429가 API 429로 통일되는지 확인
-- [ ] 모바일 로그에 `cache_hit=true` 확인
-- [ ] 백엔드/모바일 테스트 PASS 로그 첨부
+- [ ] 429 유도 시 `Retry-After`와 표준 detail 응답 확인 (Render Live 기준)
+- [x] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
+- [x] label 공급자 429가 API 429로 통일되는지 확인
+- [x] 모바일 로그에 `cache_hit=true` 확인 (단위 테스트 로그)
+- [x] 백엔드/모바일 테스트 PASS 로그 첨부
+
+### 10-1) 검증 실행 결과 (2026-03-02)
+
+- Backend validation suite: PASS (19 tests)
+  - 실행 명령:
+    - `AUTH_STATE_BACKEND=memory python -m unittest -v backend.tests.runtime.test_api_edge_guard backend.tests.runtime.test_analysis_observability backend.tests.runtime.test_label_429_policy backend.tests.runtime.test_cost_guardrail backend.tests.contracts.test_analysis_contract_snapshot`
+  - 증적 로그: `/tmp/phase4-backend-validation.log`
+  - 확인 포인트:
+    - request_id 전달/추적
+    - 429 표준 응답(`Retry-After`, `UPSTREAM_RATE_LIMITED`)
+    - cost guardrail degrade/fallback 동작
+- Mobile aiCore suite: PASS (4 suites, 18 tests)
+  - 실행 명령:
+    - `npm test -- aiCore --runInBand`
+  - 증적 로그: `/tmp/phase4-mobile-validation.log`
+  - 확인 포인트:
+    - 429 `Retry-After` 우선 재시도
+    - on-device cache hit 로그
+- Render runtime rehearsal (burst 429): 환경 제한으로 미완료
+  - 실행 결과: DNS resolution failure (`status=000`)
+  - 증적 로그: `/tmp/phase4-runtime-429.log`
+  - 필요 후속: Render Live Logs에서 429/latency/request_id/fallback 라인 캡처
 
 ---
 

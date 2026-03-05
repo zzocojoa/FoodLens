@@ -46,6 +46,7 @@
 - Backend Lead
   - Google/Kakao/Email 로그인 API 구현
   - **Refresh Token Rotation** 도입: 갱신 시 구 토큰 폐기 및 재사용 감지
+  - 경합 완화 옵션 추가: `AUTH_REFRESH_REUSE_GRACE_SECONDS` (기본 `0`, 권장 `3`)
   - Access Token 수명 단축 (15-30분) 및 Refresh Token 수명 설정 (7-30일)
   - 최소 보안 검증(PKCE, HTTPS 강제)
 - Mobile Lead

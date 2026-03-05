@@ -136,6 +136,26 @@ describe('sessionManager', () => {
     expect(restored).toEqual(refreshed);
   });
 
+  it('deduplicates concurrent refresh calls with single-flight', async () => {
+    const refreshed: AuthSessionTokens = {
+      ...activeSession,
+      accessToken: 'atk-race',
+      refreshToken: 'rtk-race',
+      issuedAt: now + 2,
+    };
+    mockedStore.read.mockResolvedValue(expiredSession);
+    mockedAuthApi.refresh.mockResolvedValue(refreshed);
+
+    const first = restoreSession();
+    const second = restoreSession();
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(mockedAuthApi.refresh).toHaveBeenCalledTimes(1);
+    expect(firstResult).toEqual(refreshed);
+    expect(secondResult).toEqual(refreshed);
+    expect(mockedStore.write).toHaveBeenCalledWith(refreshed);
+  });
+
   it('clears broken session when refresh fails', async () => {
     mockedStore.read.mockResolvedValue(expiredSession);
     mockedAuthApi.refresh.mockRejectedValue(new AuthApiError('reuse', 'AUTH_REFRESH_REUSED', 401));

@@ -16,7 +16,7 @@ os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
 os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 from backend.server import app  # noqa: E402
-from backend.modules.auth import AuthServiceError  # noqa: E402
+from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -341,6 +341,24 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             with self.assertRaises(AuthServiceError) as context:
                 service.refresh(refresh_token=rotated_token or "")
             self.assertEqual(context.exception.code, "AUTH_SESSION_REVOKED")
+
+    def test_refresh_reuse_grace_window_returns_same_tokens_once(self):
+        service = InMemoryAuthSessionService(
+            email_verification_required=False,
+            refresh_reuse_grace_seconds=3,
+        )
+        issued = service.signup_email(
+            email="grace-runtime@example.com",
+            password="Passw0rd!",
+            display_name="Grace Runtime",
+            locale="ko-KR",
+            device_id="ios-grace-runtime",
+        )
+
+        first = service.refresh(refresh_token=issued["refresh_token"])
+        second = service.refresh(refresh_token=issued["refresh_token"])
+        self.assertEqual(second["refresh_token"], first["refresh_token"])
+        self.assertEqual(second["access_token"], first["access_token"])
 
     def test_oauth_provider_error_mapping_and_redirect_mismatch(self):
         with (

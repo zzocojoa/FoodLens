@@ -79,6 +79,33 @@ class AuthServiceRotationTests(unittest.TestCase):
             self.service.authenticate_access_token(access_token=bundle['access_token'])
         self.assertEqual(error.exception.code, 'AUTH_TOKEN_INVALID')
 
+    def test_refresh_reuse_grace_window_allows_single_recovery(self):
+        service = InMemoryAuthSessionService(
+            email_verification_required=False,
+            refresh_reuse_grace_seconds=3,
+        )
+        bundle = service.signup_email(
+            email='grace@example.com',
+            password='Passw0rd!',
+            display_name='Grace',
+            locale='ko-KR',
+            device_id='ios-grace',
+        )
+
+        first = service.refresh(refresh_token=bundle['refresh_token'])
+        second = service.refresh(refresh_token=bundle['refresh_token'])
+
+        self.assertEqual(second['refresh_token'], first['refresh_token'])
+        self.assertEqual(second['access_token'], first['access_token'])
+
+        with self.assertRaises(AuthServiceError) as reused_again:
+            service.refresh(refresh_token=bundle['refresh_token'])
+        self.assertEqual(reused_again.exception.code, 'AUTH_REFRESH_REUSED')
+
+        with self.assertRaises(AuthServiceError) as family_revoked:
+            service.refresh(refresh_token=first['refresh_token'])
+        self.assertEqual(family_revoked.exception.code, 'AUTH_SESSION_REVOKED')
+
 
 if __name__ == '__main__':
     unittest.main()

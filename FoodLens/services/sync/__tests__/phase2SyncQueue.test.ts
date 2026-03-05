@@ -260,6 +260,20 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].lastError).toBeUndefined();
   });
 
+  it('keeps queue pending when auth token is temporarily invalid', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a')];
+    mockedPhase2Api.putProfile.mockRejectedValueOnce(
+      new Phase2SyncApiError('Invalid access token.', 'AUTH_TOKEN_INVALID', 401, 'req-auth-pending-a')
+    );
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('pending');
+    expect(queueState[0].attempts).toBe(0);
+    expect(queueState[0].lastError).toBeUndefined();
+  });
+
   it('moves entry to conflicted on conflict response', async () => {
     queueState = [pendingProfileOperation('op-a', 'usr_a')];
     mockedPhase2Api.putProfile.mockRejectedValueOnce(

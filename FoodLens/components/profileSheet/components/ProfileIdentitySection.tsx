@@ -52,6 +52,7 @@ export default function ProfileIdentitySection({
                         onChangeText={onChangeName}
                         style={[
                             styles.textInput,
+                            { paddingRight: 56 },
                             { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary },
                         ]}
                         placeholder="Enter your name"
@@ -59,7 +60,17 @@ export default function ProfileIdentitySection({
                     />
                     <HapticTouchableOpacity
                         onPress={onClearName}
-                        style={{ position: 'absolute', right: 20, padding: 4 }}
+                        style={{
+                            position: 'absolute',
+                            right: 10,
+                            width: 36,
+                            height: 36,
+                            borderRadius: 18,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 2,
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"
                         accessibilityRole="button"
                         accessibilityLabel="Clear display name"

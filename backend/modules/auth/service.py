@@ -180,6 +180,8 @@ class RefreshTokenRecord:
     status: RefreshStatus = "active"
     used_at: datetime | None = None
     replaced_by: str | None = None
+    replacement_access_token: str | None = None
+    grace_redeemed: bool = False
 
 
 @dataclass(slots=True)
@@ -236,6 +238,7 @@ class InMemoryAuthSessionService:
         password_reset_code_ttl_seconds: int = 600,
         password_reset_max_attempts: int = 5,
         password_reset_debug_code_enabled: bool = False,
+        refresh_reuse_grace_seconds: int = 0,
         email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
         state_store: AuthStateStore | None = None,
@@ -250,6 +253,7 @@ class InMemoryAuthSessionService:
         self.password_reset_code_ttl_seconds = max(60, password_reset_code_ttl_seconds)
         self.password_reset_max_attempts = max(1, password_reset_max_attempts)
         self.password_reset_debug_code_enabled = password_reset_debug_code_enabled
+        self.refresh_reuse_grace_seconds = max(0, refresh_reuse_grace_seconds)
         self._email_verification_sender = email_verification_sender or LoggingEmailVerificationSender()
         self.allowed_redirects_by_provider = {
             key: set(value)
@@ -304,6 +308,9 @@ class InMemoryAuthSessionService:
         password_reset_debug_code_enabled = (
             get_env("AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED", "0") or "0"
         ).strip() == "1"
+        refresh_reuse_grace_seconds = int(
+            (get_env("AUTH_REFRESH_REUSE_GRACE_SECONDS", "0") or "0").strip()
+        )
         email_verification_sender, email_delivery_mode = build_email_verification_sender_from_env(get_env=get_env)
         if email_delivery_mode == "smtp" and email_verification_debug_code_enabled:
             email_verification_debug_code_enabled = False
@@ -339,6 +346,7 @@ class InMemoryAuthSessionService:
             password_reset_code_ttl_seconds=password_reset_code_ttl_seconds,
             password_reset_max_attempts=password_reset_max_attempts,
             password_reset_debug_code_enabled=password_reset_debug_code_enabled,
+            refresh_reuse_grace_seconds=refresh_reuse_grace_seconds,
             email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
             state_store=state_store,
@@ -983,6 +991,11 @@ class InMemoryAuthSessionService:
                 )
 
             if record.status != "active":
+                grace_bundle = self._build_grace_refresh_bundle(record=record, now=now)
+                if grace_bundle is not None:
+                    record.grace_redeemed = True
+                    self._persist_state_unlocked()
+                    return grace_bundle
                 self._revoke_family(record.family_id, reason="refresh_reuse_detected")
                 self._persist_state_unlocked()
                 raise AuthServiceError(
@@ -1004,6 +1017,8 @@ class InMemoryAuthSessionService:
 
             bundle = self._issue_tokens(user=user, session=session)
             record.replaced_by = bundle["refresh_token"]
+            record.replacement_access_token = bundle["access_token"]
+            record.grace_redeemed = False
             self._persist_state_unlocked()
             return bundle
 
@@ -1649,6 +1664,52 @@ class InMemoryAuthSessionService:
             refresh_record = self._refresh_tokens.get(refresh_token)
             if refresh_record and refresh_record.status == "active":
                 refresh_record.status = "revoked"
+
+    def _build_grace_refresh_bundle(self, *, record: RefreshTokenRecord, now: datetime) -> dict[str, object] | None:
+        if self.refresh_reuse_grace_seconds <= 0:
+            return None
+        if record.grace_redeemed:
+            return None
+        if record.used_at is None or record.replaced_by is None or record.replacement_access_token is None:
+            return None
+        if now > record.used_at + timedelta(seconds=self.refresh_reuse_grace_seconds):
+            return None
+
+        session = self._sessions.get(record.session_id)
+        if session is None or session.revoked_at is not None:
+            return None
+
+        user = self._users_by_id.get(record.user_id)
+        if user is None:
+            return None
+
+        replacement_refresh = self._refresh_tokens.get(record.replaced_by)
+        if replacement_refresh is None:
+            return None
+        if replacement_refresh.session_id != record.session_id:
+            return None
+        if replacement_refresh.status != "active":
+            return None
+        if replacement_refresh.expires_at <= now:
+            return None
+
+        replacement_access = self._access_tokens.get(record.replacement_access_token)
+        if replacement_access is None:
+            return None
+        if replacement_access.session_id != record.session_id:
+            return None
+        if replacement_access.revoked:
+            return None
+        if replacement_access.expires_at <= now:
+            return None
+
+        expires_in = max(1, int((replacement_access.expires_at - now).total_seconds()))
+        return {
+            "access_token": replacement_access.token,
+            "refresh_token": replacement_refresh.token,
+            "expires_in": expires_in,
+            "user": self._serialize_user(user),
+        }
 
     def _revoke_sessions_for_user(self, user_id: str, *, reason: str) -> int:
         now = _utc_now()
