@@ -219,16 +219,23 @@ export const UserService = {
     await saveScopedProfile(resolvedUserId, hydrated);
     const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(resolvedUserId), false);
     if (!serverSynced) {
-      const operationIds = await queueProfileWrites(resolvedUserId, hydrated);
-      await flushProfileWrites(resolvedUserId, operationIds);
-      await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
-      publishUserProfileUpdated(resolvedUserId, 'sync_apply');
+      const remote = await syncProfileFromServer(resolvedUserId, hydrated, {
+        force: !cachedProfile,
+      });
+      if (remote) return remote;
+
+      // Only migrate explicit legacy payloads to server from read path.
+      // Do not push default/scaffolded profiles on first read, because that can overwrite
+      // existing cloud data from another device before pull completes.
+      if (migrated) {
+        const operationIds = await queueProfileWrites(resolvedUserId, hydrated);
+        await flushProfileWrites(resolvedUserId, operationIds);
+        await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
+        publishUserProfileUpdated(resolvedUserId, 'sync_apply');
+      }
     }
 
-    if (!cachedProfile) {
-      const remote = await syncProfileFromServer(resolvedUserId, hydrated, { force: true });
-      if (remote) return remote;
-    } else if (allowBackgroundRefresh) {
+    if (allowBackgroundRefresh) {
       void syncProfileFromServer(resolvedUserId, hydrated, { force: false });
     }
 
