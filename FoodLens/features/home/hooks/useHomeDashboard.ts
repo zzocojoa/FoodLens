@@ -58,17 +58,29 @@ type UseHomeDashboardReturn = {
   handleDeleteItem: (itemId: string) => Promise<void>;
 };
 
+const readInitialProfileSnapshot = (): UserProfile | null => {
+  const userId = getCurrentUserId();
+  return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+};
+
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const { t } = useI18n();
+  const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot());
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]);
   const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weeklyStats, setWeeklyStats] = useState<WeeklyData[]>([]);
-  const [allergyCount, setAllergyCount] = useState(0);
+  const [allergyCount, setAllergyCount] = useState(() =>
+    initialProfileSnapshotRef.current
+      ? getProfileRestrictionCount(initialProfileSnapshotRef.current)
+      : 0
+  );
   const [safeCount, setSafeCount] = useState(0);
   const [activeModal, setActiveModal] = useState<HomeModalType>('NONE');
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(
+    () => initialProfileSnapshotRef.current
+  );
   const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadInFlightRef = useRef(false);
   const profileHydrationInFlightRef = useRef(false);

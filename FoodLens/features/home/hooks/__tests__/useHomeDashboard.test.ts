@@ -7,6 +7,7 @@ const mockGetProfileRestrictionCount = jest.fn();
 const mockSubscribeUserProfileUpdated = jest.fn();
 const mockGetCurrentUserId = jest.fn();
 const mockSafeStorageGet = jest.fn();
+const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
@@ -33,6 +34,7 @@ jest.mock('@/services/auth/currentUser_Logic', () => ({
 
 jest.mock('@/services/storage_Logic', () => ({
   SafeStorage: {
+    getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
     get: (...args: unknown[]) => mockSafeStorageGet(...args),
   },
 }));
@@ -86,6 +88,7 @@ describe('useHomeDashboard profile update subscription', () => {
     mockGetCurrentUserId.mockReturnValue('usr_home');
     mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
     mockGetProfileRestrictionCount.mockReturnValue(2);
+    mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
     mockFetchHomeDashboardData.mockResolvedValue({
       recentData: [],
@@ -240,6 +243,7 @@ describe('useHomeDashboard profile update subscription', () => {
       updatedAt: new Date().toISOString(),
     };
     mockSafeStorageGet.mockResolvedValueOnce(localProfile);
+    mockSafeStorageGetSync.mockReturnValueOnce(localProfile);
     mockFetchHomeDashboardData.mockImplementation(
       () => new Promise(() => { /* keep pending */ })
     );

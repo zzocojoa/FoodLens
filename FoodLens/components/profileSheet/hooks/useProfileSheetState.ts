@@ -44,16 +44,29 @@ const shouldKeepExistingProfileImage = (
     return expiryMs - Date.now() > PROFILE_IMAGE_REUSE_BUFFER_MS;
 };
 
+const readInitialProfileSnapshot = (userId: string): UserProfile | null =>
+    SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+
 export const useProfileSheetState = (userId: string) => {
     const { t } = useI18n();
-    const [name, setName] = useState(DEFAULT_NAME);
-    const [image, setImageState] = useState<string | undefined>(undefined);
-    const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(undefined);
-    const [uiLanguage, setUiLanguage] = useState<CanonicalLocale>('auto');
+    const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot(userId));
+    const initialProfile = initialProfileSnapshotRef.current;
+    const initialName = initialProfile?.name?.trim() || DEFAULT_NAME;
+    const initialImage = initialProfile?.profileImage?.trim() || undefined;
+    const initialTravelerLanguage = initialProfile?.settings?.targetLanguage;
+    const initialUiLanguage = initialProfile?.settings?.language
+        ? normalizeCanonicalLocale(initialProfile.settings.language)
+        : 'auto';
+    const initialAssetId = initialProfile?.profileImageAssetId?.trim() || undefined;
+
+    const [name, setName] = useState(initialName);
+    const [image, setImageState] = useState<string | undefined>(initialImage);
+    const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(initialTravelerLanguage);
+    const [uiLanguage, setUiLanguage] = useState<CanonicalLocale>(initialUiLanguage);
     const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
-    const profileImageAssetIdRef = useRef<string | undefined>(undefined);
+    const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
 
     useEffect(() => {

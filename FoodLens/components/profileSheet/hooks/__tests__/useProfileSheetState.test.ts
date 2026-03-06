@@ -8,6 +8,7 @@ const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
 const mockSafeStorageGet = jest.fn();
+const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
 
 jest.mock('../../services/profileSheetService', () => ({
@@ -44,6 +45,7 @@ jest.mock('@/services/sync/phase2ConflictResolution_Logic', () => ({
 
 jest.mock('@/services/storage_Logic', () => ({
   SafeStorage: {
+    getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
     get: (...args: unknown[]) => mockSafeStorageGet(...args),
   },
 }));
@@ -56,6 +58,7 @@ describe('useProfileSheetState conflict handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
+    mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
     mockUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
     mockGetManualMergeConflictOperationsForUser.mockResolvedValue([{ id: 'op_conflict_1' }]);

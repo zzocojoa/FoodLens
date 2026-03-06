@@ -99,6 +99,22 @@ export const initializeSafeStorage = async () => {
  */
 export const SafeStorage = {
     /**
+     * Synchronously read data when MMKV is available.
+     * Falls back to `fallback` if MMKV is unavailable (e.g. remote debug runtime).
+     */
+    getSync<T>(key: string, fallback: T): T {
+        try {
+            const activeStorage = getStorageInstance();
+            if (!activeStorage) return fallback;
+            const jsonValue = activeStorage.getString(key);
+            return parseStoredValue(jsonValue, fallback);
+        } catch (error) {
+            logParseError(key, error);
+            return fallback;
+        }
+    },
+
+    /**
      * Get and parse JSON data safely
      * @param key Storage Key
      * @param fallback Default value if key is missing or parsing fails
