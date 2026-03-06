@@ -209,15 +209,15 @@ describe('phase2Mappers', () => {
     expect(payload.profile.profile_image_local_uri).toBe('data:image/jpeg;base64,Zm9vYmFy');
   });
 
-  it('keeps settings.language=auto while sending resolved profile.locale', () => {
+  it('keeps settings.language=auto without forcing profile locale/timezone overwrite', () => {
     const profile = buildDefaultProfile('usr_auto_locale');
     profile.settings.language = 'auto';
     profile.settings.targetLanguage = null;
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.settings.language).toBe('auto');
-    expect(payload.profile.locale).toBeTruthy();
-    expect(payload.profile.locale).not.toBe('auto');
+    expect(payload.profile.locale).toBeNull();
+    expect(payload.profile.timezone).toBeNull();
   });
 
   it('normalizes legacy language settings to canonical locale format', () => {

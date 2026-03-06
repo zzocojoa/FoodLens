@@ -238,6 +238,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     targetLanguage: profile.settings.targetLanguage ?? null,
   });
   const resolvedLocale = resolveEffectiveLocale(normalizedLanguageSettings);
+  const shouldSyncResolvedProfileLocale = normalizedLanguageSettings.language !== 'auto';
   const resolvedTimezone = resolveDeviceTimezone();
   return {
     profile: {
@@ -252,8 +253,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       gender: profile.gender || null,
       birth_year: profile.birthYear ?? null,
       disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
-      locale: resolvedLocale,
-      timezone: resolvedTimezone,
+      locale: shouldSyncResolvedProfileLocale ? resolvedLocale : null,
+      timezone: shouldSyncResolvedProfileLocale ? resolvedTimezone : null,
       current_trip_start: profile.currentTripStart || null,
       current_trip_location: profile.currentTripLocation || null,
       current_trip_coordinates: profile.currentTripCoordinates || null,

@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import { dateEditSheetStyles as styles } from './dateEditSheet/styles';
 import { useDateEditSheetState } from './dateEditSheet/hooks/useDateEditSheetState';
 import { DateEditSheetProps } from './dateEditSheet/types';
+import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
 
 export function DateEditSheet({
     isVisible,
@@ -42,7 +43,7 @@ export function DateEditSheet({
                                 display="spinner"
                                 onChange={handleDateChange}
                                 textColor="black"
-                                locale={locale || 'en-US'}
+                                locale={locale || DEFAULT_FALLBACK_LOCALE}
                                 themeVariant="light"
                                 style={{ height: 180, width: '100%' }}
                             />

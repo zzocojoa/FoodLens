@@ -107,7 +107,7 @@ def _sanitize_text(text: str, max_length: int = MAX_TEXT_LENGTH) -> str:
 
 def get_safe_fallback_response(user_message: str) -> dict[str, Any]:
     return {
-        "foodName": "분석 오류",
+        "foodName": "Analysis Error",
         "foodName_en": "Analysis Error",
         "foodName_ko": "분석 오류",
         "raw_result_en": "Analysis failed. Please try again.",
@@ -117,7 +117,7 @@ def get_safe_fallback_response(user_message: str) -> dict[str, Any]:
         "safetyStatus": "CAUTION",
         "confidence": 0,
         "ingredients": [],
-        "translationCard": {"language": "Korean", "text": None, "audio_query": None},
+        "translationCard": {"language": "Unknown", "text": None, "audio_query": None},
         "raw_result": user_message,
     }
 

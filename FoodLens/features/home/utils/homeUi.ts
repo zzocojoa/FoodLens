@@ -1,4 +1,5 @@
 import { isSameDay } from './homeDashboard';
+import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
 
 type ScanBadge = {
   label: 'OK' | 'AVOID' | 'ASK';
@@ -25,7 +26,7 @@ export const formatHomeSectionTitle = (
   if (isSameDay(selectedDate, new Date())) return t('home.scans.recentTitle', 'Recent Scans');
   return t('home.scans.onDateTemplate', 'Scans on {date}').replace(
     '{date}',
-    new Intl.DateTimeFormat(locale || 'en-US', { month: 'short', day: 'numeric' }).format(
+    new Intl.DateTimeFormat(locale || DEFAULT_FALLBACK_LOCALE, { month: 'short', day: 'numeric' }).format(
     selectedDate,
     )
   );
