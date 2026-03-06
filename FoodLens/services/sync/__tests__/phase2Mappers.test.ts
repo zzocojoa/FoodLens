@@ -212,7 +212,7 @@ describe('phase2Mappers', () => {
   it('keeps settings.language=auto without forcing profile locale/timezone overwrite', () => {
     const profile = buildDefaultProfile('usr_auto_locale');
     profile.settings.language = 'auto';
-    profile.settings.targetLanguage = null;
+    profile.settings.targetLanguage = undefined;
 
     const payload = buildProfileWritePayload(profile);
     expect(payload.settings.language).toBe('auto');

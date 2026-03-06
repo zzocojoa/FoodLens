@@ -1,6 +1,7 @@
 import type { UserProfile } from '@/models/User';
 import type { AnalysisRecord } from '@/services/analysis/types_Structure';
 import {
+  normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
 } from '@/features/i18n/services/languageService_Logic';
@@ -17,6 +18,13 @@ type UserSnapshotInput = {
   profile?: MeProfileResponse;
   allergies?: MeAllergiesResponse;
   settings?: MeSettingsResponse;
+};
+
+const normalizeLanguageValue = (value: string | null | undefined) => normalizeCanonicalLocale(value);
+
+const normalizeTargetLanguageValue = (value: string | null | undefined) => {
+  const normalized = normalizeCanonicalLocale(value);
+  return normalized === 'auto' ? null : normalized;
 };
 
 const resolveDeviceTimezone = (): string => {
@@ -140,11 +148,11 @@ export const mergeRemoteUserSnapshot = (
   const fallback = currentProfile ?? buildDefaultProfile(userId);
   const next = { ...fallback };
   const mergedLanguageSettings = normalizeLanguageSettings({
-    language: input.settings?.language ?? fallback.settings.language,
+    language: normalizeLanguageValue(input.settings?.language ?? fallback.settings.language),
     targetLanguage:
       input.settings?.target_language === undefined
-        ? fallback.settings.targetLanguage ?? null
-        : input.settings.target_language ?? null,
+        ? normalizeTargetLanguageValue(fallback.settings.targetLanguage)
+        : normalizeTargetLanguageValue(input.settings.target_language),
   });
 
   next.uid = userId;
@@ -234,8 +242,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
   };
 } => {
   const normalizedLanguageSettings = normalizeLanguageSettings({
-    language: profile.settings.language,
-    targetLanguage: profile.settings.targetLanguage ?? null,
+    language: normalizeLanguageValue(profile.settings.language),
+    targetLanguage: normalizeTargetLanguageValue(profile.settings.targetLanguage),
   });
   const resolvedLocale = resolveEffectiveLocale(normalizedLanguageSettings);
   const shouldSyncResolvedProfileLocale = normalizedLanguageSettings.language !== 'auto';
@@ -349,8 +357,8 @@ export const mergeRemoteHistory = (
 
 export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfile): UserProfile => {
   const normalizedLegacyLanguageSettings = normalizeLanguageSettings({
-    language: profile.settings?.language ?? 'auto',
-    targetLanguage: profile.settings?.targetLanguage ?? null,
+    language: normalizeLanguageValue(profile.settings?.language ?? 'auto'),
+    targetLanguage: normalizeTargetLanguageValue(profile.settings?.targetLanguage),
   });
 
   return {
