@@ -275,7 +275,7 @@ export const useProfileSheetState = (userId: string) => {
                 messageFallback: 'Failed to pick image.',
             });
         }
-    }, [t]);
+    }, [setImage, t]);
 
     return {
         name,
