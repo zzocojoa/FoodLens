@@ -32,7 +32,7 @@ type ProfileSheetViewProps = {
   theme: any;
   state: {
     name: string;
-    image: string;
+    image?: string;
     avatars: string[];
     travelerLanguage?: string;
     uiLanguage: CanonicalLocale;

@@ -6,6 +6,8 @@ const mockFetchHomeDashboardData = jest.fn();
 const mockGetProfileRestrictionCount = jest.fn();
 const mockSubscribeUserProfileUpdated = jest.fn();
 const mockGetCurrentUserId = jest.fn();
+const mockSafeStorageGet = jest.fn();
+const mockGetUserStorageKey = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const React = require('react');
@@ -27,6 +29,16 @@ jest.mock('@/services/user/userProfileStore_Logic', () => ({
 
 jest.mock('@/services/auth/currentUser_Logic', () => ({
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
+}));
+
+jest.mock('@/services/storage_Logic', () => ({
+  SafeStorage: {
+    get: (...args: unknown[]) => mockSafeStorageGet(...args),
+  },
+}));
+
+jest.mock('@/services/user/constants_Logic', () => ({
+  getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -72,7 +84,9 @@ describe('useHomeDashboard profile update subscription', () => {
         };
       }) as typeof InteractionManager.runAfterInteractions);
     mockGetCurrentUserId.mockReturnValue('usr_home');
+    mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
     mockGetProfileRestrictionCount.mockReturnValue(2);
+    mockSafeStorageGet.mockResolvedValue(null);
     mockFetchHomeDashboardData.mockResolvedValue({
       recentData: [],
       allHistory: [],
@@ -211,5 +225,28 @@ describe('useHomeDashboard profile update subscription', () => {
     });
 
     expect(result.current.userProfile?.profileImage).toBe(firstProfile.profileImage);
+  });
+
+  it('hydrates profile from local cache before dashboard fetch resolves', async () => {
+    const localProfile = {
+      uid: 'usr_home',
+      name: 'Cached User',
+      email: 'cached@example.com',
+      profileImage: 'https://cdn.example.com/profile-cached.jpg',
+      profileImageAssetId: 'asset_cached',
+      safetyProfile: { allergies: ['egg'], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mockSafeStorageGet.mockResolvedValueOnce(localProfile);
+    mockFetchHomeDashboardData.mockImplementation(
+      () => new Promise(() => { /* keep pending */ })
+    );
+
+    const { result } = renderHook(() => useHomeDashboard());
+    await waitFor(() => {
+      expect(result.current.userProfile?.profileImage).toBe(localProfile.profileImage);
+    });
   });
 });

@@ -7,6 +7,8 @@ const mockLoadProfile = jest.fn();
 const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
+const mockSafeStorageGet = jest.fn();
+const mockGetUserStorageKey = jest.fn();
 
 jest.mock('../../services/profileSheetService', () => ({
   profileSheetService: {
@@ -40,9 +42,21 @@ jest.mock('@/services/sync/phase2ConflictResolution_Logic', () => ({
     mockResolveManualMergeConflictsForUser(...args),
 }));
 
+jest.mock('@/services/storage_Logic', () => ({
+  SafeStorage: {
+    get: (...args: unknown[]) => mockSafeStorageGet(...args),
+  },
+}));
+
+jest.mock('@/services/user/constants_Logic', () => ({
+  getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
+}));
+
 describe('useProfileSheetState conflict handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
+    mockSafeStorageGet.mockResolvedValue(null);
     mockUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
     mockGetManualMergeConflictOperationsForUser.mockResolvedValue([{ id: 'op_conflict_1' }]);
     mockResolveManualMergeConflictsForUser.mockResolvedValue({
@@ -80,5 +94,65 @@ describe('useProfileSheetState conflict handling', () => {
     expect(messageKeys).not.toContain('profile.alert.saveFailed');
 
     alertSpy.mockRestore();
+  });
+
+  it('does not overwrite existing image when loaded profile has no image', async () => {
+    mockLoadProfile.mockResolvedValue({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setImage('https://cdn.example.com/local-selected.jpg');
+    });
+
+    await act(async () => {
+      await result.current.loadProfile();
+    });
+
+    expect(result.current.image).toBe('https://cdn.example.com/local-selected.jpg');
+  });
+
+  it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
+    const firstProfile = {
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImageAssetId: 'asset_profile_1',
+      profileImage:
+        'https://cdn.example.com/media/render/asset_profile_1?w=512&q=75&fmt=auto&exp=4102444800&sig=old',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const secondProfile = {
+      ...firstProfile,
+      profileImage:
+        'https://cdn.example.com/media/render/asset_profile_1?w=512&q=75&fmt=auto&exp=4102444801&sig=new',
+      updatedAt: new Date(Date.now() + 1000).toISOString(),
+    };
+
+    mockLoadProfile.mockResolvedValueOnce(firstProfile).mockResolvedValueOnce(secondProfile);
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    await act(async () => {
+      await result.current.loadProfile();
+    });
+    const firstImage = result.current.image;
+
+    await act(async () => {
+      await result.current.loadProfile();
+    });
+
+    expect(result.current.image).toBe(firstImage);
   });
 });

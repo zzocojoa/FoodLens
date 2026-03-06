@@ -59,6 +59,7 @@ export default function HomeScreen() {
     handleDeleteItem,
   } = dashboard;
   const cameraOrbBottom = Math.max(40, insets.bottom + 16);
+  const profileImageUri = userProfile?.profileImage?.trim() || undefined;
 
   const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
 
@@ -85,15 +86,22 @@ export default function HomeScreen() {
               hitSlop={20}
             >
               <View style={styles.avatarContainer} pointerEvents="none">
-                <SecureImage
-                  source={{
-                    uri:
-                      userProfile?.profileImage ||
-                      'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
-                  }}
-                  style={styles.avatar}
-                  fallbackIconSize={20}
-                />
+                {profileImageUri ? (
+                  <SecureImage
+                    source={{ uri: profileImageUri }}
+                    style={styles.avatar}
+                    fallbackIconSize={20}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatar,
+                      {
+                        backgroundColor: colorScheme === 'dark' ? theme.surface : '#E2E8F0',
+                      },
+                    ]}
+                  />
+                )}
               </View>
             </Pressable>
             <View>

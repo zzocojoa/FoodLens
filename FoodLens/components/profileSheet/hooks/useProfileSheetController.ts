@@ -19,6 +19,7 @@ export const useProfileSheetController = ({ isOpen, onClose, userId }: ProfileSh
     openTravelerLanguageModal: travelerLanguageSheet.openSheet,
     openUiLanguageModal: uiLanguageSheet.openSheet,
     loadProfile: state.loadProfile,
+    invalidateProfileLoad: state.invalidateProfileLoad,
   });
 
   return {

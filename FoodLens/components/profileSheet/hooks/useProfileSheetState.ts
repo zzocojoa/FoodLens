@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { DEFAULT_AVATARS } from '@/models/User';
-import { DEFAULT_IMAGE, DEFAULT_NAME } from '../constants';
+import { DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
@@ -12,16 +12,82 @@ import {
     resolveManualMergeConflictsForUser,
 } from '@/services/sync/phase2ConflictResolution_Logic';
 import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types_Structure';
+import { SafeStorage } from '@/services/storage_Logic';
+import { getUserStorageKey } from '@/services/user/constants_Logic';
+import type { UserProfile } from '@/models/User';
+
+const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
+
+const extractSignedExpiryMs = (uri: string): number | null => {
+    const match = uri.match(/[?&]exp=(\d{10,13})/);
+    if (!match) return null;
+    const raw = Number(match[1]);
+    if (!Number.isFinite(raw)) return null;
+    return raw > 1_000_000_000_000 ? raw : raw * 1000;
+};
+
+const shouldKeepExistingProfileImage = (
+    previousImage: string | undefined,
+    previousAssetId: string | undefined,
+    nextImage: string | undefined,
+    nextAssetId: string | undefined,
+): boolean => {
+    if (!previousImage || !nextImage) return false;
+    if (!previousAssetId || !nextAssetId) return false;
+    if (previousAssetId !== nextAssetId) return false;
+    if (previousImage === nextImage) return true;
+
+    const expiryMs = extractSignedExpiryMs(previousImage);
+    if (expiryMs === null) {
+        return true;
+    }
+    return expiryMs - Date.now() > PROFILE_IMAGE_REUSE_BUFFER_MS;
+};
 
 export const useProfileSheetState = (userId: string) => {
     const { t } = useI18n();
     const [name, setName] = useState(DEFAULT_NAME);
-    const [image, setImage] = useState(DEFAULT_IMAGE);
+    const [image, setImageState] = useState<string | undefined>(undefined);
     const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(undefined);
     const [uiLanguage, setUiLanguage] = useState<CanonicalLocale>('auto');
     const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
+    const profileImageAssetIdRef = useRef<string | undefined>(undefined);
+    const loadProfileRequestIdRef = useRef(0);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadLocalSnapshot = async () => {
+            const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+            if (cancelled || !profile) return;
+
+            const localImage = profile.profileImage?.trim() || undefined;
+            if (localImage) {
+                setImageState((previous) => previous || localImage);
+                profileImageAssetIdRef.current = profile.profileImageAssetId?.trim() || undefined;
+            }
+            const localName = profile.name?.trim();
+            if (localName) {
+                setName((previous) => (previous === DEFAULT_NAME ? localName : previous));
+            }
+            if (profile.settings?.targetLanguage) {
+                setTravelerLanguage((previous) => previous ?? profile.settings.targetLanguage);
+            }
+            if (profile.settings?.language) {
+                setUiLanguage((previous) =>
+                    previous === 'auto'
+                        ? normalizeCanonicalLocale(profile.settings?.language)
+                        : previous
+                );
+            }
+        };
+
+        void loadLocalSnapshot();
+        return () => {
+            cancelled = true;
+        };
+    }, [userId]);
 
     const isSyncNotConfirmedError = useCallback(
         (error: unknown): boolean => error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
@@ -69,6 +135,11 @@ export const useProfileSheetState = (userId: string) => {
         [t],
     );
 
+    const setImage = useCallback((value: string) => {
+        profileImageAssetIdRef.current = undefined;
+        setImageState(value);
+    }, []);
+
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);
         if (conflicts.length === 0) {
@@ -114,14 +185,36 @@ export const useProfileSheetState = (userId: string) => {
     }, [promptConflictResolution, t, userId]);
 
     const loadProfile = useCallback(async () => {
+        const requestId = ++loadProfileRequestIdRef.current;
         const profile = await profileSheetService.loadProfile(userId);
+        if (requestId !== loadProfileRequestIdRef.current) {
+            return;
+        }
         if (profile) {
             setName(profile.name || DEFAULT_NAME);
-            setImage(profile.profileImage || DEFAULT_IMAGE);
+            const nextImage = profile.profileImage?.trim() || undefined;
+            const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
+            setImageState((previous) => {
+                if (!nextImage) return previous;
+                if (shouldKeepExistingProfileImage(
+                    previous,
+                    profileImageAssetIdRef.current,
+                    nextImage,
+                    nextAssetId,
+                )) {
+                    return previous;
+                }
+                return nextImage;
+            });
+            profileImageAssetIdRef.current = nextAssetId;
             setTravelerLanguage(profile.settings?.targetLanguage);
             setUiLanguage(normalizeCanonicalLocale(profile.settings?.language));
         }
     }, [userId]);
+
+    const invalidateProfileLoad = useCallback(() => {
+        loadProfileRequestIdRef.current += 1;
+    }, []);
 
     const handleUpdate = useCallback(
         async (onUpdate: () => void | Promise<void>, onClose: () => void) => {
@@ -132,7 +225,7 @@ export const useProfileSheetState = (userId: string) => {
                     await profileSheetService.updateProfile({
                         userId,
                         name,
-                        image,
+                        image: image || '',
                         travelerLanguage,
                         uiLanguage,
                     });
@@ -199,6 +292,7 @@ export const useProfileSheetState = (userId: string) => {
         setUiLangModalVisible,
         loading,
         loadProfile,
+        invalidateProfileLoad,
         handleUpdate,
         pickImage,
         avatars: DEFAULT_AVATARS,

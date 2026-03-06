@@ -9,6 +9,7 @@ type UseProfileSheetEffectsParams = {
   openTravelerLanguageModal: () => void;
   openUiLanguageModal: () => void;
   loadProfile: () => Promise<void>;
+  invalidateProfileLoad: () => void;
 };
 
 export const useProfileSheetEffects = ({
@@ -20,16 +21,22 @@ export const useProfileSheetEffects = ({
   openTravelerLanguageModal,
   openUiLanguageModal,
   loadProfile,
+  invalidateProfileLoad,
 }: UseProfileSheetEffectsParams) => {
   useEffect(() => {
     if (isOpen) openProfile();
   }, [isOpen, openProfile]);
 
   useEffect(() => {
-    if (isOpen) {
-      void loadProfile();
+    if (!isOpen) {
+      invalidateProfileLoad();
+      return;
     }
-  }, [isOpen, userId, loadProfile]);
+    void loadProfile();
+    return () => {
+      invalidateProfileLoad();
+    };
+  }, [isOpen, userId, loadProfile, invalidateProfileLoad]);
 
   useEffect(() => {
     if (isTravelerLanguageModalVisible) openTravelerLanguageModal();

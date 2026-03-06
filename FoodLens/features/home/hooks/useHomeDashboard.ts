@@ -12,6 +12,8 @@ import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+import { SafeStorage } from '@/services/storage_Logic';
+import { getUserStorageKey } from '@/services/user/constants_Logic';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_BACKGROUND_REFRESH_MS = 5000;
@@ -69,6 +71,8 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadInFlightRef = useRef(false);
+  const profileHydrationInFlightRef = useRef(false);
+  const hasRequestedInitialLoadRef = useRef(false);
 
   useEffect(() => {
     setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
@@ -110,16 +114,55 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     }
   }, []);
 
+  const hydrateProfileFromCache = useCallback(async () => {
+    if (profileHydrationInFlightRef.current) {
+      return;
+    }
+    profileHydrationInFlightRef.current = true;
+    try {
+      const userId = getCurrentUserId();
+      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+      if (!profile) return;
+      setUserProfile((previous) => {
+        if (!shouldKeepExistingProfileImage(previous, profile)) {
+          return profile;
+        }
+        return {
+          ...profile,
+          profileImage: previous?.profileImage || profile.profileImage,
+          photoURL: previous?.profileImage || profile.profileImage,
+        };
+      });
+      setAllergyCount(getProfileRestrictionCount(profile));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      profileHydrationInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hasRequestedInitialLoadRef.current) {
+      return;
+    }
+    hasRequestedInitialLoadRef.current = true;
+    void hydrateProfileFromCache();
+    void loadDashboardData();
+  }, [hydrateProfileFromCache, loadDashboardData]);
+
   useFocusEffect(
     useCallback(() => {
-      const task = InteractionManager.runAfterInteractions(() => {
-        void loadDashboardData();
-      });
+      let task: { cancel?: () => void } | null = null;
+      if (hasRequestedInitialLoadRef.current) {
+        task = InteractionManager.runAfterInteractions(() => {
+          void loadDashboardData();
+        });
+      }
       const intervalId = setInterval(() => {
         void loadDashboardData();
       }, DASHBOARD_BACKGROUND_REFRESH_MS);
       return () => {
-        task.cancel();
+        task?.cancel?.();
         clearInterval(intervalId);
       };
     }, [loadDashboardData]),

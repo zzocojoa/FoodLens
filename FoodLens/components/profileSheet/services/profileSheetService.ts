@@ -15,14 +15,18 @@ export const profileSheetService = {
   async updateProfile(params: {
     userId: string;
     name: string;
-    image: string;
+    image?: string;
     travelerLanguage?: string;
     uiLanguage?: string;
   }) {
-    const profileImageToSave = await persistProfileImageIfNeeded(params.image);
     const existing = await UserService.getUserProfile(params.userId, {
       allowBackgroundRefresh: false,
     });
+    const imageInput = params.image?.trim() || '';
+    const imageToPersist = imageInput || existing.profileImage || '';
+    const profileImageToSave = imageToPersist
+      ? await persistProfileImageIfNeeded(imageToPersist)
+      : '';
     const normalizedUiLanguage = normalizeCanonicalLocale(
       params.uiLanguage || existing.settings?.language || 'auto'
     );

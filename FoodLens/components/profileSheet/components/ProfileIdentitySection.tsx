@@ -8,7 +8,7 @@ type ProfileIdentitySectionProps = {
     theme: any;
     colorScheme: string;
     name: string;
-    image: string;
+    image?: string;
     avatars: string[];
     onChangeName: (value: string) => void;
     onClearName: () => void;
@@ -29,11 +29,21 @@ export default function ProfileIdentitySection({
     onPickLibrary,
     onSelectPreset,
 }: ProfileIdentitySectionProps) {
+    const hasImage = typeof image === 'string' && image.trim().length > 0;
     return (
         <View style={styles.section}>
             <View style={styles.avatarWrapper}>
                 <View style={[styles.avatarFrame, { backgroundColor: theme.surface, borderColor: theme.surface }]}>
-                    <Image source={{ uri: image }} style={styles.avatarImage} />
+                    {hasImage ? (
+                        <Image source={{ uri: image }} style={styles.avatarImage} />
+                    ) : (
+                        <View
+                            style={[
+                                styles.avatarImage,
+                                { backgroundColor: colorScheme === 'dark' ? theme.border : '#E2E8F0' },
+                            ]}
+                        />
+                    )}
                 </View>
                 <HapticTouchableOpacity
                     onPress={onPickCamera}
@@ -90,7 +100,7 @@ export default function ProfileIdentitySection({
                             style={[
                                 styles.presetItem,
                                 { backgroundColor: theme.surface, borderColor: 'transparent' },
-                                image === url && {
+                                hasImage && image === url && {
                                     borderColor: theme.primary,
                                     backgroundColor: colorScheme === 'dark' ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
                                 },
