@@ -7,6 +7,7 @@ import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentU
 import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { getUserStorageKey } from '@/services/user/constants_Logic';
 import { resolveImageUri } from '@/services/imageStorage_Logic';
+import { IMAGE_DIR } from '@/services/imageStorage.helpers_Logic';
 import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
 import type {
@@ -156,10 +157,7 @@ const applyServerVersionToLocalProfile = async (
   const nextUpdatedAt = versionPatch.profileUpdatedAt || current.updatedAt;
   const currentImage = current.profileImage?.trim() || '';
   const shouldKeepCurrentLocalImage =
-    currentImage.length > 0 &&
-    !isRemoteImageUri(currentImage) &&
-    !isDataImageUri(currentImage) &&
-    !isUnsupportedHistoryImageScheme(currentImage);
+    currentImage.length > 0 && isStableManagedLocalProfileImage(currentImage);
   const nextProfileImage = shouldKeepCurrentLocalImage
     ? current.profileImage
     : versionPatch.profileImageRenderUrl ?? current.profileImage;
@@ -183,6 +181,30 @@ const isDataImageUri = (uri: string): boolean => uri.toLowerCase().startsWith('d
 const isUnsupportedHistoryImageScheme = (uri: string): boolean => {
   const normalized = uri.toLowerCase();
   return normalized.startsWith('barcode://');
+};
+
+const isStableManagedLocalProfileImage = (uri: string): boolean => {
+  const normalized = uri.toLowerCase();
+  if (
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('data:image/') ||
+    normalized.startsWith('barcode://')
+  ) {
+    return false;
+  }
+  if (
+    normalized.startsWith('ph://') ||
+    normalized.startsWith('content://') ||
+    normalized.startsWith('assets-library://')
+  ) {
+    return false;
+  }
+  if (normalized.startsWith('file://') || normalized.startsWith('/')) {
+    return uri.includes(IMAGE_DIR);
+  }
+  if (normalized.includes('://')) return false;
+  return true;
 };
 
 const resolveHistoryImageFileUri = (rawUri: string): string | null => {
@@ -486,11 +508,17 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
     try {
       const uploaded = await uploadMediaSource(userId, 'profile', profile.profileImage);
       if (uploaded?.assetId) {
+        const currentImage = profile.profileImage?.trim() || '';
+        const shouldKeepCurrentLocalImage =
+          currentImage.length > 0 && isStableManagedLocalProfileImage(currentImage);
+        const nextProfileImage = shouldKeepCurrentLocalImage
+          ? profile.profileImage
+          : uploaded.renderUrl || profile.profileImage;
         const nextProfile: UserProfile = {
           ...profile,
           profileImageAssetId: uploaded.assetId,
-          profileImage: profile.profileImage,
-          photoURL: profile.profileImage || profile.photoURL,
+          profileImage: nextProfileImage,
+          photoURL: nextProfileImage || profile.photoURL,
           updatedAt: new Date().toISOString(),
         };
         await SafeStorage.set(storageKey, nextProfile);

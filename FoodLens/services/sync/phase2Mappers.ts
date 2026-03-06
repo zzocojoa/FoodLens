@@ -5,6 +5,7 @@ import {
   normalizeLanguageSettings,
   resolveEffectiveLocale,
 } from '@/features/i18n/services/languageService_Logic';
+import { IMAGE_DIR } from '@/services/imageStorage.helpers_Logic';
 import { buildDefaultProfile } from '@/services/user/profileFactory_Logic';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import type {
@@ -81,7 +82,24 @@ const shouldKeepLocalProfileImage = (
 ): boolean => {
   if (!currentImage || !currentAssetId || !nextAssetId) return false;
   if (currentAssetId !== nextAssetId) return false;
-  return !isExternalProfileImageReference(currentImage);
+  if (isExternalProfileImageReference(currentImage)) return false;
+
+  const lower = currentImage.toLowerCase();
+  if (
+    lower.startsWith('ph://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('assets-library://')
+  ) {
+    return false;
+  }
+
+  if (lower.startsWith('file://') || lower.startsWith('/')) {
+    return currentImage.includes(IMAGE_DIR);
+  }
+
+  // Filenames (no scheme/path) are managed references.
+  if (lower.includes('://')) return false;
+  return true;
 };
 
 const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
