@@ -13,7 +13,7 @@ import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
-import { getUserStorageKey } from '@/services/user/constants_Logic';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_BACKGROUND_REFRESH_MS = 5000;
@@ -60,7 +60,9 @@ type UseHomeDashboardReturn = {
 
 const readInitialProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
-  return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  if (scoped) return scoped;
+  return SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
 };
 
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
@@ -133,7 +135,10 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     profileHydrationInFlightRef.current = true;
     try {
       const userId = getCurrentUserIdSnapshot();
-      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+      let profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+      if (!profile) {
+        profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+      }
       if (!profile) return;
       setUserProfile((previous) => {
         if (!shouldKeepExistingProfileImage(previous, profile)) {

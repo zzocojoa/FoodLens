@@ -78,7 +78,10 @@ const loadScopedProfile = async (uid: string): Promise<UserProfile | null> => {
 };
 
 const saveScopedProfile = async (uid: string, profile: UserProfile): Promise<void> => {
-  await SafeStorage.set(getUserStorageKey(uid), profile);
+  await Promise.all([
+    SafeStorage.set(getUserStorageKey(uid), profile),
+    SafeStorage.set(USER_STORAGE_KEY, profile),
+  ]);
 };
 
 const migrateLegacyProfileIfNeeded = async (uid: string): Promise<UserProfile | null> => {

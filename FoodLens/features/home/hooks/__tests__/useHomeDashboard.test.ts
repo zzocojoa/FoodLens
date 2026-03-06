@@ -43,6 +43,7 @@ jest.mock('@/services/storage_Logic', () => ({
 
 jest.mock('@/services/user/constants_Logic', () => ({
   getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
+  USER_STORAGE_KEY: '@foodlens_user_profile',
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -254,6 +255,35 @@ describe('useHomeDashboard profile update subscription', () => {
     const { result } = renderHook(() => useHomeDashboard());
     await waitFor(() => {
       expect(result.current.userProfile?.profileImage).toBe(localProfile.profileImage);
+    });
+  });
+
+  it('falls back to global profile snapshot when scoped profile is missing', async () => {
+    const globalProfile = {
+      uid: 'usr_home',
+      name: 'Global Snapshot',
+      email: 'global@example.com',
+      profileImage: 'https://cdn.example.com/profile-global.jpg',
+      profileImageAssetId: 'asset_global',
+      safetyProfile: { allergies: ['egg'], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockSafeStorageGetSync
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(globalProfile);
+    mockSafeStorageGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(globalProfile);
+    mockFetchHomeDashboardData.mockImplementation(
+      () => new Promise(() => { /* keep pending */ })
+    );
+
+    const { result } = renderHook(() => useHomeDashboard());
+    await waitFor(() => {
+      expect(result.current.userProfile?.profileImage).toBe(globalProfile.profileImage);
     });
   });
 });

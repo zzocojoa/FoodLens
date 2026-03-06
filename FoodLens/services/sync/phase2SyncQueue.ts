@@ -154,11 +154,20 @@ const applyServerVersionToLocalProfile = async (
     ...(versionPatch.settingsUpdatedAt ? { settingsUpdatedAt: versionPatch.settingsUpdatedAt } : {}),
   };
   const nextUpdatedAt = versionPatch.profileUpdatedAt || current.updatedAt;
+  const currentImage = current.profileImage?.trim() || '';
+  const shouldKeepCurrentLocalImage =
+    currentImage.length > 0 &&
+    !isRemoteImageUri(currentImage) &&
+    !isDataImageUri(currentImage) &&
+    !isUnsupportedHistoryImageScheme(currentImage);
+  const nextProfileImage = shouldKeepCurrentLocalImage
+    ? current.profileImage
+    : versionPatch.profileImageRenderUrl ?? current.profileImage;
   await SafeStorage.set(storageKey, {
     ...current,
     profileImageAssetId: versionPatch.profileImageAssetId ?? current.profileImageAssetId,
-    profileImage: versionPatch.profileImageRenderUrl ?? current.profileImage,
-    photoURL: versionPatch.profileImageRenderUrl ?? current.photoURL,
+    profileImage: nextProfileImage,
+    photoURL: nextProfileImage ?? current.photoURL,
     updatedAt: nextUpdatedAt,
     syncVersions: nextSyncVersions,
   });
@@ -480,8 +489,8 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
         const nextProfile: UserProfile = {
           ...profile,
           profileImageAssetId: uploaded.assetId,
-          profileImage: uploaded.renderUrl || profile.profileImage,
-          photoURL: uploaded.renderUrl || profile.photoURL,
+          profileImage: profile.profileImage,
+          photoURL: profile.profileImage || profile.photoURL,
           updatedAt: new Date().toISOString(),
         };
         await SafeStorage.set(storageKey, nextProfile);

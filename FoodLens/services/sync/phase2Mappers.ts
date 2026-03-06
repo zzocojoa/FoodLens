@@ -64,6 +64,26 @@ const normalizeProfileImageForUpload = (value: string | undefined): string | nul
   return trimmed;
 };
 
+const isExternalProfileImageReference = (value: string): boolean => {
+  const lower = value.toLowerCase();
+  return (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('data:image/') ||
+    lower.startsWith('barcode://')
+  );
+};
+
+const shouldKeepLocalProfileImage = (
+  currentImage: string | undefined,
+  currentAssetId: string | undefined,
+  nextAssetId: string | undefined
+): boolean => {
+  if (!currentImage || !currentAssetId || !nextAssetId) return false;
+  if (currentAssetId !== nextAssetId) return false;
+  return !isExternalProfileImageReference(currentImage);
+};
+
 const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
   if (value === 'male' || value === 'female') return value;
   return undefined;
@@ -158,11 +178,19 @@ export const mergeRemoteUserSnapshot = (
   next.uid = userId;
   next.email = input.profile?.email || fallback.email;
   next.name = input.profile?.display_name ?? fallback.name;
-  next.profileImageAssetId = input.profile?.profile_image_asset_id ?? fallback.profileImageAssetId;
-  next.profileImage =
+  const nextProfileImageAssetId = input.profile?.profile_image_asset_id ?? fallback.profileImageAssetId;
+  const incomingProfileImage =
     input.profile?.profile_image_render_url ??
     input.profile?.profile_image_url ??
     fallback.profileImage;
+  next.profileImageAssetId = nextProfileImageAssetId;
+  next.profileImage = shouldKeepLocalProfileImage(
+    fallback.profileImage,
+    fallback.profileImageAssetId,
+    nextProfileImageAssetId
+  )
+    ? fallback.profileImage
+    : incomingProfileImage;
   next.photoURL = next.profileImage;
   next.gender = normalizeGender(input.profile?.gender) ?? fallback.gender;
   next.birthYear = normalizeBirthYear(input.profile?.birth_year) ?? fallback.birthYear;

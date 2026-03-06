@@ -82,6 +82,31 @@ describe('phase2Mappers', () => {
     expect(merged.safetyProfile.severityMap?.['peanut']).toBe('severe');
   });
 
+  it('keeps local profile image when same asset id is returned with rotated render url', () => {
+    const local = buildDefaultProfile('usr_local');
+    local.profileImageAssetId = 'asset_local';
+    local.profileImage = 'profile_1720000000000.jpg';
+
+    const merged = mergeRemoteUserSnapshot('usr_local', local, {
+      profile: {
+        user_id: 'usr_local',
+        email: 'local@example.com',
+        profile_image_asset_id: 'asset_local',
+        profile_image_render_url:
+          'https://cdn.example.com/media/render/asset_local?w=512&q=75&fmt=auto&exp=4102444800&sig=next',
+      },
+      settings: {
+        user_id: 'usr_local',
+        language: 'en-US',
+        target_language: null,
+        auto_play_audio: false,
+      },
+    });
+
+    expect(merged.profileImageAssetId).toBe('asset_local');
+    expect(merged.profileImage).toBe('profile_1720000000000.jpg');
+  });
+
   it('serializes and deserializes history items', () => {
     const serialized = serializeHistoryRecord({
       id: 'rec_1',

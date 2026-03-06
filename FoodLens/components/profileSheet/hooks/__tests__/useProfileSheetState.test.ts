@@ -52,6 +52,7 @@ jest.mock('@/services/storage_Logic', () => ({
 
 jest.mock('@/services/user/constants_Logic', () => ({
   getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
+  USER_STORAGE_KEY: '@foodlens_user_profile',
 }));
 
 describe('useProfileSheetState conflict handling', () => {
@@ -157,5 +158,35 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     expect(result.current.image).toBe(firstImage);
+  });
+
+  it('hydrates from global profile snapshot when scoped snapshot is missing', async () => {
+    const globalProfile = {
+      uid: 'usr_profile',
+      name: 'Global Snapshot',
+      email: 'global@example.com',
+      profileImage: 'https://cdn.example.com/profile-global.jpg',
+      profileImageAssetId: 'asset_global',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockSafeStorageGetSync
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(globalProfile);
+    mockSafeStorageGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(globalProfile);
+    mockLoadProfile.mockResolvedValue(null);
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.image).toBe(globalProfile.profileImage);
   });
 });
