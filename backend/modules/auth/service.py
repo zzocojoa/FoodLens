@@ -74,6 +74,61 @@ def _to_resolved_locale(value: str | None) -> str | None:
     return None
 
 
+_LEGACY_LOCALE_ALIAS = {
+    "kr": "ko-KR",
+    "us": "en-US",
+    "jp": "ja-JP",
+    "cn": "zh-Hans",
+    "th": "th-TH",
+    "vn": "vi-VN",
+}
+
+
+def _to_canonical_locale(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    alias = _LEGACY_LOCALE_ALIAS.get(raw.lower())
+    if alias:
+        return alias
+
+    return _to_resolved_locale(raw)
+
+
+def _to_canonical_settings_language(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    lowered = raw.lower()
+    if lowered in {"auto", "gps"}:
+        return "auto"
+
+    return _to_canonical_locale(raw)
+
+
+def _to_canonical_target_language(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    lowered = raw.lower()
+    if lowered in {"auto", "gps"}:
+        return None
+
+    return _to_canonical_locale(raw)
+
+
 def _locale_from_accept_language(accept_language: str | None) -> str | None:
     if not accept_language:
         return None
@@ -1345,12 +1400,18 @@ class InMemoryAuthSessionService:
             )
 
             if language is not None:
-                normalized_language = language.strip()
+                normalized_language = _to_canonical_settings_language(language)
                 if normalized_language:
                     settings.language = normalized_language
             if target_language is not None:
-                normalized_target = target_language.strip()
-                settings.target_language = normalized_target or None
+                normalized_target = _to_canonical_target_language(target_language)
+                if target_language.strip():
+                    if normalized_target is not None:
+                        settings.target_language = normalized_target
+                    elif target_language.strip().lower() in {"auto", "gps"}:
+                        settings.target_language = None
+                else:
+                    settings.target_language = None
             if auto_play_audio is not None:
                 settings.auto_play_audio = bool(auto_play_audio)
             if selected_emoji is not None:

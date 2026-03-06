@@ -4,6 +4,7 @@ import {
   deserializeHistoryItem,
   mergeRemoteHistory,
   mergeRemoteUserSnapshot,
+  normalizeLegacyProfileForUser,
   serializeHistoryRecord,
 } from '../phase2Mappers';
 
@@ -217,5 +218,15 @@ describe('phase2Mappers', () => {
     expect(payload.settings.language).toBe('auto');
     expect(payload.profile.locale).toBeTruthy();
     expect(payload.profile.locale).not.toBe('auto');
+  });
+
+  it('normalizes legacy language settings to canonical locale format', () => {
+    const legacy = buildDefaultProfile('usr_legacy_language');
+    legacy.settings.language = 'en';
+    legacy.settings.targetLanguage = 'ko';
+
+    const normalized = normalizeLegacyProfileForUser('usr_legacy_language', legacy);
+    expect(normalized.settings.language).toBe('en-US');
+    expect(normalized.settings.targetLanguage).toBe('ko-KR');
   });
 });

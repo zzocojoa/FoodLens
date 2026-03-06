@@ -361,6 +361,28 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(body["detail"]["code"], "AUTH_TOKEN_MISSING")
             self.assertIn("request_id", body["detail"])
 
+    def test_settings_locale_variants_are_normalized(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase2-settings-locale"))
+            headers = _auth_headers(session["access_token"])
+
+            put_settings = client.put(
+                "/me/settings",
+                json={
+                    "language": "en",
+                    "target_language": "KR",
+                    "auto_play_audio": False,
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_settings.status_code, 200)
+
+            get_settings = client.get("/me/settings", headers=headers)
+            self.assertEqual(get_settings.status_code, 200)
+            settings_payload = get_settings.json()["settings"]
+            self.assertEqual(settings_payload["language"], "en-US")
+            self.assertEqual(settings_payload["target_language"], "ko-KR")
+
 
 if __name__ == "__main__":
     unittest.main()

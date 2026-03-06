@@ -19,6 +19,18 @@ type UserSnapshotInput = {
   settings?: MeSettingsResponse;
 };
 
+const resolveDeviceTimezone = (): string => {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof timeZone === 'string' && timeZone.trim().length > 0) {
+      return timeZone;
+    }
+  } catch {
+    // Keep UTC fallback when Intl timezone resolution is unavailable.
+  }
+  return 'UTC';
+};
+
 const toStringOrNull = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -226,6 +238,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     targetLanguage: profile.settings.targetLanguage ?? null,
   });
   const resolvedLocale = resolveEffectiveLocale(normalizedLanguageSettings);
+  const resolvedTimezone = resolveDeviceTimezone();
   return {
     profile: {
       display_name: profile.name || null,
@@ -240,7 +253,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       birth_year: profile.birthYear ?? null,
       disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
       locale: resolvedLocale,
-      timezone: 'UTC',
+      timezone: resolvedTimezone,
       current_trip_start: profile.currentTripStart || null,
       current_trip_location: profile.currentTripLocation || null,
       current_trip_coordinates: profile.currentTripCoordinates || null,
@@ -334,6 +347,11 @@ export const mergeRemoteHistory = (
 };
 
 export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfile): UserProfile => {
+  const normalizedLegacyLanguageSettings = normalizeLanguageSettings({
+    language: profile.settings?.language ?? 'auto',
+    targetLanguage: profile.settings?.targetLanguage ?? null,
+  });
+
   return {
     ...profile,
     uid: userId,
@@ -343,8 +361,8 @@ export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfi
       severityMap: normalizeSeverityMap(profile.safetyProfile.severityMap || {}),
     },
     settings: {
-      language: profile.settings?.language || 'auto',
-      targetLanguage: profile.settings?.targetLanguage || undefined,
+      language: normalizedLegacyLanguageSettings.language,
+      targetLanguage: normalizedLegacyLanguageSettings.targetLanguage || undefined,
       autoPlayAudio: !!profile.settings?.autoPlayAudio,
       selectedEmoji: profile.settings?.selectedEmoji || undefined,
     },

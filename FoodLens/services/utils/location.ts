@@ -8,7 +8,6 @@ import { ensureForegroundLocationPermission } from '@/services/permissions/locat
 const LOCATION_TIMEOUT_MS = Number(process.env['EXPO_PUBLIC_LOCATION_TIMEOUT_MS'] || '7000');
 const REVERSE_GEOCODE_TIMEOUT_MS = 2500;
 const LAST_KNOWN_MAX_AGE_MS = 15 * 60 * 1000;
-const EXIF_DEFAULT_ISO = 'US';
 const EMPTY_LOCATION_TEXT = '';
 let lastResolvedLocation: LocationData | null = null;
 
@@ -32,14 +31,28 @@ const hasGeocodeResult = (
   value: LocationGeocodedAddress[]
 ): value is [LocationGeocodedAddress, ...LocationGeocodedAddress[]] => value.length > 0;
 
-const buildFallbackLocation = (latitude: number, longitude: number): LocationData => ({
+const resolveDefaultIsoCountryCode = (): string => {
+  const locale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+  if (locale.startsWith('ko')) return 'KR';
+  if (locale.startsWith('ja')) return 'JP';
+  if (locale.startsWith('zh')) return 'CN';
+  if (locale.startsWith('th')) return 'TH';
+  if (locale.startsWith('vi')) return 'VN';
+  return 'US';
+};
+
+const buildFallbackLocation = (
+  latitude: number,
+  longitude: number,
+  isoCountryCode: string = resolveDefaultIsoCountryCode()
+): LocationData => ({
   latitude,
   longitude,
   country: null,
   city: null,
   district: EMPTY_LOCATION_TEXT,
   subregion: EMPTY_LOCATION_TEXT,
-  isoCountryCode: EXIF_DEFAULT_ISO,
+  isoCountryCode,
   formattedAddress: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
 });
 
@@ -135,7 +148,7 @@ export const extractLocationFromExif = async (exif: unknown): Promise<LocationDa
         reverseGeocode[0],
         valid.latitude,
         valid.longitude,
-        EXIF_DEFAULT_ISO
+        resolveDefaultIsoCountryCode()
       );
     }
   } catch (error) {

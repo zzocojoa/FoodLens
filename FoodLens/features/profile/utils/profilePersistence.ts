@@ -15,9 +15,5 @@ export const saveTestUserProfile = async (
             severityMap,
             dietaryRestrictions: otherRestrictions,
         },
-        settings: {
-            language: 'en',
-            autoPlayAudio: false,
-        },
     });
 };

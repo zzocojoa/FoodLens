@@ -41,6 +41,27 @@ from backend.modules.analyst_runtime.generation_Logic import (
 from backend.modules.analyst_runtime.safety_Logic import build_default_safety_settings
 import traceback
 
+
+def _normalize_runtime_locale(locale: str | None) -> str:
+    if not locale:
+        return "en-US"
+
+    normalized = locale.strip().lower()
+    if normalized.startswith("ko"):
+        return "ko-KR"
+    if normalized.startswith("en"):
+        return "en-US"
+    if normalized.startswith("ja"):
+        return "ja-JP"
+    if normalized.startswith("zh"):
+        return "zh-Hans"
+    if normalized.startswith("th"):
+        return "th-TH"
+    if normalized.startswith("vi"):
+        return "vi-VN"
+    return "en-US"
+
+
 class FoodAnalyst:
     # Class-level storage for temp credential file path (for cleanup)
     _temp_cred_path: str | None = None
@@ -222,7 +243,7 @@ class FoodAnalyst:
         Analyzes a nutrition label image using OCR and extracts nutritional info.
         """
         normalized_allergens = format_allergens_for_prompt(allergy_info)
-        normalized_locale = (locale or "en-US").strip() or "en-US"
+        normalized_locale = _normalize_runtime_locale(locale)
         prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
         
         # Schema for OCR (similar to food but focused on nutrition)

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { AppState } from 'react-native';
 import { TRANSLATIONS } from '../constants';
 import { CanonicalLocale } from '../types';
 import {
+  refreshI18nLocaleFromDevice,
   initializeI18nStore,
   setUiLanguage,
   useI18nSnapshot,
@@ -12,6 +14,18 @@ export const useI18n = () => {
 
   useEffect(() => {
     void initializeI18nStore();
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refreshI18nLocaleFromDevice();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   const setLocale = useCallback(async (nextLanguage: CanonicalLocale) => {
