@@ -11,6 +11,7 @@ import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
 import { LocationData } from '@/services/utils/types';
 import { AnalyzedData } from '@/services/ai';
+import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale_Logic';
 
 type Translate = (key: string, fallback?: string) => string;
 
@@ -85,7 +86,14 @@ export const useScanBarcodeFlow = ({
             scanned_barcode: barcode,
           };
 
-          const locationData = cachedLocation.current || createFallbackLocation(0, 0, 'US');
+          let fallbackIsoCode = 'US';
+          try {
+            fallbackIsoCode = await resolveRequestIsoCountryCode();
+          } catch (error) {
+            console.warn('[ScanBarcode] Failed to resolve request ISO country code, fallback to US.', error);
+          }
+          const locationData =
+            cachedLocation.current || createFallbackLocation(0, 0, fallbackIsoCode);
           const finalTimestamp = new Date().toISOString();
 
           dataStore.setData(product, locationData, getRawImageUrl(product) || '', finalTimestamp);

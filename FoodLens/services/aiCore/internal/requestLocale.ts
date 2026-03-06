@@ -15,8 +15,8 @@ export const resolveRequestLocale = async (): Promise<string> => {
   }
 };
 
-const toIsoCountryCodeFromLocale = (locale: string): string => {
-  const normalized = locale.trim().toLowerCase();
+export const localeToIsoCountryCode = (locale?: string | null): string => {
+  const normalized = (locale || '').trim().toLowerCase();
   if (normalized.startsWith('ko')) return 'KR';
   if (normalized.startsWith('ja')) return 'JP';
   if (normalized.startsWith('zh')) return 'CN';
@@ -27,5 +27,5 @@ const toIsoCountryCodeFromLocale = (locale: string): string => {
 
 export const resolveRequestIsoCountryCode = async (): Promise<string> => {
   const locale = await resolveRequestLocale();
-  return toIsoCountryCodeFromLocale(locale);
+  return localeToIsoCountryCode(locale);
 };

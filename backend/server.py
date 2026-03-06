@@ -849,17 +849,17 @@ def _verify_google_identity(*, request: Request, code: str) -> tuple[str, str | 
 def resolve_prompt_country_code(iso_country_code: str, locale: str | None) -> str:
     """
     Resolve language/country code used by AI prompt.
-    Priority: app UI locale override > request iso country code > US fallback.
+    Priority: request iso country code > app UI locale override > US fallback.
     """
+    if iso_country_code:
+        normalized = iso_country_code.strip().upper()
+        if len(normalized) == 2 and normalized.isalpha():
+            return normalized
+
     if locale:
         mapped = LOCALE_TO_ISO.get(locale.strip().lower())
         if mapped:
             return mapped
-
-    if iso_country_code:
-        normalized = iso_country_code.strip().upper()
-        if normalized:
-            return normalized
 
     return "US"
 
@@ -2569,6 +2569,7 @@ async def lookup_barcode(
                     analyst.analyze_barcode_ingredients,
                     result["ingredients"],
                     allergy_info,
+                    locale,
                 )
                 logger.info(
                     "[Server] Allergen analysis done request_id=%s elapsed_ms=%d",

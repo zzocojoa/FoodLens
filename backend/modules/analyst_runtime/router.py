@@ -97,12 +97,12 @@ class SmartRouter:
                 return result
 
             elif category == "BARCODE":
-                return build_barcode_route_response(category)
+                return build_barcode_route_response(category, locale=locale)
 
             else: # NOT_FOOD or Unknown
-                return build_not_food_response(category)
+                return build_not_food_response(category, locale=locale)
 
         except Exception as e:
             print(f"[SmartRouter] Error: {e}")
             traceback.print_exc()
-            return build_router_error_response(e)
+            return build_router_error_response(e, locale=locale)
