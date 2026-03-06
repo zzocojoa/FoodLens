@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { resolveImageUri, saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
+import { saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
 
 type CameraPermissionDialogTexts = {
@@ -41,7 +41,7 @@ export const persistProfileImageIfNeeded = async (image: string): Promise<string
 
   let savedReference = image;
   try {
-    savedReference = await saveImagePermanentlyOrThrow(image, '이미지 저장에 실패했습니다.');
+    savedReference = await saveImagePermanentlyOrThrow(image, 'Failed to save image.');
   } catch (error) {
     // Release on iOS may return ph:// URI that copyAsync cannot persist.
     // Keep original URI to avoid dropping the user's profile photo update.

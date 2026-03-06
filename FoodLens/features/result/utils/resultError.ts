@@ -1,5 +1,7 @@
 import { ResultErrorInfo } from '../types/result.types';
 
+type TranslateFn = (key: string, fallback?: string) => string;
+
 const ERROR_FOOD_NAMES = new Set([
     'Error Analyzing Food',
     'Not Food',
@@ -12,26 +14,38 @@ export const isResultError = (foodName?: string): boolean => {
     return ERROR_FOOD_NAMES.has(foodName);
 };
 
-export const getResultErrorInfo = (foodName: string, rawResult = ''): ResultErrorInfo => {
+export const getResultErrorInfo = (
+    foodName: string,
+    rawResult = '',
+    t?: TranslateFn
+): ResultErrorInfo => {
+    const translate: TranslateFn = t ?? ((_, fallback = '') => fallback);
+
     if (rawResult.includes('서버가 바쁩니다') || rawResult.includes('429') || rawResult.includes('많습니다')) {
         return {
-            title: '잠시만 기다려주세요',
-            desc: '지금 요청이 많아 분석이 지연되고 있어요.\n15~30초 후 다시 시도해주세요.',
+            title: translate('result.error.busy.title', 'Please wait a moment'),
+            desc: translate(
+                'result.error.busy.desc',
+                'Analysis is delayed because the server is busy.\nPlease try again in 15-30 seconds.'
+            ),
             icon: 'time-outline',
         };
     }
 
     if (foodName === 'Not Food') {
         return {
-            title: '음식을 찾을 수 없어요',
-            desc: '이 이미지에서 음식을 인식하지 못했어요.\n다른 사진으로 시도해보세요.',
+            title: translate('result.error.notFood.title', 'Food not detected'),
+            desc: translate(
+                'result.error.notFood.desc',
+                "We couldn't detect food in this image.\nPlease try another photo."
+            ),
             icon: 'image-outline',
         };
     }
 
     return {
-        title: '분석을 못했어요',
-        desc: '일시적인 문제가 발생했어요.\n다시 시도해주세요.',
+        title: translate('result.error.generic.title', 'Could not analyze'),
+        desc: translate('result.error.generic.desc', 'A temporary issue occurred.\nPlease try again.'),
         icon: 'camera-outline',
     };
 };

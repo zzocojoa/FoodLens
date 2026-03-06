@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Text, TouchableOpacity, View, Animated as RNAnimated } from 'react-native';
 import { profileSheetStyles as styles } from '../styles';
+import { useI18n } from '@/features/i18n';
 
 type AnimatedThemeToggleProps = {
     theme: any;
@@ -15,11 +16,17 @@ export default function AnimatedThemeToggle({
     setTheme,
     colorScheme,
 }: AnimatedThemeToggleProps) {
+    const { t } = useI18n();
     const [containerWidth, setContainerWidth] = useState(0);
     const translateX = React.useRef(new RNAnimated.Value(0)).current;
 
     const options = ['light', 'dark', 'system'] as const;
     const activeIndex = options.indexOf(currentTheme as any);
+    const optionLabels = {
+        light: t('profileSheet.theme.light', 'Light'),
+        dark: t('profileSheet.theme.dark', 'Dark'),
+        system: t('profileSheet.theme.system', 'System'),
+    };
 
     useEffect(() => {
         if (containerWidth > 0) {
@@ -90,7 +97,7 @@ export default function AnimatedThemeToggle({
                                     textTransform: 'capitalize',
                                 }}
                             >
-                                {value}
+                                {optionLabels[value]}
                             </Text>
                         </TouchableOpacity>
                     );

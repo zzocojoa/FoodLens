@@ -4,7 +4,7 @@ import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
 export const getScanCameraUserId = (): string => getCurrentUserId();
 
 export const MODES: ScanCameraModeOption[] = [
-    { id: 'LABEL', label: '라벨' },
-    { id: 'FOOD', label: '사진' },
-    { id: 'BARCODE', label: '바코드' },
+    { id: 'LABEL', label: 'Label' },
+    { id: 'FOOD', label: 'Food' },
+    { id: 'BARCODE', label: 'Barcode' },
 ];

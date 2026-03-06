@@ -31,6 +31,17 @@
             ],
             "title": "Dietary Restrictions"
           },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
           "severity_map": {
             "anyOf": [
               {
@@ -517,6 +528,17 @@
               }
             ],
             "title": "Message"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
           }
         },
         "required": [
@@ -659,6 +681,36 @@
         "title": "Body_lookup_barcode_lookup_barcode_post",
         "type": "object"
       },
+      "Body_post_me_media_upload_me_media_upload_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "linked_entry_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Entry Id"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "scope"
+        ],
+        "title": "Body_post_me_media_upload_me_media_upload_post",
+        "type": "object"
+      },
       "EmailLoginRequest": {
         "properties": {
           "device_id": {
@@ -786,6 +838,19 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryImagePatchRequest": {
+        "properties": {
+          "image_asset_id": {
+            "title": "Image Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_asset_id"
+        ],
+        "title": "HistoryImagePatchRequest",
         "type": "object"
       },
       "HistoryWriteRequest": {
@@ -1146,6 +1211,63 @@
       },
       "ProfileUpdateRequest": {
         "properties": {
+          "birth_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Year"
+          },
+          "current_trip_coordinates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripCoordinatesRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_trip_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Trip Location"
+          },
+          "current_trip_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Trip Start"
+          },
+          "disliked_ingredients": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disliked Ingredients"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -1157,6 +1279,28 @@
             ],
             "title": "Display Name"
           },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender"
+          },
           "locale": {
             "anyOf": [
               {
@@ -1167,6 +1311,28 @@
               }
             ],
             "title": "Locale"
+          },
+          "profile_image_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Image Asset Id"
+          },
+          "profile_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Image Url"
           },
           "timezone": {
             "anyOf": [
@@ -1208,6 +1374,17 @@
               }
             ],
             "title": "Auto Play Audio"
+          },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
           },
           "language": {
             "anyOf": [
@@ -1279,6 +1456,24 @@
           "language"
         ],
         "title": "TranslationCardContract",
+        "type": "object"
+      },
+      "TripCoordinatesRequest": {
+        "properties": {
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "title": "TripCoordinatesRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -2542,6 +2737,126 @@
         "summary": "Post Me History"
       }
     },
+    "/me/history/{history_item_id}": {
+      "delete": {
+        "operationId": "delete_me_history_me_history__history_item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "history_item_id",
+            "required": true,
+            "schema": {
+              "title": "History Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Me History"
+      }
+    },
+    "/me/history/{history_item_id}/image": {
+      "patch": {
+        "operationId": "patch_me_history_image_me_history__history_item_id__image_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "history_item_id",
+            "required": true,
+            "schema": {
+              "title": "History Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryImagePatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Me History Image"
+      }
+    },
+    "/me/media/upload": {
+      "post": {
+        "operationId": "post_me_media_upload_me_media_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_me_media_upload_me_media_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Me Media Upload"
+      }
+    },
     "/me/profile": {
       "get": {
         "operationId": "get_me_profile_me_profile_get",
@@ -2640,6 +2955,93 @@
           }
         },
         "summary": "Put Me Settings"
+      }
+    },
+    "/media/render/{asset_id}": {
+      "get": {
+        "operationId": "get_media_render_media_render__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "w",
+            "required": false,
+            "schema": {
+              "default": 512,
+              "title": "W",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": 75,
+              "title": "Q",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exp",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Exp",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sig",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Sig",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Media Render"
       }
     }
   }

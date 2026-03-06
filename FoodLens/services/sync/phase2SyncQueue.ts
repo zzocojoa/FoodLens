@@ -726,7 +726,7 @@ export const dispatchPhase2SyncQueue = async (
             state: 'pending',
             updatedAt: now(),
             nextAttemptAt: now() + RETRY_BASE_DELAY_MS,
-            requestId: apiError.requestId,
+            requestId: apiError?.requestId,
             lastError: undefined,
             conflict: undefined,
           };

@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { ENABLE_MAP_CLUSTERING, ENABLE_QA_MAP_METRICS } from '../constants';
 import { metricsLog } from '../utils/historyMapUtils';
 import { openAppSettings } from '@/services/ui/permissionDialogs_Logic';
+import { useI18n } from '@/features/i18n';
 
 const MAP_READY_TIMEOUT_MS = 10000;
 const TOAST_HIDE_MS = 2000;
@@ -55,6 +56,7 @@ export const useHistoryMapEffects = ({
   metricsWindowStartRef,
   metricsRegionEventCountRef,
 }: UseHistoryMapEffectsParams) => {
+  const { t } = useI18n();
   useEffect(() => {
     if (!isMapReady) return;
     if (!mapRef.current) return;
@@ -106,11 +108,19 @@ export const useHistoryMapEffects = ({
 
   useEffect(() => {
     if (ENABLE_MAP_CLUSTERING && isClusteredCapped) {
-      setToastMessage(`클러스터 최적화: ${visibleClusteredItemsLength}/${clusteredItemsLength}`);
+      setToastMessage(
+        t('history.map.toast.clusterOptimizedTemplate', 'Cluster optimized: {visible}/{total}')
+          .replace('{visible}', String(visibleClusteredItemsLength))
+          .replace('{total}', String(clusteredItemsLength))
+      );
       return;
     }
     if (!ENABLE_MAP_CLUSTERING && isMarkerCapped) {
-      setToastMessage(`표시 최적화: ${visibleMarkersLength}/${markersLength}`);
+      setToastMessage(
+        t('history.map.toast.renderOptimizedTemplate', 'Render optimized: {visible}/{total}')
+          .replace('{visible}', String(visibleMarkersLength))
+          .replace('{total}', String(markersLength))
+      );
     }
   }, [
     clusteredItemsLength,
@@ -120,6 +130,7 @@ export const useHistoryMapEffects = ({
     visibleClusteredItemsLength,
     visibleMarkersLength,
     setToastMessage,
+    t,
   ]);
 
   useEffect(() => {

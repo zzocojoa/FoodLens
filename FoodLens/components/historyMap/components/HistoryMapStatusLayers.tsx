@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { historyMapStyles as styles } from '../styles';
+import { useI18n } from '@/features/i18n';
 
 const GLOBE_COLOR = '#94A3B8';
 const EMPTY_HINT_COLOR = '#475569';
@@ -48,11 +49,14 @@ export default function HistoryMapStatusLayers({
     onRetry,
     onOpenSettings,
 }: HistoryMapStatusLayersProps) {
+    const { t } = useI18n();
     const isPermissionError = errorType === 'permission';
-    const errorTitle = isPermissionError ? '위치 권한이 필요합니다' : 'Map Unavailable';
+    const errorTitle = isPermissionError
+        ? t('history.map.permissionRequiredTitle', 'Location permission is required')
+        : t('history.map.unavailableTitle', 'Map unavailable');
     const errorDescription = isPermissionError
-        ? '지도에서 음식 기록을 보려면\n위치 서비스를 허용해주세요.'
-        : '네트워크 연결을 확인해주세요.';
+        ? t('history.map.permissionRequiredMessage', 'Allow location services to view food records on the map.')
+        : t('history.map.networkRequiredMessage', 'Please check your network connection.');
 
     return (
         <>
@@ -64,11 +68,11 @@ export default function HistoryMapStatusLayers({
                         <Text style={styles.errorDescription}>{errorDescription}</Text>
                         {isPermissionError ? (
                             <TouchableOpacity onPress={onOpenSettings} style={[styles.errorButton, styles.settingsButton]}>
-                                <Text style={styles.settingsButtonText}>설정으로 이동</Text>
+                                <Text style={styles.settingsButtonText}>{t('history.map.openSettings', 'Open Settings')}</Text>
                             </TouchableOpacity>
                         ) : (
                             <TouchableOpacity onPress={onRetry} style={[styles.errorButton, styles.retryButton]}>
-                                <Text style={styles.retryButtonText}>RETRY</Text>
+                                <Text style={styles.retryButtonText}>{t('common.retry', 'Retry')}</Text>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -78,7 +82,7 @@ export default function HistoryMapStatusLayers({
             {!isMapReady && !isMapError && (
                 <View style={[StyleSheet.absoluteFill, styles.loadingOverlay]}>
                     <Text style={styles.loadingEmoji}>🗺️</Text>
-                    <Text style={styles.loadingText}>Loading Map...</Text>
+                    <Text style={styles.loadingText}>{t('history.map.loading', 'Loading Map...')}</Text>
                 </View>
             )}
 
@@ -92,7 +96,7 @@ export default function HistoryMapStatusLayers({
                     <View style={localStyles.emptyStateCard}>
                         <Text style={localStyles.emptyStateIcon}>🌏</Text>
                         <Text style={localStyles.emptyStateText}>
-                            {filterText || 'No trips yet'}
+                            {filterText || t('history.map.emptyTrips', 'No trips yet')}
                         </Text>
                     </View>
                 </View>

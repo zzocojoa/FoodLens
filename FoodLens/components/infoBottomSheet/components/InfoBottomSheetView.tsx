@@ -4,6 +4,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import GuideExampleCard from './GuideExampleCard';
 import { GUIDE_EXAMPLES } from '../constants';
+import { useI18n } from '@/features/i18n';
 
 type InfoBottomSheetViewProps = {
   isVisible: boolean;
@@ -20,6 +21,7 @@ export const InfoBottomSheetView: React.FC<InfoBottomSheetViewProps> = ({
   animatedStyle,
   styles,
 }) => {
+  const { t } = useI18n();
   return (
     <Modal
       visible={isVisible}
@@ -46,10 +48,12 @@ export const InfoBottomSheetView: React.FC<InfoBottomSheetViewProps> = ({
             <View style={styles.handleBar} />
 
             <View style={styles.contentContainer}>
-              <Text style={styles.title}>진행하기 전</Text>
+              <Text style={styles.title}>{t('infoBottomSheet.title', 'Before you continue')}</Text>
               <Text style={styles.description}>
-                이미지처럼 음식을 사진으로 찍거나 업로드해 주세요.{'\n'}
-                사진 촬영 시에는 음식이 보조 박스 안에 들어오도록 해주세요.
+                {t(
+                  'infoBottomSheet.description',
+                  'Please take or upload a photo of the food like the example.\nWhen taking a photo, keep the food inside the guide box.'
+                )}
               </Text>
 
               <View style={styles.gridContainer}>
@@ -59,7 +63,7 @@ export const InfoBottomSheetView: React.FC<InfoBottomSheetViewProps> = ({
               </View>
 
               <TouchableOpacity onPress={onClose} style={styles.button} activeOpacity={0.9}>
-                <Text style={styles.buttonText}>알겠어요</Text>
+                <Text style={styles.buttonText}>{t('infoBottomSheet.confirm', 'Got it')}</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>

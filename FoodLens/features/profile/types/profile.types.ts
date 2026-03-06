@@ -33,7 +33,7 @@ export type ProfileFormState = {
 export type UseProfileScreenResult = ProfileFormState & {
     scrollViewRef: RefObject<ScrollView | null>;
     shouldScrollRef: MutableRefObject<boolean>;
-    loadProfile: () => Promise<void>;
+    loadProfile: (options?: { silent?: boolean }) => Promise<void>;
     toggleAllergen: (id: string) => void;
     cycleSeverity: (id: string) => void;
     handleInputChange: (text: string) => void;

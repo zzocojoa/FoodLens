@@ -2,13 +2,11 @@ import React from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { ShieldAlert, CheckCircle2 } from 'lucide-react-native';
 import { ALLERGEN_TERMS } from '../../../services/staticTranslations';
-import {
-    ALLERGIES_EMPTY_DESCRIPTION,
-    ALLERGIES_EMPTY_TITLE,
-} from '../constants/allergies.constants';
+import { ALLERGIES_COPY } from '../constants/allergies.constants';
 import { translateAllergenToKorean } from '../utils/translateAllergen';
 import { AllergiesTheme } from '../types/allergies.types';
 import { allergiesStyles as styles } from '../styles/allergiesStyles';
+import { useI18n } from '@/features/i18n';
 
 type AllergyListSectionProps = {
     loading: boolean;
@@ -17,6 +15,8 @@ type AllergyListSectionProps = {
 };
 
 export default function AllergyListSection({ loading, allergies, theme }: AllergyListSectionProps) {
+    const { t } = useI18n();
+
     if (loading) {
         return <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 40 }} />;
     }
@@ -25,9 +25,11 @@ export default function AllergyListSection({ loading, allergies, theme }: Allerg
         return (
             <View style={[styles.emptyState, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <CheckCircle2 size={48} color="#10B981" />
-                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{ALLERGIES_EMPTY_TITLE}</Text>
+                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
+                    {t(ALLERGIES_COPY.emptyTitle.key, ALLERGIES_COPY.emptyTitle.fallback)}
+                </Text>
                 <Text style={[styles.emptyDesc, { color: theme.textSecondary }]}>
-                    {ALLERGIES_EMPTY_DESCRIPTION}
+                    {t(ALLERGIES_COPY.emptyDescription.key, ALLERGIES_COPY.emptyDescription.fallback)}
                 </Text>
             </View>
         );
@@ -54,4 +56,3 @@ export default function AllergyListSection({ loading, allergies, theme }: Allerg
         </View>
     );
 }
-

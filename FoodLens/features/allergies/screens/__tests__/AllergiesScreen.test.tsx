@@ -36,13 +36,29 @@ jest.mock('../../../../hooks/use-color-scheme', () => ({
 
 jest.mock('../../constants/allergies.constants', () => ({
     getAllergiesUserId: () => 'test-user-v1',
-    ALLERGIES_TITLE: 'My Allergies',
-    ALLERGIES_DESCRIPTION: '등록된 알레르기 및 식단 제한 정보입니다.',
-    TRAVELER_CARD_PREVIEW_TITLE: 'Traveler Card Preview',
+    ALLERGIES_COPY: {
+        title: { key: 'allergies.title', fallback: 'My Allergies' },
+        description: {
+            key: 'allergies.description',
+            fallback: '등록된 알레르기 및 식단 제한 정보입니다.',
+        },
+        emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
+        emptyDescription: { key: 'allergies.empty.description', fallback: '등록된 알레르기 정보가 없습니다.' },
+        travelerCardPreviewTitle: {
+            key: 'allergies.travelerCardPreviewTitle',
+            fallback: 'Traveler Card Preview',
+        },
+    },
 }));
 
 jest.mock('../../hooks/useAllergiesData', () => ({
     useAllergiesData: jest.fn(),
+}));
+
+jest.mock('@/features/i18n', () => ({
+    useI18n: () => ({
+        t: (_key: string, fallback?: string) => fallback ?? _key,
+    }),
 }));
 
 describe('AllergiesScreen', () => {

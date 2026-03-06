@@ -17,8 +17,6 @@ FoodLens-project/
 │   ├── features/
 │   ├── services/
 │   ├── scripts/
-│   ├── android/
-│   ├── ios/
 │   └── package.json
 ├── backend/
 │   ├── server.py
@@ -52,4 +50,3 @@ FoodLens-project/
 - Setup: `bash backend/setup.sh`
 - Virtual env: `source .venv/bin/activate`
 - Run backend: `python -m backend.server`
-

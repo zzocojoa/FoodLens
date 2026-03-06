@@ -8,18 +8,16 @@ import { Colors } from '../../../constants/theme';
 import { useColorScheme } from '../../../hooks/use-color-scheme';
 import AllergiesHeader from '../components/AllergiesHeader';
 import AllergyListSection from '../components/AllergyListSection';
-import {
-    ALLERGIES_DESCRIPTION,
-    ALLERGIES_TITLE,
-    TRAVELER_CARD_PREVIEW_TITLE,
-} from '../constants/allergies.constants';
+import { ALLERGIES_COPY } from '../constants/allergies.constants';
 import { useAllergiesData } from '../hooks/useAllergiesData';
 import { allergiesStyles as styles } from '../styles/allergiesStyles';
+import { useI18n } from '@/features/i18n';
 
 export default function AllergiesScreen() {
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const { t } = useI18n();
     const { allergies, loading } = useAllergiesData();
 
     return (
@@ -28,10 +26,16 @@ export default function AllergiesScreen() {
             <Stack.Screen options={{ headerShown: false }} />
 
             <SafeAreaView style={{ flex: 1 }}>
-                <AllergiesHeader title={ALLERGIES_TITLE} onBackPress={() => router.back()} theme={theme} />
+                <AllergiesHeader
+                    title={t(ALLERGIES_COPY.title.key, ALLERGIES_COPY.title.fallback)}
+                    onBackPress={() => router.back()}
+                    theme={theme}
+                />
 
                 <ScrollView contentContainerStyle={styles.content}>
-                    <Text style={[styles.description, { color: theme.textSecondary }]}>{ALLERGIES_DESCRIPTION}</Text>
+                    <Text style={[styles.description, { color: theme.textSecondary }]}>
+                        {t(ALLERGIES_COPY.description.key, ALLERGIES_COPY.description.fallback)}
+                    </Text>
 
                     <AllergyListSection loading={loading} allergies={allergies} theme={theme} />
 
@@ -39,7 +43,10 @@ export default function AllergiesScreen() {
                         <>
                             <View style={styles.sectionHeader}>
                                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-                                    {TRAVELER_CARD_PREVIEW_TITLE}
+                                    {t(
+                                        ALLERGIES_COPY.travelerCardPreviewTitle.key,
+                                        ALLERGIES_COPY.travelerCardPreviewTitle.fallback
+                                    )}
                                 </Text>
                             </View>
 

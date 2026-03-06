@@ -10,12 +10,12 @@ export const SHEET_EXIT_DURATION_MS = 250;
 export const GUIDE_EXAMPLES: GuideExample[] = [
     {
         key: 'good',
-        label: '좋은 사진 예시',
+        label: 'Good photo example',
         image: require('@/assets/images/guide-good.jpg'),
     },
     {
         key: 'bad',
-        label: '좋지 않은 사진 예시',
+        label: 'Poor photo example',
         image: require('@/assets/images/guide-bad.jpg'),
         isBad: true,
     },
