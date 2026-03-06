@@ -41,6 +41,31 @@ from backend.modules.analyst_runtime.generation_Logic import (
 from backend.modules.analyst_runtime.safety_Logic import build_default_safety_settings
 import traceback
 
+
+def _normalize_runtime_locale(locale: str | None) -> str:
+    if not locale:
+        return "en-US"
+
+    normalized = locale.strip().lower()
+    if normalized.startswith("ko"):
+        return "ko-KR"
+    if normalized.startswith("en"):
+        return "en-US"
+    if normalized.startswith("ja"):
+        return "ja-JP"
+    if normalized.startswith("zh"):
+        return "zh-Hans"
+    if normalized.startswith("th"):
+        return "th-TH"
+    if normalized.startswith("vi"):
+        return "vi-VN"
+    return "en-US"
+
+
+def _is_korean_runtime_locale(locale: str | None) -> bool:
+    return _normalize_runtime_locale(locale).lower().startswith("ko")
+
+
 class FoodAnalyst:
     # Class-level storage for temp credential file path (for cleanup)
     _temp_cred_path: str | None = None
@@ -222,7 +247,7 @@ class FoodAnalyst:
         Analyzes a nutrition label image using OCR and extracts nutritional info.
         """
         normalized_allergens = format_allergens_for_prompt(allergy_info)
-        normalized_locale = (locale or "en-US").strip() or "en-US"
+        normalized_locale = _normalize_runtime_locale(locale)
         prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
         
         # Schema for OCR (similar to food but focused on nutrition)
@@ -457,7 +482,12 @@ class FoodAnalyst:
             fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
             return fallback
 
-    def analyze_barcode_ingredients(self, ingredients: list, allergy_info: str = "None") -> dict:
+    def analyze_barcode_ingredients(
+        self,
+        ingredients: list,
+        allergy_info: str = "None",
+        locale: str | None = None,
+    ) -> dict:
         """
         Analyzes a list of ingredient names (from barcode API) against the user's
         allergy profile using Gemini. Text-only call (no image).
@@ -472,19 +502,25 @@ class FoodAnalyst:
             }
         """
         normalized_allergens = format_allergens_for_prompt(allergy_info)
+        normalized_locale = _normalize_runtime_locale(locale)
         
         # If no allergies or no ingredients, skip API call entirely
         if normalized_allergens == "None" or not ingredients:
+            safe_message = (
+                "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요."
+                if _is_korean_runtime_locale(normalized_locale)
+                else "No registered allergens were detected. Enjoy with confidence."
+            )
             return {
                 "safetyStatus": "SAFE",
-                "coachMessage": "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요.",
+                "coachMessage": safe_message,
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in ingredients
                 ]
             }
         
-        prompt = build_barcode_ingredients_prompt(normalized_allergens, ingredients)
+        prompt = build_barcode_ingredients_prompt(normalized_allergens, ingredients, normalized_locale)
 
         response_schema = build_barcode_allergen_schema()
 
@@ -548,9 +584,14 @@ class FoodAnalyst:
                     seen_input_names.add(normalized)
                     unique_input.append(ing.strip())
 
+            error_message = (
+                "알러지 분석 중 오류가 발생했습니다. 성분표를 직접 확인해주세요."
+                if _is_korean_runtime_locale(normalized_locale)
+                else "An allergen analysis error occurred. Please check the ingredient list directly."
+            )
             return {
                 "safetyStatus": "CAUTION",
-                "coachMessage": "알러지 분석 중 오류가 발생했습니다. 성분표를 직접 확인해주세요.",
+                "coachMessage": error_message,
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in unique_input

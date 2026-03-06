@@ -1,5 +1,10 @@
 import type { UserProfile } from '@/models/User';
 import type { AnalysisRecord } from '@/services/analysis/types_Structure';
+import {
+  normalizeCanonicalLocale,
+  normalizeLanguageSettings,
+  resolveEffectiveLocale,
+} from '@/features/i18n/services/languageService_Logic';
 import { buildDefaultProfile } from '@/services/user/profileFactory_Logic';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import type {
@@ -13,6 +18,25 @@ type UserSnapshotInput = {
   profile?: MeProfileResponse;
   allergies?: MeAllergiesResponse;
   settings?: MeSettingsResponse;
+};
+
+const normalizeLanguageValue = (value: string | null | undefined) => normalizeCanonicalLocale(value);
+
+const normalizeTargetLanguageValue = (value: string | null | undefined) => {
+  const normalized = normalizeCanonicalLocale(value);
+  return normalized === 'auto' ? null : normalized;
+};
+
+const resolveDeviceTimezone = (): string => {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof timeZone === 'string' && timeZone.trim().length > 0) {
+      return timeZone;
+    }
+  } catch {
+    // Keep UTC fallback when Intl timezone resolution is unavailable.
+  }
+  return 'UTC';
 };
 
 const toStringOrNull = (value: unknown): string | null => {
@@ -123,6 +147,13 @@ export const mergeRemoteUserSnapshot = (
 ): UserProfile => {
   const fallback = currentProfile ?? buildDefaultProfile(userId);
   const next = { ...fallback };
+  const mergedLanguageSettings = normalizeLanguageSettings({
+    language: normalizeLanguageValue(input.settings?.language ?? fallback.settings.language),
+    targetLanguage:
+      input.settings?.target_language === undefined
+        ? normalizeTargetLanguageValue(fallback.settings.targetLanguage)
+        : normalizeTargetLanguageValue(input.settings.target_language),
+  });
 
   next.uid = userId;
   next.email = input.profile?.email || fallback.email;
@@ -155,11 +186,8 @@ export const mergeRemoteUserSnapshot = (
 
   next.settings = {
     ...fallback.settings,
-    language: input.settings?.language || fallback.settings.language || 'auto',
-    targetLanguage:
-      input.settings?.target_language === undefined
-        ? fallback.settings.targetLanguage
-        : input.settings.target_language || undefined,
+    language: mergedLanguageSettings.language,
+    targetLanguage: mergedLanguageSettings.targetLanguage || undefined,
     autoPlayAudio: input.settings?.auto_play_audio ?? fallback.settings.autoPlayAudio ?? false,
     selectedEmoji:
       input.settings?.selected_emoji === undefined
@@ -213,7 +241,13 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     expected_updated_at?: string;
   };
 } => {
-  const locale = profile.settings.language || 'auto';
+  const normalizedLanguageSettings = normalizeLanguageSettings({
+    language: normalizeLanguageValue(profile.settings.language),
+    targetLanguage: normalizeTargetLanguageValue(profile.settings.targetLanguage),
+  });
+  const resolvedLocale = resolveEffectiveLocale(normalizedLanguageSettings);
+  const shouldSyncResolvedProfileLocale = normalizedLanguageSettings.language !== 'auto';
+  const resolvedTimezone = resolveDeviceTimezone();
   return {
     profile: {
       display_name: profile.name || null,
@@ -227,8 +261,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       gender: profile.gender || null,
       birth_year: profile.birthYear ?? null,
       disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
-      locale: locale || null,
-      timezone: 'UTC',
+      locale: shouldSyncResolvedProfileLocale ? resolvedLocale : null,
+      timezone: shouldSyncResolvedProfileLocale ? resolvedTimezone : null,
       current_trip_start: profile.currentTripStart || null,
       current_trip_location: profile.currentTripLocation || null,
       current_trip_coordinates: profile.currentTripCoordinates || null,
@@ -241,8 +275,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       expected_updated_at: profile.syncVersions?.allergiesUpdatedAt,
     },
     settings: {
-      language: profile.settings.language || null,
-      target_language: profile.settings.targetLanguage || null,
+      language: normalizedLanguageSettings.language || null,
+      target_language: normalizedLanguageSettings.targetLanguage || null,
       auto_play_audio: !!profile.settings.autoPlayAudio,
       selected_emoji: profile.settings.selectedEmoji || null,
       expected_updated_at: profile.syncVersions?.settingsUpdatedAt,
@@ -322,6 +356,11 @@ export const mergeRemoteHistory = (
 };
 
 export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfile): UserProfile => {
+  const normalizedLegacyLanguageSettings = normalizeLanguageSettings({
+    language: normalizeLanguageValue(profile.settings?.language ?? 'auto'),
+    targetLanguage: normalizeTargetLanguageValue(profile.settings?.targetLanguage),
+  });
+
   return {
     ...profile,
     uid: userId,
@@ -331,8 +370,8 @@ export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfi
       severityMap: normalizeSeverityMap(profile.safetyProfile.severityMap || {}),
     },
     settings: {
-      language: profile.settings?.language || 'auto',
-      targetLanguage: profile.settings?.targetLanguage || undefined,
+      language: normalizedLegacyLanguageSettings.language,
+      targetLanguage: normalizedLegacyLanguageSettings.targetLanguage || undefined,
       autoPlayAudio: !!profile.settings?.autoPlayAudio,
       selectedEmoji: profile.settings?.selectedEmoji || undefined,
     },

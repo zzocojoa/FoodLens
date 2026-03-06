@@ -727,7 +727,7 @@ export const useLoginScreen = () => {
     setInfoMessage(null);
 
     try {
-      const session = await loginAuthService.submitOAuthAuth(provider);
+      const session = await loginAuthService.submitOAuthAuth(provider, locale);
       // OAuth sign-in may round-trip through external browser and app process restarts.
       // Always persist session tokens for social providers to keep auth state stable.
       await persistAuthenticatedSession(session, true);

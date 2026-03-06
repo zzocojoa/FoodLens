@@ -27,7 +27,7 @@ export const LEGACY_TO_CANONICAL_LOCALE: Record<string, CanonicalLocale> = {
 };
 
 export const LANGUAGE_LABELS: Record<CanonicalLocale, string> = {
-  auto: 'Auto (GPS)',
+  auto: 'Auto (Device)',
   'ko-KR': 'Korean',
   'en-US': 'English',
   'ja-JP': 'Japanese',
@@ -39,8 +39,10 @@ export const LANGUAGE_LABELS: Record<CanonicalLocale, string> = {
 export const TRANSLATIONS: Record<ResolvedLocale, TranslationDictionary> = {
   'en-US': enResource,
   'ko-KR': koResource,
-  'ja-JP': {},
-  'zh-Hans': {},
-  'th-TH': {},
-  'vi-VN': {},
+  // Until dedicated dictionaries ship, use English fallback dictionaries
+  // instead of empty maps to avoid translation-key leaks in UI.
+  'ja-JP': enResource,
+  'zh-Hans': enResource,
+  'th-TH': enResource,
+  'vi-VN': enResource,
 };

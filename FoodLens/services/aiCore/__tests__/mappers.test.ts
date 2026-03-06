@@ -1,6 +1,24 @@
+const mockGetI18nSnapshot = jest.fn(() => ({
+    settings: { language: 'auto', targetLanguage: null },
+    locale: 'en-US',
+    ready: true,
+}));
+
+jest.mock('@/features/i18n/services/i18nStore_Logic', () => ({
+    getI18nSnapshot: () => mockGetI18nSnapshot(),
+}));
+
 import { clampConfidence, mapAnalyzedData, mapBarcodeToAnalyzedData } from '../mappers';
 
 describe('aiCore mappers', () => {
+    beforeEach(() => {
+        mockGetI18nSnapshot.mockReturnValue({
+            settings: { language: 'auto', targetLanguage: null },
+            locale: 'en-US',
+            ready: true,
+        });
+    });
+
     it('clamps confidence values', () => {
         expect(clampConfidence(120)).toBe(100);
         expect(clampConfidence(-2)).toBe(0);
@@ -14,6 +32,16 @@ describe('aiCore mappers', () => {
         expect(mapped.safetyStatus).toBe('CAUTION');
         expect(mapped.ingredients).toEqual([]);
         expect(typeof mapped.raw_result).toBe('string');
+    });
+
+    it('uses i18n locale for default summary fallback', () => {
+        mockGetI18nSnapshot.mockReturnValue({
+            settings: { language: 'auto', targetLanguage: null },
+            locale: 'ko-KR',
+            ready: true,
+        });
+        const mapped = mapAnalyzedData({});
+        expect(mapped.raw_result).toContain('분석 요약');
     });
 
     it('falls back summary to alternative payload fields', () => {

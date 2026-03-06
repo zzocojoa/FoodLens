@@ -12,6 +12,7 @@ import {
 } from '../utils/scanCameraGatewayHelpers';
 import { showAlert } from '@/services/ui/uiAlerts_Logic';
 import { logger } from '@/services/logger_Logic';
+import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale_Logic';
 
 type AnalysisExecutor = (
   uri: string,
@@ -117,7 +118,13 @@ export const runAnalysisFlow = async ({
       return;
     }
 
-    const isoCode = getIsoCode(locationData, 'US');
+    let fallbackIsoCode = 'US';
+    try {
+      fallbackIsoCode = await resolveRequestIsoCountryCode();
+    } catch (error) {
+      logger.warn('Failed to resolve request ISO country code, fallback to US', error, 'ScanAnalysis');
+    }
+    const isoCode = getIsoCode(locationData, fallbackIsoCode);
 
     if (needsFileValidation) {
       await assertImageFileReady(uri);

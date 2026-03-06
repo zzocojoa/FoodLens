@@ -84,13 +84,16 @@ describe('oauthProvider', () => {
     process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'mock';
     mockedAuthApi.loginWithGoogle.mockResolvedValue(mockSession('usr_google'));
 
-    const result = await AuthOAuthProvider.loginWithOAuthProvider('google');
+    const result = await AuthOAuthProvider.loginWithOAuthProvider('google', {
+      locale: 'ja-JP',
+    });
 
     expect(mockedAuthApi.loginWithGoogle).toHaveBeenCalledTimes(1);
     expect(mockedAuthApi.loginWithGoogle).toHaveBeenCalledWith(
       expect.objectContaining({
         redirectUri: 'foodlens://oauth/google-callback',
         email: 'mock+google@foodlens.local',
+        locale: 'ja-JP',
       })
     );
     expect(result.user.id).toBe('usr_google');

@@ -4,8 +4,18 @@ import {
   deserializeHistoryItem,
   mergeRemoteHistory,
   mergeRemoteUserSnapshot,
+  normalizeLegacyProfileForUser,
   serializeHistoryRecord,
 } from '../phase2Mappers';
+
+jest.mock('@/services/storage_Logic', () => ({
+  SafeStorage: {
+    get: jest.fn(async (_key: string, fallback: unknown) => fallback),
+    set: jest.fn(async () => undefined),
+    remove: jest.fn(async () => undefined),
+    clearAll: jest.fn(async () => undefined),
+  },
+}));
 
 describe('phase2Mappers', () => {
   it('merges remote user snapshot into local profile', () => {
@@ -197,5 +207,26 @@ describe('phase2Mappers', () => {
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.profile_image_url).toBeNull();
     expect(payload.profile.profile_image_local_uri).toBe('data:image/jpeg;base64,Zm9vYmFy');
+  });
+
+  it('keeps settings.language=auto without forcing profile locale/timezone overwrite', () => {
+    const profile = buildDefaultProfile('usr_auto_locale');
+    profile.settings.language = 'auto';
+    profile.settings.targetLanguage = undefined;
+
+    const payload = buildProfileWritePayload(profile);
+    expect(payload.settings.language).toBe('auto');
+    expect(payload.profile.locale).toBeNull();
+    expect(payload.profile.timezone).toBeNull();
+  });
+
+  it('normalizes legacy language settings to canonical locale format', () => {
+    const legacy = buildDefaultProfile('usr_legacy_language');
+    legacy.settings.language = 'en';
+    legacy.settings.targetLanguage = 'ko';
+
+    const normalized = normalizeLegacyProfileForUser('usr_legacy_language', legacy);
+    expect(normalized.settings.language).toBe('en-US');
+    expect(normalized.settings.targetLanguage).toBe('ko-KR');
   });
 });

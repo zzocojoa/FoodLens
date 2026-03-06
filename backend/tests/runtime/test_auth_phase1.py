@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
+os.environ["AUTH_STATE_BACKEND"] = "memory"
 os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
@@ -92,6 +93,10 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(profile_response.json()["profile"]["user_id"], user_id)
             self.assertEqual(profile_response.json()["profile"]["display_name"], "Alpha")
 
+            settings_response = client.get("/me/settings", headers=_auth_headers(session_body["access_token"]))
+            self.assertEqual(settings_response.status_code, 200)
+            self.assertEqual(settings_response.json()["settings"]["language"], "auto")
+
             update_response = client.put(
                 "/me/profile",
                 json={
@@ -123,6 +128,76 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(refresh_response.status_code, 200)
             refresh_body = refresh_response.json()
             self.assertNotEqual(refresh_body["refresh_token"], session_body["refresh_token"])
+
+    def test_email_signup_resolves_locale_from_accept_language_when_omitted(self):
+        with TestClient(app) as client:
+            signup_response = client.post(
+                "/auth/email/signup",
+                json={
+                    "email": "accept-language@example.com",
+                    "password": "Passw0rd!",
+                    "display_name": "Accept Language",
+                },
+                headers={"Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8"},
+            )
+            self.assertEqual(signup_response.status_code, 200)
+            signup_body = signup_response.json()
+            self.assertEqual(signup_body["user"]["locale"], "ja-JP")
+
+            session_body = self._verify_email(
+                client,
+                email="accept-language@example.com",
+                code=signup_body["verification_debug_code"],
+            )
+            profile_response = client.get("/me/profile", headers=_auth_headers(session_body["access_token"]))
+            self.assertEqual(profile_response.status_code, 200)
+            self.assertEqual(profile_response.json()["profile"]["locale"], "ja-JP")
+
+    def test_email_signup_falls_back_to_en_us_without_locale_or_accept_language(self):
+        with TestClient(app) as client:
+            signup_response = client.post(
+                "/auth/email/signup",
+                json={
+                    "email": "fallback-locale@example.com",
+                    "password": "Passw0rd!",
+                    "display_name": "Fallback Locale",
+                },
+            )
+            self.assertEqual(signup_response.status_code, 200)
+            self.assertEqual(signup_response.json()["user"]["locale"], "en-US")
+
+    def test_oauth_new_user_resolves_locale_from_accept_language(self):
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-locale-code",
+                    "state": "state-locale",
+                    "email": "oauth-locale-user@example.com",
+                },
+                headers={"Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["user"]["locale"], "th-TH")
+
+    def test_profile_locale_update_does_not_store_auto_literal(self):
+        with TestClient(app) as client:
+            signup_body, session_body = self._signup_and_verify(
+                client,
+                email="profile-auto-locale@example.com",
+                password="Passw0rd!",
+                display_name="Profile Locale",
+                locale="en-US",
+                device_id="ios-profile-locale",
+            )
+            self.assertEqual(signup_body["user"]["locale"], "en-US")
+            update_response = client.put(
+                "/me/profile",
+                json={"locale": "auto"},
+                headers=_auth_headers(session_body["access_token"]),
+            )
+            self.assertEqual(update_response.status_code, 200)
+            self.assertEqual(update_response.json()["profile"]["locale"], "en-US")
 
     def test_email_login_rejected_before_verification(self):
         with TestClient(app) as client:

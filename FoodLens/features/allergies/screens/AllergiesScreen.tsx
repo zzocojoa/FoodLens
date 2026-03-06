@@ -13,12 +13,23 @@ import { useAllergiesData } from '../hooks/useAllergiesData';
 import { allergiesStyles as styles } from '../styles/allergiesStyles';
 import { useI18n } from '@/features/i18n';
 
+const toTravelerPreviewCountryCode = (locale?: string): string => {
+    const normalized = (locale || '').trim().toLowerCase();
+    if (normalized.startsWith('ko')) return 'KR';
+    if (normalized.startsWith('ja')) return 'JP';
+    if (normalized.startsWith('zh')) return 'CN';
+    if (normalized.startsWith('th')) return 'TH';
+    if (normalized.startsWith('vi')) return 'VN';
+    return 'US';
+};
+
 export default function AllergiesScreen() {
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     const { allergies, loading } = useAllergiesData();
+    const previewCountryCode = toTravelerPreviewCountryCode(locale);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -50,7 +61,7 @@ export default function AllergiesScreen() {
                                 </Text>
                             </View>
 
-                            <TravelerAllergyCard countryCode="US" aiTranslation={null} />
+                            <TravelerAllergyCard countryCode={previewCountryCode} aiTranslation={null} />
                         </>
                     )}
                 </ScrollView>

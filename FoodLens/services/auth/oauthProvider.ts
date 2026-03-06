@@ -4,6 +4,9 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi_Logic';
 
 export type OAuthProvider = 'google' | 'kakao';
 type OAuthMode = 'mock' | 'live';
+type OAuthLoginOptions = {
+  locale?: string;
+};
 
 type OAuthGrant = {
   code: string;
@@ -220,13 +223,22 @@ const requestGrant = async (provider: OAuthProvider): Promise<OAuthGrant> => {
   return requestLiveGrant(provider);
 };
 
-export const loginWithOAuthProvider = async (provider: OAuthProvider): Promise<AuthSessionTokens> => {
+export const loginWithOAuthProvider = async (
+  provider: OAuthProvider,
+  options: OAuthLoginOptions = {},
+): Promise<AuthSessionTokens> => {
   const grant = await requestGrant(provider);
   if (provider === 'google') {
-    return AuthApi.loginWithGoogle(grant);
+    return AuthApi.loginWithGoogle({
+      ...grant,
+      locale: options.locale,
+    });
   }
 
-  return AuthApi.loginWithKakao(grant);
+  return AuthApi.loginWithKakao({
+    ...grant,
+    locale: options.locale,
+  });
 };
 
 export const AuthOAuthProvider = {

@@ -1,4 +1,5 @@
 import { AnalyzedData, NutritionData, TranslationCard } from './types';
+import { getI18nSnapshot } from '@/features/i18n/services/i18nStore_Logic';
 
 export const clampConfidence = (confidence: unknown) =>
     typeof confidence === 'number' ? Math.max(0, Math.min(100, confidence)) : undefined;
@@ -55,8 +56,9 @@ const parseTranslationCard = (value: unknown): TranslationCard | undefined => {
 };
 
 const getDefaultSummaryByLocale = (): string => {
-    const deviceLocale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
-    if (deviceLocale.startsWith('ko')) {
+    const currentLocale =
+        getI18nSnapshot().locale || Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
+    if (currentLocale.toLowerCase().startsWith('ko')) {
         return '분석 요약이 제공되지 않았습니다. 성분 정보를 확인해 주세요.';
     }
     return 'No analysis summary was returned. Please review the ingredient details.';

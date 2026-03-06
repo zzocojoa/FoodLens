@@ -149,6 +149,7 @@ BARCODE_PROMPT_TEMPLATE: Final[str] = """
         and determine if any ingredient matches or contains the user's allergens.
 
         **User Allergy Profile**: {normalized_allergens}
+        **User Locale**: {locale}
         **Ingredient List**: [{ingredients_str}]
 
         **Rules**:
@@ -161,10 +162,9 @@ BARCODE_PROMPT_TEMPLATE: Final[str] = """
            - "DANGER" if any ingredient clearly matches an allergen.
            - "CAUTION" if any ingredient is ambiguous but could contain an allergen.
            - "SAFE" if no allergens detected.
-        7. coachMessage: Write a concise Korean health coaching message (1-2 sentences).
+        7. coachMessage: Write a concise {coach_message_language} health coaching message (1-2 sentences).
            - If allergens detected: explain which specific ingredients are concerning and why.
-             Example: "이 제품에는 밀가루(소맥분)가 포함되어 있어 글루텐 알러지가 있으신 분은 주의가 필요합니다."
-           - If SAFE: "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요."
+           - If SAFE: reassure that no registered allergens were detected.
 
         Return JSON only.
         """
@@ -217,10 +217,18 @@ def build_label_prompt(allergy_info: str, locale: str, iso_current_country: str)
     )
 
 
-def build_barcode_ingredients_prompt(normalized_allergens: str, ingredients: list[str]) -> str:
+def build_barcode_ingredients_prompt(
+    normalized_allergens: str,
+    ingredients: list[str],
+    locale: str | None = None,
+) -> str:
+    normalized_locale = (locale or "").strip().lower()
+    coach_message_language = "Korean" if normalized_locale.startswith("ko") else "English"
     return _render_prompt(
         BARCODE_PROMPT_TEMPLATE,
         normalized_allergens=normalized_allergens,
+        locale=locale or "en-US",
+        coach_message_language=coach_message_language,
         ingredients_str=_format_ingredients_for_prompt(ingredients),
     )
 

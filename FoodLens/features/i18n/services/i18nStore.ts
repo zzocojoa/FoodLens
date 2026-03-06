@@ -5,12 +5,14 @@ import { loadLanguageSettings, resolveEffectiveLocale, saveLanguageSettings } fr
 
 type Listener = () => void;
 
+const INITIAL_SETTINGS: LanguageSettings = {
+  language: DEFAULT_LANGUAGE,
+  targetLanguage: null,
+};
+
 let state: I18nState = {
-  settings: {
-    language: DEFAULT_LANGUAGE,
-    targetLanguage: null,
-  },
-  locale: 'en-US',
+  settings: INITIAL_SETTINGS,
+  locale: resolveEffectiveLocale(INITIAL_SETTINGS),
   ready: false,
 };
 
@@ -67,6 +69,17 @@ export const setUiLanguage = async (nextLanguage: CanonicalLocale) => {
   };
 
   await setI18nSettings(nextSettings);
+};
+
+export const refreshI18nLocaleFromDevice = () => {
+  const nextLocale = resolveEffectiveLocale(state.settings);
+  if (nextLocale === state.locale && state.ready) return;
+
+  setState({
+    settings: state.settings,
+    locale: nextLocale,
+    ready: true,
+  });
 };
 
 export const useI18nSnapshot = () =>

@@ -67,7 +67,7 @@ export const DEFAULT_USER_PROFILE: NewUserProfileDefaults = {
     dietaryRestrictions: [],
   },
   settings: {
-    language: 'ko',
+    language: 'auto',
     autoPlayAudio: false,
   },
 };

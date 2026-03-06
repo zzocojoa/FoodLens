@@ -87,7 +87,7 @@
 - `POST /auth/email/verify`: `email`, `code`, `device_id?`
 - `POST /auth/email/password/reset/request`: `email`
 - `POST /auth/email/password/reset/confirm`: `email`, `code`, `new_password`
-- `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `device_id?`
+- `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
 - `GET /auth/google|kakao/start`: `redirect_uri?`(앱 콜백), `state?`(없으면 서버 생성)
 - `GET /auth/google|kakao/callback`: provider redirect 수신 후 앱 콜백 URI로 `code/state/error` 전달
 - `GET /auth/google|kakao/logout/start`: provider 계정 로그아웃 브라우저 리다이렉트 시작
@@ -117,6 +117,11 @@
 - 로그인 성공 시 앱은 "사용자 본인 식별값(user_id)"을 받습니다.
 - 이후 모든 저장/조회는 이 user_id 소유 데이터로만 처리해야 합니다.
 - refresh token은 단일 사용(one-time)이며 재사용되면 보안 이벤트로 처리됩니다.
+- locale 정책:
+  - `settings.language`는 `auto | locale` 값을 저장합니다.
+  - `profile.locale`은 항상 resolved locale만 저장합니다(예: `ko-KR`, `en-US`).
+  - `profile.locale`에 `auto` 문자열 저장은 금지합니다.
+  - locale 미전달 시 우선순위는 `Accept-Language` > `en-US` fallback 입니다.
 
 ### B. 사용자 데이터(Profile/Settings/History)
 - `GET /me/profile`, `PUT /me/profile`
