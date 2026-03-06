@@ -10,7 +10,7 @@ import { filterScansByDate } from '../utils/homeDashboard';
 import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService_Logic';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
 import { getUserStorageKey } from '@/services/user/constants_Logic';
@@ -59,7 +59,7 @@ type UseHomeDashboardReturn = {
 };
 
 const readInitialProfileSnapshot = (): UserProfile | null => {
-  const userId = getCurrentUserId();
+  const userId = getCurrentUserIdSnapshot();
   return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
 };
 
@@ -96,7 +96,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     }
     loadInFlightRef.current = true;
     try {
-      const snapshot = await fetchHomeDashboardData(getCurrentUserId());
+      const snapshot = await fetchHomeDashboardData(getCurrentUserIdSnapshot());
       const { recentData: fetchedRecent, allHistory, profile, weeklyStats, safeCount } = snapshot;
 
       console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
@@ -132,7 +132,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     }
     profileHydrationInFlightRef.current = true;
     try {
-      const userId = getCurrentUserId();
+      const userId = getCurrentUserIdSnapshot();
       const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
       if (!profile) return;
       setUserProfile((previous) => {
@@ -181,7 +181,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   );
 
   useEffect(() => {
-    const userId = getCurrentUserId();
+    const userId = getCurrentUserIdSnapshot();
     const unsubscribe = subscribeUserProfileUpdated(userId, () => {
       if (profileRefreshTimerRef.current) {
         clearTimeout(profileRefreshTimerRef.current);
@@ -207,7 +207,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setRecentScans((prev) => prev.filter((item) => item.id !== itemId));
-        await AnalysisService.deleteAnalysis(getCurrentUserId(), itemId);
+        await AnalysisService.deleteAnalysis(getCurrentUserIdSnapshot(), itemId);
         loadDashboardData();
       } catch (error) {
         console.error('Home delete failed:', error);

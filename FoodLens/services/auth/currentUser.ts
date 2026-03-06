@@ -13,6 +13,16 @@ const normalizeUserId = (uid: string | null | undefined): string | null => {
 
 export const getCurrentUserId = (): string => currentUserId;
 
+export const getCurrentUserIdSnapshot = (): string => {
+  if (currentUserId !== UNAUTHENTICATED_USER_ID) {
+    return currentUserId;
+  }
+
+  const stored = SafeStorage.getSync<string | null>(CURRENT_USER_STORAGE_KEY, null);
+  const normalized = normalizeUserId(stored);
+  return normalized ?? UNAUTHENTICATED_USER_ID;
+};
+
 export const hasAuthenticatedUser = (): boolean => currentUserId !== UNAUTHENTICATED_USER_ID;
 
 export const setCurrentUserId = async (uid: string): Promise<string> => {

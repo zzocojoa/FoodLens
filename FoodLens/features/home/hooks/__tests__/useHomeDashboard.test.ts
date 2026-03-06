@@ -6,6 +6,7 @@ const mockFetchHomeDashboardData = jest.fn();
 const mockGetProfileRestrictionCount = jest.fn();
 const mockSubscribeUserProfileUpdated = jest.fn();
 const mockGetCurrentUserId = jest.fn();
+const mockGetCurrentUserIdSnapshot = jest.fn();
 const mockSafeStorageGet = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
@@ -30,6 +31,7 @@ jest.mock('@/services/user/userProfileStore_Logic', () => ({
 
 jest.mock('@/services/auth/currentUser_Logic', () => ({
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
+  getCurrentUserIdSnapshot: (...args: unknown[]) => mockGetCurrentUserIdSnapshot(...args),
 }));
 
 jest.mock('@/services/storage_Logic', () => ({
@@ -86,6 +88,7 @@ describe('useHomeDashboard profile update subscription', () => {
         };
       }) as typeof InteractionManager.runAfterInteractions);
     mockGetCurrentUserId.mockReturnValue('usr_home');
+    mockGetCurrentUserIdSnapshot.mockReturnValue('usr_home');
     mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
     mockGetProfileRestrictionCount.mockReturnValue(2);
     mockSafeStorageGetSync.mockReturnValue(null);
