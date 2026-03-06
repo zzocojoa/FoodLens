@@ -769,9 +769,15 @@
             "type": "string"
           },
           "locale": {
-            "default": "ko-KR",
-            "title": "Locale",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           },
           "password": {
             "title": "Password",
@@ -1135,6 +1141,17 @@
               }
             ],
             "title": "Error"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           },
           "provider_user_id": {
             "anyOf": [

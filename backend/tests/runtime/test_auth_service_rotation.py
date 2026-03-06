@@ -106,6 +106,27 @@ class AuthServiceRotationTests(unittest.TestCase):
             service.refresh(refresh_token=first['refresh_token'])
         self.assertEqual(family_revoked.exception.code, 'AUTH_SESSION_REVOKED')
 
+    def test_signup_locale_uses_accept_language_and_en_us_fallback(self):
+        from_accept_language = self.service.signup_email(
+            email='accept-language-user@example.com',
+            password='Passw0rd!',
+            display_name='Accept Language User',
+            locale=None,
+            accept_language='ja-JP,ja;q=0.9,en-US;q=0.8',
+            device_id='ios-locale-header',
+        )
+        self.assertEqual(from_accept_language['user']['locale'], 'ja-JP')
+
+        with_fallback = self.service.signup_email(
+            email='fallback-user@example.com',
+            password='Passw0rd!',
+            display_name='Fallback User',
+            locale=None,
+            accept_language=None,
+            device_id='ios-locale-fallback',
+        )
+        self.assertEqual(with_fallback['user']['locale'], 'en-US')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -239,7 +239,6 @@ export const LOGIN_ANIMATION = {
 
 export const LOGIN_PASSWORD_MIN_LENGTH = 8;
 export const LOGIN_ALERT_AUTO_DISMISS_MS = 3000;
-export const LOGIN_DEFAULT_LOCALE = 'ko-KR';
 
 export const LOGIN_INITIAL_FORM_VALUES: LoginFormValues = {
   email: '',

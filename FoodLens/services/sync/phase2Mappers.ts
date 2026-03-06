@@ -1,5 +1,9 @@
 import type { UserProfile } from '@/models/User';
 import type { AnalysisRecord } from '@/services/analysis/types_Structure';
+import {
+  normalizeLanguageSettings,
+  resolveEffectiveLocale,
+} from '@/features/i18n/services/languageService_Logic';
 import { buildDefaultProfile } from '@/services/user/profileFactory_Logic';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import type {
@@ -123,6 +127,13 @@ export const mergeRemoteUserSnapshot = (
 ): UserProfile => {
   const fallback = currentProfile ?? buildDefaultProfile(userId);
   const next = { ...fallback };
+  const mergedLanguageSettings = normalizeLanguageSettings({
+    language: input.settings?.language ?? fallback.settings.language,
+    targetLanguage:
+      input.settings?.target_language === undefined
+        ? fallback.settings.targetLanguage ?? null
+        : input.settings.target_language ?? null,
+  });
 
   next.uid = userId;
   next.email = input.profile?.email || fallback.email;
@@ -155,11 +166,8 @@ export const mergeRemoteUserSnapshot = (
 
   next.settings = {
     ...fallback.settings,
-    language: input.settings?.language || fallback.settings.language || 'auto',
-    targetLanguage:
-      input.settings?.target_language === undefined
-        ? fallback.settings.targetLanguage
-        : input.settings.target_language || undefined,
+    language: mergedLanguageSettings.language,
+    targetLanguage: mergedLanguageSettings.targetLanguage || undefined,
     autoPlayAudio: input.settings?.auto_play_audio ?? fallback.settings.autoPlayAudio ?? false,
     selectedEmoji:
       input.settings?.selected_emoji === undefined
@@ -213,7 +221,11 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     expected_updated_at?: string;
   };
 } => {
-  const locale = profile.settings.language || 'auto';
+  const normalizedLanguageSettings = normalizeLanguageSettings({
+    language: profile.settings.language,
+    targetLanguage: profile.settings.targetLanguage ?? null,
+  });
+  const resolvedLocale = resolveEffectiveLocale(normalizedLanguageSettings);
   return {
     profile: {
       display_name: profile.name || null,
@@ -227,7 +239,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       gender: profile.gender || null,
       birth_year: profile.birthYear ?? null,
       disliked_ingredients: profile.safetyProfile.dislikedIngredients || [],
-      locale: locale || null,
+      locale: resolvedLocale,
       timezone: 'UTC',
       current_trip_start: profile.currentTripStart || null,
       current_trip_location: profile.currentTripLocation || null,
@@ -241,8 +253,8 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       expected_updated_at: profile.syncVersions?.allergiesUpdatedAt,
     },
     settings: {
-      language: profile.settings.language || null,
-      target_language: profile.settings.targetLanguage || null,
+      language: normalizedLanguageSettings.language || null,
+      target_language: normalizedLanguageSettings.targetLanguage || null,
       auto_play_audio: !!profile.settings.autoPlayAudio,
       selected_emoji: profile.settings.selectedEmoji || null,
       expected_updated_at: profile.syncVersions?.settingsUpdatedAt,

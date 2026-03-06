@@ -52,6 +52,56 @@ def _from_iso8601(raw: str) -> datetime:
     return datetime.fromisoformat(raw.replace("Z", "+00:00"))
 
 
+def _to_resolved_locale(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().replace("_", "-").lower()
+    if not normalized or normalized == "auto":
+        return None
+
+    if normalized.startswith("ko"):
+        return "ko-KR"
+    if normalized.startswith("en"):
+        return "en-US"
+    if normalized.startswith("ja"):
+        return "ja-JP"
+    if normalized.startswith("zh"):
+        return "zh-Hans"
+    if normalized.startswith("th"):
+        return "th-TH"
+    if normalized.startswith("vi"):
+        return "vi-VN"
+    return None
+
+
+def _locale_from_accept_language(accept_language: str | None) -> str | None:
+    if not accept_language:
+        return None
+    for token in accept_language.split(","):
+        part = token.split(";")[0].strip()
+        resolved = _to_resolved_locale(part)
+        if resolved:
+            return resolved
+    return None
+
+
+def _normalize_resolved_locale(
+    locale: str | None,
+    accept_language: str | None = None,
+    fallback: str = "en-US",
+) -> str:
+    explicit = _to_resolved_locale(locale)
+    if explicit:
+        return explicit
+
+    header_locale = _locale_from_accept_language(accept_language)
+    if header_locale:
+        return header_locale
+
+    fallback_locale = _to_resolved_locale(fallback)
+    return fallback_locale or "en-US"
+
+
 class AuthServiceError(Exception):
     def __init__(
         self,
@@ -468,14 +518,19 @@ class InMemoryAuthSessionService:
         email: str,
         password: str,
         display_name: str | None,
-        locale: str,
-        device_id: str | None,
+        locale: str | None,
+        accept_language: str | None = None,
+        device_id: str | None = None,
     ) -> dict[str, object]:
         normalized_email = self._normalize_email(email)
         self._validate_email(normalized_email)
         self._validate_password(password)
         normalized_display_name = display_name.strip() if display_name else None
-        normalized_locale = locale or "ko-KR"
+        normalized_locale = _normalize_resolved_locale(
+            locale,
+            accept_language,
+            fallback="en-US",
+        )
         created_new_user = False
         verification_record: EmailVerificationRecord | None = None
         verification_code = ""
@@ -882,7 +937,9 @@ class InMemoryAuthSessionService:
         error: str | None,
         provider_user_id: str | None,
         email: str | None,
-        device_id: str | None,
+        locale: str | None = None,
+        accept_language: str | None = None,
+        device_id: str | None = None,
     ) -> dict[str, object]:
         provider_normalized = provider.strip().lower()
         if provider_normalized not in {"google", "kakao"}:
@@ -927,6 +984,11 @@ class InMemoryAuthSessionService:
             state.strip(),
         )
         provider_key = f"{provider_normalized}:{subject}"
+        resolved_locale = _normalize_resolved_locale(
+            locale,
+            accept_language,
+            fallback="en-US",
+        )
 
         with self._lock:
             user_id = self._provider_subject_to_user_id.get(provider_key)
@@ -947,7 +1009,7 @@ class InMemoryAuthSessionService:
                         display_name=None,
                         provider=provider_normalized,
                         provider_subject=subject,
-                        locale="ko-KR",
+                        locale=resolved_locale,
                         password=None,
                         email_verified_at=_utc_now(),
                     )
@@ -1114,6 +1176,7 @@ class InMemoryAuthSessionService:
         birth_year: int | None = None,
         disliked_ingredients: list[str] | None = None,
         locale: str | None = None,
+        accept_language: str | None = None,
         timezone_name: str | None = None,
         current_trip_start: str | None = None,
         current_trip_location: str | None = None,
@@ -1158,7 +1221,11 @@ class InMemoryAuthSessionService:
                     if isinstance(value, str) and value.strip()
                 ]
             if locale is not None:
-                profile.locale = locale.strip() or profile.locale
+                profile.locale = _normalize_resolved_locale(
+                    locale,
+                    accept_language,
+                    fallback=profile.locale,
+                )
             if timezone_name is not None:
                 profile.timezone = timezone_name.strip() or profile.timezone
             if current_trip_start is not None:
@@ -1546,7 +1613,7 @@ class InMemoryAuthSessionService:
         display_name: str | None,
         provider: str,
         provider_subject: str | None,
-        locale: str,
+        locale: str | None,
         password: str | None,
         email_verified_at: datetime | None,
     ) -> AuthUser:
@@ -1561,7 +1628,7 @@ class InMemoryAuthSessionService:
             display_name=display_name.strip() if display_name else None,
             provider=provider,
             provider_subject=provider_subject,
-            locale=locale or "ko-KR",
+            locale=_normalize_resolved_locale(locale, fallback="en-US"),
             password_salt=password_salt,
             password_hash=password_hash,
             email_verified_at=email_verified_at,
@@ -1577,7 +1644,7 @@ class InMemoryAuthSessionService:
             timezone="UTC",
         )
         self._allergies_by_user_id[user.user_id] = UserAllergiesProfile(user_id=user.user_id)
-        self._settings_by_user_id[user.user_id] = UserSettingsProfile(user_id=user.user_id, language=user.locale or "auto")
+        self._settings_by_user_id[user.user_id] = UserSettingsProfile(user_id=user.user_id, language="auto")
         self._history_by_user_id[user.user_id] = []
         self._history_idempotency_by_user_id[user.user_id] = {}
         return user

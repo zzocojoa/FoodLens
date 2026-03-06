@@ -7,6 +7,15 @@ import {
   serializeHistoryRecord,
 } from '../phase2Mappers';
 
+jest.mock('@/services/storage_Logic', () => ({
+  SafeStorage: {
+    get: jest.fn(async (_key: string, fallback: unknown) => fallback),
+    set: jest.fn(async () => undefined),
+    remove: jest.fn(async () => undefined),
+    clearAll: jest.fn(async () => undefined),
+  },
+}));
+
 describe('phase2Mappers', () => {
   it('merges remote user snapshot into local profile', () => {
     const local = buildDefaultProfile('usr_local');
@@ -197,5 +206,16 @@ describe('phase2Mappers', () => {
     const payload = buildProfileWritePayload(profile);
     expect(payload.profile.profile_image_url).toBeNull();
     expect(payload.profile.profile_image_local_uri).toBe('data:image/jpeg;base64,Zm9vYmFy');
+  });
+
+  it('keeps settings.language=auto while sending resolved profile.locale', () => {
+    const profile = buildDefaultProfile('usr_auto_locale');
+    profile.settings.language = 'auto';
+    profile.settings.targetLanguage = null;
+
+    const payload = buildProfileWritePayload(profile);
+    expect(payload.settings.language).toBe('auto');
+    expect(payload.profile.locale).toBeTruthy();
+    expect(payload.profile.locale).not.toBe('auto');
   });
 });

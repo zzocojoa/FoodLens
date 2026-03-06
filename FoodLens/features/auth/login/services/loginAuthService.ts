@@ -6,7 +6,7 @@ import {
   AuthSessionTokens,
 } from '@/services/auth/authApi_Logic';
 import { AuthOAuthProvider } from '@/services/auth/oauthProvider_Logic';
-import { LOGIN_COPY, LOGIN_DEFAULT_LOCALE, LoginCopy } from '../constants/login.constants';
+import { LOGIN_COPY, LoginCopy } from '../constants/login.constants';
 import { LoginOAuthProvider, LoginSubmitPayload } from '../types/login.types';
 import { normalizeEmail } from '../utils/login.utils';
 
@@ -19,7 +19,7 @@ const submitEmailAuth = async (
     return AuthApi.signupWithEmail({
       email,
       password: payload.values.password,
-      locale: payload.locale ?? LOGIN_DEFAULT_LOCALE,
+      locale: payload.locale,
     });
   }
 
@@ -156,7 +156,11 @@ const resolveAuthErrorMessage = (error: unknown, copy: LoginCopy = LOGIN_COPY): 
 
 const submitOAuthAuth = async (
   provider: LoginOAuthProvider,
-): Promise<AuthSessionTokens> => AuthOAuthProvider.loginWithOAuthProvider(provider);
+  locale?: string,
+): Promise<AuthSessionTokens> =>
+  AuthOAuthProvider.loginWithOAuthProvider(provider, {
+    locale,
+  });
 
 export const loginAuthService = {
   submitEmailAuth,

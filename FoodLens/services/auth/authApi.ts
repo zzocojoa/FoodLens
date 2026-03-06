@@ -221,7 +221,7 @@ export const AuthApi = {
       email: input.email,
       password: input.password,
       display_name: input.displayName,
-      locale: input.locale ?? 'ko-KR',
+      locale: input.locale,
       device_id: input.deviceId,
     });
     if (payload.verification_required) {
@@ -308,6 +308,7 @@ export const AuthApi = {
     redirectUri: string;
     email?: string;
     providerUserId?: string;
+    locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
     const payload = await postJson<AuthPayload>('/auth/google', {
@@ -316,6 +317,7 @@ export const AuthApi = {
       redirect_uri: input.redirectUri,
       email: input.email,
       provider_user_id: input.providerUserId,
+      locale: input.locale,
       device_id: input.deviceId,
     });
     return toSessionTokens(payload);
@@ -327,6 +329,7 @@ export const AuthApi = {
     redirectUri?: string;
     email?: string;
     providerUserId?: string;
+    locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
     const payload = await postJson<AuthPayload>('/auth/kakao', {
@@ -335,6 +338,7 @@ export const AuthApi = {
       redirect_uri: input.redirectUri,
       email: input.email,
       provider_user_id: input.providerUserId,
+      locale: input.locale,
       device_id: input.deviceId,
     });
     return toSessionTokens(payload);

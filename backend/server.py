@@ -868,7 +868,7 @@ class EmailSignupRequest(BaseModel):
     email: str
     password: str
     display_name: str | None = None
-    locale: str = "ko-KR"
+    locale: str | None = None
     device_id: str | None = None
 
 
@@ -905,6 +905,7 @@ class OAuthProviderRequest(BaseModel):
     error: str | None = None
     provider_user_id: str | None = None
     email: str | None = None
+    locale: str | None = None
     device_id: str | None = None
 
 
@@ -1195,6 +1196,7 @@ async def auth_email_signup(payload: EmailSignupRequest, request: Request):
             password=payload.password,
             display_name=payload.display_name,
             locale=payload.locale,
+            accept_language=request.headers.get("Accept-Language"),
             device_id=payload.device_id,
         )
         if result.get("verification_required") is True:
@@ -1603,6 +1605,8 @@ async def auth_google(payload: OAuthProviderRequest, request: Request):
             error=payload.error,
             provider_user_id=provider_user_id,
             email=email,
+            locale=payload.locale,
+            accept_language=request.headers.get("Accept-Language"),
             device_id=payload.device_id,
         )
         result["request_id"] = request_id
@@ -1637,6 +1641,8 @@ async def auth_kakao(payload: OAuthProviderRequest, request: Request):
             error=payload.error,
             provider_user_id=provider_user_id,
             email=email,
+            locale=payload.locale,
+            accept_language=request.headers.get("Accept-Language"),
             device_id=payload.device_id,
         )
         result["request_id"] = request_id
@@ -1985,6 +1991,7 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             birth_year=payload.birth_year,
             disliked_ingredients=payload.disliked_ingredients,
             locale=payload.locale,
+            accept_language=request.headers.get("Accept-Language"),
             timezone_name=payload.timezone,
             current_trip_start=payload.current_trip_start,
             current_trip_location=payload.current_trip_location,

@@ -216,6 +216,25 @@ describe('useLoginScreen', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding');
   });
 
+  it('passes resolved locale when submitting OAuth login', async () => {
+    const oauthSession = createSession({
+      user: {
+        id: 'usr_oauth',
+        email: 'oauth@example.com',
+      },
+    });
+    mockSubmitOAuthAuth.mockResolvedValue(oauthSession);
+
+    const { result } = renderHook(() => useLoginScreen());
+
+    await act(async () => {
+      await result.current.handleOAuthSignIn('google');
+    });
+
+    expect(mockSubmitOAuthAuth).toHaveBeenCalledWith('google', 'en-US');
+    expect(mockPersistSession).toHaveBeenCalledWith(oauthSession);
+  });
+
   it('switches to signup and requests verification when login requires email verification', async () => {
     const authError = new AuthApiError(
       'Email verification required before login.',
