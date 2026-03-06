@@ -168,6 +168,10 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
 export const resolveImageUri = (stored: string | undefined | null): string | null => {
     if (!stored) return null;
 
+    if (isExternalImageReference(stored)) {
+        return stored;
+    }
+
     // Legacy: already an absolute URI → use as-is (may break on reinstall, but best effort)
     if (isLegacyAbsoluteUri(stored)) {
         return stored;

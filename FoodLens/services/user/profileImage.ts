@@ -43,6 +43,12 @@ export const ensureProfileImageExists = async (uid: string, profile: UserProfile
     return profile;
   }
 
+  if (profile.profileImageAssetId && profile.profileImageAssetId.trim() !== '') {
+    // Asset-backed images should not be replaced with random avatars.
+    // A fresh render URL can be pulled by sync paths.
+    return profile;
+  }
+
   console.log('[UserService] Image missing or invalid. Starting migration...');
   try {
     profile.profileImage = pickRandomAvatar();
