@@ -3,10 +3,12 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
 import { captureError } from '@/services/sentry_Logic';
+import { useI18n } from '@/features/i18n';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  messages?: ErrorBoundaryMessages;
 }
 
 interface State {
@@ -14,11 +16,23 @@ interface State {
   error: Error | null;
 }
 
+type ErrorBoundaryMessages = {
+  title: string;
+  message: string;
+  retry: string;
+};
+
 /**
  * Global Error Boundary
  * Catches unhandled JS errors in the component tree and shows a fallback UI.
  */
-export class ErrorBoundary extends Component<Props, State> {
+const DEFAULT_MESSAGES: ErrorBoundaryMessages = {
+  title: 'Oops! Something went wrong.',
+  message: 'We encountered an unexpected error. Usually this is temporary.',
+  retry: 'Try Again',
+};
+
+export class ErrorBoundaryBase extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -43,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     const { hasError, error } = this.state;
-    const { fallback, children } = this.props;
+    const { fallback, children, messages = DEFAULT_MESSAGES } = this.props;
 
     if (hasError) {
       if (fallback) {
@@ -56,9 +70,9 @@ export class ErrorBoundary extends Component<Props, State> {
             <View style={styles.iconContainer}>
               <AlertTriangle size={48} color="#EF4444" />
             </View>
-            <Text style={styles.title}>Oops! Something went wrong.</Text>
+            <Text style={styles.title}>{messages.title}</Text>
             <Text style={styles.message}>
-              We encountered an unexpected error. Usually this is temporary.
+              {messages.message}
             </Text>
             
             {error && (
@@ -75,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
               activeOpacity={0.8}
             >
               <RefreshCw size={20} color="white" style={{marginRight: 8}} />
-              <Text style={styles.retryText}>Try Again</Text>
+              <Text style={styles.retryText}>{messages.retry}</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -84,6 +98,23 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return children;
   }
+}
+
+export function ErrorBoundary({ children, fallback }: Omit<Props, 'messages'>) {
+  const { t } = useI18n();
+
+  return (
+    <ErrorBoundaryBase
+      fallback={fallback}
+      messages={{
+        title: t('errorBoundary.title', DEFAULT_MESSAGES.title),
+        message: t('errorBoundary.message', DEFAULT_MESSAGES.message),
+        retry: t('errorBoundary.retry', DEFAULT_MESSAGES.retry),
+      }}
+    >
+      {children}
+    </ErrorBoundaryBase>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { AnalysisLoadingColors } from '../types';
 import { analysisLoadingStyles as styles } from '../styles';
+import { useI18n } from '@/features/i18n';
 
 type AnalysisLoadingHudProps = {
     isError: boolean;
@@ -17,10 +18,16 @@ export default function AnalysisLoadingHud({
     mainMessage,
     progressWidth,
 }: AnalysisLoadingHudProps) {
+    const { t } = useI18n();
     return (
         <View style={styles.hudContainer}>
             <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>NEURAL CORE {isError ? 'ERROR' : 'ACTIVE'}</Text>
+                <Text style={styles.statusText}>
+                    {t('analysisLoading.status.core', 'NEURAL CORE')}{' '}
+                    {isError
+                        ? t('analysisLoading.status.error', 'ERROR')
+                        : t('analysisLoading.status.active', 'ACTIVE')}
+                </Text>
             </View>
 
             <View style={{ flex: 1 }} />

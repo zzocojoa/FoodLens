@@ -10,18 +10,18 @@ describe('resultError', () => {
     it('returns busy server message for 429-like raw result', () => {
         const info = getResultErrorInfo('Analysis Error', '429 서버가 바쁩니다');
         expect(info.icon).toBe('time-outline');
-        expect(info.title).toBe('잠시만 기다려주세요');
+        expect(info.title).toBe('Please wait a moment');
     });
 
     it('returns not-food message', () => {
         const info = getResultErrorInfo('Not Food', '');
         expect(info.icon).toBe('image-outline');
-        expect(info.title).toBe('음식을 찾을 수 없어요');
+        expect(info.title).toBe('Food not detected');
     });
 
     it('falls back to generic error message', () => {
         const info = getResultErrorInfo('Error Analyzing Food', 'unknown');
         expect(info.icon).toBe('camera-outline');
-        expect(info.title).toBe('분석을 못했어요');
+        expect(info.title).toBe('Could not analyze');
     });
 });

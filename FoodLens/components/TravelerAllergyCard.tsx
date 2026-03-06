@@ -4,8 +4,10 @@ import { Sparkles, Globe } from 'lucide-react-native';
 import { useTravelerAllergyCardModel } from './travelerAllergyCard/hooks/useTravelerAllergyCardModel';
 import { travelerAllergyCardStyles as styles } from './travelerAllergyCard/styles';
 import { TravelerAllergyCardProps } from './travelerAllergyCard/types';
+import { useI18n } from '@/features/i18n';
 
 export default function TravelerAllergyCard({ countryCode, aiTranslation }: TravelerAllergyCardProps) {
+  const { t } = useI18n();
   const model = useTravelerAllergyCardModel(countryCode, aiTranslation);
   if (!model) return null;
 
@@ -13,7 +15,9 @@ export default function TravelerAllergyCard({ countryCode, aiTranslation }: Trav
     <View style={styles.container}>
       <View style={styles.header}>
         <Globe size={16} color="#3B82F6" />
-        <Text style={styles.headerTitle}>TRAVELER ALLERGY CARD • {model.displayData.language.toUpperCase()}</Text>
+        <Text style={styles.headerTitle}>
+          {t('travelerCard.title', 'TRAVELER ALLERGY CARD')} • {model.displayData.language.toUpperCase()}
+        </Text>
         {model.isAiLoaded && <Sparkles size={14} color="#F59E0B" />}
       </View>
 

@@ -3,12 +3,19 @@ import { Image, Text, View } from 'react-native';
 import { CheckCircle2, XCircle } from 'lucide-react-native';
 import { GuideExample } from '../types';
 import { infoBottomSheetStyles as styles } from '../styles';
+import { useI18n } from '@/features/i18n';
 
 type GuideExampleCardProps = {
     item: GuideExample;
 };
 
 export default function GuideExampleCard({ item }: GuideExampleCardProps) {
+    const { t } = useI18n();
+    const label =
+        item.key === 'good'
+            ? t('infoBottomSheet.example.good', item.label)
+            : t('infoBottomSheet.example.bad', item.label);
+
     return (
         <View style={styles.exampleItem}>
             <View style={styles.imageWrapper}>
@@ -27,7 +34,7 @@ export default function GuideExampleCard({ item }: GuideExampleCardProps) {
                     )}
                 </View>
             </View>
-            <Text style={styles.label}>{item.label}</Text>
+            <Text style={styles.label}>{label}</Text>
         </View>
     );
 }

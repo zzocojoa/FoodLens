@@ -17,7 +17,7 @@ import ProfileMenuItem from './ProfileMenuItem';
 import { profileSheetStyles as styles } from '../styles';
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage_Logic';
-import { CanonicalLocale } from '@/features/i18n';
+import { CanonicalLocale, useI18n } from '@/features/i18n';
 
 type ProfileSheetViewProps = {
   isOpen: boolean;
@@ -85,6 +85,24 @@ export default function ProfileSheetView({
   uiLanguageLabel,
   toLanguageCode,
 }: ProfileSheetViewProps) {
+  const { t } = useI18n();
+  const travelerOptions = React.useMemo(
+    () =>
+      LANGUAGE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(`profileSheet.travelerLanguage.option.${option.code}`, option.label),
+      })),
+    [t]
+  );
+  const settingsLanguageOptions = React.useMemo(
+    () =>
+      UI_LANGUAGE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(`profileSheet.settingsLanguage.option.${option.code}`, option.label),
+      })),
+    [t]
+  );
+
   if (!isOpen) {
     return null;
   }
@@ -105,7 +123,9 @@ export default function ProfileSheetView({
         </View>
 
         <View {...profilePanHandlers} style={[styles.header, { justifyContent: 'center' }]}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>Profile</Text>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            {t('profileSheet.title', 'Profile')}
+          </Text>
         </View>
 
         <ScrollView
@@ -137,8 +157,8 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<User size={20} color="#2563EB" />}
-              title="Manage Profile"
-              subtitle="Account settings & details"
+              title={t('profileSheet.menu.manageProfile.title', 'Manage Profile')}
+              subtitle={t('profileSheet.menu.manageProfile.subtitle', 'Account settings & details')}
               iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
               onPress={onPressManageProfile}
               theme={theme}
@@ -146,8 +166,11 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<Globe size={20} color="#059669" />}
-              title="Traveler Card Language"
-              subtitle={`${travelerLanguageLabel} • Result card only`}
+              title={t('profileSheet.menu.travelerLanguage.title', 'Traveler Card Language')}
+              subtitle={t('profileSheet.menu.travelerLanguage.subtitleTemplate', '{language} • Result card only').replace(
+                '{language}',
+                travelerLanguageLabel
+              )}
               iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
               onPress={() => state.setTravelerLangModalVisible(true)}
               theme={theme}
@@ -155,7 +178,7 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<Globe size={20} color="#2563EB" />}
-              title="Settings Language"
+              title={t('profileSheet.menu.settingsLanguage.title', 'Settings Language')}
               subtitle={uiLanguageLabel}
               iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
               onPress={() => state.setUiLangModalVisible(true)}
@@ -164,16 +187,20 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<Zap size={20} color="#D97706" fill="#D97706" />}
-              title="Remove Ads"
-              subtitle="Premium benefits"
+              title={t('profileSheet.menu.removeAds.title', 'Remove Ads')}
+              subtitle={t('profileSheet.menu.removeAds.subtitle', 'Premium benefits')}
               iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
               theme={theme}
             />
 
             <ProfileMenuItem
               icon={<LogOut size={20} color="#DC2626" />}
-              title="Log out"
-              subtitle={logoutLoading ? 'Signing out...' : 'End session on this device'}
+              title={t('profileSheet.menu.logout.title', 'Log out')}
+              subtitle={
+                logoutLoading
+                  ? t('profileSheet.menu.logout.loading', 'Signing out...')
+                  : t('profileSheet.menu.logout.subtitle', 'End session on this device')
+              }
               iconBgColor={colorScheme === 'dark' ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2'}
               onPress={onPressLogout}
               theme={theme}
@@ -182,8 +209,8 @@ export default function ProfileSheetView({
 
           <LanguageSelectorModal
             visible={state.travelerLangModalVisible}
-            title="Traveler Card Language"
-            options={LANGUAGE_OPTIONS}
+            title={t('profileSheet.travelerLanguage.modalTitle', 'Traveler Card Language')}
+            options={travelerOptions}
             selectedCode={state.travelerLanguage}
             colorScheme={colorScheme}
             theme={theme}
@@ -199,8 +226,8 @@ export default function ProfileSheetView({
 
           <LanguageSelectorModal
             visible={state.uiLangModalVisible}
-            title="Settings Language"
-            options={UI_LANGUAGE_OPTIONS}
+            title={t('profileSheet.settingsLanguage.modalTitle', 'Settings Language')}
+            options={settingsLanguageOptions}
             selectedCode={state.uiLanguage}
             colorScheme={colorScheme}
             theme={theme}
@@ -222,7 +249,9 @@ export default function ProfileSheetView({
             {state.loading ? (
               <ActivityIndicator color={theme.background} />
             ) : (
-              <Text style={[styles.saveText, { color: theme.background }]}>UPDATE PROFILE</Text>
+              <Text style={[styles.saveText, { color: theme.background }]}>
+                {t('profileSheet.action.updateProfile', 'UPDATE PROFILE')}
+              </Text>
             )}
           </HapticTouchableOpacity>
         </ScrollView>

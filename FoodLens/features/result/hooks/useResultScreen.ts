@@ -126,7 +126,7 @@ export function useResultScreen() {
     });
 
     const isError = isResultError(result?.foodName);
-    const errorInfo = result ? getResultErrorInfo(result.foodName, result.raw_result || '') : null;
+    const errorInfo = result ? getResultErrorInfo(result.foodName, result.raw_result || '', t) : null;
 
     return {
         isRestoring,

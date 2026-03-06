@@ -3,6 +3,7 @@ import { Image, Text, TextInput, View } from 'react-native';
 import { Camera, Edit3, Image as ImageIcon } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
+import { useI18n } from '@/features/i18n';
 
 type ProfileIdentitySectionProps = {
     theme: any;
@@ -29,6 +30,7 @@ export default function ProfileIdentitySection({
     onPickLibrary,
     onSelectPreset,
 }: ProfileIdentitySectionProps) {
+    const { t } = useI18n();
     const hasImage = typeof image === 'string' && image.trim().length > 0;
     return (
         <View style={styles.section}>
@@ -55,7 +57,7 @@ export default function ProfileIdentitySection({
             </View>
 
             <View style={styles.inputGroup}>
-                <Text style={styles.label}>DISPLAY NAME</Text>
+                <Text style={styles.label}>{t('profileSheet.identity.displayName', 'DISPLAY NAME')}</Text>
                 <View style={styles.inputWrapper}>
                     <TextInput
                         value={name}
@@ -65,7 +67,7 @@ export default function ProfileIdentitySection({
                             { paddingRight: 56 },
                             { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary },
                         ]}
-                        placeholder="Enter your name"
+                        placeholder={t('profileSheet.identity.namePlaceholder', 'Enter your name')}
                         placeholderTextColor={theme.textSecondary}
                     />
                     <HapticTouchableOpacity
@@ -83,7 +85,7 @@ export default function ProfileIdentitySection({
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"
                         accessibilityRole="button"
-                        accessibilityLabel="Clear display name"
+                        accessibilityLabel={t('profileSheet.identity.clearDisplayName', 'Clear display name')}
                     >
                         <Edit3 size={16} color={theme.textSecondary} />
                     </HapticTouchableOpacity>
@@ -91,7 +93,7 @@ export default function ProfileIdentitySection({
             </View>
 
             <View>
-                <Text style={[styles.label, { marginBottom: 12 }]}>PRESETS</Text>
+                <Text style={[styles.label, { marginBottom: 12 }]}>{t('profileSheet.identity.presets', 'PRESETS')}</Text>
                 <View style={styles.presetGrid}>
                     {avatars.map((url, idx) => (
                         <HapticTouchableOpacity
@@ -117,7 +119,7 @@ export default function ProfileIdentitySection({
                     >
                         <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}>
                             <ImageIcon size={18} color={theme.textSecondary} />
-                            <Text style={styles.uploadText}>Upload</Text>
+                            <Text style={styles.uploadText}>{t('profileSheet.identity.upload', 'Upload')}</Text>
                         </View>
                     </HapticTouchableOpacity>
                 </View>
