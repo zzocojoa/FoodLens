@@ -1,4 +1,4 @@
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 
-export const getHistoryUserId = (): string => getCurrentUserId();
+export const getHistoryUserId = (): string => getCurrentUserIdSnapshot();
 export const HISTORY_TITLE = 'Food Passport';

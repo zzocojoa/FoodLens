@@ -1,6 +1,6 @@
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 
-export const getAutoSaveUserId = (): string => getCurrentUserId();
+export const getAutoSaveUserId = (): string => getCurrentUserIdSnapshot();
 
 export const shouldAutoSaveResult = (
   hasResult: boolean,

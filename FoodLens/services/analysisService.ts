@@ -8,6 +8,7 @@ import { SafeStorage } from './storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
 import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers_Logic';
 import { dispatchPhase2SyncQueue, enqueueHistorySync, startPhase2SyncRuntime } from './sync/phase2SyncQueue_Logic';
+import { queryClient } from './queryClient_Logic';
 
 export type { AnalysisRecord } from './analysis/types_Structure';
 
@@ -21,6 +22,14 @@ const historyServerPullLastAt = new Map<string, number>();
 
 const historyMigrationMarkerKey = (userId: string): string => `${HISTORY_MIGRATION_MARKER_PREFIX}${userId}`;
 const historyDeleteTombstoneKey = (userId: string): string => `${HISTORY_DELETE_TOMBSTONE_PREFIX}${userId}`;
+const historyQueryKey = (userId: string): readonly [string, string] => ['history', userId] as const;
+
+const sortByRecentTimestamp = (records: AnalysisRecord[]): AnalysisRecord[] =>
+  [...records].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+const updateHistoryQueryCache = (userId: string, records: AnalysisRecord[]): void => {
+  queryClient.setQueryData(historyQueryKey(userId), sortByRecentTimestamp(records));
+};
 
 const getHistoryDeleteSet = async (userId: string): Promise<Set<string>> => {
   const list = await SafeStorage.get<string[]>(historyDeleteTombstoneKey(userId), []);
@@ -59,6 +68,7 @@ const syncHistoryFromServer = async (
       });
       const merged = mergeRemoteHistory(local, filteredRemote);
       await saveAnalyses(userId, merged);
+      updateHistoryQueryCache(userId, merged);
       return merged;
     } catch (error) {
       const apiError = error instanceof Phase2SyncApiError ? error : null;
@@ -231,6 +241,7 @@ export const AnalysisService = {
             // If the user wants a timeline view later, we can sort.
             
             await saveAnalyses(userId, analyses);
+            updateHistoryQueryCache(userId, analyses);
             const deleteSet = await getHistoryDeleteSet(userId);
             if (deleteSet.has(newRecord.id)) {
               deleteSet.delete(newRecord.id);
@@ -307,6 +318,7 @@ export const AnalysisService = {
             
             if (filtered.length !== analyses.length) {
                 await saveAnalyses(userId, filtered);
+                updateHistoryQueryCache(userId, filtered);
                 const deleteSet = await getHistoryDeleteSet(userId);
                 analysisIds.forEach((id) => deleteSet.add(id));
                 await saveHistoryDeleteSet(userId, deleteSet);
@@ -335,6 +347,7 @@ export const AnalysisService = {
                 analyses[index].timestamp = newTimestamp;
                 // Optional: Re-sort if strictly chronological
                 await saveAnalyses(userId, analyses);
+                updateHistoryQueryCache(userId, analyses);
                 logger.info(
                   `[UPDATE] Updated timestamp for ${analysisId} to ${newTimestamp.toISOString()}`,
                   undefined,
