@@ -9,7 +9,10 @@ import {
 
 export const profileSheetService = {
   async loadProfile(userId: string) {
-    return UserService.getUserProfile(userId);
+    return UserService.getUserProfile(userId, {
+      allowBackgroundRefresh: false,
+      forceServerRefresh: true,
+    });
   },
 
   async updateProfile(params: {

@@ -226,6 +226,7 @@ const isProfileSyncNoop = (before: UserProfile, after: UserProfile): boolean =>
 
 type GetUserProfileOptions = {
   allowBackgroundRefresh?: boolean;
+  forceServerRefresh?: boolean;
 };
 
 export const UserService = {
@@ -234,6 +235,7 @@ export const UserService = {
    */
   async getUserProfile(uid: string, options: GetUserProfileOptions = {}): Promise<UserProfile> {
     const allowBackgroundRefresh = options.allowBackgroundRefresh !== false;
+    const forceServerRefresh = options.forceServerRefresh === true;
     const resolvedUserId = await resolveScopedUserId(uid);
     startPhase2SyncRuntime();
     const migrated = await migrateLegacyProfileIfNeeded(resolvedUserId);
@@ -251,7 +253,7 @@ export const UserService = {
     const serverSynced = await SafeStorage.get<boolean>(profileServerSyncMarkerKey(resolvedUserId), false);
     if (!serverSynced) {
       const remote = await syncProfileFromServer(resolvedUserId, hydrated, {
-        force: !cachedProfile,
+        force: forceServerRefresh || !cachedProfile,
       });
       if (remote) return remote;
 
@@ -266,8 +268,10 @@ export const UserService = {
       }
     }
 
-    if (allowBackgroundRefresh) {
-      const remote = await syncProfileFromServer(resolvedUserId, hydrated, { force: false });
+    if (allowBackgroundRefresh || forceServerRefresh) {
+      const remote = await syncProfileFromServer(resolvedUserId, hydrated, {
+        force: forceServerRefresh,
+      });
       if (remote) {
         return remote;
       }
