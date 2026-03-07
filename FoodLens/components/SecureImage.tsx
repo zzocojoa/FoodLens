@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Image, ImageProps, View, StyleSheet, StyleProp, ImageStyle } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, StyleSheet, StyleProp, ImageStyle } from 'react-native';
+import { Image as ExpoImage, type ImageProps, type ImageSource } from 'expo-image';
 import { ImageOff } from 'lucide-react-native';
 
 interface SecureImageProps extends ImageProps {
@@ -8,6 +9,37 @@ interface SecureImageProps extends ImageProps {
   fallbackContainerStyle?: StyleProp<ImageStyle>;
   sharedTransitionTag?: string; // Add this prop
 }
+
+const extractMediaRenderAssetId = (uri: string): string | null => {
+  try {
+    const parsed = new URL(uri);
+    const match = parsed.pathname.match(/\/media\/render\/([^/?#]+)/i);
+    return match?.[1] || null;
+  } catch {
+    const withoutQuery = uri.split('?')[0] || uri;
+    const match = withoutQuery.match(/\/media\/render\/([^/?#]+)/i);
+    return match?.[1] || null;
+  }
+};
+
+const toCachedImageSource = (source: ImageProps['source']): ImageProps['source'] => {
+  if (!source) return source;
+  if (typeof source === 'string') {
+    const cacheKey = extractMediaRenderAssetId(source);
+    return cacheKey ? ({ uri: source, cacheKey } satisfies ImageSource) : ({ uri: source } satisfies ImageSource);
+  }
+  if (typeof source === 'number') {
+    return source;
+  }
+  if (Array.isArray(source)) {
+    return source;
+  }
+  if (typeof source === 'object' && source && 'uri' in source && typeof source.uri === 'string') {
+    const cacheKey = extractMediaRenderAssetId(source.uri);
+    return cacheKey ? { ...source, cacheKey } : source;
+  }
+  return source;
+};
 
 /**
  * SecureImage Component
@@ -27,6 +59,7 @@ export const SecureImage: React.FC<SecureImageProps> = ({
 }) => {
   const [hasError, setHasError] = useState(false);
   const [imageSource, setImageSource] = useState(source);
+  const resolvedSource = useMemo(() => toCachedImageSource(imageSource), [imageSource]);
 
   useEffect(() => {
     setHasError(false);
@@ -42,9 +75,11 @@ export const SecureImage: React.FC<SecureImageProps> = ({
   }
 
   return (
-    <Image
+    <ExpoImage
       {...props}
-      source={imageSource}
+      source={resolvedSource}
+      cachePolicy="memory-disk"
+      contentFit={props.contentFit || 'cover'}
       style={style}
       onError={(e) => {
         setHasError(true);

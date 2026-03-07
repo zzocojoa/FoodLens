@@ -1,6 +1,7 @@
 import { MutableRefObject } from 'react';
 import { analyzeImage } from '../../../services/ai';
 import { dataStore } from '../../../services/dataStore_Logic';
+import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage_Logic';
 import { getLocationData, normalizeTimestamp } from '../../../services/utils';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from '../utils/cameraMappers';
@@ -160,8 +161,17 @@ export const runCameraImageAnalysis = async ({
   const locationContext =
     locationData || createFallbackLocation(0, 0, isoCode, 'Location Unavailable (Using Preference)');
   const finalTimestamp = normalizeTimestamp(photoTimestamp);
+  let persistedImageRef = uri;
+  try {
+    persistedImageRef = await saveImagePermanentlyOrThrow(
+      uri,
+      'STORAGE_ERROR: Failed to save image permanently. Check disk space.'
+    );
+  } catch (error) {
+    logger.warn('Failed to persist camera image; fallback to original URI', error, 'CameraAnalysis');
+  }
 
-  dataStore.setData(analysisResult, locationContext, uri, finalTimestamp);
+  dataStore.setData(analysisResult, locationContext, persistedImageRef, finalTimestamp);
   onSuccess();
   resetState();
 };

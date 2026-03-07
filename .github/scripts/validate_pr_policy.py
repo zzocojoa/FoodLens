@@ -30,6 +30,7 @@ def main() -> int:
         "Same-account cross-device sync impact reviewed",
         "OAuth identity split risk reviewed",
         "Required regression checks executed and result attached",
+        "Image hydration regression reviewed",
     ]
     missing = [item for item in required if not _checked(body, item)]
     if missing:

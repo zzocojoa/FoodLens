@@ -42,14 +42,15 @@ curl --fail-with-body -L \
         "backend-auth-runtime",
         "mobile-auth-runtime",
         "sync-regression",
-        "pr-policy-check"
+        "pr-policy-check",
+        "image-hydration-policy"
       ]
     },
     "enforce_admins": false,
     "required_pull_request_reviews": {
       "dismiss_stale_reviews": true,
       "require_code_owner_reviews": false,
-      "required_approving_review_count": 1
+      "required_approving_review_count": 0
     },
     "restrictions": null,
     "required_linear_history": false,

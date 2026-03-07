@@ -270,6 +270,82 @@ describe('phase2Mappers', () => {
     expect(merged[0].imageAssetId).toBe('asset_1');
   });
 
+  it('keeps existing remote history render url when asset id is unchanged and url is still valid', () => {
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        imageUri:
+          'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444800&sig=old',
+        imageAssetId: 'asset_1',
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          image_asset_id: 'asset_1',
+          image_render_url:
+            'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444801&sig=new',
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].imageUri).toBe(
+      'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444800&sig=old'
+    );
+  });
+
+  it('refreshes remote history render url when existing url is near expiry', () => {
+    const nearExpirySeconds = Math.floor(Date.now() / 1000) + 5;
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        imageUri: `https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=${nearExpirySeconds}&sig=old`,
+        imageAssetId: 'asset_1',
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          image_asset_id: 'asset_1',
+          image_render_url:
+            'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444801&sig=new',
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].imageUri).toBe(
+      'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444801&sig=new'
+    );
+  });
+
   it('builds profile write payload for queue dispatch', () => {
     const profile = buildDefaultProfile('usr_q');
     profile.name = 'Queue User';
