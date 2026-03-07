@@ -24,6 +24,7 @@ const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
 const UNAUTHENTICATED_USER_ID = 'auth-required';
 const PROFILE_SERVER_PULL_COOLDOWN_MS = 15_000;
+const AUTH_REQUIRED_ERROR_MESSAGE = 'Authenticated user id is required for profile sync operations.';
 
 const profileServerPullInFlight = new Map<string, Promise<UserProfile | null>>();
 const profileServerPullLastAt = new Map<string, number>();
@@ -70,7 +71,7 @@ const resolveScopedUserId = async (uid: string): Promise<string> => {
     return current;
   }
 
-  throw new Error('Authenticated user id is required for profile sync operations.');
+  throw new Error(AUTH_REQUIRED_ERROR_MESSAGE);
 };
 
 const loadScopedProfile = async (uid: string): Promise<UserProfile | null> => {
@@ -236,7 +237,21 @@ export const UserService = {
   async getUserProfile(uid: string, options: GetUserProfileOptions = {}): Promise<UserProfile> {
     const allowBackgroundRefresh = options.allowBackgroundRefresh !== false;
     const forceServerRefresh = options.forceServerRefresh === true;
-    const resolvedUserId = await resolveScopedUserId(uid);
+    let resolvedUserId: string;
+    try {
+      resolvedUserId = await resolveScopedUserId(uid);
+    } catch (error) {
+      if (error instanceof Error && error.message === AUTH_REQUIRED_ERROR_MESSAGE) {
+        const fallbackUserId = normalizeUserId(uid) ?? UNAUTHENTICATED_USER_ID;
+        logger.warn('[Auth] profile read requested without authenticated user; returning fallback profile', {
+          request_id: 'auth-profile-read-without-user',
+          requested_user_id: normalizeUserId(uid) ?? UNAUTHENTICATED_USER_ID,
+          fallback_user_id: fallbackUserId,
+        });
+        return buildDefaultProfile(fallbackUserId);
+      }
+      throw error;
+    }
     startPhase2SyncRuntime();
     const migrated = await migrateLegacyProfileIfNeeded(resolvedUserId);
     const cachedProfile = migrated || (await loadScopedProfile(resolvedUserId));

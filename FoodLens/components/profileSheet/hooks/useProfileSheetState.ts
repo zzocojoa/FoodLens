@@ -6,6 +6,7 @@ import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
 import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
+import { setUiLanguage as setUiLanguageInStore } from '@/features/i18n/services/i18nStore_Logic';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
 import {
     getManualMergeConflictOperationsForUser,
@@ -63,7 +64,7 @@ export const useProfileSheetState = (userId: string) => {
     const [name, setName] = useState(initialName);
     const [image, setImageState] = useState<string | undefined>(initialImage);
     const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(initialTravelerLanguage);
-    const [uiLanguage, setUiLanguage] = useState<CanonicalLocale>(initialUiLanguage);
+    const [uiLanguage, setUiLanguageState] = useState<CanonicalLocale>(initialUiLanguage);
     const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -92,7 +93,7 @@ export const useProfileSheetState = (userId: string) => {
                 setTravelerLanguage((previous) => previous ?? profile.settings.targetLanguage);
             }
             if (profile.settings?.language) {
-                setUiLanguage((previous) =>
+                setUiLanguageState((previous) =>
                     previous === 'auto'
                         ? normalizeCanonicalLocale(profile.settings?.language)
                         : previous
@@ -225,9 +226,15 @@ export const useProfileSheetState = (userId: string) => {
             });
             profileImageAssetIdRef.current = nextAssetId;
             setTravelerLanguage(profile.settings?.targetLanguage);
-            setUiLanguage(normalizeCanonicalLocale(profile.settings?.language));
+            setUiLanguageState(normalizeCanonicalLocale(profile.settings?.language));
         }
     }, [userId]);
+
+    const setUiLanguage = useCallback((value: CanonicalLocale) => {
+        const normalized = normalizeCanonicalLocale(value);
+        setUiLanguageState(normalized);
+        void setUiLanguageInStore(normalized);
+    }, []);
 
     const invalidateProfileLoad = useCallback(() => {
         loadProfileRequestIdRef.current += 1;

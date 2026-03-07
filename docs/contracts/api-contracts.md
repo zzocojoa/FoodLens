@@ -129,6 +129,11 @@
 - `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
 - `POST /me/media/upload` (multipart: `file`, `scope=profile|history`, `linked_entry_id?`)
 - `GET /media/render/{asset_id}?w=<preset>&q=<50~85>&fmt=auto`
+- media render 운영 env(추가):
+  - `MEDIA_RENDER_SIGN_BUCKET_SECONDS` (기본 `3600`, 버킷 단위 URL 안정화)
+  - `MEDIA_RENDER_CACHE_ENABLED` (기본 `1`)
+  - `MEDIA_RENDER_CACHE_MAX_ITEMS` (기본 `256`)
+  - `MEDIA_RENDER_CACHE_TTL_SECONDS` (기본 `300`)
 - `PATCH /me/history/{history_item_id}/image` (`image_asset_id`)
 - `GET /me/settings`, `PUT /me/settings`
 - `PUT /me/profile.profile_image_asset_id`:

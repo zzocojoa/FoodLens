@@ -10,6 +10,7 @@ const mockShowTranslatedAlert = jest.fn();
 const mockSafeStorageGet = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
+const mockSetUiLanguageInStore = jest.fn();
 
 jest.mock('../../services/profileSheetService', () => ({
   profileSheetService: {
@@ -53,6 +54,10 @@ jest.mock('@/services/storage_Logic', () => ({
 jest.mock('@/services/user/constants_Logic', () => ({
   getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
   USER_STORAGE_KEY: '@foodlens_user_profile',
+}));
+
+jest.mock('@/features/i18n/services/i18nStore_Logic', () => ({
+  setUiLanguage: (...args: unknown[]) => mockSetUiLanguageInStore(...args),
 }));
 
 describe('useProfileSheetState conflict handling', () => {
@@ -188,5 +193,16 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     expect(result.current.image).toBe(globalProfile.profileImage);
+  });
+
+  it('applies selected settings language to global i18n store immediately', async () => {
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setUiLanguage('ko-KR');
+    });
+
+    expect(result.current.uiLanguage).toBe('ko-KR');
+    expect(mockSetUiLanguageInStore).toHaveBeenCalledWith('ko-KR');
   });
 });

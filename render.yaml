@@ -69,6 +69,8 @@ services:
         sync: false
       - key: MEDIA_RENDER_URL_TTL_SECONDS
         value: "86400"
+      - key: MEDIA_RENDER_SIGN_BUCKET_SECONDS
+        value: "3600"
       - key: MEDIA_RENDER_ALLOWED_WIDTHS
         value: "128,256,512,1024"
       - key: MEDIA_RENDER_QUALITY_MIN
@@ -79,6 +81,12 @@ services:
         value: "512"
       - key: MEDIA_RENDER_DEFAULT_QUALITY
         value: "75"
+      - key: MEDIA_RENDER_CACHE_ENABLED
+        value: "1"
+      - key: MEDIA_RENDER_CACHE_MAX_ITEMS
+        value: "256"
+      - key: MEDIA_RENDER_CACHE_TTL_SECONDS
+        value: "300"
       - key: AUTH_APP_ALLOWED_REDIRECT_URIS
         sync: false
       - key: AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS

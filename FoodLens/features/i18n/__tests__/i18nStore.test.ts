@@ -1,0 +1,83 @@
+const mockLoadLanguageSettings = jest.fn();
+const mockNormalizeCanonicalLocale = jest.fn();
+const mockNormalizeLanguageSettings = jest.fn();
+const mockResolveEffectiveLocale = jest.fn();
+const mockSaveLanguageSettings = jest.fn();
+const mockSafeStorageGetSync = jest.fn();
+const mockGetCurrentUserIdSnapshot = jest.fn();
+
+jest.mock('@/services/storage_Logic', () => ({
+  SafeStorage: {
+    getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
+  },
+}));
+
+jest.mock('@/services/auth/currentUser_Logic', () => ({
+  getCurrentUserIdSnapshot: (...args: unknown[]) => mockGetCurrentUserIdSnapshot(...args),
+}));
+
+jest.mock('@/services/user/constants_Logic', () => ({
+  USER_STORAGE_KEY: '@foodlens_user_profile',
+  getUserStorageKey: (uid: string) => `@foodlens_user_profile:${uid}`,
+}));
+
+jest.mock('../services/languageService_Logic', () => ({
+  loadLanguageSettings: (...args: unknown[]) => mockLoadLanguageSettings(...args),
+  normalizeCanonicalLocale: (...args: unknown[]) => mockNormalizeCanonicalLocale(...args),
+  normalizeLanguageSettings: (...args: unknown[]) => mockNormalizeLanguageSettings(...args),
+  resolveEffectiveLocale: (...args: unknown[]) => mockResolveEffectiveLocale(...args),
+  saveLanguageSettings: (...args: unknown[]) => mockSaveLanguageSettings(...args),
+}));
+
+describe('i18nStore initialization', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+
+    mockLoadLanguageSettings.mockResolvedValue({
+      language: 'en-US',
+      targetLanguage: null,
+    });
+    mockNormalizeCanonicalLocale.mockImplementation((value: unknown) => value);
+    mockNormalizeLanguageSettings.mockImplementation((value: unknown) => value);
+    mockResolveEffectiveLocale.mockImplementation((settings: { language?: string }) =>
+      settings?.language === 'ko-KR' ? 'ko-KR' : 'en-US'
+    );
+    mockGetCurrentUserIdSnapshot.mockReturnValue('usr_i18n');
+    mockSafeStorageGetSync.mockReturnValue(null);
+  });
+
+  it('keeps persisted i18n settings when profile snapshot has no language', async () => {
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+
+    expect(mockSaveLanguageSettings).not.toHaveBeenCalled();
+    expect(store.getI18nSnapshot().settings.language).toBe('en-US');
+    expect(store.getI18nSnapshot().locale).toBe('en-US');
+  });
+
+  it('prefers profile language snapshot over stale persisted settings at startup', async () => {
+    mockSafeStorageGetSync.mockImplementation((key: string) => {
+      if (key === '@foodlens_user_profile:usr_i18n') {
+        return {
+          settings: {
+            language: 'auto',
+            targetLanguage: null,
+          },
+        };
+      }
+      return null;
+    });
+
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+
+    expect(mockSaveLanguageSettings).toHaveBeenCalledWith({
+      language: 'auto',
+      targetLanguage: null,
+    });
+    expect(store.getI18nSnapshot().settings.language).toBe('auto');
+  });
+});

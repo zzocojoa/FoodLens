@@ -1,0 +1,4 @@
+interface:
+  display_name: "FoodLens Media Perf Baseline"
+  short_description: "Run repeatable media load baselines with k6"
+  default_prompt: "Use $foodlens-media-performance-baseline to run and summarize before/after media-path performance baselines with the project k6 scripts."

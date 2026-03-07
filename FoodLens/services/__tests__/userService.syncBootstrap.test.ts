@@ -2,6 +2,8 @@ import { UserService } from '../userService';
 import { SafeStorage } from '../storage_Logic';
 import { Phase2Api } from '../sync/phase2Api_Logic';
 import { enqueuePhase2Sync } from '../sync/phase2SyncQueue_Logic';
+import { restoreSession } from '../auth/sessionManager_Logic';
+import { getCurrentUserId, hasAuthenticatedUser } from '../auth/currentUser_Logic';
 
 jest.mock('../storage_Logic', () => ({
   SafeStorage: {
@@ -82,6 +84,9 @@ jest.mock('../user/userProfileStore_Logic', () => ({
 const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 const mockedPhase2Api = Phase2Api as jest.Mocked<typeof Phase2Api>;
 const mockedEnqueuePhase2Sync = enqueuePhase2Sync as jest.MockedFunction<typeof enqueuePhase2Sync>;
+const mockedRestoreSession = restoreSession as jest.MockedFunction<typeof restoreSession>;
+const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.MockedFunction<typeof hasAuthenticatedUser>;
+const mockedGetCurrentUserId = getCurrentUserId as jest.MockedFunction<typeof getCurrentUserId>;
 
 const scopedProfileKey = '@foodlens_user_profile:usr_a';
 const migrationMarkerKey = '@foodlens_phase2_profile_migrated:usr_a';
@@ -90,6 +95,11 @@ const serverSyncMarkerKey = '@foodlens_phase2_profile_server_synced:usr_a';
 describe('UserService bootstrap sync guard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedRestoreSession.mockResolvedValue({
+      user: { id: 'usr_a' },
+    } as never);
+    mockedHasAuthenticatedUser.mockReturnValue(true);
+    mockedGetCurrentUserId.mockReturnValue('usr_a');
     mockedEnqueuePhase2Sync.mockResolvedValue('op-x');
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
       if (key === scopedProfileKey) return null as unknown;
@@ -100,6 +110,20 @@ describe('UserService bootstrap sync guard', () => {
     });
     mockedSafeStorage.set.mockResolvedValue(undefined);
     mockedSafeStorage.remove.mockResolvedValue(undefined);
+  });
+
+  it('returns fallback profile instead of throwing when profile read happens before auth hydration', async () => {
+    mockedRestoreSession.mockResolvedValue(null as never);
+    mockedHasAuthenticatedUser.mockReturnValue(false);
+    mockedGetCurrentUserId.mockReturnValue('auth-required');
+
+    const profile = await UserService.getUserProfile('auth-required', {
+      allowBackgroundRefresh: false,
+    });
+
+    expect(profile.uid).toBe('auth-required');
+    expect(mockedPhase2Api.getProfile).not.toHaveBeenCalled();
+    expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
   });
 
   it('does not push default profile when server snapshot exists', async () => {
