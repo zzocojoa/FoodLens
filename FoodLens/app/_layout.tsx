@@ -4,15 +4,20 @@ import { Stack, router as appRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage } from '../services/storage_Logic';
 import { cleanupOrphanedImages } from '../services/imageStorage_Logic';
 import { clearSession, restoreSession } from '../services/auth/sessionManager_Logic';
+import { getCurrentUserIdSnapshot } from '../services/auth/currentUser_Logic';
 import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
 import { hasCompletedOnboarding } from '../services/onboardingGateService_Logic';
+import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore_Logic';
+import { AnalysisService } from '../services/analysisService_Logic';
+import { UserService } from '../services/userService_Logic';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -21,6 +26,36 @@ import { initSentry, setUser } from '../services/sentry_Logic';
 SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
+const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
+const CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
+
+const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncNow = () => {
+      if (!isMounted) return;
+      callbackRef.current();
+    };
+
+    syncNow();
+    const intervalId = setInterval(syncNow, intervalMs);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncNow();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      appStateSubscription.remove();
+    };
+  }, [intervalMs]);
+};
 
 // Generate or retrieve a persistent device ID
 const initializeDeviceId = async () => {
@@ -46,6 +81,27 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
+  const runWithAuthenticatedUser = (run: (userId: string) => void) => {
+    const userId = getCurrentUserIdSnapshot();
+    if (!userId || userId === 'auth-required') return;
+    run(userId);
+  };
+
+  useAppActivePolling(() => {
+    void syncI18nSettingsFromProfile({ pullFromServer: true });
+  }, I18N_PROFILE_SYNC_INTERVAL_MS);
+
+  useAppActivePolling(() => {
+    runWithAuthenticatedUser((userId) => {
+      void AnalysisService.syncHistoryFromCloud(userId, { force: false });
+    });
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
+
+  useAppActivePolling(() => {
+    runWithAuthenticatedUser((userId) => {
+      void UserService.syncProfileFromCloud(userId, { force: false });
+    });
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
 
   useEffect(() => {
     let active = true;

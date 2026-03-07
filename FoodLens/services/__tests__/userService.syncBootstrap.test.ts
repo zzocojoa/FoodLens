@@ -126,6 +126,21 @@ describe('UserService bootstrap sync guard', () => {
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
   });
 
+  it('returns null from background cloud sync when unauthenticated', async () => {
+    mockedRestoreSession.mockResolvedValue(null as never);
+    mockedHasAuthenticatedUser.mockReturnValue(false);
+    mockedGetCurrentUserId.mockReturnValue('auth-required');
+
+    const result = await UserService.syncProfileFromCloud('auth-required', {
+      force: true,
+    });
+
+    expect(result).toBeNull();
+    expect(mockedPhase2Api.getProfile).not.toHaveBeenCalled();
+    expect(mockedPhase2Api.getAllergies).not.toHaveBeenCalled();
+    expect(mockedPhase2Api.getSettings).not.toHaveBeenCalled();
+  });
+
   it('does not push default profile when server snapshot exists', async () => {
     mockedPhase2Api.getProfile.mockResolvedValue({
       profile: {

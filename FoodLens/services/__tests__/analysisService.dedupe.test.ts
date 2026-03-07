@@ -11,6 +11,7 @@ jest.mock('../analysis/storage_Logic', () => ({
 jest.mock('../sync/phase2SyncQueue_Logic', () => ({
   dispatchPhase2SyncQueue: jest.fn(async () => undefined),
   enqueueHistorySync: jest.fn(async () => undefined),
+  getPhase2SyncQueueSnapshot: jest.fn(async () => []),
   startPhase2SyncRuntime: jest.fn(),
 }));
 

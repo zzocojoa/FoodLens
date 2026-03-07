@@ -458,35 +458,51 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
 
 export const mergeRemoteHistory = (
   current: AnalysisRecord[],
-  remoteItems: MeHistoryItemResponse[]
+  remoteItems: MeHistoryItemResponse[],
+  options: { keepLocalOnlyIds?: Set<string> } = {}
 ): AnalysisRecord[] => {
+  const keepLocalOnlyIds = options.keepLocalOnlyIds ?? new Set<string>();
   const parsed = remoteItems
     .map((item) => deserializeHistoryItem(item))
     .filter((item): item is AnalysisRecord => item !== null);
+  if (remoteItems.length === 0) {
+    return current
+      .filter((item) => keepLocalOnlyIds.has(item.id))
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }
+  // If remote payload was malformed end-to-end, keep local snapshot to avoid accidental wipes.
   if (parsed.length === 0) return current;
 
-  const byId = new Map<string, AnalysisRecord>();
+  const localById = new Map<string, AnalysisRecord>();
   current.forEach((item) => {
-    byId.set(item.id, item);
+    localById.set(item.id, item);
   });
 
+  const mergedById = new Map<string, AnalysisRecord>();
   parsed.forEach((item) => {
-    const existing = byId.get(item.id);
+    const existing = localById.get(item.id);
     if (!existing) {
-      byId.set(item.id, item);
+      mergedById.set(item.id, item);
       return;
     }
 
     const keepLocalImage = isStableManagedLocalHistoryImage(existing.imageUri);
     const keepExistingRemoteImage = shouldKeepExistingRemoteHistoryImage(existing, item);
-    byId.set(item.id, {
+    mergedById.set(item.id, {
       ...existing,
       ...item,
       imageUri: keepLocalImage || keepExistingRemoteImage ? existing.imageUri : item.imageUri,
       imageRenderUrl: keepExistingRemoteImage ? existing.imageRenderUrl || existing.imageUri : item.imageRenderUrl,
     });
   });
-  return [...byId.values()].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+  current.forEach((item) => {
+    if (mergedById.has(item.id)) return;
+    if (!keepLocalOnlyIds.has(item.id)) return;
+    mergedById.set(item.id, item);
+  });
+
+  return [...mergedById.values()].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 };
 
 export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfile): UserProfile => {

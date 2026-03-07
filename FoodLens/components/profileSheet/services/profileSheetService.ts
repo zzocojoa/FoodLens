@@ -63,4 +63,36 @@ export const profileSheetService = {
 
     await applyUiLanguageToI18nStore(normalizedUiLanguage);
   },
+
+  async updateSettingsLanguage(params: {
+    userId: string;
+    uiLanguage: string;
+  }) {
+    const normalizedUiLanguage = normalizeCanonicalLocale(params.uiLanguage || 'auto');
+    await applyUiLanguageToI18nStore(normalizedUiLanguage);
+
+    const existing = await UserService.getUserProfile(params.userId, {
+      allowBackgroundRefresh: false,
+    });
+    const existingLanguage = normalizeCanonicalLocale(existing.settings?.language || 'auto');
+    if (existingLanguage === normalizedUiLanguage) {
+      return;
+    }
+
+    try {
+      await UserService.CreateOrUpdateProfile(params.userId, existing.email || 'user@example.com', {
+        settings: {
+          language: normalizedUiLanguage,
+          targetLanguage: existing.settings?.targetLanguage,
+          autoPlayAudio: existing.settings?.autoPlayAudio ?? false,
+          selectedEmoji: existing.settings?.selectedEmoji,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+        return;
+      }
+      throw error;
+    }
+  },
 };

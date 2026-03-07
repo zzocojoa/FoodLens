@@ -20,6 +20,7 @@ export const useProfileSheetController = ({ isOpen, onClose, userId }: ProfileSh
     openUiLanguageModal: uiLanguageSheet.openSheet,
     loadProfile: state.loadProfile,
     invalidateProfileLoad: state.invalidateProfileLoad,
+    resetLocalEdits: state.resetLocalEdits,
   });
 
   return {

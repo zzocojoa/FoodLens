@@ -4,6 +4,7 @@ import { useProfileSheetState } from '../useProfileSheetState';
 
 const mockUpdateProfile = jest.fn();
 const mockLoadProfile = jest.fn();
+const mockUpdateSettingsLanguage = jest.fn();
 const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
@@ -16,6 +17,7 @@ jest.mock('../../services/profileSheetService', () => ({
   profileSheetService: {
     updateProfile: (...args: unknown[]) => mockUpdateProfile(...args),
     loadProfile: (...args: unknown[]) => mockLoadProfile(...args),
+    updateSettingsLanguage: (...args: unknown[]) => mockUpdateSettingsLanguage(...args),
   },
 }));
 
@@ -66,6 +68,7 @@ describe('useProfileSheetState conflict handling', () => {
     mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
     mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
+    mockUpdateSettingsLanguage.mockResolvedValue(undefined);
     mockUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
     mockGetManualMergeConflictOperationsForUser.mockResolvedValue([{ id: 'op_conflict_1' }]);
     mockResolveManualMergeConflictsForUser.mockResolvedValue({
@@ -128,6 +131,31 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     expect(result.current.image).toBe('https://cdn.example.com/local-selected.jpg');
+  });
+
+  it('does not overwrite editing name during periodic profile reload', async () => {
+    mockLoadProfile.mockResolvedValue({
+      uid: 'usr_profile',
+      name: 'Original Name',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setName('Typing New Name');
+    });
+
+    await act(async () => {
+      await result.current.loadProfile();
+    });
+
+    expect(result.current.name).toBe('Typing New Name');
   });
 
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
@@ -200,6 +228,32 @@ describe('useProfileSheetState conflict handling', () => {
 
     act(() => {
       result.current.setUiLanguage('ko-KR');
+    });
+
+    expect(result.current.uiLanguage).toBe('ko-KR');
+    expect(mockSetUiLanguageInStore).toHaveBeenCalledWith('ko-KR');
+    expect(mockUpdateSettingsLanguage).toHaveBeenCalledWith({
+      userId: 'usr_profile',
+      uiLanguage: 'ko-KR',
+    });
+  });
+
+  it('applies server language to global i18n store when profile is refreshed', async () => {
+    mockLoadProfile.mockResolvedValue({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'ko-KR', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    await act(async () => {
+      await result.current.loadProfile();
     });
 
     expect(result.current.uiLanguage).toBe('ko-KR');

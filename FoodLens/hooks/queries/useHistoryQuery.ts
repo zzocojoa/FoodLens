@@ -17,7 +17,10 @@ export const useHistoryQuery = (userId: string) => {
       // Sort by timestamp descending
       return records.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     },
-    // Keep data fresh for 1 minute
-    staleTime: 1000 * 60,
+    // Keep history screen live-updated while open for cross-device writes.
+    staleTime: 1000 * 5,
+    refetchOnMount: 'always',
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 };

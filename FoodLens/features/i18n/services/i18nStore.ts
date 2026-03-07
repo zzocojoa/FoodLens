@@ -28,7 +28,9 @@ let state: I18nState = {
 
 let initialized = false;
 let initializePromise: Promise<void> | null = null;
+let profileSettingsSyncInFlight: Promise<void> | null = null;
 const listeners = new Set<Listener>();
+const UNAUTHENTICATED_USER_ID = 'auth-required';
 
 const emit = () => {
   listeners.forEach((listener) => listener());
@@ -65,6 +67,75 @@ const readProfileLanguageSettingsSnapshot = (): Partial<LanguageSettings> | null
   };
 };
 
+const areLanguageSettingsEqual = (left: LanguageSettings, right: LanguageSettings): boolean =>
+  left.language === right.language && left.targetLanguage === right.targetLanguage;
+
+const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
+  const profileSettings = readProfileLanguageSettingsSnapshot();
+  if (!profileSettings) {
+    return;
+  }
+
+  const normalizedSettings = normalizeLanguageSettings({
+    language: profileSettings.language ?? state.settings.language,
+    targetLanguage: profileSettings.targetLanguage ?? state.settings.targetLanguage,
+  });
+
+  if (areLanguageSettingsEqual(normalizedSettings, state.settings)) {
+    if (!state.ready) {
+      setState({
+        settings: normalizedSettings,
+        locale: resolveEffectiveLocale(normalizedSettings),
+        ready: true,
+      });
+      initialized = true;
+    } else if (normalizedSettings.language === 'auto') {
+      refreshI18nLocaleFromDevice();
+    }
+    return;
+  }
+
+  await saveLanguageSettings(normalizedSettings);
+  setState({
+    settings: normalizedSettings,
+    locale: resolveEffectiveLocale(normalizedSettings),
+    ready: true,
+  });
+  initialized = true;
+};
+
+const normalizeRemoteLanguageSettings = (remote: {
+  language?: string | null;
+  target_language?: string | null;
+}): LanguageSettings =>
+  normalizeLanguageSettings({
+    language: normalizeCanonicalLocale(remote.language),
+    targetLanguage:
+      remote.target_language === undefined
+        ? state.settings.targetLanguage
+        : (() => {
+            const normalized = normalizeCanonicalLocale(remote.target_language);
+            return normalized === 'auto' ? null : normalized;
+          })(),
+  });
+
+const applyLanguageSettings = async (settings: LanguageSettings): Promise<void> => {
+  if (areLanguageSettingsEqual(settings, state.settings)) {
+    if (settings.language === 'auto') {
+      refreshI18nLocaleFromDevice();
+    }
+    return;
+  }
+
+  await saveLanguageSettings(settings);
+  setState({
+    settings,
+    locale: resolveEffectiveLocale(settings),
+    ready: true,
+  });
+  initialized = true;
+};
+
 export const initializeI18nStore = async () => {
   if (initialized) return;
   if (initializePromise) return initializePromise;
@@ -95,6 +166,38 @@ export const initializeI18nStore = async () => {
   })();
 
   return initializePromise;
+};
+
+export const syncI18nSettingsFromProfile = async (
+  options: { pullFromServer?: boolean } = {}
+): Promise<void> => {
+  if (profileSettingsSyncInFlight) {
+    return profileSettingsSyncInFlight;
+  }
+
+  const pullFromServer = options.pullFromServer !== false;
+
+  profileSettingsSyncInFlight = (async () => {
+    const userId = getCurrentUserIdSnapshot();
+    const hasAuthenticatedUser = userId !== UNAUTHENTICATED_USER_ID;
+
+    if (pullFromServer && hasAuthenticatedUser) {
+      try {
+        const { Phase2Api } = await import('@/services/sync/phase2Api_Logic');
+        const { settings } = await Phase2Api.getSettings();
+        await applyLanguageSettings(normalizeRemoteLanguageSettings(settings));
+        return;
+      } catch {
+        // Non-fatal. Fallback to local snapshot apply below.
+      }
+    }
+
+    await applyProfileLanguageSettingsSnapshot();
+  })().finally(() => {
+    profileSettingsSyncInFlight = null;
+  });
+
+  return profileSettingsSyncInFlight;
 };
 
 export const getI18nSnapshot = (): I18nState => state;

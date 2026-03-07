@@ -346,6 +346,80 @@ describe('phase2Mappers', () => {
     );
   });
 
+  it('removes local history rows that were deleted on server', () => {
+    const current = [
+      {
+        id: 'rec_kept',
+        foodName: 'Keep',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+      {
+        id: 'rec_deleted_remote',
+        foodName: 'Delete me',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        timestamp: new Date('2026-02-24T00:00:01Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_kept',
+          foodName: 'Keep',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged.map((item) => item.id)).toEqual(['rec_kept']);
+  });
+
+  it('keeps local-only pending history rows while merging remote snapshot', () => {
+    const current = [
+      {
+        id: 'rec_remote',
+        foodName: 'Remote',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+      {
+        id: 'rec_local_pending',
+        foodName: 'Pending local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        timestamp: new Date('2026-02-24T00:00:01Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_remote',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote, {
+      keepLocalOnlyIds: new Set(['rec_local_pending']),
+    });
+    expect(merged.map((item) => item.id).sort()).toEqual(['rec_local_pending', 'rec_remote']);
+  });
+
   it('builds profile write payload for queue dispatch', () => {
     const profile = buildDefaultProfile('usr_q');
     profile.name = 'Queue User';

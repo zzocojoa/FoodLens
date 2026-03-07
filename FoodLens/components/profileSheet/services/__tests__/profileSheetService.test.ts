@@ -33,8 +33,9 @@ describe('profileSheetService.updateProfile', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetUserProfile.mockResolvedValue({
+      email: 'user@example.com',
       profileImage: 'file:///tmp/current.jpg',
-      settings: { language: 'auto' },
+      settings: { language: 'auto', targetLanguage: null, autoPlayAudio: false, selectedEmoji: null },
     });
     mockPersistProfileImageIfNeeded.mockResolvedValue('file:///tmp/persisted.jpg');
     mockNormalizeCanonicalLocale.mockReturnValue('ko-KR');
@@ -79,5 +80,53 @@ describe('profileSheetService.updateProfile', () => {
       language: 'ko-KR',
       targetLanguage: null,
     });
+  });
+});
+
+describe('profileSheetService.updateSettingsLanguage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUserProfile.mockResolvedValue({
+      email: 'user@example.com',
+      settings: { language: 'auto', targetLanguage: 'en', autoPlayAudio: false, selectedEmoji: null },
+    });
+    mockNormalizeCanonicalLocale.mockImplementation((value: string) => value);
+    mockInitializeI18nStore.mockResolvedValue(undefined);
+    mockGetI18nSnapshot.mockReturnValue({
+      settings: { language: 'auto', targetLanguage: null },
+    });
+    mockSetI18nSettings.mockResolvedValue(undefined);
+    mockCreateOrUpdateProfile.mockResolvedValue({ uid: 'usr_1' });
+  });
+
+  it('auto-saves selected settings language to server', async () => {
+    await profileSheetService.updateSettingsLanguage({
+      userId: 'usr_1',
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          language: 'ko-KR',
+        }),
+      })
+    );
+  });
+
+  it('skips server write when selected language is already current', async () => {
+    mockGetUserProfile.mockResolvedValue({
+      email: 'user@example.com',
+      settings: { language: 'ko-KR', targetLanguage: 'en', autoPlayAudio: false, selectedEmoji: null },
+    });
+
+    await profileSheetService.updateSettingsLanguage({
+      userId: 'usr_1',
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
   });
 });

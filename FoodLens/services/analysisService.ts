@@ -7,14 +7,19 @@ import { logger } from './logger_Logic';
 import { SafeStorage } from './storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
 import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers_Logic';
-import { dispatchPhase2SyncQueue, enqueueHistorySync, startPhase2SyncRuntime } from './sync/phase2SyncQueue_Logic';
+import {
+  dispatchPhase2SyncQueue,
+  enqueueHistorySync,
+  getPhase2SyncQueueSnapshot,
+  startPhase2SyncRuntime,
+} from './sync/phase2SyncQueue_Logic';
 import { queryClient } from './queryClient_Logic';
 
 export type { AnalysisRecord } from './analysis/types_Structure';
 
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
-const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
+const HISTORY_SERVER_PULL_COOLDOWN_MS = 5_000;
 const BARCODE_SAVE_DEDUP_WINDOW_MS = 10_000;
 
 const historyServerPullInFlight = new Map<string, Promise<AnalysisRecord[] | null>>();
@@ -38,6 +43,26 @@ const getHistoryDeleteSet = async (userId: string): Promise<Set<string>> => {
 
 const saveHistoryDeleteSet = async (userId: string, deleteSet: Set<string>): Promise<void> => {
   await SafeStorage.set(historyDeleteTombstoneKey(userId), [...deleteSet]);
+};
+
+const getPendingHistoryLocalIds = async (userId: string): Promise<Set<string>> => {
+  try {
+    const queue = await getPhase2SyncQueueSnapshot();
+    const keepIds = new Set<string>();
+    queue.forEach((item) => {
+      if (item.userId !== userId) return;
+      if (item.entity !== 'history') return;
+      if (item.state === 'synced') return;
+      const payloadId =
+        typeof item.payload?.['id'] === 'string' ? (item.payload['id'] as string) : null;
+      const id = (payloadId || item.idempotencyKey || '').trim();
+      if (!id) return;
+      keepIds.add(id);
+    });
+    return keepIds;
+  } catch {
+    return new Set<string>();
+  }
 };
 
 const syncHistoryFromServer = async (
@@ -66,7 +91,10 @@ const syncHistoryFromServer = async (
           typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
         return !deleteSet.has(remoteEntryId);
       });
-      const merged = mergeRemoteHistory(local, filteredRemote);
+      const pendingLocalIds = await getPendingHistoryLocalIds(userId);
+      const merged = mergeRemoteHistory(local, filteredRemote, {
+        keepLocalOnlyIds: pendingLocalIds,
+      });
       await saveAnalyses(userId, merged);
       updateHistoryQueryCache(userId, merged);
       return merged;
@@ -118,6 +146,15 @@ const deleteHistoryItemsFromServer = async (
   userId: string,
   analysisIds: string[]
 ): Promise<void> => {
+  const logHistoryDeleteSyncFailure = (code: string, failedCount?: number): void => {
+    logger.warn('[Phase2Sync] history delete remote sync failed', {
+      request_id: 'unknown',
+      user_id: userId,
+      code,
+      ...(typeof failedCount === 'number' ? { failed_count: failedCount } : {}),
+    });
+  };
+
   if (analysisIds.length === 0) return;
   try {
     startPhase2SyncRuntime();
@@ -133,18 +170,11 @@ const deleteHistoryItemsFromServer = async (
     });
     if (authRequiredOnly) return;
 
-    logger.warn('[Phase2Sync] history delete remote sync failed', {
-      request_id: 'unknown',
-      user_id: userId,
-      code: 'PHASE2_HISTORY_DELETE_SYNC_FAILED',
-      failed_count: failed.length,
-    });
+    logHistoryDeleteSyncFailure('PHASE2_HISTORY_DELETE_SYNC_FAILED', failed.length);
   } catch (error) {
-    logger.warn('[Phase2Sync] history delete remote sync failed', {
-      request_id: 'unknown',
-      user_id: userId,
-      code: error instanceof Error ? error.message : 'PHASE2_HISTORY_DELETE_SYNC_FAILED',
-    });
+    logHistoryDeleteSyncFailure(
+      error instanceof Error ? error.message : 'PHASE2_HISTORY_DELETE_SYNC_FAILED'
+    );
   }
 };
 
@@ -291,6 +321,28 @@ export const AnalysisService = {
             logger.error('Error fetching all analyses', error, 'AnalysisService');
             return [];
         }
+    },
+
+    syncHistoryFromCloud: async (
+      userId: string,
+      options: { force?: boolean } = {}
+    ): Promise<AnalysisRecord[]> => {
+      try {
+        startPhase2SyncRuntime();
+        const local = await getStoredAnalyses(userId);
+        const remote = await syncHistoryFromServer(userId, local, {
+          force: options.force === true,
+        });
+        if (Array.isArray(remote)) return remote;
+        return local;
+      } catch (error) {
+        logger.warn('[Phase2Sync] background history sync failed', {
+          request_id: 'unknown',
+          user_id: userId,
+          code: error instanceof Error ? error.message : 'PHASE2_HISTORY_BACKGROUND_SYNC_FAILED',
+        });
+        return getStoredAnalyses(userId);
+      }
     },
 
     /**
