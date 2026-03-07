@@ -24,6 +24,16 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('@/services/storage', () => ({
+  SafeStorage: {
+    get: jest.fn(),
+    set: jest.fn(),
+    remove: jest.fn(),
+    clearAll: jest.fn(),
+    initialize: jest.fn(),
+  },
+}));
+
 jest.mock('@/services/onboardingGateService_Logic', () => ({
   hasCompletedOnboarding: (...args: unknown[]) => mockHasCompletedOnboarding(...args),
 }));
