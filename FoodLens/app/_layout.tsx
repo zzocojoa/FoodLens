@@ -8,10 +8,11 @@ import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
-import { SafeStorage, initializeSafeStorage, hasSeenOnboarding } from '../services/storage_Logic';
+import { SafeStorage, initializeSafeStorage } from '../services/storage_Logic';
 import { cleanupOrphanedImages } from '../services/imageStorage_Logic';
 import { clearSession, restoreSession } from '../services/auth/sessionManager_Logic';
 import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
+import { hasCompletedOnboarding } from '../services/onboardingGateService_Logic';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -68,7 +69,7 @@ function LayoutContent() {
           cleanupOrphanedImages().catch(() => {});
 
           // Check onboarding status
-          const seen = await hasSeenOnboarding(restoredSession.user.id);
+          const seen = await hasCompletedOnboarding(restoredSession.user.id);
           nextRoute = seen ? '/(tabs)' : '/onboarding';
         }
       } catch (error) {

@@ -7,7 +7,7 @@ import {
   isAuthEmailVerificationChallenge,
 } from '@/services/auth/authApi_Logic';
 import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { hasSeenOnboarding } from '@/services/storage_Logic';
+import { hasCompletedOnboarding } from '@/services/onboardingGateService_Logic';
 import { persistSession } from '@/services/auth/sessionManager_Logic';
 import { useI18n } from '@/features/i18n';
 import {
@@ -469,7 +469,7 @@ export const useLoginScreen = () => {
   };
 
   const completeSignIn = async (userId: string): Promise<void> => {
-    const seenOnboarding = await hasSeenOnboarding(userId);
+    const seenOnboarding = await hasCompletedOnboarding(userId);
     router.replace(seenOnboarding ? '/(tabs)' : '/onboarding');
   };
 
