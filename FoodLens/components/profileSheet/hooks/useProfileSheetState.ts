@@ -71,9 +71,20 @@ export const useProfileSheetState = (userId: string) => {
     const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
     const languageSaveRequestIdRef = useRef(0);
-    const nameDirtyRef = useRef(false);
-    const imageDirtyRef = useRef(false);
-    const travelerLanguageDirtyRef = useRef(false);
+    const dirtyRef = useRef({
+        name: false,
+        image: false,
+        travelerLanguage: false,
+    });
+
+    const isDirty = useCallback(
+        (field: 'name' | 'image' | 'travelerLanguage') => dirtyRef.current[field],
+        [],
+    );
+
+    const markDirty = useCallback((field: 'name' | 'image' | 'travelerLanguage') => {
+        dirtyRef.current[field] = true;
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -87,7 +98,7 @@ export const useProfileSheetState = (userId: string) => {
             const localImage = profile.profileImage?.trim() || undefined;
             if (localImage) {
                 setImageState((previous) => {
-                    if (imageDirtyRef.current) return previous;
+                    if (isDirty('image')) return previous;
                     return previous || localImage;
                 });
                 profileImageAssetIdRef.current = profile.profileImageAssetId?.trim() || undefined;
@@ -95,13 +106,13 @@ export const useProfileSheetState = (userId: string) => {
             const localName = profile.name?.trim();
             if (localName) {
                 setNameState((previous) => {
-                    if (nameDirtyRef.current) return previous;
+                    if (isDirty('name')) return previous;
                     return previous === DEFAULT_NAME ? localName : previous;
                 });
             }
             if (profile.settings?.targetLanguage) {
                 setTravelerLanguageState((previous) => {
-                    if (travelerLanguageDirtyRef.current) return previous;
+                    if (isDirty('travelerLanguage')) return previous;
                     return previous ?? profile.settings.targetLanguage;
                 });
             }
@@ -118,7 +129,7 @@ export const useProfileSheetState = (userId: string) => {
         return () => {
             cancelled = true;
         };
-    }, [userId]);
+    }, [userId, isDirty]);
 
     const isSyncNotConfirmedError = useCallback(
         (error: unknown): boolean => error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
@@ -167,20 +178,20 @@ export const useProfileSheetState = (userId: string) => {
     );
 
     const setImage = useCallback((value: string) => {
-        imageDirtyRef.current = true;
+        markDirty('image');
         profileImageAssetIdRef.current = undefined;
         setImageState(value);
-    }, []);
+    }, [markDirty]);
 
     const setName = useCallback((value: string) => {
-        nameDirtyRef.current = true;
+        markDirty('name');
         setNameState(value);
-    }, []);
+    }, [markDirty]);
 
     const setTravelerLanguage = useCallback((value: string | undefined) => {
-        travelerLanguageDirtyRef.current = true;
+        markDirty('travelerLanguage');
         setTravelerLanguageState(value);
-    }, []);
+    }, [markDirty]);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);
@@ -233,13 +244,13 @@ export const useProfileSheetState = (userId: string) => {
             return;
         }
         if (profile) {
-            if (!nameDirtyRef.current) {
+            if (!isDirty('name')) {
                 setNameState(profile.name || DEFAULT_NAME);
             }
             const nextImage = profile.profileImage?.trim() || undefined;
             const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
             setImageState((previous) => {
-                if (imageDirtyRef.current) return previous;
+                if (isDirty('image')) return previous;
                 if (!nextImage) return previous;
                 if (shouldKeepExistingProfileImage(
                     previous,
@@ -252,7 +263,7 @@ export const useProfileSheetState = (userId: string) => {
                 return nextImage;
             });
             profileImageAssetIdRef.current = nextAssetId;
-            if (!travelerLanguageDirtyRef.current) {
+            if (!isDirty('travelerLanguage')) {
                 setTravelerLanguageState(profile.settings?.targetLanguage);
             }
             const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);
@@ -263,7 +274,7 @@ export const useProfileSheetState = (userId: string) => {
                 return normalizedLanguage;
             });
         }
-    }, [userId]);
+    }, [userId, isDirty]);
 
     const setUiLanguage = useCallback((value: CanonicalLocale) => {
         const normalized = normalizeCanonicalLocale(value);
@@ -288,9 +299,9 @@ export const useProfileSheetState = (userId: string) => {
     }, []);
 
     const resetLocalEdits = useCallback(() => {
-        nameDirtyRef.current = false;
-        imageDirtyRef.current = false;
-        travelerLanguageDirtyRef.current = false;
+        dirtyRef.current.name = false;
+        dirtyRef.current.image = false;
+        dirtyRef.current.travelerLanguage = false;
     }, []);
 
     const handleUpdate = useCallback(
