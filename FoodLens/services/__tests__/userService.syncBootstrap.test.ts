@@ -259,4 +259,73 @@ describe('UserService bootstrap sync guard', () => {
     expect(profile.name).toBe('Same Name');
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
   });
+
+  it('bypasses profile pull cooldown when forceServerRefresh is true', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_717_171_717_171);
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          safetyProfile: {
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedPhase2Api.getProfile.mockResolvedValue({
+      profile: {
+        user_id: 'usr_a',
+        email: 'server@example.com',
+        display_name: 'Server Name',
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-profile',
+    } as never);
+    mockedPhase2Api.getAllergies.mockResolvedValue({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: [],
+        dietary_restrictions: [],
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-allergies',
+    } as never);
+    mockedPhase2Api.getSettings.mockResolvedValue({
+      settings: {
+        user_id: 'usr_a',
+        language: 'ko-KR',
+        auto_play_audio: false,
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-settings',
+    } as never);
+
+    await UserService.getUserProfile('usr_a', {
+      allowBackgroundRefresh: false,
+      forceServerRefresh: true,
+    });
+    await UserService.getUserProfile('usr_a', {
+      allowBackgroundRefresh: false,
+      forceServerRefresh: true,
+    });
+
+    expect(mockedPhase2Api.getProfile).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
 });

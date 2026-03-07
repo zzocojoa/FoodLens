@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 
 type UseProfileSheetEffectsParams = {
   isOpen: boolean;
@@ -37,6 +38,18 @@ export const useProfileSheetEffects = ({
       invalidateProfileLoad();
     };
   }, [isOpen, userId, loadProfile, invalidateProfileLoad]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void loadProfile();
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [isOpen, loadProfile]);
 
   useEffect(() => {
     if (isTravelerLanguageModalVisible) openTravelerLanguageModal();
