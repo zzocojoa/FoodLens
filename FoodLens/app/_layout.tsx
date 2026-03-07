@@ -4,7 +4,7 @@ import { Stack, router as appRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,6 +27,34 @@ SplashScreen.preventAutoHideAsync();
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
 const HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
+
+const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncNow = () => {
+      if (!isMounted) return;
+      callbackRef.current();
+    };
+
+    syncNow();
+    const intervalId = setInterval(syncNow, intervalMs);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncNow();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      appStateSubscription.remove();
+    };
+  }, [intervalMs]);
+};
 
 // Generate or retrieve a persistent device ID
 const initializeDeviceId = async () => {
@@ -53,53 +81,15 @@ export const unstable_settings = {
 function LayoutContent() {
   const { colorScheme } = useTheme();
 
-  useEffect(() => {
-    let isMounted = true;
+  useAppActivePolling(() => {
+    void syncI18nSettingsFromProfile({ pullFromServer: true });
+  }, I18N_PROFILE_SYNC_INTERVAL_MS);
 
-    const syncNow = () => {
-      if (!isMounted) return;
-      void syncI18nSettingsFromProfile({ pullFromServer: true });
-    };
-
-    syncNow();
-    const intervalId = setInterval(syncNow, I18N_PROFILE_SYNC_INTERVAL_MS);
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        syncNow();
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-      appStateSubscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const syncNow = () => {
-      if (!isMounted) return;
-      const userId = getCurrentUserIdSnapshot();
-      if (!userId || userId === 'auth-required') return;
-      void AnalysisService.syncHistoryFromCloud(userId, { force: false });
-    };
-
-    syncNow();
-    const intervalId = setInterval(syncNow, HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS);
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        syncNow();
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-      appStateSubscription.remove();
-    };
-  }, []);
+  useAppActivePolling(() => {
+    const userId = getCurrentUserIdSnapshot();
+    if (!userId || userId === 'auth-required') return;
+    void AnalysisService.syncHistoryFromCloud(userId, { force: false });
+  }, HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS);
 
   useEffect(() => {
     let active = true;

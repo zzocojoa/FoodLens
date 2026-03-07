@@ -146,6 +146,15 @@ const deleteHistoryItemsFromServer = async (
   userId: string,
   analysisIds: string[]
 ): Promise<void> => {
+  const logHistoryDeleteSyncFailure = (code: string, failedCount?: number): void => {
+    logger.warn('[Phase2Sync] history delete remote sync failed', {
+      request_id: 'unknown',
+      user_id: userId,
+      code,
+      ...(typeof failedCount === 'number' ? { failed_count: failedCount } : {}),
+    });
+  };
+
   if (analysisIds.length === 0) return;
   try {
     startPhase2SyncRuntime();
@@ -161,18 +170,11 @@ const deleteHistoryItemsFromServer = async (
     });
     if (authRequiredOnly) return;
 
-    logger.warn('[Phase2Sync] history delete remote sync failed', {
-      request_id: 'unknown',
-      user_id: userId,
-      code: 'PHASE2_HISTORY_DELETE_SYNC_FAILED',
-      failed_count: failed.length,
-    });
+    logHistoryDeleteSyncFailure('PHASE2_HISTORY_DELETE_SYNC_FAILED', failed.length);
   } catch (error) {
-    logger.warn('[Phase2Sync] history delete remote sync failed', {
-      request_id: 'unknown',
-      user_id: userId,
-      code: error instanceof Error ? error.message : 'PHASE2_HISTORY_DELETE_SYNC_FAILED',
-    });
+    logHistoryDeleteSyncFailure(
+      error instanceof Error ? error.message : 'PHASE2_HISTORY_DELETE_SYNC_FAILED'
+    );
   }
 };
 
