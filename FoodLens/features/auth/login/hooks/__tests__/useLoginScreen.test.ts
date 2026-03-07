@@ -6,7 +6,7 @@ import { AuthApiError, AuthSessionTokens } from '@/services/auth/authApi';
 import { LOGIN_ALERT_AUTO_DISMISS_MS, LOGIN_COPY } from '../../constants/login.constants';
 
 const mockRouterReplace = jest.fn();
-const mockHasSeenOnboarding = jest.fn();
+const mockHasCompletedOnboarding = jest.fn();
 const mockPersistSession = jest.fn();
 const mockSubmitEmailAuth = jest.fn();
 const mockVerifyEmailCode = jest.fn();
@@ -25,7 +25,17 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/services/storage', () => ({
-  hasSeenOnboarding: (...args: unknown[]) => mockHasSeenOnboarding(...args),
+  SafeStorage: {
+    get: jest.fn(),
+    set: jest.fn(),
+    remove: jest.fn(),
+    clearAll: jest.fn(),
+    initialize: jest.fn(),
+  },
+}));
+
+jest.mock('@/services/onboardingGateService_Logic', () => ({
+  hasCompletedOnboarding: (...args: unknown[]) => mockHasCompletedOnboarding(...args),
 }));
 
 jest.mock('@/services/auth/sessionManager', () => ({
@@ -94,7 +104,7 @@ describe('useLoginScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockResolveAuthErrorMessage.mockReturnValue('auth failed');
-    mockHasSeenOnboarding.mockResolvedValue(true);
+    mockHasCompletedOnboarding.mockResolvedValue(true);
     mockRequestEmailVerification.mockResolvedValue({
       verificationRequired: true as const,
       verificationMethod: 'email_code' as const,
@@ -190,7 +200,7 @@ describe('useLoginScreen', () => {
         },
       }),
     );
-    mockHasSeenOnboarding.mockResolvedValue(false);
+    mockHasCompletedOnboarding.mockResolvedValue(false);
 
     const { result } = renderHook(() => useLoginScreen());
 
