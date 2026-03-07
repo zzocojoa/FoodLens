@@ -1,6 +1,19 @@
-import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, StyleProp, ViewStyle, ImageStyle } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, StyleProp, ViewStyle, ImageStyle } from 'react-native';
+import { Image as ExpoImage, type ImageSource } from 'expo-image';
 const BARCODE_PATTERN = [2, 1, 3, 1, 2, 4, 1, 2];
+
+const extractMediaRenderAssetId = (uri: string): string | null => {
+    try {
+        const parsed = new URL(uri);
+        const match = parsed.pathname.match(/\/media\/render\/([^/?#]+)/i);
+        return match?.[1] || null;
+    } catch {
+        const withoutQuery = uri.split('?')[0] || uri;
+        const match = withoutQuery.match(/\/media\/render\/([^/?#]+)/i);
+        return match?.[1] || null;
+    }
+};
 
 interface FoodThumbnailProps {
     uri?: string;
@@ -21,6 +34,11 @@ export const FoodThumbnail = ({
 }: FoodThumbnailProps) => {
     const [hasError, setHasError] = useState(false);
     const isBarcodePattern = typeof uri === 'string' && uri.startsWith('barcode://');
+    const resolvedSource = useMemo<ImageSource | null>(() => {
+        if (!uri) return null;
+        const cacheKey = extractMediaRenderAssetId(uri);
+        return cacheKey ? { uri, cacheKey } : { uri };
+    }, [uri]);
 
     if (isBarcodePattern) {
         return (
@@ -42,7 +60,7 @@ export const FoodThumbnail = ({
     }
 
     // If no URI or previous error, show Emoji
-    if (!uri || hasError) {
+    if (!uri || hasError || !resolvedSource) {
         if (!uri) {
             console.log('[FoodThumbnailTrace] fallback:no-uri', { traceId, emoji });
         } else if (hasError) {
@@ -57,10 +75,12 @@ export const FoodThumbnail = ({
 
     return (
         <View style={[styles.container, style]}>
-             <Image 
-                source={{ uri }} 
+             <ExpoImage
+                source={resolvedSource}
                 style={[styles.image, imageStyle]}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={100}
                 onError={() => {
                     setHasError(true);
                 }}

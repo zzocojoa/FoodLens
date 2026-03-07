@@ -8,6 +8,7 @@
 - [ ] Same-account cross-device sync impact reviewed (`profile`, `allergies`, `settings`, `history`, `recent scans`)
 - [ ] OAuth identity split risk reviewed (`provider_user_id` / verified email path)
 - [ ] Required regression checks executed and result attached
+- [ ] Image hydration regression reviewed (`dashboard/profile/recent scans/history/result` cold-start + re-entry)
 
 ## API Contract Impact
 

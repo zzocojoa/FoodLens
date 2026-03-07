@@ -42,7 +42,8 @@ curl --fail-with-body -L \
         "backend-auth-runtime",
         "mobile-auth-runtime",
         "sync-regression",
-        "pr-policy-check"
+        "pr-policy-check",
+        "image-hydration-policy"
       ]
     },
     "enforce_admins": false,

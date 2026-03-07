@@ -123,6 +123,56 @@ const isStableManagedLocalHistoryImage = (value: string | undefined): boolean =>
   return true;
 };
 
+const HISTORY_REMOTE_IMAGE_REUSE_BUFFER_SECONDS = 15;
+
+const isRemoteHistoryImageUri = (value: string | undefined): boolean => {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  return lower.startsWith('http://') || lower.startsWith('https://');
+};
+
+const extractRenderAssetId = (value: string | undefined): string | null => {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    const match = parsed.pathname.match(/\/media\/render\/([^/?#]+)/i);
+    return match?.[1] || null;
+  } catch {
+    const withoutQuery = (value.split('?')[0] || value).trim();
+    const match = withoutQuery.match(/\/media\/render\/([^/?#]+)/i);
+    return match?.[1] || null;
+  }
+};
+
+const extractSignedExpiryMs = (value: string | undefined): number | null => {
+  if (!value) return null;
+  const match = value.match(/[?&]exp=(\d{10,13})/);
+  if (!match) return null;
+  const raw = Number(match[1]);
+  if (!Number.isFinite(raw)) return null;
+  return raw > 1_000_000_000_000 ? raw : raw * 1000;
+};
+
+const shouldKeepExistingRemoteHistoryImage = (
+  existing: AnalysisRecord,
+  incoming: AnalysisRecord
+): boolean => {
+  if (!isRemoteHistoryImageUri(existing.imageUri) || !isRemoteHistoryImageUri(incoming.imageUri)) return false;
+
+  const existingAssetId = existing.imageAssetId || extractRenderAssetId(existing.imageUri);
+  const incomingAssetId = incoming.imageAssetId || extractRenderAssetId(incoming.imageUri);
+  if (!existingAssetId || !incomingAssetId) return false;
+  if (existingAssetId !== incomingAssetId) return false;
+  if (existing.imageUri === incoming.imageUri) return true;
+
+  const expiryMs = extractSignedExpiryMs(existing.imageUri);
+  if (expiryMs === null) {
+    // Static URLs for same asset should stay stable.
+    return true;
+  }
+  return expiryMs - Date.now() > HISTORY_REMOTE_IMAGE_REUSE_BUFFER_SECONDS * 1000;
+};
+
 const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
   if (value === 'male' || value === 'female') return value;
   return undefined;
@@ -428,10 +478,12 @@ export const mergeRemoteHistory = (
     }
 
     const keepLocalImage = isStableManagedLocalHistoryImage(existing.imageUri);
+    const keepExistingRemoteImage = shouldKeepExistingRemoteHistoryImage(existing, item);
     byId.set(item.id, {
       ...existing,
       ...item,
-      imageUri: keepLocalImage ? existing.imageUri : item.imageUri,
+      imageUri: keepLocalImage || keepExistingRemoteImage ? existing.imageUri : item.imageUri,
+      imageRenderUrl: keepExistingRemoteImage ? existing.imageRenderUrl || existing.imageUri : item.imageRenderUrl,
     });
   });
   return [...byId.values()].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
