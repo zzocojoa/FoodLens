@@ -20,6 +20,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --runInBand",
+    "test:sync-regression": "jest --runInBand services/sync/__tests__/phase2Mappers.test.ts services/sync/__tests__/phase2SyncQueue.test.ts features/home/hooks/__tests__/useHomeDashboard.test.ts components/profileSheet/hooks/__tests__/useProfileSheetState.test.ts",
     "i18n:release-gate": "npm run i18n:verify && npx tsc --noEmit && npm run lint"
   },
   "dependencies": {

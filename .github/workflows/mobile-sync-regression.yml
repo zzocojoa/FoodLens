@@ -1,0 +1,30 @@
+name: Mobile Sync Regression
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run sync/image regression tests
+        run: npm run test:sync-regression
