@@ -115,6 +115,7 @@ describe('AnalysisService barcode dedupe', () => {
       'file:///tmp/test.jpg'
     );
 
+    // Save path should hydrate history cache without waiting for screen refetch.
     const cached = queryClient.getQueryData<any[]>(['history', 'usr_test']);
     expect(Array.isArray(cached)).toBe(true);
     expect(cached?.length).toBe(1);
