@@ -12,9 +12,11 @@ import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage } from '../services/storage_Logic';
 import { cleanupOrphanedImages } from '../services/imageStorage_Logic';
 import { clearSession, restoreSession } from '../services/auth/sessionManager_Logic';
+import { getCurrentUserIdSnapshot } from '../services/auth/currentUser_Logic';
 import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
 import { hasCompletedOnboarding } from '../services/onboardingGateService_Logic';
 import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore_Logic';
+import { AnalysisService } from '../services/analysisService_Logic';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -24,6 +26,7 @@ SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
+const HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
 
 // Generate or retrieve a persistent device ID
 const initializeDeviceId = async () => {
@@ -60,6 +63,31 @@ function LayoutContent() {
 
     syncNow();
     const intervalId = setInterval(syncNow, I18N_PROFILE_SYNC_INTERVAL_MS);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncNow();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncNow = () => {
+      if (!isMounted) return;
+      const userId = getCurrentUserIdSnapshot();
+      if (!userId || userId === 'auth-required') return;
+      void AnalysisService.syncHistoryFromCloud(userId, { force: false });
+    };
+
+    syncNow();
+    const intervalId = setInterval(syncNow, HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS);
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         syncNow();
