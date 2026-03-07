@@ -9,11 +9,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+if [[ -z "${GITHUB_TOKEN:-}" && -f "$ENV_FILE" ]]; then
+  token_line="$(grep -E '^GITHUB_TOKEN=' "$ENV_FILE" | tail -n 1 || true)"
+  if [[ -n "$token_line" ]]; then
+    GITHUB_TOKEN="${token_line#GITHUB_TOKEN=}"
+    GITHUB_TOKEN="${GITHUB_TOKEN%\"}"
+    GITHUB_TOKEN="${GITHUB_TOKEN#\"}"
+    export GITHUB_TOKEN
+  fi
 fi
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN is required (set it in .env or export it)}"
@@ -35,7 +38,11 @@ curl --fail-with-body -L \
         "openapi-contracts",
         "backend-contracts",
         "frontend-contracts",
-        "architecture-overview-check"
+        "architecture-overview-check",
+        "backend-auth-runtime",
+        "mobile-auth-runtime",
+        "sync-regression",
+        "pr-policy-check"
       ]
     },
     "enforce_admins": false,

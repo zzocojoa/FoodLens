@@ -1033,11 +1033,17 @@ class InMemoryAuthSessionService:
             )
 
         self._validate_redirect_uri(provider_normalized, redirect_uri)
-        subject = (provider_user_id or "").strip() or self._derive_provider_subject(
-            provider_normalized,
-            code.strip(),
-            state.strip(),
-        )
+        subject = (provider_user_id or "").strip()
+        normalized_email = self._normalize_email(email) if email else None
+        if not subject:
+            if normalized_email:
+                subject = f"email:{normalized_email}"
+            else:
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_IDENTITY_MISSING",
+                    message="Provider identity could not be verified.",
+                    status_code=400,
+                )
         provider_key = f"{provider_normalized}:{subject}"
         resolved_locale = _normalize_resolved_locale(
             locale,
@@ -1051,7 +1057,9 @@ class InMemoryAuthSessionService:
             if user_id:
                 user = self._users_by_id[user_id]
             else:
-                normalized_email = self._normalize_email(email or f"{provider_normalized}_{subject}@foodlens.local")
+                normalized_email = normalized_email or self._normalize_email(
+                    f"{provider_normalized}_{subject}@foodlens.local"
+                )
                 existing_by_email = self._user_id_by_email.get(normalized_email)
                 if existing_by_email:
                     user = self._users_by_id[existing_by_email]
