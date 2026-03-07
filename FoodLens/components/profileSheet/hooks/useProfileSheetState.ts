@@ -70,6 +70,7 @@ export const useProfileSheetState = (userId: string) => {
     const [loading, setLoading] = useState(false);
     const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
+    const languageSaveRequestIdRef = useRef(0);
 
     useEffect(() => {
         let cancelled = false;
@@ -156,7 +157,7 @@ export const useProfileSheetState = (userId: string) => {
     const setImage = useCallback((value: string) => {
         profileImageAssetIdRef.current = undefined;
         setImageState(value);
-    }, []);
+    }, [userId]);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);
@@ -226,7 +227,13 @@ export const useProfileSheetState = (userId: string) => {
             });
             profileImageAssetIdRef.current = nextAssetId;
             setTravelerLanguage(profile.settings?.targetLanguage);
-            setUiLanguageState(normalizeCanonicalLocale(profile.settings?.language));
+            const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);
+            setUiLanguageState((previous) => {
+                if (previous !== normalizedLanguage) {
+                    void setUiLanguageInStore(normalizedLanguage);
+                }
+                return normalizedLanguage;
+            });
         }
     }, [userId]);
 
@@ -234,6 +241,18 @@ export const useProfileSheetState = (userId: string) => {
         const normalized = normalizeCanonicalLocale(value);
         setUiLanguageState(normalized);
         void setUiLanguageInStore(normalized);
+        const requestId = ++languageSaveRequestIdRef.current;
+        void profileSheetService
+            .updateSettingsLanguage({
+                userId,
+                uiLanguage: normalized,
+            })
+            .catch((error) => {
+                if (requestId !== languageSaveRequestIdRef.current) {
+                    return;
+                }
+                console.warn('[ProfileSheet] settings language auto-save failed', error);
+            });
     }, []);
 
     const invalidateProfileLoad = useCallback(() => {

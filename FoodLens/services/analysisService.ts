@@ -14,7 +14,7 @@ export type { AnalysisRecord } from './analysis/types_Structure';
 
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
-const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
+const HISTORY_SERVER_PULL_COOLDOWN_MS = 5_000;
 const BARCODE_SAVE_DEDUP_WINDOW_MS = 10_000;
 
 const historyServerPullInFlight = new Map<string, Promise<AnalysisRecord[] | null>>();

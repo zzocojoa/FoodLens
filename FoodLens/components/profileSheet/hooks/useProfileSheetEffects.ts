@@ -52,6 +52,16 @@ export const useProfileSheetEffects = ({
   }, [isOpen, loadProfile]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const timer = setInterval(() => {
+      void loadProfile();
+    }, 5000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isOpen, loadProfile]);
+
+  useEffect(() => {
     if (isTravelerLanguageModalVisible) openTravelerLanguageModal();
   }, [isTravelerLanguageModalVisible, openTravelerLanguageModal]);
 

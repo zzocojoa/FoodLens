@@ -72,7 +72,8 @@ export function useResultScreen() {
         setIsDateEditOpen(false);
     });
 
-    const imageSize = useImageSize(displayImageUri, imageDimensions, true);
+    const shouldMeasureImageSize = routeFlags.isNew || !!routeFlags.sourceType;
+    const imageSize = useImageSize(displayImageUri, imageDimensions, shouldMeasureImageSize);
     const baseLayoutStyle = React.useMemo(() => {
         const effectiveHeight =
             result?.isBarcode || routeFlags.isBarcodeParam
