@@ -20,7 +20,13 @@ from .email_sender_Logic import (
     build_email_verification_sender_from_env,
 )
 from .email_sender_Structure import LoggingEmailVerificationSender
-from .state_store_Logic import AuthStateStore, AuthStateStoreError, PostgresAuthStateStore
+from .state_store_Logic import (
+    AuthProjectionStore,
+    AuthStateStore,
+    AuthStateStoreError,
+    PostgresAuthProjectionStore,
+    PostgresAuthStateStore,
+)
 
 RefreshStatus = Literal["active", "used", "revoked", "expired"]
 logger = logging.getLogger("foodlens.auth.state")
@@ -347,6 +353,7 @@ class InMemoryAuthSessionService:
         email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
         state_store: AuthStateStore | None = None,
+        projection_store: AuthProjectionStore | None = None,
     ):
         self.access_ttl_seconds = max(60, access_ttl_seconds)
         self.refresh_ttl_seconds = max(24 * 60 * 60, refresh_ttl_days * 24 * 60 * 60)
@@ -365,6 +372,7 @@ class InMemoryAuthSessionService:
             for key, value in (allowed_redirects_by_provider or {}).items()
         }
         self._state_store = state_store
+        self._projection_store = projection_store
 
         self._users_by_id: dict[str, AuthUser] = {}
         self._user_id_by_email: dict[str, str] = {}
@@ -429,6 +437,7 @@ class InMemoryAuthSessionService:
         requested_state_backend = (get_env("AUTH_STATE_BACKEND", "") or "").strip().lower()
         resolved_state_backend = requested_state_backend or ("postgres" if database_url else "memory")
         state_store: AuthStateStore | None = None
+        projection_store: AuthProjectionStore | None = None
         if resolved_state_backend == "postgres":
             if not database_url:
                 raise ValueError("DATABASE_URL is required when AUTH_STATE_BACKEND=postgres.")
@@ -439,6 +448,17 @@ class InMemoryAuthSessionService:
             )
         elif resolved_state_backend != "memory":
             raise ValueError("AUTH_STATE_BACKEND must be one of: memory, postgres.")
+
+        projection_enabled = (get_env("AUTH_NORMALIZED_PROJECTION_ENABLED", "0") or "0").strip() == "1"
+        if projection_enabled:
+            if not database_url:
+                raise ValueError("DATABASE_URL is required when AUTH_NORMALIZED_PROJECTION_ENABLED=1.")
+            projection_store = PostgresAuthProjectionStore(
+                database_url=database_url,
+                table_prefix=(
+                    get_env("AUTH_PROJECTION_TABLE_PREFIX", "auth_projection") or "auth_projection"
+                ).strip(),
+            )
 
         return cls(
             access_ttl_seconds=access_ttl_seconds,
@@ -455,6 +475,7 @@ class InMemoryAuthSessionService:
             email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
             state_store=state_store,
+            projection_store=projection_store,
         )
 
     @property
@@ -470,10 +491,47 @@ class InMemoryAuthSessionService:
         self._restore_runtime_snapshot(snapshot)
 
     def _persist_state_unlocked(self) -> None:
-        if self._state_store is None:
-            return
-        snapshot = self._build_runtime_snapshot()
-        self._state_store.save(snapshot)
+        if self._state_store is not None:
+            snapshot = self._build_runtime_snapshot()
+            self._state_store.save(snapshot)
+        if self._projection_store is not None:
+            try:
+                projection_snapshot = self._build_projection_snapshot()
+                self._projection_store.save_projection(projection_snapshot)
+            except Exception as error:  # pragma: no cover - defensive integration guard
+                logger.warning("[Auth] normalized projection save failed: %s", error)
+
+    def _build_projection_snapshot(self) -> dict[str, object]:
+        users = sorted(self._users_by_id.values(), key=lambda item: item.user_id)
+        profiles = sorted(self._profiles_by_user_id.values(), key=lambda item: item.user_id)
+        allergies = sorted(self._allergies_by_user_id.values(), key=lambda item: item.user_id)
+        settings = sorted(self._settings_by_user_id.values(), key=lambda item: item.user_id)
+        history: list[UserHistoryRecord] = []
+        for records in self._history_by_user_id.values():
+            history.extend(records)
+        history = sorted(history, key=lambda item: item.history_id)
+        media_assets = sorted(self._media_assets_by_id.values(), key=lambda item: item.asset_id)
+        return {
+            "users": [
+                {
+                    "user_id": user.user_id,
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "provider": user.provider,
+                    "provider_subject": user.provider_subject,
+                    "locale": user.locale,
+                    "email_verified_at": _to_iso8601(user.email_verified_at) if user.email_verified_at else None,
+                    "created_at": _to_iso8601(user.created_at),
+                    "updated_at": _to_iso8601(user.updated_at),
+                }
+                for user in users
+            ],
+            "profiles": [self._serialize_profile(profile) for profile in profiles],
+            "allergies": [self._serialize_allergies(profile) for profile in allergies],
+            "settings": [self._serialize_settings(item) for item in settings],
+            "history": [self._serialize_history_item(item) for item in history],
+            "media_assets": [self._serialize_media_asset(item) for item in media_assets],
+        }
 
     def _build_runtime_snapshot(self) -> dict[str, object]:
         payload = {
