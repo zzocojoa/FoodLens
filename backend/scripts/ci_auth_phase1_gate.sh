@@ -8,6 +8,9 @@ if [ ! -x "$PYTHON_BIN" ]; then
   PYTHON_BIN="python3"
 fi
 
+# Guard against regression that can split same social account into different user_id.
+"$PYTHON_BIN" backend/scripts/ci_oauth_identity_guard.py
+
 # Keep auth runtime tests deterministic in CI; live-provider smoke is handled separately.
 export AUTH_KAKAO_CODE_VERIFY_ENABLED=0
 

@@ -1,0 +1,22 @@
+name: PR Policy
+
+on:
+  pull_request:
+
+jobs:
+  pr-policy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate PR policy checklist
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python .github/scripts/validate_pr_policy.py

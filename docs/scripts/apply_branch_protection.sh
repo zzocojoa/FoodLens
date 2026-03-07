@@ -35,7 +35,11 @@ curl --fail-with-body -L \
         "openapi-contracts",
         "backend-contracts",
         "frontend-contracts",
-        "architecture-overview-check"
+        "architecture-overview-check",
+        "backend-auth-runtime",
+        "mobile-auth-runtime",
+        "sync-regression",
+        "pr-policy-check"
       ]
     },
     "enforce_admins": false,
