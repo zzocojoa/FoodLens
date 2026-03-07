@@ -1,6 +1,7 @@
 import { AnalysisService } from '../analysisService';
 import { getStoredAnalyses, saveAnalyses } from '../analysis/storage_Logic';
 import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue_Logic';
+import { queryClient } from '../queryClient_Logic';
 
 jest.mock('../analysis/storage_Logic', () => ({
   getStoredAnalyses: jest.fn(),
@@ -52,6 +53,7 @@ const mockedDispatchPhase2SyncQueue = dispatchPhase2SyncQueue as jest.MockedFunc
 describe('AnalysisService barcode dedupe', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient.clear();
   });
 
   it('skips duplicate barcode saves within short window', async () => {
@@ -98,5 +100,26 @@ describe('AnalysisService barcode dedupe', () => {
     expect(mockedEnqueueHistorySync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
   });
-});
 
+  it('updates history query cache immediately after a successful save', async () => {
+    mockedGetStoredAnalyses.mockResolvedValue([]);
+
+    const saved = await AnalysisService.saveAnalysis(
+      'usr_test',
+      {
+        foodName: 'Test cereal',
+        safetyStatus: 'SAFE',
+        ingredients: [],
+        raw_data: {},
+      } as any,
+      'file:///tmp/test.jpg'
+    );
+
+    // Save path should hydrate history cache without waiting for screen refetch.
+    const cached = queryClient.getQueryData<any[]>(['history', 'usr_test']);
+    expect(Array.isArray(cached)).toBe(true);
+    expect(cached?.length).toBe(1);
+    expect(cached?.[0]?.id).toBe(saved.id);
+    expect(cached?.[0]?.foodName).toBe('Test cereal');
+  });
+});
