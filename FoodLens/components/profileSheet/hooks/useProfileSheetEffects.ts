@@ -11,6 +11,7 @@ type UseProfileSheetEffectsParams = {
   openUiLanguageModal: () => void;
   loadProfile: () => Promise<void>;
   invalidateProfileLoad: () => void;
+  resetLocalEdits: () => void;
 };
 
 export const useProfileSheetEffects = ({
@@ -23,6 +24,7 @@ export const useProfileSheetEffects = ({
   openUiLanguageModal,
   loadProfile,
   invalidateProfileLoad,
+  resetLocalEdits,
 }: UseProfileSheetEffectsParams) => {
   useEffect(() => {
     if (isOpen) openProfile();
@@ -30,6 +32,7 @@ export const useProfileSheetEffects = ({
 
   useEffect(() => {
     if (!isOpen) {
+      resetLocalEdits();
       invalidateProfileLoad();
       return;
     }
@@ -37,7 +40,7 @@ export const useProfileSheetEffects = ({
     return () => {
       invalidateProfileLoad();
     };
-  }, [isOpen, userId, loadProfile, invalidateProfileLoad]);
+  }, [isOpen, userId, loadProfile, invalidateProfileLoad, resetLocalEdits]);
 
   useEffect(() => {
     if (!isOpen) return;

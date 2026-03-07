@@ -133,6 +133,31 @@ describe('useProfileSheetState conflict handling', () => {
     expect(result.current.image).toBe('https://cdn.example.com/local-selected.jpg');
   });
 
+  it('does not overwrite editing name during periodic profile reload', async () => {
+    mockLoadProfile.mockResolvedValue({
+      uid: 'usr_profile',
+      name: 'Original Name',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setName('Typing New Name');
+    });
+
+    await act(async () => {
+      await result.current.loadProfile();
+    });
+
+    expect(result.current.name).toBe('Typing New Name');
+  });
+
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
     const firstProfile = {
       uid: 'usr_profile',

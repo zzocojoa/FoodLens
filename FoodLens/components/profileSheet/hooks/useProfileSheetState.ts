@@ -61,9 +61,9 @@ export const useProfileSheetState = (userId: string) => {
         : 'auto';
     const initialAssetId = initialProfile?.profileImageAssetId?.trim() || undefined;
 
-    const [name, setName] = useState(initialName);
+    const [name, setNameState] = useState(initialName);
     const [image, setImageState] = useState<string | undefined>(initialImage);
-    const [travelerLanguage, setTravelerLanguage] = useState<string | undefined>(initialTravelerLanguage);
+    const [travelerLanguage, setTravelerLanguageState] = useState<string | undefined>(initialTravelerLanguage);
     const [uiLanguage, setUiLanguageState] = useState<CanonicalLocale>(initialUiLanguage);
     const [travelerLangModalVisible, setTravelerLangModalVisible] = useState(false);
     const [uiLangModalVisible, setUiLangModalVisible] = useState(false);
@@ -71,6 +71,9 @@ export const useProfileSheetState = (userId: string) => {
     const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
     const languageSaveRequestIdRef = useRef(0);
+    const nameDirtyRef = useRef(false);
+    const imageDirtyRef = useRef(false);
+    const travelerLanguageDirtyRef = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -83,15 +86,24 @@ export const useProfileSheetState = (userId: string) => {
 
             const localImage = profile.profileImage?.trim() || undefined;
             if (localImage) {
-                setImageState((previous) => previous || localImage);
+                setImageState((previous) => {
+                    if (imageDirtyRef.current) return previous;
+                    return previous || localImage;
+                });
                 profileImageAssetIdRef.current = profile.profileImageAssetId?.trim() || undefined;
             }
             const localName = profile.name?.trim();
             if (localName) {
-                setName((previous) => (previous === DEFAULT_NAME ? localName : previous));
+                setNameState((previous) => {
+                    if (nameDirtyRef.current) return previous;
+                    return previous === DEFAULT_NAME ? localName : previous;
+                });
             }
             if (profile.settings?.targetLanguage) {
-                setTravelerLanguage((previous) => previous ?? profile.settings.targetLanguage);
+                setTravelerLanguageState((previous) => {
+                    if (travelerLanguageDirtyRef.current) return previous;
+                    return previous ?? profile.settings.targetLanguage;
+                });
             }
             if (profile.settings?.language) {
                 setUiLanguageState((previous) =>
@@ -155,8 +167,19 @@ export const useProfileSheetState = (userId: string) => {
     );
 
     const setImage = useCallback((value: string) => {
+        imageDirtyRef.current = true;
         profileImageAssetIdRef.current = undefined;
         setImageState(value);
+    }, []);
+
+    const setName = useCallback((value: string) => {
+        nameDirtyRef.current = true;
+        setNameState(value);
+    }, []);
+
+    const setTravelerLanguage = useCallback((value: string | undefined) => {
+        travelerLanguageDirtyRef.current = true;
+        setTravelerLanguageState(value);
     }, []);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
@@ -210,10 +233,13 @@ export const useProfileSheetState = (userId: string) => {
             return;
         }
         if (profile) {
-            setName(profile.name || DEFAULT_NAME);
+            if (!nameDirtyRef.current) {
+                setNameState(profile.name || DEFAULT_NAME);
+            }
             const nextImage = profile.profileImage?.trim() || undefined;
             const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
             setImageState((previous) => {
+                if (imageDirtyRef.current) return previous;
                 if (!nextImage) return previous;
                 if (shouldKeepExistingProfileImage(
                     previous,
@@ -226,7 +252,9 @@ export const useProfileSheetState = (userId: string) => {
                 return nextImage;
             });
             profileImageAssetIdRef.current = nextAssetId;
-            setTravelerLanguage(profile.settings?.targetLanguage);
+            if (!travelerLanguageDirtyRef.current) {
+                setTravelerLanguageState(profile.settings?.targetLanguage);
+            }
             const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);
             setUiLanguageState((previous) => {
                 if (previous !== normalizedLanguage) {
@@ -259,6 +287,12 @@ export const useProfileSheetState = (userId: string) => {
         loadProfileRequestIdRef.current += 1;
     }, []);
 
+    const resetLocalEdits = useCallback(() => {
+        nameDirtyRef.current = false;
+        imageDirtyRef.current = false;
+        travelerLanguageDirtyRef.current = false;
+    }, []);
+
     const handleUpdate = useCallback(
         async (onUpdate: () => void | Promise<void>, onClose: () => void) => {
             setLoading(true);
@@ -281,6 +315,7 @@ export const useProfileSheetState = (userId: string) => {
                 }
 
                 await handlePendingConflicts();
+                resetLocalEdits();
                 await Promise.resolve(onUpdate());
                 onClose();
             } catch (error) {
@@ -295,7 +330,7 @@ export const useProfileSheetState = (userId: string) => {
                 setLoading(false);
             }
         },
-        [handlePendingConflicts, image, travelerLanguage, name, uiLanguage, userId, t, isSyncNotConfirmedError]
+        [handlePendingConflicts, image, travelerLanguage, name, uiLanguage, userId, t, isSyncNotConfirmedError, resetLocalEdits]
     );
 
     const pickImage = useCallback(async (useCamera: boolean) => {
@@ -336,6 +371,7 @@ export const useProfileSheetState = (userId: string) => {
         loading,
         loadProfile,
         invalidateProfileLoad,
+        resetLocalEdits,
         handleUpdate,
         pickImage,
         avatars: DEFAULT_AVATARS,
