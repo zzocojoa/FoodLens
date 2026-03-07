@@ -496,6 +496,30 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(redirect_mismatch.status_code, 400)
             self.assertEqual(redirect_mismatch.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
 
+    def test_oauth_requires_stable_provider_identity_or_email(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-code-no-identity",
+                    "state": "state-no-identity",
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                },
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"]["code"], "AUTH_PROVIDER_IDENTITY_MISSING")
+
     def test_kakao_oauth_live_verification_uses_client_secret(self):
         mocked_token_response = Mock()
         mocked_token_response.status_code = 200
