@@ -27,8 +27,7 @@ SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
-const HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
-const PROFILE_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
+const CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
 
 const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
   const callbackRef = useRef(callback);
@@ -82,22 +81,27 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
+  const runWithAuthenticatedUser = (run: (userId: string) => void) => {
+    const userId = getCurrentUserIdSnapshot();
+    if (!userId || userId === 'auth-required') return;
+    run(userId);
+  };
 
   useAppActivePolling(() => {
     void syncI18nSettingsFromProfile({ pullFromServer: true });
   }, I18N_PROFILE_SYNC_INTERVAL_MS);
 
   useAppActivePolling(() => {
-    const userId = getCurrentUserIdSnapshot();
-    if (!userId || userId === 'auth-required') return;
-    void AnalysisService.syncHistoryFromCloud(userId, { force: false });
-  }, HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS);
+    runWithAuthenticatedUser((userId) => {
+      void AnalysisService.syncHistoryFromCloud(userId, { force: false });
+    });
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
 
   useAppActivePolling(() => {
-    const userId = getCurrentUserIdSnapshot();
-    if (!userId || userId === 'auth-required') return;
-    void UserService.syncProfileFromCloud(userId, { force: false });
-  }, PROFILE_CROSS_DEVICE_SYNC_INTERVAL_MS);
+    runWithAuthenticatedUser((userId) => {
+      void UserService.syncProfileFromCloud(userId, { force: false });
+    });
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
 
   useEffect(() => {
     let active = true;
