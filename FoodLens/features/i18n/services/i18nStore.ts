@@ -1,7 +1,17 @@
 import { useSyncExternalStore } from 'react';
 import { DEFAULT_LANGUAGE } from '../constants';
 import { CanonicalLocale, I18nState, LanguageSettings } from '../types';
-import { loadLanguageSettings, resolveEffectiveLocale, saveLanguageSettings } from './languageService_Logic';
+import type { UserProfile } from '@/models/User';
+import { SafeStorage } from '@/services/storage_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
+import {
+  loadLanguageSettings,
+  normalizeCanonicalLocale,
+  normalizeLanguageSettings,
+  resolveEffectiveLocale,
+  saveLanguageSettings,
+} from './languageService_Logic';
 
 type Listener = () => void;
 
@@ -29,12 +39,53 @@ const setState = (next: I18nState) => {
   emit();
 };
 
+const readProfileLanguageSettingsSnapshot = (): Partial<LanguageSettings> | null => {
+  const userId = getCurrentUserIdSnapshot();
+  if (userId && userId !== 'auth-required') {
+    const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+    if (scoped?.settings) {
+      const normalizedTarget = scoped.settings.targetLanguage
+        ? normalizeCanonicalLocale(scoped.settings.targetLanguage)
+        : null;
+      return {
+        language: normalizeCanonicalLocale(scoped.settings.language),
+        targetLanguage: normalizedTarget === 'auto' ? null : normalizedTarget,
+      };
+    }
+  }
+
+  const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+  if (!legacy?.settings) return null;
+  const normalizedLegacyTarget = legacy.settings.targetLanguage
+    ? normalizeCanonicalLocale(legacy.settings.targetLanguage)
+    : null;
+  return {
+    language: normalizeCanonicalLocale(legacy.settings.language),
+    targetLanguage: normalizedLegacyTarget === 'auto' ? null : normalizedLegacyTarget,
+  };
+};
+
 export const initializeI18nStore = async () => {
   if (initialized) return;
   if (initializePromise) return initializePromise;
 
   initializePromise = (async () => {
-    const settings = await loadLanguageSettings();
+    const persistedSettings = await loadLanguageSettings();
+    const profileSettings = readProfileLanguageSettingsSnapshot();
+    const settings = normalizeLanguageSettings({
+      language: profileSettings?.language ?? persistedSettings.language,
+      targetLanguage: profileSettings?.targetLanguage ?? persistedSettings.targetLanguage,
+    });
+    if (
+      settings.language !== persistedSettings.language ||
+      settings.targetLanguage !== persistedSettings.targetLanguage
+    ) {
+      await saveLanguageSettings(settings);
+    }
+    if (state.ready) {
+      initialized = true;
+      return;
+    }
     setState({
       settings,
       locale: resolveEffectiveLocale(settings),
@@ -54,12 +105,14 @@ export const subscribeI18n = (listener: Listener) => {
 };
 
 export const setI18nSettings = async (nextSettings: LanguageSettings) => {
-  await saveLanguageSettings(nextSettings);
+  const normalizedSettings = normalizeLanguageSettings(nextSettings);
+  await saveLanguageSettings(normalizedSettings);
   setState({
-    settings: nextSettings,
-    locale: resolveEffectiveLocale(nextSettings),
+    settings: normalizedSettings,
+    locale: resolveEffectiveLocale(normalizedSettings),
     ready: true,
   });
+  initialized = true;
 };
 
 export const setUiLanguage = async (nextLanguage: CanonicalLocale) => {

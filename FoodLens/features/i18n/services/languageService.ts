@@ -1,4 +1,5 @@
 import { SafeStorage } from '@/services/storage_Logic';
+import { NativeModules, Platform } from 'react-native';
 import {
   DEFAULT_FALLBACK_LOCALE,
   DEFAULT_LANGUAGE,
@@ -9,6 +10,41 @@ import {
 import { CanonicalLocale, LanguageSettings, ResolvedLocale } from '../types';
 
 const AUTO_LANGUAGE: CanonicalLocale = 'auto';
+let lastLocaleDebugSignature: string | null = null;
+
+const emitDeviceLocaleDebugLog = (payload: Record<string, unknown>) => {
+  if (!__DEV__) return;
+  const signature = JSON.stringify(payload);
+  if (signature === lastLocaleDebugSignature) return;
+  lastLocaleDebugSignature = signature;
+  console.log('[i18n][device-locale]', signature);
+};
+
+const getIosPreferredLocale = (): string | null => {
+  if (Platform.OS !== 'ios') return null;
+  const settingsModule = (NativeModules as any)?.SettingsManager;
+  const settings = settingsModule?.settings && typeof settingsModule.settings === 'object'
+    ? settingsModule.settings
+    : settingsModule;
+
+  if (!settings || typeof settings !== 'object') return null;
+
+  const appleLanguages = settings['AppleLanguages'];
+  if (Array.isArray(appleLanguages) && typeof appleLanguages[0] === 'string') {
+    const preferred = appleLanguages[0].trim();
+    if (preferred.length > 0) return preferred;
+  }
+
+  const appleLocale = typeof settings['AppleLocale'] === 'string' ? settings['AppleLocale'] : null;
+  if (appleLocale && appleLocale.trim().length > 0) return appleLocale;
+
+  const localeIdentifier = (NativeModules as any)?.I18nManager?.localeIdentifier;
+  if (typeof localeIdentifier === 'string' && localeIdentifier.trim().length > 0) {
+    return localeIdentifier;
+  }
+
+  return null;
+};
 
 const toResolvedLocale = (value: string): ResolvedLocale | null => {
   const normalized = value.toLowerCase();
@@ -20,6 +56,22 @@ const toResolvedLocale = (value: string): ResolvedLocale | null => {
   if (normalized.startsWith('th')) return 'th-TH';
   if (normalized.startsWith('vi')) return 'vi-VN';
 
+  return null;
+};
+
+const toResolvedLocaleFromRegion = (value: string): ResolvedLocale | null => {
+  const normalized = value.replace(/_/g, '-');
+  const parts = normalized.split('-');
+  if (parts.length < 2) return null;
+  const region = parts[parts.length - 1]?.toUpperCase();
+  if (!region) return null;
+
+  if (region === 'KR') return 'ko-KR';
+  if (region === 'US') return 'en-US';
+  if (region === 'JP') return 'ja-JP';
+  if (region === 'CN' || region === 'TW' || region === 'HK') return 'zh-Hans';
+  if (region === 'TH') return 'th-TH';
+  if (region === 'VN') return 'vi-VN';
   return null;
 };
 
@@ -57,8 +109,71 @@ export const normalizeLanguageSettings = (
 };
 
 export const getDeviceLocale = (): ResolvedLocale => {
-  const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  return toResolvedLocale(locale) || DEFAULT_FALLBACK_LOCALE;
+  const iosPreferred = getIosPreferredLocale();
+  const hasJsi = typeof (globalThis as { nativeCallSyncHook?: unknown }).nativeCallSyncHook === 'function';
+  const intlLocale = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().locale;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (iosPreferred) {
+    const resolvedIosLocale = toResolvedLocale(iosPreferred);
+    if (resolvedIosLocale) {
+      emitDeviceLocaleDebugLog({
+        source: 'iosPreferred',
+        platform: Platform.OS,
+        hasJsi,
+        iosPreferred,
+        intlLocale,
+        resolved: resolvedIosLocale,
+      });
+      return resolvedIosLocale;
+    }
+  }
+
+  if (intlLocale) {
+    if (Platform.OS === 'ios' && !hasJsi) {
+      const resolvedFromRegion = toResolvedLocaleFromRegion(intlLocale);
+      if (resolvedFromRegion) {
+        emitDeviceLocaleDebugLog({
+          source: 'intl-region-fallback',
+          platform: Platform.OS,
+          hasJsi,
+          iosPreferred,
+          intlLocale,
+          resolved: resolvedFromRegion,
+        });
+        return resolvedFromRegion;
+      }
+    }
+
+    const resolvedIntlLocale = toResolvedLocale(intlLocale);
+    if (resolvedIntlLocale) {
+      emitDeviceLocaleDebugLog({
+        source: 'intl',
+        platform: Platform.OS,
+        hasJsi,
+        iosPreferred,
+        intlLocale,
+        resolved: resolvedIntlLocale,
+      });
+      return resolvedIntlLocale;
+    }
+  }
+
+  emitDeviceLocaleDebugLog({
+    source: 'fallback',
+    platform: Platform.OS,
+    hasJsi,
+    iosPreferred,
+    intlLocale,
+    resolved: DEFAULT_FALLBACK_LOCALE,
+  });
+
+  return DEFAULT_FALLBACK_LOCALE;
 };
 
 export const resolveEffectiveLocale = (settings: LanguageSettings): ResolvedLocale => {

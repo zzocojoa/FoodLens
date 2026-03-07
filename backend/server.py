@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Que
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -9,9 +10,10 @@ import io
 import logging
 import os
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from urllib.parse import urlencode
-from typing import Any
+from typing import Any, Awaitable, Callable
 import requests
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -160,6 +162,14 @@ async def _startup() -> None:
     app.state.media_public_base_url = _env_str("MEDIA_PUBLIC_BASE_URL", _env_str("AUTH_PUBLIC_BASE_URL", ""))
     app.state.media_render_default_width = _env_int("MEDIA_RENDER_DEFAULT_WIDTH", 512)
     app.state.media_render_default_quality = _env_int("MEDIA_RENDER_DEFAULT_QUALITY", 75)
+    app.state.media_render_sign_bucket_seconds = max(0, _env_int("MEDIA_RENDER_SIGN_BUCKET_SECONDS", 3600))
+    app.state.media_render_cache_enabled = os.environ.get("MEDIA_RENDER_CACHE_ENABLED", "1").strip() == "1"
+    app.state.media_render_cache_max_items = max(1, _env_int("MEDIA_RENDER_CACHE_MAX_ITEMS", 256))
+    app.state.media_render_cache_ttl_seconds = max(1, _env_int("MEDIA_RENDER_CACHE_TTL_SECONDS", 300))
+    app.state.media_render_cache = OrderedDict()
+    app.state.media_render_cache_lock = asyncio.Lock()
+    app.state.media_render_inflight_tasks = {}
+    app.state.media_render_inflight_lock = asyncio.Lock()
     logger.info(
         "[Auth] state backend initialized backend=%s",
         getattr(app.state.auth_service, "state_backend", "memory"),
@@ -341,7 +351,13 @@ def _build_media_render_url(
     final_width = width or default_width
     final_quality = quality or default_quality
     ttl_seconds = int(getattr(app.state, "media_render_url_ttl_seconds", 86_400))
-    exp = int(time.time()) + max(60, ttl_seconds)
+    sign_bucket_seconds = int(getattr(app.state, "media_render_sign_bucket_seconds", 3600))
+    now_ts = int(time.time())
+    exp = _compute_media_render_expiration(
+        now_ts=now_ts,
+        ttl_seconds=ttl_seconds,
+        sign_bucket_seconds=sign_bucket_seconds,
+    )
     sig = _media_render_signature(asset_id, final_width, final_quality, fmt, exp)
     base_url = _resolve_media_public_base_url(request)
     query = urlencode({"w": final_width, "q": final_quality, "fmt": fmt, "exp": exp, "sig": sig})
@@ -359,6 +375,106 @@ def _verify_media_render_signature(
 ) -> bool:
     expected = _media_render_signature(asset_id, width, quality, fmt, exp)
     return hmac.compare_digest(expected, sig)
+
+
+def _compute_media_render_expiration(
+    *,
+    now_ts: int,
+    ttl_seconds: int,
+    sign_bucket_seconds: int,
+) -> int:
+    safe_ttl = max(60, int(ttl_seconds))
+    fallback_exp = now_ts + safe_ttl
+    if sign_bucket_seconds <= 0:
+        return fallback_exp
+    safe_bucket_seconds = max(60, int(sign_bucket_seconds))
+    bucket_end = ((now_ts // safe_bucket_seconds) + 1) * safe_bucket_seconds
+    exp = min(fallback_exp, bucket_end)
+    if exp <= now_ts:
+        return fallback_exp
+    return exp
+
+
+def _media_render_variant_key(
+    *,
+    asset_id: str,
+    width: int,
+    quality: int,
+    target_format: str,
+) -> str:
+    return f"{asset_id}:{width}:{quality}:{target_format}"
+
+
+async def _media_render_cache_get(variant_key: str, now_ts: int) -> tuple[bytes, str] | None:
+    if not bool(getattr(app.state, "media_render_cache_enabled", False)):
+        return None
+    cache = getattr(app.state, "media_render_cache", None)
+    lock = getattr(app.state, "media_render_cache_lock", None)
+    if cache is None or lock is None:
+        return None
+    async with lock:
+        entry = cache.get(variant_key)
+        if not entry:
+            return None
+        expires_at = int(entry.get("expires_at", 0))
+        if expires_at <= now_ts:
+            cache.pop(variant_key, None)
+            return None
+        cache.move_to_end(variant_key)
+        return entry["bytes_data"], entry["content_type"]
+
+
+async def _media_render_cache_set(
+    variant_key: str,
+    *,
+    bytes_data: bytes,
+    content_type: str,
+    now_ts: int,
+) -> None:
+    if not bool(getattr(app.state, "media_render_cache_enabled", False)):
+        return
+    cache = getattr(app.state, "media_render_cache", None)
+    lock = getattr(app.state, "media_render_cache_lock", None)
+    if cache is None or lock is None:
+        return
+    ttl_seconds = max(1, int(getattr(app.state, "media_render_cache_ttl_seconds", 300)))
+    max_items = max(1, int(getattr(app.state, "media_render_cache_max_items", 256)))
+    async with lock:
+        cache[variant_key] = {
+            "bytes_data": bytes_data,
+            "content_type": content_type,
+            "expires_at": now_ts + ttl_seconds,
+        }
+        cache.move_to_end(variant_key)
+        while len(cache) > max_items:
+            cache.popitem(last=False)
+
+
+async def _run_media_render_singleflight(
+    variant_key: str,
+    render_factory: Callable[[], Awaitable[tuple[bytes, str, str, str]]],
+) -> tuple[bytes, str, str, str]:
+    inflight_tasks = getattr(app.state, "media_render_inflight_tasks", None)
+    inflight_lock = getattr(app.state, "media_render_inflight_lock", None)
+    if inflight_tasks is None or inflight_lock is None:
+        return await render_factory()
+
+    created = False
+    async with inflight_lock:
+        task = inflight_tasks.get(variant_key)
+        if task is None:
+            task = asyncio.create_task(render_factory())
+            inflight_tasks[variant_key] = task
+            created = True
+
+    try:
+        return await task
+    finally:
+        if created:
+            async with inflight_lock:
+                existing = inflight_tasks.get(variant_key)
+                if existing is task:
+                    inflight_tasks.pop(variant_key, None)
 
 
 def _resolve_media_format(fmt: str, accept_header: str) -> str:
@@ -1860,23 +1976,68 @@ async def get_media_render(
 
     try:
         started_at = time.time()
-        asset = auth_service.get_media_asset(asset_id=asset_id)
-        source = media_storage.fetch_original(object_key=str(asset["object_key"]))
-        rendered_bytes, content_type = await run_in_threadpool(
-            _render_image_bytes,
-            source_bytes=source.bytes_data,
-            target_width=final_width,
-            target_quality=final_quality,
+        variant_key = _media_render_variant_key(
+            asset_id=asset_id,
+            width=final_width,
+            quality=final_quality,
             target_format=final_fmt,
         )
-        auth_service.touch_media_asset(asset_id=asset_id)
+        cached = await _media_render_cache_get(variant_key, now_ts)
+        if cached is not None:
+            rendered_bytes, content_type = cached
+            remaining_ttl = max(1, exp - now_ts)
+            logger.info(
+                "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
+                request_id,
+                "unknown",
+                asset_id,
+                "unknown",
+                content_type,
+                int((time.time() - started_at) * 1000),
+                True,
+            )
+            return Response(
+                content=rendered_bytes,
+                media_type=content_type,
+                headers={
+                    "Cache-Control": f"public, max-age={remaining_ttl}",
+                    "Vary": "Accept",
+                    "X-Request-Id": request_id,
+                },
+            )
+
+        async def _render_variant() -> tuple[bytes, str, str, str]:
+            asset = auth_service.get_media_asset(asset_id=asset_id)
+            source = media_storage.fetch_original(object_key=str(asset["object_key"]))
+            rendered_bytes, content_type = await run_in_threadpool(
+                _render_image_bytes,
+                source_bytes=source.bytes_data,
+                target_width=final_width,
+                target_quality=final_quality,
+                target_format=final_fmt,
+            )
+            auth_service.touch_media_asset(asset_id=asset_id)
+            owner_id = str(asset.get("user_id") or "unknown")
+            scope = str(asset.get("scope") or "unknown")
+            await _media_render_cache_set(
+                variant_key,
+                bytes_data=rendered_bytes,
+                content_type=content_type,
+                now_ts=int(time.time()),
+            )
+            return rendered_bytes, content_type, owner_id, scope
+
+        rendered_bytes, content_type, owner_id, asset_scope = await _run_media_render_singleflight(
+            variant_key,
+            _render_variant,
+        )
         remaining_ttl = max(1, exp - now_ts)
         logger.info(
             "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
             request_id,
-            str(asset.get("user_id") or "unknown"),
+            owner_id,
             asset_id,
-            str(asset.get("scope") or "unknown"),
+            asset_scope,
             content_type,
             int((time.time() - started_at) * 1000),
             False,

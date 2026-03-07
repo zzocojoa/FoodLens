@@ -6,6 +6,16 @@ import {
   initializeI18nStore,
   setI18nSettings,
 } from '@/features/i18n/services/i18nStore_Logic';
+import type { CanonicalLocale } from '@/features/i18n/types';
+
+const applyUiLanguageToI18nStore = async (language: CanonicalLocale): Promise<void> => {
+  await initializeI18nStore();
+  const i18nSettings = getI18nSnapshot().settings;
+  await setI18nSettings({
+    language,
+    targetLanguage: i18nSettings.targetLanguage,
+  });
+};
 
 export const profileSheetService = {
   async loadProfile(userId: string) {
@@ -34,21 +44,23 @@ export const profileSheetService = {
       params.uiLanguage || existing.settings?.language || 'auto'
     );
 
-    await UserService.CreateOrUpdateProfile(params.userId, 'user@example.com', {
-      name: params.name,
-      profileImage: profileImageToSave,
-      settings: {
-        targetLanguage: params.travelerLanguage,
-        language: normalizedUiLanguage,
-        autoPlayAudio: false,
-      },
-    });
+    try {
+      await UserService.CreateOrUpdateProfile(params.userId, 'user@example.com', {
+        name: params.name,
+        profileImage: profileImageToSave,
+        settings: {
+          targetLanguage: params.travelerLanguage,
+          language: normalizedUiLanguage,
+          autoPlayAudio: false,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+        await applyUiLanguageToI18nStore(normalizedUiLanguage);
+      }
+      throw error;
+    }
 
-    await initializeI18nStore();
-    const i18nSettings = getI18nSnapshot().settings;
-    await setI18nSettings({
-      language: normalizedUiLanguage,
-      targetLanguage: i18nSettings.targetLanguage,
-    });
+    await applyUiLanguageToI18nStore(normalizedUiLanguage);
   },
 };
