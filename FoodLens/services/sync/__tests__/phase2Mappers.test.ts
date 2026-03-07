@@ -197,6 +197,79 @@ describe('phase2Mappers', () => {
     expect(merged[1].id).toBe('rec_older');
   });
 
+  it('keeps stable local history image when remote snapshot for same id arrives', () => {
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        imageUri: 'photo_1720000000000_abcd.jpg',
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          image_asset_id: 'asset_1',
+          image_render_url:
+            'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444800&sig=abc',
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe('rec_1');
+    expect(merged[0].imageUri).toBe('photo_1720000000000_abcd.jpg');
+    expect(merged[0].imageAssetId).toBe('asset_1');
+  });
+
+  it('replaces ephemeral local history image uri with remote render url', () => {
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        imageUri: 'content://media/external/images/media/321',
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          image_asset_id: 'asset_1',
+          image_render_url:
+            'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444800&sig=abc',
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].imageUri).toBe(
+      'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto&exp=4102444800&sig=abc'
+    );
+    expect(merged[0].imageAssetId).toBe('asset_1');
+  });
+
   it('builds profile write payload for queue dispatch', () => {
     const profile = buildDefaultProfile('usr_q');
     profile.name = 'Queue User';

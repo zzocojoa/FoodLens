@@ -556,9 +556,10 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
         if (!uploaded?.assetId) {
           continue;
         }
+        const shouldKeepLocalImage = isStableManagedLocalProfileImage(rawImageUri);
         record.imageAssetId = uploaded.assetId;
         record.imageRenderUrl = uploaded.renderUrl || record.imageRenderUrl;
-        if (uploaded.renderUrl) {
+        if (uploaded.renderUrl && !shouldKeepLocalImage) {
           record.imageUri = uploaded.renderUrl;
         }
         changed = true;

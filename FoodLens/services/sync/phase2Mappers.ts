@@ -102,6 +102,27 @@ const shouldKeepLocalProfileImage = (
   return true;
 };
 
+const isStableManagedLocalHistoryImage = (value: string | undefined): boolean => {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('data:image/') ||
+    lower.startsWith('barcode://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('assets-library://')
+  ) {
+    return false;
+  }
+  if (lower.startsWith('file://') || lower.startsWith('/')) {
+    return value.includes(IMAGE_DIR);
+  }
+  if (lower.includes('://')) return false;
+  return true;
+};
+
 const normalizeGender = (value: unknown): UserProfile['gender'] | undefined => {
   if (value === 'male' || value === 'female') return value;
   return undefined;
@@ -395,8 +416,23 @@ export const mergeRemoteHistory = (
   if (parsed.length === 0) return current;
 
   const byId = new Map<string, AnalysisRecord>();
-  [...current, ...parsed].forEach((item) => {
+  current.forEach((item) => {
     byId.set(item.id, item);
+  });
+
+  parsed.forEach((item) => {
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      return;
+    }
+
+    const keepLocalImage = isStableManagedLocalHistoryImage(existing.imageUri);
+    byId.set(item.id, {
+      ...existing,
+      ...item,
+      imageUri: keepLocalImage ? existing.imageUri : item.imageUri,
+    });
   });
   return [...byId.values()].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 };
