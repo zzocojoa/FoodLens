@@ -104,6 +104,38 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
   initialized = true;
 };
 
+const normalizeRemoteLanguageSettings = (remote: {
+  language?: string | null;
+  target_language?: string | null;
+}): LanguageSettings =>
+  normalizeLanguageSettings({
+    language: normalizeCanonicalLocale(remote.language),
+    targetLanguage:
+      remote.target_language === undefined
+        ? state.settings.targetLanguage
+        : (() => {
+            const normalized = normalizeCanonicalLocale(remote.target_language);
+            return normalized === 'auto' ? null : normalized;
+          })(),
+  });
+
+const applyLanguageSettings = async (settings: LanguageSettings): Promise<void> => {
+  if (areLanguageSettingsEqual(settings, state.settings)) {
+    if (settings.language === 'auto') {
+      refreshI18nLocaleFromDevice();
+    }
+    return;
+  }
+
+  await saveLanguageSettings(settings);
+  setState({
+    settings,
+    locale: resolveEffectiveLocale(settings),
+    ready: true,
+  });
+  initialized = true;
+};
+
 export const initializeI18nStore = async () => {
   if (initialized) return;
   if (initializePromise) return initializePromise;
@@ -151,10 +183,12 @@ export const syncI18nSettingsFromProfile = async (
 
     if (pullFromServer && hasAuthenticatedUser) {
       try {
-        const { UserService } = await import('@/services/userService_Logic');
-        await UserService.getUserProfile(userId, { allowBackgroundRefresh: true });
+        const { Phase2Api } = await import('@/services/sync/phase2Api_Logic');
+        const { settings } = await Phase2Api.getSettings();
+        await applyLanguageSettings(normalizeRemoteLanguageSettings(settings));
+        return;
       } catch {
-        // Non-fatal. We still attempt local snapshot apply below.
+        // Non-fatal. Fallback to local snapshot apply below.
       }
     }
 
