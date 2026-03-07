@@ -157,7 +157,7 @@ export const useProfileSheetState = (userId: string) => {
     const setImage = useCallback((value: string) => {
         profileImageAssetIdRef.current = undefined;
         setImageState(value);
-    }, [userId]);
+    }, []);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);
@@ -253,7 +253,7 @@ export const useProfileSheetState = (userId: string) => {
                 }
                 console.warn('[ProfileSheet] settings language auto-save failed', error);
             });
-    }, []);
+    }, [userId]);
 
     const invalidateProfileLoad = useCallback(() => {
         loadProfileRequestIdRef.current += 1;
