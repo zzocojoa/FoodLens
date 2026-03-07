@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import AllergenGrid from '../components/AllergenGrid';
@@ -18,8 +19,10 @@ import RestrictionInput from '../components/RestrictionInput';
 import SaveProfileFooter from '../components/SaveProfileFooter';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
-import { SEVERITY_LEVELS } from '../constants/profile.constants';
+import { COMMON_ALLERGENS, SEVERITY_LEVELS } from '../constants/profile.constants';
 import { useI18n } from '@/features/i18n';
+
+const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -42,6 +45,10 @@ export default function ProfileScreen() {
         addCustomAllergen,
         saveProfile,
     } = useProfileScreen();
+    const customAllergies = React.useMemo(
+        () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
+        [allergies],
+    );
 
     const handleOpenPrivacyPolicy = () => {
         Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/privacy-policy/');
@@ -121,6 +128,44 @@ export default function ProfileScreen() {
                             </View>
                         )}
                     </View>
+
+                    {customAllergies.length > 0 && (
+                        <View style={{ marginTop: 4, marginBottom: 8 }}>
+                            <Text style={[styles.sectionHeader, { color: theme.textPrimary, fontSize: 16 }]}>
+                                {t('profile.section.customAllergens', 'Additional Allergens')}
+                            </Text>
+                            <View style={styles.tagContainer}>
+                                {customAllergies.map((id) => (
+                                    <TouchableOpacity
+                                        key={`custom-${id}`}
+                                        style={[
+                                            styles.tag,
+                                            {
+                                                backgroundColor: theme.surface,
+                                                borderColor: theme.border,
+                                            },
+                                        ]}
+                                        onPress={() => toggleAllergen(id)}
+                                        activeOpacity={0.7}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={t(
+                                            'profile.accessibility.removeCustomAllergen',
+                                            'Remove custom allergen',
+                                        )}
+                                        accessibilityHint={t(
+                                            'profile.accessibility.removeCustomAllergenHint',
+                                            'Tap to remove this custom allergen',
+                                        )}
+                                    >
+                                        <Text style={[styles.tagText, { color: theme.textPrimary }]}>
+                                            {t(`profile.allergen.${id}`, id)}
+                                        </Text>
+                                        <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    )}
 
                     {allergies.length > 0 && (
                         <View style={{ marginTop: 8, marginBottom: 8 }}>

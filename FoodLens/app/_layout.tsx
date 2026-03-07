@@ -17,6 +17,7 @@ import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
 import { hasCompletedOnboarding } from '../services/onboardingGateService_Logic';
 import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore_Logic';
 import { AnalysisService } from '../services/analysisService_Logic';
+import { UserService } from '../services/userService_Logic';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -27,6 +28,7 @@ SplashScreen.preventAutoHideAsync();
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
 const HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
+const PROFILE_CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
 
 const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
   const callbackRef = useRef(callback);
@@ -90,6 +92,12 @@ function LayoutContent() {
     if (!userId || userId === 'auth-required') return;
     void AnalysisService.syncHistoryFromCloud(userId, { force: false });
   }, HISTORY_CROSS_DEVICE_SYNC_INTERVAL_MS);
+
+  useAppActivePolling(() => {
+    const userId = getCurrentUserIdSnapshot();
+    if (!userId || userId === 'auth-required') return;
+    void UserService.syncProfileFromCloud(userId, { force: false });
+  }, PROFILE_CROSS_DEVICE_SYNC_INTERVAL_MS);
 
   useEffect(() => {
     let active = true;

@@ -231,6 +231,28 @@ type GetUserProfileOptions = {
 };
 
 export const UserService = {
+  async syncProfileFromCloud(uid: string, options: { force?: boolean } = {}): Promise<UserProfile | null> {
+    let resolvedUserId: string;
+    try {
+      resolvedUserId = await resolveScopedUserId(uid);
+    } catch (error) {
+      if (error instanceof Error && error.message === AUTH_REQUIRED_ERROR_MESSAGE) {
+        return null;
+      }
+      throw error;
+    }
+
+    startPhase2SyncRuntime();
+    const localProfile =
+      (await migrateLegacyProfileIfNeeded(resolvedUserId)) ||
+      (await loadScopedProfile(resolvedUserId)) ||
+      buildDefaultProfile(resolvedUserId);
+
+    return syncProfileFromServer(resolvedUserId, localProfile, {
+      force: options.force === true,
+    });
+  },
+
   /**
    * Get user profile from local storage
    */

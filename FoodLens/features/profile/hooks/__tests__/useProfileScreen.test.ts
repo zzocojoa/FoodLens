@@ -174,4 +174,24 @@ describe('useProfileScreen saveProfile sync handling', () => {
 
     expect(result.current.allergies).toContain('milk');
   });
+
+  it('allows removing custom allergen by toggling it again', async () => {
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.addCustomAllergen('Kiwi');
+    });
+    expect(result.current.allergies).toContain('Kiwi');
+    expect(result.current.severityMap['Kiwi']).toBe('moderate');
+
+    await act(async () => {
+      result.current.toggleAllergen('Kiwi');
+    });
+    expect(result.current.allergies).not.toContain('Kiwi');
+    expect(result.current.severityMap['Kiwi']).toBeUndefined();
+  });
 });
