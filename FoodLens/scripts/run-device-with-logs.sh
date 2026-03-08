@@ -24,6 +24,33 @@ LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
 MAPS_KEY_PLACEHOLDER="__MISSING_GOOGLE_MAPS_API_KEY__"
 
+enforce_clean_worktree() {
+  if [[ "${ALLOW_DIRTY_DEVICE_BUILD:-0}" == "1" ]]; then
+    echo "[run-with-logs] ALLOW_DIRTY_DEVICE_BUILD=1 set. Skipping git clean check."
+    return 0
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! git -C "${PROJECT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local dirty
+  dirty="$(git -C "${PROJECT_DIR}" status --porcelain)"
+  if [[ -n "${dirty}" ]]; then
+    echo "[run-with-logs] ERROR: Working tree is not clean."
+    echo "[run-with-logs] Mixed local changes can re-introduce already fixed sync bugs."
+    echo "[run-with-logs] Commit/stash first, then rebuild device app."
+    echo "[run-with-logs] Changed files:"
+    echo "${dirty}"
+    echo "[run-with-logs] Override only if intentional: ALLOW_DIRTY_DEVICE_BUILD=1"
+    exit 1
+  fi
+}
+
 run_with_timeout() {
   local timeout_secs="$1"
   shift
@@ -247,6 +274,7 @@ force_launch_android_main() {
 }
 
 cd "${PROJECT_DIR}"
+enforce_clean_worktree
 
 # Ensure Android native build can read maps key even when it exists only in .env.
 if [[ "${PLATFORM}" == "android" && -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" && -f "${PROJECT_DIR}/.env" ]]; then
