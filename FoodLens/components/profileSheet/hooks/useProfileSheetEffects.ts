@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+const PROFILE_SHEET_REFRESH_INTERVAL_MS = 15_000;
+
 type UseProfileSheetEffectsParams = {
   isOpen: boolean;
   userId: string;
@@ -58,7 +60,7 @@ export const useProfileSheetEffects = ({
     if (!isOpen) return;
     const timer = setInterval(() => {
       void loadProfile();
-    }, 5000);
+    }, PROFILE_SHEET_REFRESH_INTERVAL_MS);
     return () => {
       clearInterval(timer);
     };

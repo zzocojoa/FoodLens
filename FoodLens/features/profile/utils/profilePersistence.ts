@@ -2,7 +2,8 @@ import { UserService } from '@/services/userService_Logic';
 import { TEST_EMAIL, getProfileUserId } from '../constants/profile.constants';
 import { AllergySeverity } from '../types/profile.types';
 
-export const loadTestUserProfile = () => UserService.getUserProfile(getProfileUserId());
+export const loadTestUserProfile = () =>
+  UserService.getUserProfile(getProfileUserId(), { allowBackgroundRefresh: false });
 
 export const saveTestUserProfile = async (
     allergies: string[],

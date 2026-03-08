@@ -21,7 +21,7 @@ export const profileSheetService = {
   async loadProfile(userId: string) {
     return UserService.getUserProfile(userId, {
       allowBackgroundRefresh: false,
-      forceServerRefresh: true,
+      forceServerRefresh: false,
     });
   },
 

@@ -23,7 +23,7 @@ import { restoreSession } from './auth/sessionManager_Logic';
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
 const UNAUTHENTICATED_USER_ID = 'auth-required';
-const PROFILE_SERVER_PULL_COOLDOWN_MS = 5_000;
+const PROFILE_SERVER_PULL_COOLDOWN_MS = 15_000;
 const AUTH_REQUIRED_ERROR_MESSAGE = 'Authenticated user id is required for profile sync operations.';
 
 const profileServerPullInFlight = new Map<string, Promise<UserProfile | null>>();

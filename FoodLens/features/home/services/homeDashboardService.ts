@@ -7,7 +7,7 @@ export const fetchHomeDashboardData = async (uid: string) => {
   const [recentData, allHistory, profile] = await Promise.all([
     AnalysisService.getRecentAnalyses(uid, 3),
     AnalysisService.getAllAnalyses(uid),
-    UserService.getUserProfile(uid, { allowBackgroundRefresh: true }),
+    UserService.getUserProfile(uid, { allowBackgroundRefresh: false }),
   ]);
 
   return {

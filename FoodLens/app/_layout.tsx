@@ -26,8 +26,8 @@ import { initSentry, setUser } from '../services/sentry_Logic';
 SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
-const I18N_PROFILE_SYNC_INTERVAL_MS = 5000;
-const CROSS_DEVICE_SYNC_INTERVAL_MS = 5000;
+const I18N_PROFILE_SYNC_INTERVAL_MS = 15_000;
+const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
 
 const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
   const callbackRef = useRef(callback);
@@ -88,7 +88,8 @@ function LayoutContent() {
   };
 
   useAppActivePolling(() => {
-    void syncI18nSettingsFromProfile({ pullFromServer: true });
+    // Profile polling already refreshes settings from server; keep i18n sync local-snapshot based.
+    void syncI18nSettingsFromProfile({ pullFromServer: false });
   }, I18N_PROFILE_SYNC_INTERVAL_MS);
 
   useAppActivePolling(() => {

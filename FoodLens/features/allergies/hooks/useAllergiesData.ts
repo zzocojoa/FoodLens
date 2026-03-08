@@ -25,7 +25,9 @@ export const useAllergiesData = (): AllergiesState => {
             setLoading(true);
         }
         try {
-            const profile = await UserService.getUserProfile(getAllergiesUserId());
+            const profile = await UserService.getUserProfile(getAllergiesUserId(), {
+                allowBackgroundRefresh: false,
+            });
             if (!profile) return;
 
             const combined = mergeAllergyTerms(

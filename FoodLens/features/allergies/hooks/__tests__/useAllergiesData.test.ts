@@ -54,7 +54,9 @@ describe('useAllergiesData', () => {
         });
 
         expect(result.current.allergies).toEqual(['Peanuts', 'Vegan']);
-        expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1');
+        expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1', {
+            allowBackgroundRefresh: false,
+        });
     });
 
     test('returns empty list when loading fails', async () => {
