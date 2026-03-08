@@ -76,6 +76,9 @@ class FoodAnalyst:
     
     # Retry tracking for operational monitoring
     _retry_stats = {"total_retries": 0, "last_429_time": None, "consecutive_429": 0, "last_used_model": None}
+    _MAX_TOKENS_FINISH_REASON = 2
+    _MAX_TOKENS_RETRY_MULTIPLIER = 2
+    _MAX_OUTPUT_TOKENS_UPPER_BOUND = 8192
 
     async def debug_list_models(self):
         """Debug method to list available models in the project."""
@@ -221,6 +224,16 @@ class FoodAnalyst:
 
     def _sanitize_response(self, result: dict) -> dict:
         return sanitize_response(result)
+
+    def _extract_finish_reason(self, response: object) -> int | None:
+        try:
+            candidates = getattr(response, "candidates", None)
+            if not candidates:
+                return None
+            finish_reason = getattr(candidates[0], "finish_reason", None)
+            return int(finish_reason) if finish_reason is not None else None
+        except Exception:
+            return None
 
     def _build_label_prompt(self, allergy_info: str, locale: str, iso_current_country: str) -> str:
         """Constructs the nutrition label OCR prompt."""
@@ -445,9 +458,33 @@ class FoodAnalyst:
                 semaphore=FoodAnalyst._request_semaphore,
                 retry_stats=FoodAnalyst._retry_stats,
             )
-            
+            finish_reason = self._extract_finish_reason(response)
+            print(f"[Internal Log] Finish Reason: {finish_reason}")
 
-            print(f"[Internal Log] Finish Reason: {response.candidates[0].finish_reason}")
+            if finish_reason == self._MAX_TOKENS_FINISH_REASON:
+                retry_generation_config = dict(generation_config)
+                current_max_tokens = int(generation_config.get("max_output_tokens", 4096))
+                retry_generation_config["max_output_tokens"] = min(
+                    current_max_tokens * self._MAX_TOKENS_RETRY_MULTIPLIER,
+                    self._MAX_OUTPUT_TOKENS_UPPER_BOUND,
+                )
+                print(
+                    "[Internal Log] MAX_TOKENS detected; retrying once with larger max_output_tokens="
+                    f"{retry_generation_config['max_output_tokens']}"
+                )
+                response = generate_with_retry_and_fallback(
+                    primary_model=self.model,
+                    primary_model_name=self.model_name,
+                    fallback_model_name="gemini-2.0-flash",
+                    contents=[prompt, vertex_image],
+                    generation_config=retry_generation_config,
+                    safety_settings=safety_settings,
+                    semaphore=FoodAnalyst._request_semaphore,
+                    retry_stats=FoodAnalyst._retry_stats,
+                )
+                finish_reason = self._extract_finish_reason(response)
+                print(f"[Internal Log] Retry Finish Reason: {finish_reason}")
+
             result = self._parse_ai_response(response.text)
             # result = self._strip_box2d(result)  # ENABLED: Keep bbox data from v3.0 prompt
             print(f"AI Response JSON: {json.dumps(result, indent=2)}")  # Debug log

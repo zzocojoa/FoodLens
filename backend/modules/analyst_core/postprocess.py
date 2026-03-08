@@ -4,7 +4,7 @@ from typing import Any, Generator
 from backend.modules.nutrition_Logic import lookup_nutrition
 
 NUTRIENT_KEYS = ("calories", "protein", "carbs", "fat", "fiber", "sodium", "sugar")
-ERROR_NAMES = {"Error Analyzing Food", "Not Food", "분석 오류"}
+ERROR_NAMES = {"Error Analyzing Food", "Not Food", "분석 오류", "Analysis Error"}
 DEFAULT_SERVING_SIZE = "100g (total)"
 DEFAULT_MULTI_SOURCE = "Multiple Sources"
 UNKNOWN_SOURCE = "Unknown"
@@ -60,7 +60,7 @@ def enrich_with_nutrition(result: dict[str, Any]) -> dict[str, Any]:
     """Enrich analysis result with per-ingredient and total nutrition."""
     food_origin = result.get("foodOrigin", DEFAULT_ORIGIN)
 
-    if result.get("foodName", "") in ERROR_NAMES:
+    if result.get("foodName", "") in ERROR_NAMES or str(result.get("canonicalFoodId", "")).lower() == "error":
         return result
 
     total_nutrition = _build_total_nutrition()
