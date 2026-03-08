@@ -1,10 +1,14 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AllergenGrid from '@/features/profile/components/AllergenGrid';
 import RestrictionInput from '@/features/profile/components/RestrictionInput';
+import { COMMON_ALLERGENS } from '@/features/profile/constants/profile.constants';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 import type { SeverityMap, Translate } from '../../types/onboarding.types';
+
+const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
 
 type Props = {
   theme: any;
@@ -32,6 +36,11 @@ export default function AllergiesStep({
   onAddCustomAllergen,
 }: Props) {
   const [showSearch, setShowSearch] = React.useState(false);
+  const customAllergies = React.useMemo(
+    () => selectedAllergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
+    [selectedAllergies]
+  );
+
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -88,6 +97,41 @@ export default function AllergiesStep({
           </View>
         )}
       </View>
+
+      {customAllergies.length > 0 && (
+        <View style={{ marginTop: 4, marginBottom: 8 }}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary, fontSize: 16 }]}>
+            {t('onboarding.allergies.additionalTitle', 'Additional allergens')}
+          </Text>
+          <View style={styles.tagContainer}>
+            {customAllergies.map((id) => (
+              <TouchableOpacity
+                key={`custom-${id}`}
+                style={[
+                  styles.tag,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => onToggleAllergen(id)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('onboarding.allergies.removeCustom', 'Remove custom allergen')}
+                accessibilityHint={t(
+                  'onboarding.allergies.removeCustomHint',
+                  'Tap to remove this custom allergen'
+                )}
+              >
+                <Text style={[styles.tagText, { color: theme.textPrimary }]}>
+                  {t(`profile.allergen.${id}`, id)}
+                </Text>
+                <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       {selectedAllergies.length > 0 && (
         <View style={{ marginTop: 24 }}>

@@ -243,6 +243,23 @@ export const onboardingStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  tagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  tag: {
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  tagText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
   summaryCard: {
     borderRadius: 20,
     padding: 20,
