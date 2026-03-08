@@ -45,14 +45,11 @@ export const profileSheetService = {
     );
 
     try {
+      // Settings are auto-saved by dedicated handlers (ui/traveler language).
+      // Avoid resending potentially stale settings payload from profile update path.
       await UserService.CreateOrUpdateProfile(params.userId, 'user@example.com', {
         name: params.name,
         profileImage: profileImageToSave,
-        settings: {
-          targetLanguage: params.travelerLanguage,
-          language: normalizedUiLanguage,
-          autoPlayAudio: false,
-        },
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
@@ -83,9 +80,6 @@ export const profileSheetService = {
       await UserService.CreateOrUpdateProfile(params.userId, existing.email || 'user@example.com', {
         settings: {
           language: normalizedUiLanguage,
-          targetLanguage: existing.settings?.targetLanguage,
-          autoPlayAudio: existing.settings?.autoPlayAudio ?? false,
-          selectedEmoji: existing.settings?.selectedEmoji,
         },
       });
     } catch (error) {
@@ -114,10 +108,7 @@ export const profileSheetService = {
     try {
       await UserService.CreateOrUpdateProfile(params.userId, existing.email || 'user@example.com', {
         settings: {
-          language: normalizeCanonicalLocale(existing.settings?.language || 'auto'),
           targetLanguage: normalizedTargetLanguage,
-          autoPlayAudio: existing.settings?.autoPlayAudio ?? false,
-          selectedEmoji: existing.settings?.selectedEmoji,
         },
       });
     } catch (error) {
