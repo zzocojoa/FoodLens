@@ -26,8 +26,9 @@ import { initSentry, setUser } from '../services/sentry_Logic';
 SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
-const I18N_PROFILE_SYNC_INTERVAL_MS = 15_000;
-const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
+const I18N_PROFILE_SYNC_INTERVAL_MS = 30_000;
+const CROSS_DEVICE_SYNC_INTERVAL_MS = 30_000;
+const POLLING_JITTER_WINDOW_MS = 3_000;
 
 const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
   const callbackRef = useRef(callback);
@@ -41,8 +42,14 @@ const useAppActivePolling = (callback: () => void, intervalMs: number): void => 
       callbackRef.current();
     };
 
+    const randomizedIntervalMs = Math.max(
+      1_000,
+      intervalMs +
+        Math.floor(Math.random() * (POLLING_JITTER_WINDOW_MS * 2 + 1)) -
+        POLLING_JITTER_WINDOW_MS
+    );
     syncNow();
-    const intervalId = setInterval(syncNow, intervalMs);
+    const intervalId = setInterval(syncNow, randomizedIntervalMs);
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         syncNow();

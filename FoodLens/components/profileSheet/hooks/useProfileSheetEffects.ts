@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
-const PROFILE_SHEET_REFRESH_INTERVAL_MS = 15_000;
+const PROFILE_SHEET_REFRESH_INTERVAL_MS = 30_000;
+const PROFILE_SHEET_REFRESH_JITTER_WINDOW_MS = 3_000;
 
 type UseProfileSheetEffectsParams = {
   isOpen: boolean;
@@ -58,9 +59,15 @@ export const useProfileSheetEffects = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    const randomizedIntervalMs = Math.max(
+      1_000,
+      PROFILE_SHEET_REFRESH_INTERVAL_MS +
+        Math.floor(Math.random() * (PROFILE_SHEET_REFRESH_JITTER_WINDOW_MS * 2 + 1)) -
+        PROFILE_SHEET_REFRESH_JITTER_WINDOW_MS
+    );
     const timer = setInterval(() => {
       void loadProfile();
-    }, PROFILE_SHEET_REFRESH_INTERVAL_MS);
+    }, randomizedIntervalMs);
     return () => {
       clearInterval(timer);
     };

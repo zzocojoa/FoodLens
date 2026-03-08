@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { AnalysisService, AnalysisRecord } from '@/services/analysisService_Logic';
 
-const HISTORY_QUERY_REFRESH_INTERVAL_MS = 15_000;
+const HISTORY_QUERY_REFRESH_INTERVAL_MS = 30_000;
+const HISTORY_QUERY_REFRESH_JITTER_WINDOW_MS = 3_000;
 
 export const historyKeys = {
   all: ['history'] as const,
@@ -22,7 +23,13 @@ export const useHistoryQuery = (userId: string) => {
     // Keep history screen live-updated while open for cross-device writes.
     staleTime: HISTORY_QUERY_REFRESH_INTERVAL_MS,
     refetchOnMount: 'always',
-    refetchInterval: HISTORY_QUERY_REFRESH_INTERVAL_MS,
+    refetchInterval: () =>
+      Math.max(
+        1_000,
+        HISTORY_QUERY_REFRESH_INTERVAL_MS +
+          Math.floor(Math.random() * (HISTORY_QUERY_REFRESH_JITTER_WINDOW_MS * 2 + 1)) -
+          HISTORY_QUERY_REFRESH_JITTER_WINDOW_MS
+      ),
     refetchIntervalInBackground: false,
   });
 };

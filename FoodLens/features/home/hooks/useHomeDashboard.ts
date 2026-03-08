@@ -16,7 +16,8 @@ import { SafeStorage } from '@/services/storage_Logic';
 import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
-const DASHBOARD_BACKGROUND_REFRESH_MS = 15_000;
+const DASHBOARD_BACKGROUND_REFRESH_MS = 30_000;
+const DASHBOARD_REFRESH_JITTER_WINDOW_MS = 3_000;
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
 
 const extractSignedExpiryMs = (uri: string): number | null => {
@@ -175,9 +176,15 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
           void loadDashboardData();
         });
       }
+      const randomizedIntervalMs = Math.max(
+        1_000,
+        DASHBOARD_BACKGROUND_REFRESH_MS +
+          Math.floor(Math.random() * (DASHBOARD_REFRESH_JITTER_WINDOW_MS * 2 + 1)) -
+          DASHBOARD_REFRESH_JITTER_WINDOW_MS
+      );
       const intervalId = setInterval(() => {
         void loadDashboardData();
-      }, DASHBOARD_BACKGROUND_REFRESH_MS);
+      }, randomizedIntervalMs);
       return () => {
         task?.cancel?.();
         clearInterval(intervalId);
