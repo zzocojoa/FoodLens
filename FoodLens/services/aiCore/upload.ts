@@ -109,6 +109,11 @@ export const uploadWithRetry = async (
             if ((error as RetryableUploadError).nonRetryable) {
                 throw error;
             }
+            // Timed out uploads are often still processing on the backend.
+            // Retrying immediately can duplicate expensive analyze requests.
+            if (typeof error?.message === 'string' && /timed out/i.test(error.message)) {
+                throw error;
+            }
 
             if (attempt < maxRetries) {
                 const delay =

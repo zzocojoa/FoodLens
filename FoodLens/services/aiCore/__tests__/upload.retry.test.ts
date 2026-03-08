@@ -89,4 +89,26 @@ describe('uploadWithRetry', () => {
     );
     expect(sleep).not.toHaveBeenCalled();
   });
+
+  it('does not retry when client timeout is reached', async () => {
+    const timeoutError = new Error('Operation timed out after 45000 ms');
+    mockedCreateUploadTask.mockImplementation(
+      () =>
+        ({
+          uploadAsync: async () =>
+            ({
+              status: 200,
+              body: JSON.stringify({ ok: true }),
+              headers: {},
+            }) as unknown as FileSystem.FileSystemUploadResult,
+        }) as UploadTaskLike as FileSystem.UploadTask
+    );
+    (runWithAnalysisTimeout as jest.Mock).mockRejectedValueOnce(timeoutError);
+
+    await expect(uploadWithRetry('https://example.com/analyze', 'file://test.jpg', {}, 3)).rejects.toThrow(
+      'Operation timed out after 45000 ms'
+    );
+    expect(runWithAnalysisTimeout).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
 });
