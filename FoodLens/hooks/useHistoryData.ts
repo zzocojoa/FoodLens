@@ -10,7 +10,7 @@ import {
 } from './historyDataUtils';
 
 export const useHistoryData = (userId: string) => {
-    const { locale } = useI18n();
+    const { locale, t } = useI18n();
     const { 
         data: records = [], 
         isLoading: loading, 
@@ -24,8 +24,8 @@ export const useHistoryData = (userId: string) => {
     const hasAutoExpandedInitialCountryRef = useRef(false);
 
     const archiveData = useMemo(() => {
-        return aggregateHistoryByCountry(records, locale);
-    }, [records, locale]);
+        return aggregateHistoryByCountry(records, locale, t);
+    }, [records, locale, t]);
 
     useEffect(() => {
         // Expand the first country only once on initial load.
