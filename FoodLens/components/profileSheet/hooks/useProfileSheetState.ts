@@ -71,6 +71,7 @@ export const useProfileSheetState = (userId: string) => {
     const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
     const languageSaveRequestIdRef = useRef(0);
+    const travelerLanguageSaveRequestIdRef = useRef(0);
     const nameDirtyRef = useRef(false);
     const imageDirtyRef = useRef(false);
     const travelerLanguageDirtyRef = useRef(false);
@@ -180,7 +181,25 @@ export const useProfileSheetState = (userId: string) => {
     const setTravelerLanguage = useCallback((value: string | undefined) => {
         travelerLanguageDirtyRef.current = true;
         setTravelerLanguageState(value);
-    }, []);
+        const requestId = ++travelerLanguageSaveRequestIdRef.current;
+        void profileSheetService
+            .updateTravelerLanguage({
+                userId,
+                travelerLanguage: value,
+            })
+            .then(() => {
+                if (requestId !== travelerLanguageSaveRequestIdRef.current) {
+                    return;
+                }
+                travelerLanguageDirtyRef.current = false;
+            })
+            .catch((error) => {
+                if (requestId !== travelerLanguageSaveRequestIdRef.current) {
+                    return;
+                }
+                console.warn('[ProfileSheet] traveler language auto-save failed', error);
+            });
+    }, [userId]);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);

@@ -130,3 +130,58 @@ describe('profileSheetService.updateSettingsLanguage', () => {
     expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
   });
 });
+
+describe('profileSheetService.updateTravelerLanguage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUserProfile.mockResolvedValue({
+      email: 'user@example.com',
+      settings: { language: 'ko-KR', targetLanguage: 'en-US', autoPlayAudio: false, selectedEmoji: null },
+    });
+    mockNormalizeCanonicalLocale.mockImplementation((value: string) => value);
+    mockCreateOrUpdateProfile.mockResolvedValue({ uid: 'usr_1' });
+  });
+
+  it('auto-saves selected traveler language to server', async () => {
+    await profileSheetService.updateTravelerLanguage({
+      userId: 'usr_1',
+      travelerLanguage: 'ja-JP',
+    });
+
+    expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          targetLanguage: 'ja-JP',
+        }),
+      })
+    );
+  });
+
+  it('maps auto selection to undefined target language', async () => {
+    await profileSheetService.updateTravelerLanguage({
+      userId: 'usr_1',
+      travelerLanguage: undefined,
+    });
+
+    expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          targetLanguage: undefined,
+        }),
+      })
+    );
+  });
+
+  it('skips server write when selected traveler language is already current', async () => {
+    await profileSheetService.updateTravelerLanguage({
+      userId: 'usr_1',
+      travelerLanguage: 'en-US',
+    });
+
+    expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
+  });
+});

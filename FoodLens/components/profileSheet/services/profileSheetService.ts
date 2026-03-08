@@ -95,4 +95,36 @@ export const profileSheetService = {
       throw error;
     }
   },
+
+  async updateTravelerLanguage(params: {
+    userId: string;
+    travelerLanguage?: string;
+  }) {
+    const nextTargetLanguage = normalizeCanonicalLocale(params.travelerLanguage || 'auto');
+    const normalizedTargetLanguage = nextTargetLanguage === 'auto' ? undefined : nextTargetLanguage;
+
+    const existing = await UserService.getUserProfile(params.userId, {
+      allowBackgroundRefresh: false,
+    });
+    const existingTargetLanguage = normalizeCanonicalLocale(existing.settings?.targetLanguage || 'auto');
+    if (existingTargetLanguage === (normalizedTargetLanguage || 'auto')) {
+      return;
+    }
+
+    try {
+      await UserService.CreateOrUpdateProfile(params.userId, existing.email || 'user@example.com', {
+        settings: {
+          language: normalizeCanonicalLocale(existing.settings?.language || 'auto'),
+          targetLanguage: normalizedTargetLanguage,
+          autoPlayAudio: existing.settings?.autoPlayAudio ?? false,
+          selectedEmoji: existing.settings?.selectedEmoji,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+        return;
+      }
+      throw error;
+    }
+  },
 };

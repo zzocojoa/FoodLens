@@ -5,6 +5,7 @@ import { useProfileSheetState } from '../useProfileSheetState';
 const mockUpdateProfile = jest.fn();
 const mockLoadProfile = jest.fn();
 const mockUpdateSettingsLanguage = jest.fn();
+const mockUpdateTravelerLanguage = jest.fn();
 const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
@@ -18,6 +19,7 @@ jest.mock('../../services/profileSheetService', () => ({
     updateProfile: (...args: unknown[]) => mockUpdateProfile(...args),
     loadProfile: (...args: unknown[]) => mockLoadProfile(...args),
     updateSettingsLanguage: (...args: unknown[]) => mockUpdateSettingsLanguage(...args),
+    updateTravelerLanguage: (...args: unknown[]) => mockUpdateTravelerLanguage(...args),
   },
 }));
 
@@ -69,6 +71,7 @@ describe('useProfileSheetState conflict handling', () => {
     mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
     mockUpdateSettingsLanguage.mockResolvedValue(undefined);
+    mockUpdateTravelerLanguage.mockResolvedValue(undefined);
     mockUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
     mockGetManualMergeConflictOperationsForUser.mockResolvedValue([{ id: 'op_conflict_1' }]);
     mockResolveManualMergeConflictsForUser.mockResolvedValue({
@@ -235,6 +238,20 @@ describe('useProfileSheetState conflict handling', () => {
     expect(mockUpdateSettingsLanguage).toHaveBeenCalledWith({
       userId: 'usr_profile',
       uiLanguage: 'ko-KR',
+    });
+  });
+
+  it('applies selected traveler language to server immediately', async () => {
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setTravelerLanguage('ja-JP');
+    });
+
+    expect(result.current.travelerLanguage).toBe('ja-JP');
+    expect(mockUpdateTravelerLanguage).toHaveBeenCalledWith({
+      userId: 'usr_profile',
+      travelerLanguage: 'ja-JP',
     });
   });
 
