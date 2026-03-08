@@ -22,10 +22,19 @@ const RETRY_LIMIT = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_SYNCED_HISTORY = 30;
 const MEDIA_UPLOAD_COOLDOWN_MS = 5 * 60 * 1_000;
+const SETTINGS_DISPATCH_DEDUPE_WINDOW_MS = 5 * 60 * 1_000;
 
 let runtimeStarted = false;
 let dispatchInFlight: Promise<void> | null = null;
 const mediaUploadCooldownUntil = new Map<string, number>();
+const settingsDispatchDedupeCache = new Map<
+  string,
+  {
+    payloadKey: string;
+    at: number;
+    requestId?: string;
+  }
+>();
 
 const now = (): number => Date.now();
 
@@ -37,6 +46,42 @@ const normalizePayloadForDedupe = (payload: Record<string, unknown>): string => 
   delete clone['expected_updated_at'];
   return JSON.stringify(clone);
 };
+
+export const __resetPhase2SettingsDispatchDedupeForTests = (): void => {
+  settingsDispatchDedupeCache.clear();
+};
+
+type MutableEntityState = 'pending' | 'failed' | 'sending' | 'conflicted';
+const MUTABLE_ENTITY_STATES = new Set<MutableEntityState>([
+  'pending',
+  'failed',
+  'sending',
+  'conflicted',
+]);
+
+const isMutableEntityOperation = (
+  item: Phase2SyncOperation,
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): boolean =>
+  item.userId === userId &&
+  item.entity === entity &&
+  MUTABLE_ENTITY_STATES.has(item.state as MutableEntityState);
+
+const findMutableEntityOperationIndex = (
+  queue: Phase2SyncOperation[],
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): number => queue.findIndex((item) => isMutableEntityOperation(item, userId, entity));
+
+const findLatestSyncedEntityOperation = (
+  queue: Phase2SyncOperation[],
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): Phase2SyncOperation | undefined =>
+  queue
+    .filter((item) => item.userId === userId && item.entity === entity && item.state === 'synced')
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
 const loadQueue = async (): Promise<Phase2SyncOperation[]> =>
   SafeStorage.get<Phase2SyncOperation[]>(SYNC_QUEUE_KEY, []);
@@ -94,15 +139,7 @@ const upsertPendingEntityOperation = async (
   payload: Record<string, unknown>
 ): Promise<void> => {
   const queue = await loadQueue();
-  const existingIndex = queue.findIndex(
-    (item) =>
-      item.userId === userId &&
-      item.entity === entity &&
-      (item.state === 'pending' ||
-        item.state === 'failed' ||
-        item.state === 'sending' ||
-        item.state === 'conflicted')
-  );
+  const existingIndex = findMutableEntityOperationIndex(queue, userId, entity);
   const item: Phase2SyncOperation = {
     id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
     userId,
@@ -641,6 +678,18 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
   }
 
   if (operation.entity === 'settings') {
+    const dedupeKey = normalizePayloadForDedupe(operation.payload as Record<string, unknown>);
+    const dedupeState = settingsDispatchDedupeCache.get(operation.userId);
+    if (
+      dedupeState &&
+      dedupeState.payloadKey === dedupeKey &&
+      now() - dedupeState.at <= SETTINGS_DISPATCH_DEDUPE_WINDOW_MS
+    ) {
+      return {
+        requestId: dedupeState.requestId,
+      };
+    }
+
     const result = await Phase2Api.putSettings(
       operation.payload as {
         language?: string | null;
@@ -650,6 +699,11 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
         expected_updated_at?: string;
       }
     );
+    settingsDispatchDedupeCache.set(operation.userId, {
+      payloadKey: dedupeKey,
+      at: now(),
+      requestId: result.requestId,
+    });
     return {
       requestId: result.requestId,
       settingsUpdatedAt: result.settings.updated_at,
@@ -831,15 +885,7 @@ export const enqueuePhase2Sync = async (
 ): Promise<string> => {
   const queue = await loadQueue();
   const incomingDedupeKey = normalizePayloadForDedupe(payload);
-  const existingIndex = queue.findIndex(
-    (item) =>
-      item.userId === userId &&
-      item.entity === entity &&
-      (item.state === 'pending' ||
-        item.state === 'failed' ||
-        item.state === 'sending' ||
-        item.state === 'conflicted')
-  );
+  const existingIndex = findMutableEntityOperationIndex(queue, userId, entity);
   if (existingIndex >= 0) {
     const existing = queue[existingIndex];
     if (normalizePayloadForDedupe(existing.payload) === incomingDedupeKey) {
@@ -850,9 +896,7 @@ export const enqueuePhase2Sync = async (
     }
   }
 
-  const lastSynced = [...queue]
-    .filter((item) => item.userId === userId && item.entity === entity && item.state === 'synced')
-    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const lastSynced = findLatestSyncedEntityOperation(queue, userId, entity);
   if (lastSynced && normalizePayloadForDedupe(lastSynced.payload) === incomingDedupeKey) {
     return lastSynced.id;
   }

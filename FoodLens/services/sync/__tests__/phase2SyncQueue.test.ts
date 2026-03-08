@@ -5,6 +5,7 @@ import { restoreSession } from '@/services/auth/sessionManager_Logic';
 import { SafeStorage } from '@/services/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
 import {
+  __resetPhase2SettingsDispatchDedupeForTests,
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
   getPhase2ConflictedOperations,
@@ -116,6 +117,7 @@ const pendingProfileOperation = (id: string, userId: string): Phase2SyncOperatio
 
 beforeEach(() => {
   jest.clearAllMocks();
+  __resetPhase2SettingsDispatchDedupeForTests();
   queueState = [];
   mockedFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
   mockedFileSystem.deleteAsync.mockResolvedValue(undefined);
@@ -438,6 +440,51 @@ describe('phase2SyncQueue', () => {
     expect(queueState).toHaveLength(1);
     expect(queueState[0].state).toBe('synced');
     expect(mockedPhase2Api.putSettings).not.toHaveBeenCalled();
+  });
+
+  it('dedupes repeated settings PUT at dispatch stage within time window', async () => {
+    const basePayload = {
+      language: 'ko-KR',
+      target_language: 'ja-JP',
+      auto_play_audio: false,
+      selected_emoji: null,
+    };
+    queueState = [
+      {
+        id: 'op-settings-1',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          ...basePayload,
+          expected_updated_at: '2026-03-08T15:00:00.000Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+      {
+        id: 'op-settings-2',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          ...basePayload,
+          expected_updated_at: '2026-03-08T15:00:03.000Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now() + 1,
+        updatedAt: Date.now() + 1,
+      } as Phase2SyncOperation,
+    ];
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putSettings).toHaveBeenCalledTimes(1);
+    expect(queueState[0].state).toBe('synced');
+    expect(queueState[1].state).toBe('synced');
   });
 
   it('uploads local/data history images first and dispatches image_asset_id', async () => {
