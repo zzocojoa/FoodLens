@@ -8,6 +8,7 @@ export type { FlattenedHistoryItem } from './historyDataFlatten';
 
 type SafetyType = 'ok' | 'avoid' | 'ask';
 type TranslateFn = (key: string, fallback?: string) => string;
+type LanguageType = 'en' | 'ko';
 
 const toSafetyType = (safetyStatus?: string): SafetyType => {
   const normalized = safetyStatus?.toUpperCase() || '';
@@ -28,6 +29,9 @@ const toLocaleTag = (locale?: string): string => {
   if (locale.length === 2) return `${locale.toLowerCase()}-${locale.toUpperCase()}`;
   return locale;
 };
+
+const toLanguageType = (locale?: string): LanguageType =>
+  (toLocaleTag(locale).split('-')[0] || '').toLowerCase() === 'ko' ? 'ko' : 'en';
 
 const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   '대한민국': 'KR',
@@ -72,6 +76,20 @@ const ISO_COUNTRY_LABELS: Record<'en' | 'ko', Record<string, string>> = {
   },
 };
 
+const CITY_OVERRIDES_EN: Record<string, string> = {
+  '대구': 'Daegu',
+  '대구광역시': 'Daegu',
+  '유후시': 'Yufu',
+  '유후': 'Yufu',
+  '서울': 'Seoul',
+  '서울특별시': 'Seoul',
+  '부산': 'Busan',
+  '부산광역시': 'Busan',
+  '도쿄': 'Tokyo',
+  '오사카': 'Osaka',
+  '후쿠오카': 'Fukuoka',
+};
+
 const normalizeCountryNameKey = (value?: string): string =>
   (value || '')
     .trim()
@@ -96,7 +114,7 @@ const toLocalizedCountryName = (
 ): string | undefined => {
   const iso = (isoCountryCode || '').trim().toUpperCase();
   if (!iso) return fallbackCountry;
-  const language = (toLocaleTag(locale).split('-')[0] || '').toLowerCase() === 'ko' ? 'ko' : 'en';
+  const language = toLanguageType(locale);
   const mapped = ISO_COUNTRY_LABELS[language][iso];
   if (mapped) return mapped;
   try {
@@ -111,20 +129,7 @@ const toLocalizedCityName = (
   location: NonNullable<AnalysisRecord['location']>,
   locale?: string
 ): string | undefined => {
-  const CITY_OVERRIDES_EN: Record<string, string> = {
-    '대구': 'Daegu',
-    '대구광역시': 'Daegu',
-    '유후시': 'Yufu',
-    '유후': 'Yufu',
-    '서울': 'Seoul',
-    '서울특별시': 'Seoul',
-    '부산': 'Busan',
-    '부산광역시': 'Busan',
-    '도쿄': 'Tokyo',
-    '오사카': 'Osaka',
-    '후쿠오카': 'Fukuoka',
-  };
-  const language = (toLocaleTag(locale).split('-')[0] || '').toLowerCase();
+  const language = toLanguageType(locale);
   const anyLoc = location as Record<string, unknown>;
   const preferredKeys =
     language === 'ko'
@@ -138,9 +143,7 @@ const toLocalizedCityName = (
   }
   const raw = location.city || location.formattedAddress;
   if (!raw) return undefined;
-  if (language === 'en') {
-    return CITY_OVERRIDES_EN[raw] || raw;
-  }
+  if (language === 'en') return CITY_OVERRIDES_EN[raw] || raw;
   return raw;
 };
 
@@ -166,14 +169,15 @@ export const buildInitialRegion = (records: AnalysisRecord[]) => {
 const toCountryAndCity = (record: AnalysisRecord, locale?: string, t?: TranslateFn) => {
   const effectiveIso = toEffectiveIsoCountryCode(record.location);
   const hasLocation = !!record.location && (!!record.location.country || !!effectiveIso);
+  const uncategorized = t?.('history.folder.uncategorized', 'Uncategorized') ?? 'Uncategorized';
+  const unknownCity = t?.('history.region.unknownCity', 'Unknown City') ?? 'Unknown City';
+  const noLocationInfo = t?.('history.region.noLocationInfo', 'No Location Info') ?? 'No Location Info';
   const country = hasLocation
-    ? toLocalizedCountryName(effectiveIso, record.location!.country, locale) ||
-      (t?.('history.folder.uncategorized', 'Uncategorized') ?? 'Uncategorized')
-    : (t?.('history.folder.uncategorized', 'Uncategorized') ?? 'Uncategorized');
+    ? toLocalizedCountryName(effectiveIso, record.location!.country, locale) || uncategorized
+    : uncategorized;
   const city = hasLocation
-    ? toLocalizedCityName(record.location!, locale) ||
-      (t?.('history.region.unknownCity', 'Unknown City') ?? 'Unknown City')
-    : (t?.('history.region.noLocationInfo', 'No Location Info') ?? 'No Location Info');
+    ? toLocalizedCityName(record.location!, locale) || unknownCity
+    : noLocationInfo;
   return { hasLocation, country, city, effectiveIso };
 };
 
