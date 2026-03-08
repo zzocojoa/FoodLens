@@ -311,7 +311,9 @@ export const AnalysisService = {
             await dispatchPhase2SyncQueue();
 
             if (local.length === 0) {
-              const remote = await syncHistoryFromServer(userId, local, { force: true });
+              // Avoid hard-force polling loops when local cache is empty.
+              // First call still pulls immediately because cooldown has no last-pull timestamp yet.
+              const remote = await syncHistoryFromServer(userId, local, { force: false });
               if (Array.isArray(remote)) return remote;
             } else {
               void syncHistoryFromServer(userId, local, { force: false });

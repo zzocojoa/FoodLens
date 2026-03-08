@@ -16,7 +16,7 @@ import { SafeStorage } from '@/services/storage_Logic';
 import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
-const DASHBOARD_BACKGROUND_REFRESH_MS = 5000;
+const DASHBOARD_BACKGROUND_REFRESH_MS = 15_000;
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
 
 const extractSignedExpiryMs = (uri: string): number | null => {
