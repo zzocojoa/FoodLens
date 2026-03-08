@@ -230,6 +230,11 @@ type GetUserProfileOptions = {
   forceServerRefresh?: boolean;
 };
 
+type UserProfilePatch = Omit<Partial<UserProfile>, 'settings' | 'safetyProfile'> & {
+  settings?: Partial<UserProfile['settings']>;
+  safetyProfile?: Partial<UserProfile['safetyProfile']>;
+};
+
 export const UserService = {
   async syncProfileFromCloud(uid: string, options: { force?: boolean } = {}): Promise<UserProfile | null> {
     let resolvedUserId: string;
@@ -320,7 +325,7 @@ export const UserService = {
   /**
    * Create or update user profile in local storage
    */
-  async CreateOrUpdateProfile(uid: string, email: string, profileData: Partial<UserProfile> = {}) {
+  async CreateOrUpdateProfile(uid: string, email: string, profileData: UserProfilePatch = {}) {
     try {
       const resolvedUserId = await resolveScopedUserId(uid);
       const now = new Date().toISOString();
@@ -384,7 +389,7 @@ export const UserService = {
   /**
    * General purpose partial update
    */
-  async updateUserProfile(uid: string, updates: Partial<UserProfile>) {
+  async updateUserProfile(uid: string, updates: UserProfilePatch) {
     return this.CreateOrUpdateProfile(uid, '', updates);
   },
 };
