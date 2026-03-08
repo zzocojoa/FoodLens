@@ -29,6 +29,47 @@ const toLocaleTag = (locale?: string): string => {
   return locale;
 };
 
+const COUNTRY_NAME_TO_ISO: Record<string, string> = {
+  '대한민국': 'KR',
+  '한국': 'KR',
+  '남한': 'KR',
+  'korea': 'KR',
+  'south korea': 'KR',
+  'republic of korea': 'KR',
+  '일본': 'JP',
+  '일본국': 'JP',
+  'japan': 'JP',
+  'nippon': 'JP',
+  '미국': 'US',
+  '미합중국': 'US',
+  'united states': 'US',
+  'united states of america': 'US',
+  'usa': 'US',
+  '중국': 'CN',
+  'china': 'CN',
+  '베트남': 'VN',
+  'vietnam': 'VN',
+  '태국': 'TH',
+  'thailand': 'TH',
+};
+
+const normalizeCountryNameKey = (value?: string): string =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[()]/g, '')
+    .replace(/\s+/g, ' ');
+
+const toEffectiveIsoCountryCode = (
+  location?: NonNullable<AnalysisRecord['location']>
+): string | undefined => {
+  if (!location) return undefined;
+  const iso = (location.isoCountryCode || '').trim().toUpperCase();
+  if (iso) return iso;
+  const byName = COUNTRY_NAME_TO_ISO[normalizeCountryNameKey(location.country)];
+  return byName || undefined;
+};
+
 const toLocalizedCountryName = (
   isoCountryCode?: string,
   fallbackCountry?: string,
@@ -101,16 +142,17 @@ export const buildInitialRegion = (records: AnalysisRecord[]) => {
 };
 
 const toCountryAndCity = (record: AnalysisRecord, locale?: string, t?: TranslateFn) => {
-  const hasLocation = !!record.location && !!record.location.country;
+  const effectiveIso = toEffectiveIsoCountryCode(record.location);
+  const hasLocation = !!record.location && (!!record.location.country || !!effectiveIso);
   const country = hasLocation
-    ? toLocalizedCountryName(record.location!.isoCountryCode, record.location!.country, locale) ||
+    ? toLocalizedCountryName(effectiveIso, record.location!.country, locale) ||
       (t?.('history.folder.uncategorized', 'Uncategorized') ?? 'Uncategorized')
     : (t?.('history.folder.uncategorized', 'Uncategorized') ?? 'Uncategorized');
   const city = hasLocation
     ? toLocalizedCityName(record.location!, locale) ||
       (t?.('history.region.unknownCity', 'Unknown City') ?? 'Unknown City')
     : (t?.('history.region.noLocationInfo', 'No Location Info') ?? 'No Location Info');
-  return { hasLocation, country, city };
+  return { hasLocation, country, city, effectiveIso };
 };
 
 export const aggregateHistoryByCountry = (
@@ -121,7 +163,7 @@ export const aggregateHistoryByCountry = (
   const countryMap = new Map<string, CountryData>();
 
   records.forEach((record) => {
-    const { hasLocation, country, city } = toCountryAndCity(record, locale, t);
+    const { hasLocation, country, city, effectiveIso } = toCountryAndCity(record, locale, t);
     const localizedFoodName = getLocalizedFoodName(record, locale);
     const itemData = {
       id: record.id,
@@ -141,7 +183,7 @@ export const aggregateHistoryByCountry = (
 
       countryMap.set(country, {
         country,
-        flag: hasLocation ? toFlagEmoji(record.location?.isoCountryCode) : '📁',
+        flag: hasLocation ? toFlagEmoji(effectiveIso) : '📁',
         total: 0,
         coordinates,
         regions: [],
