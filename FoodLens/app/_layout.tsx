@@ -81,15 +81,29 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
-  const runWithAuthenticatedUser = (run: (userId: string) => void) => {
+  const runWithAuthenticatedUser = (run: (userId: string) => void | Promise<void>) => {
     const userId = getCurrentUserIdSnapshot();
-    if (!userId || userId === 'auth-required') return;
-    run(userId);
+    if (userId && userId !== 'auth-required') {
+      void Promise.resolve(run(userId)).catch(() => {});
+      return;
+    }
+
+    void restoreSession({
+      clearCurrentUserOnMissing: false,
+      logWarnings: false,
+      refreshIfExpired: false,
+    })
+      .then((session) => {
+        const recoveredUserId = session?.user?.id;
+        if (!recoveredUserId) return;
+        void Promise.resolve(run(recoveredUserId)).catch(() => {});
+      })
+      .catch(() => {});
   };
 
   useAppActivePolling(() => {
-    // Profile polling already refreshes settings from server; keep i18n sync local-snapshot based.
-    void syncI18nSettingsFromProfile({ pullFromServer: false });
+    // Keep i18n in sync globally even when user stays off profile-related screens.
+    void syncI18nSettingsFromProfile({ pullFromServer: true });
   }, I18N_PROFILE_SYNC_INTERVAL_MS);
 
   useAppActivePolling(() => {
@@ -100,7 +114,9 @@ function LayoutContent() {
 
   useAppActivePolling(() => {
     runWithAuthenticatedUser((userId) => {
-      void UserService.syncProfileFromCloud(userId, { force: false });
+      void UserService.syncProfileFromCloud(userId, { force: false }).then(() => {
+        void syncI18nSettingsFromProfile({ pullFromServer: false });
+      });
     });
   }, CROSS_DEVICE_SYNC_INTERVAL_MS);
 
