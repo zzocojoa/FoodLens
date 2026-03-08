@@ -91,7 +91,7 @@ function LayoutContent() {
     void restoreSession({
       clearCurrentUserOnMissing: false,
       logWarnings: false,
-      refreshIfExpired: false,
+      refreshIfExpired: true,
     })
       .then((session) => {
         const recoveredUserId = session?.user?.id;

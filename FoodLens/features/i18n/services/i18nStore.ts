@@ -5,6 +5,7 @@ import type { UserProfile } from '@/models/User';
 import { SafeStorage } from '@/services/storage_Logic';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
+import { publishUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
 import {
   loadLanguageSettings,
   normalizeCanonicalLocale,
@@ -69,6 +70,47 @@ const readProfileLanguageSettingsSnapshot = (): Partial<LanguageSettings> | null
 
 const areLanguageSettingsEqual = (left: LanguageSettings, right: LanguageSettings): boolean =>
   left.language === right.language && left.targetLanguage === right.targetLanguage;
+
+const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSettings): Promise<void> => {
+  const userId = getCurrentUserIdSnapshot();
+  if (!userId || userId === UNAUTHENTICATED_USER_ID) {
+    return;
+  }
+
+  const scopedKey = getUserStorageKey(userId);
+  const scoped = SafeStorage.getSync<UserProfile | null>(scopedKey, null);
+  const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+  const baseProfile = scoped || legacy;
+  if (!baseProfile?.settings) {
+    return;
+  }
+
+  const currentLanguage = normalizeCanonicalLocale(baseProfile.settings.language);
+  const currentTargetRaw = baseProfile.settings.targetLanguage || 'auto';
+  const currentTarget =
+    normalizeCanonicalLocale(currentTargetRaw) === 'auto'
+      ? null
+      : normalizeCanonicalLocale(currentTargetRaw);
+
+  if (currentLanguage === nextSettings.language && currentTarget === nextSettings.targetLanguage) {
+    return;
+  }
+
+  const nextProfile: UserProfile = {
+    ...baseProfile,
+    settings: {
+      ...baseProfile.settings,
+      language: nextSettings.language,
+      targetLanguage: nextSettings.targetLanguage ?? undefined,
+    },
+  };
+
+  await Promise.all([
+    SafeStorage.set(scopedKey, nextProfile),
+    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
+  ]);
+  publishUserProfileUpdated(userId, 'server_pull');
+};
 
 const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
   const profileSettings = readProfileLanguageSettingsSnapshot();
@@ -185,7 +227,9 @@ export const syncI18nSettingsFromProfile = async (
       try {
         const { Phase2Api } = await import('@/services/sync/phase2Api_Logic');
         const { settings } = await Phase2Api.getSettings();
-        await applyLanguageSettings(normalizeRemoteLanguageSettings(settings));
+        const normalized = normalizeRemoteLanguageSettings(settings);
+        await applyLanguageSettings(normalized);
+        await persistLanguageSettingsToProfileSnapshot(normalized);
         return;
       } catch {
         // Non-fatal. Fallback to local snapshot apply below.
