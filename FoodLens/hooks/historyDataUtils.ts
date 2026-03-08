@@ -53,6 +53,25 @@ const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   'thailand': 'TH',
 };
 
+const ISO_COUNTRY_LABELS: Record<'en' | 'ko', Record<string, string>> = {
+  en: {
+    KR: 'South Korea',
+    JP: 'Japan',
+    US: 'United States',
+    CN: 'China',
+    TH: 'Thailand',
+    VN: 'Vietnam',
+  },
+  ko: {
+    KR: '대한민국',
+    JP: '일본',
+    US: '미국',
+    CN: '중국',
+    TH: '태국',
+    VN: '베트남',
+  },
+};
+
 const normalizeCountryNameKey = (value?: string): string =>
   (value || '')
     .trim()
@@ -77,11 +96,14 @@ const toLocalizedCountryName = (
 ): string | undefined => {
   const iso = (isoCountryCode || '').trim().toUpperCase();
   if (!iso) return fallbackCountry;
+  const language = (toLocaleTag(locale).split('-')[0] || '').toLowerCase() === 'ko' ? 'ko' : 'en';
+  const mapped = ISO_COUNTRY_LABELS[language][iso];
+  if (mapped) return mapped;
   try {
     const display = new Intl.DisplayNames([toLocaleTag(locale)], { type: 'region' });
     return display.of(iso) || fallbackCountry;
   } catch {
-    return fallbackCountry || iso;
+    return fallbackCountry || mapped || iso;
   }
 };
 
