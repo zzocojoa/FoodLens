@@ -5,7 +5,7 @@ export const STORAGE_KEY = 'foodlens_custom_server_url';
 export const getAiUserId = (): string => getCurrentUserId();
 export const ANALYSIS_TIMEOUT_MS = 15000;
 export const ANALYSIS_IMAGE_TIMEOUT_MS = Number(
-  process.env['EXPO_PUBLIC_AI_ANALYZE_TIMEOUT_MS'] || '30000'
+  process.env['EXPO_PUBLIC_AI_ANALYZE_TIMEOUT_MS'] || '45000'
 );
 export const BARCODE_LOOKUP_TIMEOUT_MS = 15000;
 export const BARCODE_LOOKUP_MAX_RETRIES = 3;
