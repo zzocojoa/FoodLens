@@ -189,12 +189,36 @@ const flushProfileWrites = async (uid: string, operationIds: string[]): Promise<
   }
 };
 
-const queueProfileWrites = async (uid: string, profile: UserProfile): Promise<string[]> => {
+type ProfileWriteEntity = 'profile' | 'allergies' | 'settings';
+
+const PROFILE_WRITE_ENTITIES: ProfileWriteEntity[] = ['profile', 'allergies', 'settings'];
+
+const resolveChangedProfileWriteEntities = (
+  before: UserProfile,
+  after: UserProfile
+): ProfileWriteEntity[] => {
+  const beforePayload = buildProfileWritePayload(before);
+  const afterPayload = buildProfileWritePayload(after);
+
+  return PROFILE_WRITE_ENTITIES.filter(
+    (entity) => JSON.stringify(beforePayload[entity]) !== JSON.stringify(afterPayload[entity])
+  );
+};
+
+const queueProfileWrites = async (
+  uid: string,
+  profile: UserProfile,
+  entities: ProfileWriteEntity[] = PROFILE_WRITE_ENTITIES
+): Promise<string[]> => {
   const payloads = buildProfileWritePayload(profile);
-  const profileOpId = await enqueuePhase2Sync(uid, 'profile', payloads.profile as Record<string, unknown>);
-  const allergiesOpId = await enqueuePhase2Sync(uid, 'allergies', payloads.allergies as Record<string, unknown>);
-  const settingsOpId = await enqueuePhase2Sync(uid, 'settings', payloads.settings as Record<string, unknown>);
-  return [profileOpId, allergiesOpId, settingsOpId];
+  const operationIds: string[] = [];
+
+  for (const entity of entities) {
+    const payload = payloads[entity] as Record<string, unknown>;
+    operationIds.push(await enqueuePhase2Sync(uid, entity, payload));
+  }
+
+  return operationIds;
 };
 
 const profileSyncComparableShape = (profile: UserProfile) => ({
@@ -368,10 +392,13 @@ export const UserService = {
       await saveScopedProfile(resolvedUserId, newProfile);
       publishUserProfileUpdated(resolvedUserId, 'local_write');
       await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
-      const operationIds = await queueProfileWrites(resolvedUserId, newProfile);
-      await flushProfileWrites(resolvedUserId, operationIds);
-      await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
-      publishUserProfileUpdated(resolvedUserId, 'sync_apply');
+      const changedEntities = resolveChangedProfileWriteEntities(existing, newProfile);
+      if (changedEntities.length > 0) {
+        const operationIds = await queueProfileWrites(resolvedUserId, newProfile, changedEntities);
+        await flushProfileWrites(resolvedUserId, operationIds);
+        await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
+        publishUserProfileUpdated(resolvedUserId, 'sync_apply');
+      }
       return newProfile;
     } catch (error) {
       logger.error('Error saving user profile', error, 'UserService');

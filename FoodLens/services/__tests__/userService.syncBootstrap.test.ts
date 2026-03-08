@@ -1,7 +1,11 @@
 import { UserService } from '../userService';
 import { SafeStorage } from '../storage_Logic';
 import { Phase2Api } from '../sync/phase2Api_Logic';
-import { enqueuePhase2Sync } from '../sync/phase2SyncQueue_Logic';
+import {
+  dispatchPhase2SyncQueue,
+  enqueuePhase2Sync,
+  getPhase2OperationsByIds,
+} from '../sync/phase2SyncQueue_Logic';
 import { restoreSession } from '../auth/sessionManager_Logic';
 import { getCurrentUserId, hasAuthenticatedUser } from '../auth/currentUser_Logic';
 
@@ -84,6 +88,10 @@ jest.mock('../user/userProfileStore_Logic', () => ({
 const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 const mockedPhase2Api = Phase2Api as jest.Mocked<typeof Phase2Api>;
 const mockedEnqueuePhase2Sync = enqueuePhase2Sync as jest.MockedFunction<typeof enqueuePhase2Sync>;
+const mockedDispatchPhase2SyncQueue =
+  dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
+const mockedGetPhase2OperationsByIds =
+  getPhase2OperationsByIds as jest.MockedFunction<typeof getPhase2OperationsByIds>;
 const mockedRestoreSession = restoreSession as jest.MockedFunction<typeof restoreSession>;
 const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.MockedFunction<typeof hasAuthenticatedUser>;
 const mockedGetCurrentUserId = getCurrentUserId as jest.MockedFunction<typeof getCurrentUserId>;
@@ -101,6 +109,8 @@ describe('UserService bootstrap sync guard', () => {
     mockedHasAuthenticatedUser.mockReturnValue(true);
     mockedGetCurrentUserId.mockReturnValue('usr_a');
     mockedEnqueuePhase2Sync.mockResolvedValue('op-x');
+    mockedDispatchPhase2SyncQueue.mockResolvedValue(undefined);
+    mockedGetPhase2OperationsByIds.mockResolvedValue([]);
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
       if (key === scopedProfileKey) return null as unknown;
       if (key === migrationMarkerKey) return false as unknown;
@@ -366,5 +376,113 @@ describe('UserService bootstrap sync guard', () => {
 
     expect(mockedPhase2Api.getProfile).toHaveBeenCalledTimes(2);
     nowSpy.mockRestore();
+  });
+
+  it('queues only settings write when updating traveler language', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          profileImageAssetId: '',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: [],
+            severityMap: { egg: 'moderate' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: undefined,
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedEnqueuePhase2Sync.mockImplementation(async (_uid, entity) => `op-${entity}` as never);
+    mockedGetPhase2OperationsByIds.mockImplementation(async (ids) =>
+      ids.map((id) => ({
+        id,
+        entity: 'settings',
+        state: 'synced',
+        lastError: null,
+      })) as never
+    );
+
+    await UserService.CreateOrUpdateProfile('usr_a', 'local@example.com', {
+      settings: {
+        targetLanguage: 'ja-JP',
+      },
+    });
+
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledTimes(1);
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledWith(
+      'usr_a',
+      'settings',
+      expect.objectContaining({
+        target_language: 'ja-JP',
+      })
+    );
+  });
+
+  it('queues only profile write when updating display name', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Old Name',
+          profileImage: '',
+          profileImageAssetId: '',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: [],
+            severityMap: { egg: 'moderate' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: 'en-US',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedEnqueuePhase2Sync.mockImplementation(async (_uid, entity) => `op-${entity}` as never);
+    mockedGetPhase2OperationsByIds.mockImplementation(async (ids) =>
+      ids.map((id) => ({
+        id,
+        entity: 'profile',
+        state: 'synced',
+        lastError: null,
+      })) as never
+    );
+
+    await UserService.CreateOrUpdateProfile('usr_a', 'local@example.com', {
+      name: 'New Name',
+    });
+
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledTimes(1);
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledWith(
+      'usr_a',
+      'profile',
+      expect.objectContaining({
+        display_name: 'New Name',
+      })
+    );
   });
 });
