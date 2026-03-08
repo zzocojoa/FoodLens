@@ -6,6 +6,7 @@ import { SafeStorage } from '@/services/storage_Logic';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
 import {
   dispatchPhase2SyncQueue,
+  enqueuePhase2Sync,
   getPhase2ConflictedOperations,
   resolvePhase2Conflict,
 } from '../phase2SyncQueue';
@@ -372,6 +373,71 @@ describe('phase2SyncQueue', () => {
     expect(forAll).toHaveLength(2);
     expect(forUserA).toHaveLength(1);
     expect(forUserA[0].id).toBe('op-a');
+  });
+
+  it('dedupes identical pending payload for same entity and user', async () => {
+    queueState = [
+      {
+        id: 'op-settings-pending-a',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          language: 'ko-KR',
+          target_language: 'ja-JP',
+          auto_play_audio: false,
+          expected_updated_at: '2026-03-08T15:00:00.000Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+
+    const opId = await enqueuePhase2Sync('usr_a', 'settings', {
+      language: 'ko-KR',
+      target_language: 'ja-JP',
+      auto_play_audio: false,
+      expected_updated_at: '2026-03-08T15:00:05.000Z',
+    });
+
+    expect(opId).toBe('op-settings-pending-a');
+    expect(queueState).toHaveLength(1);
+    expect(mockedPhase2Api.putSettings).not.toHaveBeenCalled();
+  });
+
+  it('dedupes against last synced payload for same entity and user', async () => {
+    queueState = [
+      {
+        id: 'op-settings-synced-a',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'synced',
+        payload: {
+          language: 'en-US',
+          target_language: null,
+          auto_play_audio: false,
+          expected_updated_at: '2026-03-08T15:00:00.000Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Number.MAX_SAFE_INTEGER,
+        createdAt: Date.now() - 3_000,
+        updatedAt: Date.now() - 1_000,
+      } as Phase2SyncOperation,
+    ];
+
+    const opId = await enqueuePhase2Sync('usr_a', 'settings', {
+      language: 'en-US',
+      target_language: null,
+      auto_play_audio: false,
+      expected_updated_at: '2026-03-08T15:00:10.000Z',
+    });
+
+    expect(opId).toBe('op-settings-synced-a');
+    expect(queueState).toHaveLength(1);
+    expect(queueState[0].state).toBe('synced');
+    expect(mockedPhase2Api.putSettings).not.toHaveBeenCalled();
   });
 
   it('uploads local/data history images first and dispatches image_asset_id', async () => {

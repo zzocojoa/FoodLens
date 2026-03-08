@@ -32,6 +32,12 @@ const now = (): number => Date.now();
 const generateOperationId = (): string =>
   `op-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 
+const normalizePayloadForDedupe = (payload: Record<string, unknown>): string => {
+  const clone = { ...payload } as Record<string, unknown>;
+  delete clone['expected_updated_at'];
+  return JSON.stringify(clone);
+};
+
 const loadQueue = async (): Promise<Phase2SyncOperation[]> =>
   SafeStorage.get<Phase2SyncOperation[]>(SYNC_QUEUE_KEY, []);
 
@@ -824,6 +830,7 @@ export const enqueuePhase2Sync = async (
   payload: Record<string, unknown>
 ): Promise<string> => {
   const queue = await loadQueue();
+  const incomingDedupeKey = normalizePayloadForDedupe(payload);
   const existingIndex = queue.findIndex(
     (item) =>
       item.userId === userId &&
@@ -833,6 +840,23 @@ export const enqueuePhase2Sync = async (
         item.state === 'sending' ||
         item.state === 'conflicted')
   );
+  if (existingIndex >= 0) {
+    const existing = queue[existingIndex];
+    if (normalizePayloadForDedupe(existing.payload) === incomingDedupeKey) {
+      if (existing.state === 'pending' || existing.state === 'sending') {
+        return existing.id;
+      }
+      // Keep retry semantics for failed/conflicted by letting caller overwrite payload and reset state below
+    }
+  }
+
+  const lastSynced = [...queue]
+    .filter((item) => item.userId === userId && item.entity === entity && item.state === 'synced')
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (lastSynced && normalizePayloadForDedupe(lastSynced.payload) === incomingDedupeKey) {
+    return lastSynced.id;
+  }
+
   const item: Phase2SyncOperation = {
     id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
     userId,
