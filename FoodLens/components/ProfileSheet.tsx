@@ -101,11 +101,18 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     }
   };
 
+  const handleManageProfile = React.useCallback(() => {
+    profileSheet.closeSheet();
+    setTimeout(() => {
+      router.push('/profile');
+    }, 260);
+  }, [profileSheet, router]);
+
   return (
     <ProfileSheetView
       isOpen={isOpen}
       closeProfile={profileSheet.closeSheet}
-      onPressManageProfile={() => router.push('/profile')}
+      onPressManageProfile={handleManageProfile}
       onPressUpdate={() => void state.handleUpdate(onUpdate, onClose)}
       onPressLogout={() => void handleLogout()}
       logoutLoading={logoutLoading}
