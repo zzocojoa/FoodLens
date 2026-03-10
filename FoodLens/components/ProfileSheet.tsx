@@ -102,11 +102,11 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   };
 
   const handleManageProfile = React.useCallback(() => {
-    profileSheet.closeSheet();
-    setTimeout(() => {
+    onClose();
+    requestAnimationFrame(() => {
       router.push('/profile');
-    }, 260);
-  }, [profileSheet, router]);
+    });
+  }, [onClose, router]);
 
   return (
     <ProfileSheetView
