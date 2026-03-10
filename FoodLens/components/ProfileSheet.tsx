@@ -104,7 +104,10 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   const handleManageProfile = React.useCallback(() => {
     onClose();
     requestAnimationFrame(() => {
-      router.push('/profile');
+      router.push({
+        pathname: '/profile',
+        params: { fromProfileSheet: '1' },
+      });
     });
   }, [onClose, router]);
 

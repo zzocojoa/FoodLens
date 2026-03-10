@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Text, TextInput, View } from 'react-native';
+import { Image, Keyboard, Text, TextInput, View } from 'react-native';
 import { Camera, Edit3, Image as ImageIcon } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
@@ -71,7 +71,12 @@ export default function ProfileIdentitySection({
                         placeholderTextColor={theme.textSecondary}
                     />
                     <HapticTouchableOpacity
-                        onPress={onClearName}
+                        onPress={() => {
+                            Keyboard.dismiss();
+                            requestAnimationFrame(() => {
+                                onClearName();
+                            });
+                        }}
                         style={{
                             position: 'absolute',
                             right: 10,
@@ -81,6 +86,7 @@ export default function ProfileIdentitySection({
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 2,
+                            elevation: 3,
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Keyboard, Text, View } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
@@ -21,9 +21,16 @@ export default function ProfileMenuItem({
     iconBgColor,
     theme,
 }: ProfileMenuItemProps) {
+    const handlePress = React.useCallback(() => {
+        Keyboard.dismiss();
+        requestAnimationFrame(() => {
+            onPress?.();
+        });
+    }, [onPress]);
+
     return (
         <View style={[styles.menuContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
-            <HapticTouchableOpacity style={styles.menuItem} onPress={onPress} hapticType="light">
+            <HapticTouchableOpacity style={styles.menuItem} onPress={handlePress} hapticType="light">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                     <View style={[styles.iconBox, { backgroundColor: iconBgColor }]}>{icon}</View>
                     <View>

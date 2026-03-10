@@ -17,6 +17,16 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 const THEME_KEY = '@user_theme_preference';
+const SYSTEM_THEME_NIGHT_START_HOUR = 19;
+const SYSTEM_THEME_NIGHT_END_HOUR = 7;
+
+const resolveSystemThemeFallback = (): 'light' | 'dark' => {
+  const hour = new Date().getHours();
+  if (hour >= SYSTEM_THEME_NIGHT_START_HOUR || hour < SYSTEM_THEME_NIGHT_END_HOUR) {
+    return 'dark';
+  }
+  return 'light';
+};
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemColorScheme = useSystemColorScheme();
@@ -50,7 +60,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const activeColorScheme = 
     theme === 'system' 
-      ? (systemColorScheme ?? 'light') 
+      ? (systemColorScheme ?? resolveSystemThemeFallback()) 
       : theme;
 
   if (!isReady) {

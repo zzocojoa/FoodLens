@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, ScrollView, Text, TouchableOpacity, View, Animated as RNAnimated } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated as RNAnimated } from 'react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { LanguageOption } from '../types';
 import { profileSheetStyles as styles } from '../styles';
@@ -43,7 +43,8 @@ export default function LanguageSelectorModal({
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-            <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={onClose}>
+            <View style={styles.overlay}>
+                <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={onClose} />
                 <RNAnimated.View
                     style={[
                         styles.sheetContainer,
@@ -97,7 +98,7 @@ export default function LanguageSelectorModal({
                         ))}
                     </ScrollView>
                 </RNAnimated.View>
-            </TouchableOpacity>
+            </View>
         </Modal>
     );
 }

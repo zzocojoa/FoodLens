@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, Heart, ShieldCheck } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { FloatingEmojis } from '../../../components/FloatingEmojis';
 import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
@@ -27,6 +28,8 @@ import { useI18n } from '@/features/i18n';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ openProfile?: string }>();
   const { t, locale } = useI18n();
   const insets = useSafeAreaInsets();
   const {
@@ -60,6 +63,20 @@ export default function HomeScreen() {
   } = dashboard;
   const cameraOrbBottom = Math.max(40, insets.bottom + 16);
   const profileImageUri = userProfile?.profileImage?.trim() || undefined;
+  const hasConsumedOpenProfileParamRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (params.openProfile !== '1') {
+      hasConsumedOpenProfileParamRef.current = false;
+      return;
+    }
+    if (hasConsumedOpenProfileParamRef.current) {
+      return;
+    }
+    hasConsumedOpenProfileParamRef.current = true;
+    setActiveModal('PROFILE');
+    router.setParams({ openProfile: undefined });
+  }, [params.openProfile, router, setActiveModal]);
 
   const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
 
