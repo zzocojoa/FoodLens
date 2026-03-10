@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Keyboard, Text, TextInput, View } from 'react-native';
 import { Camera, Edit3, Image as ImageIcon } from 'lucide-react-native';
-import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import { HapticPressable, HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
 import { useI18n } from '@/features/i18n';
 
@@ -70,7 +70,7 @@ export default function ProfileIdentitySection({
                         placeholder={t('profileSheet.identity.namePlaceholder', 'Enter your name')}
                         placeholderTextColor={theme.textSecondary}
                     />
-                    <HapticTouchableOpacity
+                    <HapticPressable
                         onPress={() => {
                             Keyboard.dismiss();
                             requestAnimationFrame(() => {
@@ -94,7 +94,7 @@ export default function ProfileIdentitySection({
                         accessibilityLabel={t('profileSheet.identity.clearDisplayName', 'Clear display name')}
                     >
                         <Edit3 size={16} color={theme.textSecondary} />
-                    </HapticTouchableOpacity>
+                    </HapticPressable>
                 </View>
             </View>
 

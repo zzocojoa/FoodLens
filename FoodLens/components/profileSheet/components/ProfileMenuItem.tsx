@@ -1,7 +1,7 @@
 import React from 'react';
 import { Keyboard, Text, View } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import { HapticPressable } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
 
 type ProfileMenuItemProps = {
@@ -30,7 +30,7 @@ export default function ProfileMenuItem({
 
     return (
         <View style={[styles.menuContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
-            <HapticTouchableOpacity style={styles.menuItem} onPress={handlePress} hapticType="light">
+            <HapticPressable style={styles.menuItem} onPress={handlePress} hapticType="light">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                     <View style={[styles.iconBox, { backgroundColor: iconBgColor }]}>{icon}</View>
                     <View>
@@ -39,7 +39,7 @@ export default function ProfileMenuItem({
                     </View>
                 </View>
                 <ChevronRight size={18} color={theme.textSecondary} />
-            </HapticTouchableOpacity>
+            </HapticPressable>
         </View>
     );
 }
