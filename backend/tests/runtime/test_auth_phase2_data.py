@@ -383,6 +383,43 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(settings_payload["language"], "en-US")
             self.assertEqual(settings_payload["target_language"], "ko-KR")
 
+    def test_settings_target_language_explicit_null_clears_manual_value(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase2-settings-clear"))
+            headers = _auth_headers(session["access_token"])
+
+            put_manual = client.put(
+                "/me/settings",
+                json={
+                    "language": "ko-KR",
+                    "target_language": "ja-JP",
+                    "auto_play_audio": False,
+                    "selected_emoji": "🍎",
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_manual.status_code, 200)
+            self.assertEqual(put_manual.json()["settings"]["target_language"], "ja-JP")
+
+            clear_target = client.put(
+                "/me/settings",
+                json={
+                    "target_language": None,
+                },
+                headers=headers,
+            )
+            self.assertEqual(clear_target.status_code, 200)
+            cleared_payload = clear_target.json()["settings"]
+            self.assertIsNone(cleared_payload["target_language"])
+            self.assertEqual(cleared_payload["language"], "ko-KR")
+            self.assertEqual(cleared_payload["selected_emoji"], "🍎")
+
+            get_settings = client.get("/me/settings", headers=headers)
+            self.assertEqual(get_settings.status_code, 200)
+            settings_payload = get_settings.json()["settings"]
+            self.assertIsNone(settings_payload["target_language"])
+            self.assertEqual(settings_payload["language"], "ko-KR")
+
 
 if __name__ == "__main__":
     unittest.main()

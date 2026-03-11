@@ -2208,15 +2208,26 @@ async def get_me_settings(request: Request):
 
 @app.put("/me/settings")
 async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
+    fields_set = set(getattr(payload, "model_fields_set", set()))
+    target_language = (
+        ""
+        if "target_language" in fields_set and payload.target_language is None
+        else payload.target_language
+    )
+    selected_emoji = (
+        ""
+        if "selected_emoji" in fields_set and payload.selected_emoji is None
+        else payload.selected_emoji
+    )
     return await _run_me_route(
         request=request,
         action=lambda auth_service, user, _request_id: {
             "settings": auth_service.update_settings(
                 user_id=user.user_id,
                 language=payload.language,
-                target_language=payload.target_language,
+                target_language=target_language,
                 auto_play_audio=payload.auto_play_audio,
-                selected_emoji=payload.selected_emoji,
+                selected_emoji=selected_emoji,
                 expected_updated_at=payload.expected_updated_at,
             )
         },
