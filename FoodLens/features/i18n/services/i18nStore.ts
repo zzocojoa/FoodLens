@@ -8,7 +8,6 @@ import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
 import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
 import {
   loadLanguageSettings,
-  normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
   saveLanguageSettings,
@@ -42,30 +41,28 @@ const setState = (next: I18nState) => {
   emit();
 };
 
-const readProfileLanguageSettingsSnapshot = (): Partial<LanguageSettings> | null => {
+const normalizeProfileLanguageSettings = (
+  profile: UserProfile | null | undefined
+): LanguageSettings | null => {
+  if (!profile?.settings) {
+    return null;
+  }
+
+  return normalizeLanguageSettings(profile.settings);
+};
+
+const readProfileLanguageSettingsSnapshot = (): LanguageSettings | null => {
   const userId = getCurrentUserIdSnapshot();
   if (userId && userId !== 'auth-required') {
     const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
-    if (scoped?.settings) {
-      const normalizedTarget = scoped.settings.targetLanguage
-        ? normalizeCanonicalLocale(scoped.settings.targetLanguage)
-        : null;
-      return {
-        language: normalizeCanonicalLocale(scoped.settings.language),
-        targetLanguage: normalizedTarget === 'auto' ? null : normalizedTarget,
-      };
+    const scopedSettings = normalizeProfileLanguageSettings(scoped);
+    if (scopedSettings) {
+      return scopedSettings;
     }
   }
 
   const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
-  if (!legacy?.settings) return null;
-  const normalizedLegacyTarget = legacy.settings.targetLanguage
-    ? normalizeCanonicalLocale(legacy.settings.targetLanguage)
-    : null;
-  return {
-    language: normalizeCanonicalLocale(legacy.settings.language),
-    targetLanguage: normalizedLegacyTarget === 'auto' ? null : normalizedLegacyTarget,
-  };
+  return normalizeProfileLanguageSettings(legacy);
 };
 
 const areLanguageSettingsEqual = (left: LanguageSettings, right: LanguageSettings): boolean =>
@@ -81,18 +78,12 @@ const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSe
   const scoped = SafeStorage.getSync<UserProfile | null>(scopedKey, null);
   const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
   const baseProfile = scoped || legacy;
-  if (!baseProfile?.settings) {
+  const currentSettings = normalizeProfileLanguageSettings(baseProfile);
+  if (!baseProfile?.settings || !currentSettings) {
     return;
   }
 
-  const currentLanguage = normalizeCanonicalLocale(baseProfile.settings.language);
-  const currentTargetRaw = baseProfile.settings.targetLanguage || 'auto';
-  const currentTarget =
-    normalizeCanonicalLocale(currentTargetRaw) === 'auto'
-      ? null
-      : normalizeCanonicalLocale(currentTargetRaw);
-
-  if (currentLanguage === nextSettings.language && currentTarget === nextSettings.targetLanguage) {
+  if (areLanguageSettingsEqual(currentSettings, nextSettings)) {
     return;
   }
 
@@ -118,10 +109,7 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
     return;
   }
 
-  const normalizedSettings = normalizeLanguageSettings({
-    language: profileSettings.language ?? state.settings.language,
-    targetLanguage: profileSettings.targetLanguage ?? state.settings.targetLanguage,
-  });
+  const normalizedSettings = profileSettings;
 
   if (areLanguageSettingsEqual(normalizedSettings, state.settings)) {
     if (!state.ready) {
@@ -151,14 +139,9 @@ const normalizeRemoteLanguageSettings = (remote: {
   target_language?: string | null;
 }): LanguageSettings =>
   normalizeLanguageSettings({
-    language: normalizeCanonicalLocale(remote.language),
+    language: remote.language,
     targetLanguage:
-      remote.target_language === undefined
-        ? state.settings.targetLanguage
-        : (() => {
-            const normalized = normalizeCanonicalLocale(remote.target_language);
-            return normalized === 'auto' ? null : normalized;
-          })(),
+      remote.target_language === undefined ? state.settings.targetLanguage : remote.target_language,
   });
 
 const applyLanguageSettings = async (settings: LanguageSettings): Promise<void> => {
@@ -185,10 +168,7 @@ export const initializeI18nStore = async () => {
   initializePromise = (async () => {
     const persistedSettings = await loadLanguageSettings();
     const profileSettings = readProfileLanguageSettingsSnapshot();
-    const settings = normalizeLanguageSettings({
-      language: profileSettings?.language ?? persistedSettings.language,
-      targetLanguage: profileSettings?.targetLanguage ?? persistedSettings.targetLanguage,
-    });
+    const settings = profileSettings ?? persistedSettings;
     if (
       settings.language !== persistedSettings.language ||
       settings.targetLanguage !== persistedSettings.targetLanguage

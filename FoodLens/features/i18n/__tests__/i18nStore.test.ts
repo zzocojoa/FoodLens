@@ -80,4 +80,35 @@ describe('i18nStore initialization', () => {
     });
     expect(store.getI18nSnapshot().settings.language).toBe('auto');
   });
+
+  it('prefers profile auto traveler target over stale persisted target at startup', async () => {
+    mockLoadLanguageSettings.mockResolvedValue({
+      language: 'en-US',
+      targetLanguage: 'ko-KR',
+    });
+    mockSafeStorageGetSync.mockImplementation((key: string) => {
+      if (key === '@foodlens_user_profile:usr_i18n') {
+        return {
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: null,
+          },
+        };
+      }
+      return null;
+    });
+
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+
+    expect(mockSaveLanguageSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+    expect(store.getI18nSnapshot().settings).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+  });
 });

@@ -139,6 +139,11 @@ describe('profileSheetService.updateTravelerLanguage', () => {
       settings: { language: 'ko-KR', targetLanguage: 'en-US', autoPlayAudio: false, selectedEmoji: null },
     });
     mockNormalizeCanonicalLocale.mockImplementation((value: string) => value);
+    mockInitializeI18nStore.mockResolvedValue(undefined);
+    mockGetI18nSnapshot.mockReturnValue({
+      settings: { language: 'ko-KR', targetLanguage: 'en-US' },
+    });
+    mockSetI18nSettings.mockResolvedValue(undefined);
     mockCreateOrUpdateProfile.mockResolvedValue({ uid: 'usr_1' });
   });
 
@@ -157,6 +162,10 @@ describe('profileSheetService.updateTravelerLanguage', () => {
         }),
       })
     );
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: 'ja-JP',
+    });
   });
 
   it('maps auto selection to undefined target language', async () => {
@@ -174,6 +183,10 @@ describe('profileSheetService.updateTravelerLanguage', () => {
         }),
       })
     );
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
   });
 
   it('skips server write when selected traveler language is already current', async () => {
