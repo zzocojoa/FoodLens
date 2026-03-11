@@ -1,11 +1,11 @@
-import { UserService } from '@/services/userService_Logic';
+import { UserService } from '@/services/userService';
 import { persistProfileImageIfNeeded } from '../utils/profileSheetStateUtils';
-import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
 import {
   getI18nSnapshot,
   initializeI18nStore,
   setI18nSettings,
-} from '@/features/i18n/services/i18nStore_Logic';
+} from '@/features/i18n/services/i18nStore';
 import type { CanonicalLocale } from '@/features/i18n/types';
 
 const applyUiLanguageToI18nStore = async (language: CanonicalLocale): Promise<void> => {

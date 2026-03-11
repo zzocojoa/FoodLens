@@ -5,10 +5,10 @@ import {
   AuthApiError,
   AuthSessionTokens,
   isAuthEmailVerificationChallenge,
-} from '@/services/auth/authApi_Logic';
-import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { hasCompletedOnboarding } from '@/services/onboardingGateService_Logic';
-import { persistSession } from '@/services/auth/sessionManager_Logic';
+} from '@/services/auth/authApi';
+import { ServerConfig } from '@/services/aiCore/serverConfig';
+import { hasCompletedOnboarding } from '@/services/onboardingGateService';
+import { persistSession } from '@/services/auth/sessionManager';
 import { useI18n } from '@/features/i18n';
 import {
   LOGIN_ANIMATION,
@@ -17,7 +17,7 @@ import {
   LOGIN_INITIAL_FORM_VALUES,
   LOGIN_PASSWORD_MIN_LENGTH,
 } from '../constants/login.constants';
-import { loginAuthService } from '../services/loginAuthService_Logic';
+import { loginAuthService } from '../services/loginAuthService';
 import {
   LoginAuthMode,
   LoginFormValues,

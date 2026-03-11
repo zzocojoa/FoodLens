@@ -6,9 +6,9 @@ import sentry_sdk
 from dotenv import load_dotenv
 from PIL import Image, ImageOps
 
-from backend.modules.analyst_runtime.food_analyst_Logic import FoodAnalyst
-from backend.modules.barcode.service_Logic import BarcodeService
-from backend.modules.analyst_runtime.router_Logic import SmartRouter
+from backend.modules.analyst_runtime.food_analyst import FoodAnalyst
+from backend.modules.barcode.service import BarcodeService
+from backend.modules.analyst_runtime.router import SmartRouter
 
 
 def _init_sentry() -> None:

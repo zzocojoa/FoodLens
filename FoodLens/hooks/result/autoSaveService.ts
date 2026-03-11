@@ -1,4 +1,4 @@
-import { AnalysisService } from '@/services/analysisService_Logic';
+import { AnalysisService } from '@/services/analysisService';
 import { getAutoSaveUserId } from './autoSaveUtils';
 
 export const autoSaveService = {

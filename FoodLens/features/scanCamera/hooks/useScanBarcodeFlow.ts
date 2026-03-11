@@ -3,15 +3,15 @@ import { MutableRefObject } from 'react';
 import { BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Href } from 'expo-router';
-import { lookupBarcodeWithCache, normalizeBarcodeIngredients } from '../services/scanCameraBarcodeService_Logic';
+import { lookupBarcodeWithCache, normalizeBarcodeIngredients } from '../services/scanCameraBarcodeService';
 import { isBarcodeInCenteredRoi, evaluateScanConfidence } from '../utils/barcodeScannerUtils';
 import { createFallbackLocation } from '../utils/scanCameraMappers';
-import { dataStore } from '@/services/dataStore_Logic';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
-import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
+import { dataStore } from '@/services/dataStore';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { buildResultRoute } from '@/services/contracts/resultRoute';
 import { LocationData } from '@/services/utils/types';
 import { AnalyzedData } from '@/services/ai';
-import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale_Logic';
+import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale';
 
 type Translate = (key: string, fallback?: string) => string;
 

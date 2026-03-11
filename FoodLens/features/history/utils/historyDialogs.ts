@@ -1,4 +1,4 @@
-import { showAlert } from '@/services/ui/uiAlerts_Logic';
+import { showAlert } from '@/services/ui/uiAlerts';
 
 export const confirmBulkDelete = (
     count: number,

@@ -2,7 +2,7 @@ import { saveTestUserProfile } from '../profilePersistence';
 
 const mockCreateOrUpdateProfile = jest.fn();
 
-jest.mock('@/services/userService_Logic', () => ({
+jest.mock('@/services/userService', () => ({
   UserService: {
     CreateOrUpdateProfile: (...args: unknown[]) => mockCreateOrUpdateProfile(...args),
   },

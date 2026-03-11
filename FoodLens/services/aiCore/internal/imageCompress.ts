@@ -1,6 +1,6 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { logger } from '@/services/logger_Logic';
+import { logger } from '@/services/logger';
 
 // ---------------------------------------------------------------------------
 // Constants

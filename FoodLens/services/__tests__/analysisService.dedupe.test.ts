@@ -1,26 +1,26 @@
 import { AnalysisService } from '../analysisService';
-import { getStoredAnalyses, saveAnalyses } from '../analysis/storage_Logic';
-import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue_Logic';
-import { queryClient } from '../queryClient_Logic';
+import { getStoredAnalyses, saveAnalyses } from '../analysis/storage';
+import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue';
+import { queryClient } from '../queryClient';
 
-jest.mock('../analysis/storage_Logic', () => ({
+jest.mock('../analysis/storage', () => ({
   getStoredAnalyses: jest.fn(),
   saveAnalyses: jest.fn(),
 }));
 
-jest.mock('../sync/phase2SyncQueue_Logic', () => ({
+jest.mock('../sync/phase2SyncQueue', () => ({
   dispatchPhase2SyncQueue: jest.fn(async () => undefined),
   enqueueHistorySync: jest.fn(async () => undefined),
   getPhase2SyncQueueSnapshot: jest.fn(async () => []),
   startPhase2SyncRuntime: jest.fn(),
 }));
 
-jest.mock('../sync/phase2Mappers_Logic', () => ({
+jest.mock('../sync/phase2Mappers', () => ({
   mergeRemoteHistory: jest.fn(),
   serializeHistoryRecord: jest.fn((record) => record),
 }));
 
-jest.mock('../storage_Logic', () => ({
+jest.mock('../storage', () => ({
   SafeStorage: {
     get: jest.fn(async (_key: string, fallback: unknown) => fallback),
     set: jest.fn(async () => undefined),
@@ -28,11 +28,11 @@ jest.mock('../storage_Logic', () => ({
   },
 }));
 
-jest.mock('../imageStorage_Logic', () => ({
+jest.mock('../imageStorage', () => ({
   deleteImage: jest.fn(async () => undefined),
 }));
 
-jest.mock('../sync/phase2Api_Logic', () => ({
+jest.mock('../sync/phase2Api', () => ({
   Phase2Api: {
     getHistory: jest.fn(async () => ({ history: [], requestId: 'req-history' })),
     deleteHistory: jest.fn(async () => ({ deleted: true, requestId: 'req-delete' })),

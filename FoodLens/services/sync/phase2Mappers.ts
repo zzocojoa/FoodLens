@@ -1,19 +1,19 @@
 import type { UserProfile } from '@/models/User';
-import type { AnalysisRecord } from '@/services/analysis/types_Structure';
+import type { AnalysisRecord } from '@/services/analysis/types';
 import {
   normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
-} from '@/features/i18n/services/languageService_Logic';
-import { IMAGE_DIR } from '@/services/imageStorage.helpers_Logic';
-import { buildDefaultProfile } from '@/services/user/profileFactory_Logic';
+} from '@/features/i18n/services/languageService';
+import { IMAGE_DIR } from '@/services/imageStorage.helpers';
+import { buildDefaultProfile } from '@/services/user/profileFactory';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import type {
   MeAllergiesResponse,
   MeHistoryItemResponse,
   MeProfileResponse,
   MeSettingsResponse,
-} from './phase2Sync.types_Structure';
+} from './phase2Sync.types';
 
 type UserSnapshotInput = {
   profile?: MeProfileResponse;

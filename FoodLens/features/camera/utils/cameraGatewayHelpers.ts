@@ -1,20 +1,12 @@
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 
+import { assertAnalysisImageFileReady } from '../../../services/analysis/flow';
 import { getLocationData, validateCoordinates } from '../../../services/utils';
-import { UserService } from '../../../services/userService_Logic';
+import { UserService } from '../../../services/userService';
 import { DEFAULT_ISO_CODE, getCameraUserId } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from './cameraMappers';
-import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage_Logic';
-
-export const assertImageFileReady = async (uri: string): Promise<void> => {
-    const fileInfo = await FileSystem.getInfoAsync(uri);
-    const fileSize = 'size' in fileInfo ? fileInfo.size : undefined;
-    if (!fileInfo.exists || fileSize === 0) {
-        throw new Error('File validation failed: Image is empty or missing.');
-    }
-};
+import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage';
 
 export const resolveIsoCodeFromContext = async (
     locationData: LocationContext | null | undefined
@@ -100,3 +92,5 @@ export const resolveInitialLocationContext = async ({
 
     return null;
 };
+
+export const assertImageFileReady = assertAnalysisImageFileReady;

@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi_Logic';
+import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 
 export type OAuthProvider = 'google' | 'kakao';
 type OAuthMode = 'mock' | 'live';

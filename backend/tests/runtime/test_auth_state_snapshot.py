@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from backend.modules.auth.service_Logic import InMemoryAuthSessionService
+from backend.modules.auth.service import InMemoryAuthSessionService
 
 
 class _MemoryStateStore:

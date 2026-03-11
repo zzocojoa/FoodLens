@@ -7,7 +7,7 @@ import {
   initializeI18nStore,
   setUiLanguage,
   useI18nSnapshot,
-} from '../services/i18nStore_Logic';
+} from '../services/i18nStore';
 
 export const useI18n = () => {
   const state = useI18nSnapshot();

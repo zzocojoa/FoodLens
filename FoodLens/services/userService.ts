@@ -1,24 +1,24 @@
 import { UserProfile } from '../models/User';
-import { SafeStorage } from './storage_Logic';
-import { USER_STORAGE_KEY, getUserStorageKey } from './user/constants_Logic';
-import { buildDefaultProfile } from './user/profileFactory_Logic';
-import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage_Logic';
-import { publishUserProfileUpdated } from './user/userProfileStore_Logic';
-import { logger } from './logger_Logic';
-import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
+import { SafeStorage } from './storage';
+import { USER_STORAGE_KEY, getUserStorageKey } from './user/constants';
+import { buildDefaultProfile } from './user/profileFactory';
+import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage';
+import { publishUserProfileUpdated } from './user/userProfileStore';
+import { logger } from './logger';
+import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
 import {
   buildProfileWritePayload,
   mergeRemoteUserSnapshot,
   normalizeLegacyProfileForUser,
-} from './sync/phase2Mappers_Logic';
+} from './sync/phase2Mappers';
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
   getPhase2OperationsByIds,
   startPhase2SyncRuntime,
-} from './sync/phase2SyncQueue_Logic';
-import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
-import { restoreSession } from './auth/sessionManager_Logic';
+} from './sync/phase2SyncQueue';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
+import { restoreSession } from './auth/sessionManager';
 
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';

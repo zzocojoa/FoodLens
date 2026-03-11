@@ -1,16 +1,18 @@
 import { MutableRefObject } from 'react';
 import { analyzeImage } from '../../../services/ai';
-import { dataStore } from '../../../services/dataStore_Logic';
-import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage_Logic';
+import {
+  assertAnalysisImageFileReady,
+  createAnalysisUploadProgressHandler,
+  resolveAnalysisLocation,
+  showOfflineAlertAndReset,
+} from '../../../services/analysis/flow';
+import { dataStore } from '../../../services/dataStore';
+import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage';
 import { getLocationData, normalizeTimestamp } from '../../../services/utils';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from '../utils/cameraMappers';
-import {
-  assertImageFileReady,
-  resolveIsoCodeFromContext,
-} from '../utils/cameraGatewayHelpers';
-import { showAlert } from '@/services/ui/uiAlerts_Logic';
-import { logger } from '@/services/logger_Logic';
+import { resolveIsoCodeFromContext } from '../utils/cameraGatewayHelpers';
+import { logger } from '@/services/logger';
 
 type RunCameraImageAnalysisParams = {
   uri: string;
@@ -51,55 +53,14 @@ const beginCameraAnalysis = ({
 const resolveLocationContext = async (
   cachedLocation: MutableRefObject<LocationContext | null | undefined>
 ) => {
-  let locationData = cachedLocation.current;
-
-  if (locationData === undefined) {
-    try {
-      locationData = await getLocationData();
-    } catch (error) {
+  return resolveAnalysisLocation<LocationContext>({
+    initialLocation: cachedLocation.current,
+    shouldLoad: (location) => location === undefined,
+    loadLocation: async () => getLocationData(),
+    onError: (error) => {
       logger.warn('Location fetch failed, defaulting to US context', error, 'CameraAnalysis');
-    }
-  }
-
-  return locationData;
-};
-
-const createUploadProgressHandler = ({
-  isCancelled,
-  setUploadProgress,
-  setActiveStep,
-}: {
-  isCancelled: MutableRefObject<boolean>;
-  setUploadProgress: (value: number | undefined) => void;
-  setActiveStep: (value: number | undefined) => void;
-}) => {
-  return (progress: number) => {
-    if (isCancelled.current) return;
-    setUploadProgress(progress);
-    if (progress >= 1) {
-      setActiveStep(2);
-    }
-  };
-};
-
-const handleOfflineCase = ({
-  isConnectedRef,
-  offlineAlertTitle,
-  offlineAlertMessage,
-  resetState,
-  onExit,
-}: {
-  isConnectedRef: MutableRefObject<boolean>;
-  offlineAlertTitle: string;
-  offlineAlertMessage: string;
-  resetState: () => void;
-  onExit: () => void;
-}) => {
-  if (isConnectedRef.current) return false;
-  showAlert(offlineAlertTitle, offlineAlertMessage);
-  resetState();
-  onExit();
-  return true;
+    },
+  });
 };
 
 export const runCameraImageAnalysis = async ({
@@ -131,10 +92,10 @@ export const runCameraImageAnalysis = async ({
   if (isCancelled.current) return;
 
   if (
-    handleOfflineCase({
-      isConnectedRef,
-      offlineAlertTitle,
-      offlineAlertMessage,
+    showOfflineAlertAndReset({
+      isConnected: isConnectedRef.current,
+      title: offlineAlertTitle,
+      message: offlineAlertMessage,
       resetState,
       onExit,
     })
@@ -143,7 +104,7 @@ export const runCameraImageAnalysis = async ({
   }
 
   const isoCode = await resolveIsoCodeFromContext(locationData);
-  await assertImageFileReady(uri);
+  await assertAnalysisImageFileReady(uri);
 
   setActiveStep(1);
   setUploadProgress(0);
@@ -151,7 +112,7 @@ export const runCameraImageAnalysis = async ({
   const analysisResult = await analyzeImage(
     uri,
     isoCode,
-    createUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
+    createAnalysisUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
   );
 
   if (isCancelled.current) return;

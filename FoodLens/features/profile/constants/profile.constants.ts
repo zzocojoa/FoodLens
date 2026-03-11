@@ -1,5 +1,5 @@
 import { AllergenOption, AllergySeverity, Gender } from '../types/profile.types';
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 export const getProfileUserId = (): string => getCurrentUserId();
 export const TEST_EMAIL = 'test@example.com';

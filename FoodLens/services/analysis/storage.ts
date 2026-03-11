@@ -1,5 +1,5 @@
-import { SafeStorage } from '../storage_Logic';
-import { ANALYSES_STORAGE_KEY, AnalysisRecord, getAnalysesStorageKey } from './types_Logic';
+import { SafeStorage } from '../storage';
+import { ANALYSES_STORAGE_KEY, AnalysisRecord, getAnalysesStorageKey } from './types';
 
 const normalizeAnalyses = (records: unknown[]): AnalysisRecord[] =>
   records.map((analysis) => {

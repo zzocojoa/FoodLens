@@ -20,7 +20,7 @@ jest.mock('react-native-mmkv', () => ({
   })),
 }));
 
-import { resolveImageUri } from '../imageStorage_Logic';
+import { resolveImageUri } from '../imageStorage';
 
 describe('resolveImageUri', () => {
   it('keeps external URLs intact', () => {

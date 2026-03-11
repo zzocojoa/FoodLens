@@ -3,7 +3,7 @@
 import re
 from typing import Final
 
-from .constants_Structure import (
+from .constants import (
     ISO_COUNTRY_TO_LANGUAGE,
     STANDARD_ALLERGENS,
 )

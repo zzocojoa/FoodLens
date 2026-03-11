@@ -1,5 +1,5 @@
-import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager_Logic';
+import { ServerConfig } from '@/services/aiCore/serverConfig';
+import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager';
 import type {
   MediaAssetResponse,
   MediaUploadScope,
@@ -7,7 +7,7 @@ import type {
   MeHistoryItemResponse,
   MeProfileResponse,
   MeSettingsResponse,
-} from './phase2Sync.types_Structure';
+} from './phase2Sync.types';
 
 const PHASE2_TIMEOUT_MS = 15_000;
 const AUTH_RETRY_ERROR_CODES = new Set(['AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED', 'AUTH_SESSION_REVOKED']);

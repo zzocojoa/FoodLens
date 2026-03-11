@@ -1,21 +1,21 @@
 import { AnalyzedData } from './ai';
-import { deleteImage } from './imageStorage_Logic';
-import { generateId, resolveRecordTimestamp } from './analysis/helpers_Logic';
-import { getStoredAnalyses, saveAnalyses } from './analysis/storage_Logic';
-import { AnalysisRecord } from './analysis/types_Logic';
-import { logger } from './logger_Logic';
-import { SafeStorage } from './storage_Logic';
-import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
-import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers_Logic';
+import { deleteImage } from './imageStorage';
+import { generateId, resolveRecordTimestamp } from './analysis/helpers';
+import { getStoredAnalyses, saveAnalyses } from './analysis/storage';
+import { AnalysisRecord } from './analysis/types';
+import { logger } from './logger';
+import { SafeStorage } from './storage';
+import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
+import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers';
 import {
   dispatchPhase2SyncQueue,
   enqueueHistorySync,
   getPhase2SyncQueueSnapshot,
   startPhase2SyncRuntime,
-} from './sync/phase2SyncQueue_Logic';
-import { queryClient } from './queryClient_Logic';
+} from './sync/phase2SyncQueue';
+import { queryClient } from './queryClient';
 
-export type { AnalysisRecord } from './analysis/types_Structure';
+export type { AnalysisRecord } from './analysis/types';
 
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';

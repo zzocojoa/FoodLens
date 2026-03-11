@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AnalysisService, AnalysisRecord } from '@/services/analysisService_Logic';
+import { AnalysisService, AnalysisRecord } from '@/services/analysisService';
 
 const HISTORY_QUERY_REFRESH_INTERVAL_MS = 15_000;
 

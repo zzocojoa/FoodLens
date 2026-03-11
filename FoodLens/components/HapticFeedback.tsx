@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, TouchableOpacityProps, Pressable, PressableProps } from 'react-native';
-import { HapticsService } from '../services/haptics_Logic';
+import { HapticsService } from '../services/haptics';
 
 const runHapticSafe = (
     hapticType: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection',

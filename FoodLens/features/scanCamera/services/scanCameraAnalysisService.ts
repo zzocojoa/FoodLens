@@ -1,18 +1,21 @@
 import { MutableRefObject } from 'react';
 import { Href } from 'expo-router';
 import { AnalyzedData } from '../../../services/ai';
+import {
+  assertAnalysisImageFileReady,
+  createAnalysisUploadProgressHandler,
+  resolveAnalysisLocation,
+  showOfflineAlertAndReset,
+} from '../../../services/analysis/flow';
 import { getLocationData } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
 import {
-  assertImageFileReady,
   beginAnalysis,
-  createProgressHandler,
   getIsoCode,
   persistAndNavigateAnalysisResult,
 } from '../utils/scanCameraGatewayHelpers';
-import { showAlert } from '@/services/ui/uiAlerts_Logic';
-import { logger } from '@/services/logger_Logic';
-import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale_Logic';
+import { logger } from '@/services/logger';
+import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale';
 
 type AnalysisExecutor = (
   uri: string,
@@ -45,34 +48,21 @@ type RunAnalysisFlowParams = {
 const resolveLocationForAnalysis = async ({
   customLocation,
   cachedLocation,
-}: Pick<RunAnalysisFlowParams, 'customLocation' | 'cachedLocation'>) => {
-  let locationData = customLocation ?? cachedLocation.current ?? null;
-
-  if (!locationData) {
-    try {
-      locationData = await getLocationData();
-      if (locationData) cachedLocation.current = locationData;
-    } catch (error) {
+}: Pick<RunAnalysisFlowParams, 'customLocation' | 'cachedLocation'>): Promise<LocationData | null> => {
+  const location = await resolveAnalysisLocation<LocationData>({
+    initialLocation: customLocation ?? cachedLocation.current ?? null,
+    shouldLoad: (location) => !location,
+    loadLocation: async () => getLocationData(),
+    onLoaded: (location) => {
+      if (location) {
+        cachedLocation.current = location;
+      }
+    },
+    onError: (error) => {
       logger.warn('Location fetch failed', error, 'ScanAnalysis');
-    }
-  }
-
-  return locationData;
-};
-
-const isOfflineAndReset = ({
-  isConnectedRef,
-  offlineAlertTitle,
-  offlineAlertMessage,
-  resetState,
-}: Pick<
-  RunAnalysisFlowParams,
-  'isConnectedRef' | 'offlineAlertTitle' | 'offlineAlertMessage' | 'resetState'
->) => {
-  if (isConnectedRef.current) return false;
-  showAlert(offlineAlertTitle, offlineAlertMessage);
-  resetState();
-  return true;
+    },
+  });
+  return location ?? null;
 };
 
 export const runAnalysisFlow = async ({
@@ -108,10 +98,10 @@ export const runAnalysisFlow = async ({
     if (isCancelled.current) return;
 
     if (
-      isOfflineAndReset({
-        isConnectedRef,
-        offlineAlertTitle,
-        offlineAlertMessage,
+      showOfflineAlertAndReset({
+        isConnected: isConnectedRef.current,
+        title: offlineAlertTitle,
+        message: offlineAlertMessage,
         resetState,
       })
     ) {
@@ -127,7 +117,7 @@ export const runAnalysisFlow = async ({
     const isoCode = getIsoCode(locationData, fallbackIsoCode);
 
     if (needsFileValidation) {
-      await assertImageFileReady(uri);
+      await assertAnalysisImageFileReady(uri);
     }
 
     setActiveStep(1);
@@ -136,7 +126,7 @@ export const runAnalysisFlow = async ({
     const analysisResult = await analyzer(
       uri,
       isoCode,
-      createProgressHandler({ isCancelled, setUploadProgress: (value: number) => setUploadProgress(value), setActiveStep: (value: number) => setActiveStep(value) })
+      createAnalysisUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
     );
 
     if (isCancelled.current) return;

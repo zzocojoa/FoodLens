@@ -1,5 +1,5 @@
 import { Dimensions } from 'react-native';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 
 const { height } = Dimensions.get('window');
 

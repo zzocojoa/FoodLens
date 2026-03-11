@@ -1,13 +1,12 @@
 import { UserProfile } from '../../../models/User';
-import { AnalysisService } from '../../../services/analysisService_Logic';
-import { UserService } from '../../../services/userService_Logic';
+import { AnalysisService } from '../../../services/analysisService';
+import { loadUserProfileWithHistory } from '../../../services/user/profileAnalysisLoader';
 import { buildWeeklyStats } from '../utils/homeDashboard';
 
 export const fetchHomeDashboardData = async (uid: string) => {
-  const [recentData, allHistory, profile] = await Promise.all([
+  const [recentData, { allHistory, profile }] = await Promise.all([
     AnalysisService.getRecentAnalyses(uid, 3),
-    AnalysisService.getAllAnalyses(uid),
-    UserService.getUserProfile(uid, { allowBackgroundRefresh: false }),
+    loadUserProfileWithHistory(uid, { allowBackgroundRefresh: false }),
   ]);
 
   return {

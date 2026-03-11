@@ -1,4 +1,4 @@
-import { SafeStorage } from '@/services/storage_Logic';
+import { SafeStorage } from '@/services/storage';
 import { NativeModules, Platform } from 'react-native';
 import {
   DEFAULT_FALLBACK_LOCALE,

@@ -1,15 +1,15 @@
 import { UserService } from '../userService';
-import { SafeStorage } from '../storage_Logic';
-import { Phase2Api } from '../sync/phase2Api_Logic';
+import { SafeStorage } from '../storage';
+import { Phase2Api } from '../sync/phase2Api';
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
   getPhase2OperationsByIds,
-} from '../sync/phase2SyncQueue_Logic';
-import { restoreSession } from '../auth/sessionManager_Logic';
-import { getCurrentUserId, hasAuthenticatedUser } from '../auth/currentUser_Logic';
+} from '../sync/phase2SyncQueue';
+import { restoreSession } from '../auth/sessionManager';
+import { getCurrentUserId, hasAuthenticatedUser } from '../auth/currentUser';
 
-jest.mock('../storage_Logic', () => ({
+jest.mock('../storage', () => ({
   SafeStorage: {
     get: jest.fn(),
     set: jest.fn(),
@@ -17,14 +17,14 @@ jest.mock('../storage_Logic', () => ({
   },
 }));
 
-jest.mock('../sync/phase2SyncQueue_Logic', () => ({
+jest.mock('../sync/phase2SyncQueue', () => ({
   enqueuePhase2Sync: jest.fn(),
   dispatchPhase2SyncQueue: jest.fn(),
   getPhase2OperationsByIds: jest.fn(),
   startPhase2SyncRuntime: jest.fn(),
 }));
 
-jest.mock('../sync/phase2Api_Logic', () => ({
+jest.mock('../sync/phase2Api', () => ({
   Phase2Api: {
     getProfile: jest.fn(),
     getAllergies: jest.fn(),
@@ -44,12 +44,12 @@ jest.mock('../sync/phase2Api_Logic', () => ({
   },
 }));
 
-jest.mock('../user/profileImage_Logic', () => ({
+jest.mock('../user/profileImage', () => ({
   resolveAndValidateProfileImage: jest.fn(async (profile) => ({ profile, isValidImage: true })),
   ensureProfileImageExists: jest.fn(async (_uid, profile) => profile),
 }));
 
-jest.mock('../user/profileFactory_Logic', () => ({
+jest.mock('../user/profileFactory', () => ({
   buildDefaultProfile: jest.fn((uid: string) => ({
     uid,
     email: '',
@@ -70,18 +70,18 @@ jest.mock('../user/profileFactory_Logic', () => ({
   })),
 }));
 
-jest.mock('../auth/sessionManager_Logic', () => ({
+jest.mock('../auth/sessionManager', () => ({
   restoreSession: jest.fn(async () => ({
     user: { id: 'usr_a' },
   })),
 }));
 
-jest.mock('../auth/currentUser_Logic', () => ({
+jest.mock('../auth/currentUser', () => ({
   hasAuthenticatedUser: jest.fn(() => true),
   getCurrentUserId: jest.fn(() => 'usr_a'),
 }));
 
-jest.mock('../user/userProfileStore_Logic', () => ({
+jest.mock('../user/userProfileStore', () => ({
   publishUserProfileUpdated: jest.fn(),
 }));
 

@@ -1,6 +1,6 @@
-import { dataStore } from '@/services/dataStore_Logic';
-import type { AnalyzedData } from '@/services/ai_Structure';
-import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute_Logic';
+import { dataStore } from '@/services/dataStore';
+import type { AnalyzedData } from '@/services/ai';
+import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import type { ImageSourcePropType } from 'react-native';
 import {
   getBarcodeImageSource,

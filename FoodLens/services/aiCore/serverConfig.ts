@@ -1,5 +1,5 @@
-import { SafeStorage } from '@/services/storage_Logic';
-import { DEFAULT_SERVER_URL, STORAGE_KEY } from './constants_Logic';
+import { SafeStorage } from '@/services/storage';
+import { DEFAULT_SERVER_URL, STORAGE_KEY } from './constants';
 
 export const ServerConfig = {
     getServerUrl: async (): Promise<string> => {

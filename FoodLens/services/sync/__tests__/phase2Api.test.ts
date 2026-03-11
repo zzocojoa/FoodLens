@@ -1,18 +1,18 @@
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 
-jest.mock('@/services/aiCore/serverConfig_Logic', () => ({
+jest.mock('@/services/aiCore/serverConfig', () => ({
   ServerConfig: {
     getServerUrl: jest.fn(),
   },
 }));
 
-jest.mock('@/services/auth/sessionManager_Logic', () => ({
+jest.mock('@/services/auth/sessionManager', () => ({
   restoreSession: jest.fn(),
   refreshSessionNow: jest.fn(),
 }));
 
-import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager_Logic';
+import { ServerConfig } from '@/services/aiCore/serverConfig';
+import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager';
 
 const mockedServerConfig = ServerConfig as jest.Mocked<typeof ServerConfig>;
 const mockedRestoreSession = restoreSession as jest.Mock;

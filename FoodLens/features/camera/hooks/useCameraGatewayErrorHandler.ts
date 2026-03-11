@@ -1,6 +1,6 @@
 import { MutableRefObject, useCallback } from 'react';
 import { isFileError, isRetryableServerError } from '../utils/cameraMappers';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type Translate = (key: string, fallback?: string) => string;
 

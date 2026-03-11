@@ -1,3 +1,3 @@
-from .service_Logic import AuthServiceError, InMemoryAuthSessionService
+from .service import AuthServiceError, InMemoryAuthSessionService
 
 __all__ = ["AuthServiceError", "InMemoryAuthSessionService"]

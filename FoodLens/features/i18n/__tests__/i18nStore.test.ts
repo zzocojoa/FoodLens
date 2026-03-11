@@ -6,22 +6,22 @@ const mockSaveLanguageSettings = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetCurrentUserIdSnapshot = jest.fn();
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
   },
 }));
 
-jest.mock('@/services/auth/currentUser_Logic', () => ({
+jest.mock('@/services/auth/currentUser', () => ({
   getCurrentUserIdSnapshot: (...args: unknown[]) => mockGetCurrentUserIdSnapshot(...args),
 }));
 
-jest.mock('@/services/user/constants_Logic', () => ({
+jest.mock('@/services/user/constants', () => ({
   USER_STORAGE_KEY: '@foodlens_user_profile',
   getUserStorageKey: (uid: string) => `@foodlens_user_profile:${uid}`,
 }));
 
-jest.mock('../services/languageService_Logic', () => ({
+jest.mock('../services/languageService', () => ({
   loadLanguageSettings: (...args: unknown[]) => mockLoadLanguageSettings(...args),
   normalizeCanonicalLocale: (...args: unknown[]) => mockNormalizeCanonicalLocale(...args),
   normalizeLanguageSettings: (...args: unknown[]) => mockNormalizeLanguageSettings(...args),

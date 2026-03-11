@@ -6,15 +6,15 @@ import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersis
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import { buildSuggestions } from '../utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { getProfileUserId } from '../constants/profile.constants';
 import {
     getManualMergeConflictOperationsForUser,
     resolveManualMergeConflictsForUser,
-} from '@/services/sync/phase2ConflictResolution_Logic';
-import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
-import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types_Structure';
+} from '@/services/sync/phase2ConflictResolution';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
+import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types';
 
 const normalizeAllergyKey = (value: string) => value.trim().toLowerCase();
 const PROFILE_SCREEN_REFRESH_INTERVAL_MS = 5000;

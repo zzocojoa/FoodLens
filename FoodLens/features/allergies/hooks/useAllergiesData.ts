@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { UserService } from '../../../services/userService_Logic';
+import { UserService } from '../../../services/userService';
 import { getAllergiesUserId } from '../constants/allergies.constants';
 import { mergeAllergyTerms } from '../utils/mergeAllergyTerms';
-import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { AllergiesState } from '../types/allergies.types';
 
 const ALLERGIES_REFRESH_INTERVAL_MS = 5000;

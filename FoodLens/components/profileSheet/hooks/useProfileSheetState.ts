@@ -5,16 +5,16 @@ import { DEFAULT_NAME } from '../constants';
 import { pickProfileImageUri } from '../utils/profileSheetStateUtils';
 import { profileSheetService } from '../services/profileSheetService';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
-import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
-import { setUiLanguage as setUiLanguageInStore } from '@/features/i18n/services/i18nStore_Logic';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
+import { setUiLanguage as setUiLanguageInStore } from '@/features/i18n/services/i18nStore';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import {
     getManualMergeConflictOperationsForUser,
     resolveManualMergeConflictsForUser,
-} from '@/services/sync/phase2ConflictResolution_Logic';
-import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types_Structure';
-import { SafeStorage } from '@/services/storage_Logic';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
+} from '@/services/sync/phase2ConflictResolution';
+import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types';
+import { SafeStorage } from '@/services/storage';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
 import type { UserProfile } from '@/models/User';
 
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;

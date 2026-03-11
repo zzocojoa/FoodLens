@@ -20,28 +20,28 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 
-jest.mock('../../services/homeDashboardService_Logic', () => ({
+jest.mock('../../services/homeDashboardService', () => ({
   fetchHomeDashboardData: (...args: unknown[]) => mockFetchHomeDashboardData(...args),
   getProfileRestrictionCount: (...args: unknown[]) => mockGetProfileRestrictionCount(...args),
 }));
 
-jest.mock('@/services/user/userProfileStore_Logic', () => ({
+jest.mock('@/services/user/userProfileStore', () => ({
   subscribeUserProfileUpdated: (...args: unknown[]) => mockSubscribeUserProfileUpdated(...args),
 }));
 
-jest.mock('@/services/auth/currentUser_Logic', () => ({
+jest.mock('@/services/auth/currentUser', () => ({
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
   getCurrentUserIdSnapshot: (...args: unknown[]) => mockGetCurrentUserIdSnapshot(...args),
 }));
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
     get: (...args: unknown[]) => mockSafeStorageGet(...args),
   },
 }));
 
-jest.mock('@/services/user/constants_Logic', () => ({
+jest.mock('@/services/user/constants', () => ({
   getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
   USER_STORAGE_KEY: '@foodlens_user_profile',
 }));
@@ -52,11 +52,11 @@ jest.mock('@/features/i18n', () => ({
   }),
 }));
 
-jest.mock('@/services/ui/uiAlerts_Logic', () => ({
+jest.mock('@/services/ui/uiAlerts', () => ({
   showTranslatedAlert: jest.fn(),
 }));
 
-jest.mock('@/services/analysisService_Logic', () => ({
+jest.mock('@/services/analysisService', () => ({
   AnalysisService: {
     deleteAnalysis: jest.fn(),
   },

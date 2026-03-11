@@ -2,17 +2,17 @@ import { useSyncExternalStore } from 'react';
 import { DEFAULT_LANGUAGE } from '../constants';
 import { CanonicalLocale, I18nState, LanguageSettings } from '../types';
 import type { UserProfile } from '@/models/User';
-import { SafeStorage } from '@/services/storage_Logic';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
-import { publishUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+import { SafeStorage } from '@/services/storage';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
 import {
   loadLanguageSettings,
   normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
   saveLanguageSettings,
-} from './languageService_Logic';
+} from './languageService';
 
 type Listener = () => void;
 
@@ -225,7 +225,7 @@ export const syncI18nSettingsFromProfile = async (
 
     if (pullFromServer && hasAuthenticatedUser) {
       try {
-        const { Phase2Api } = await import('@/services/sync/phase2Api_Logic');
+        const { Phase2Api } = await import('@/services/sync/phase2Api');
         const { settings } = await Phase2Api.getSettings();
         const normalized = normalizeRemoteLanguageSettings(settings);
         await applyLanguageSettings(normalized);

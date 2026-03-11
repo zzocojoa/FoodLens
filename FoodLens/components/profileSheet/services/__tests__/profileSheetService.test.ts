@@ -8,7 +8,7 @@ const mockInitializeI18nStore = jest.fn();
 const mockGetI18nSnapshot = jest.fn();
 const mockSetI18nSettings = jest.fn();
 
-jest.mock('@/services/userService_Logic', () => ({
+jest.mock('@/services/userService', () => ({
   UserService: {
     getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
     CreateOrUpdateProfile: (...args: unknown[]) => mockCreateOrUpdateProfile(...args),
@@ -19,11 +19,11 @@ jest.mock('../../utils/profileSheetStateUtils', () => ({
   persistProfileImageIfNeeded: (...args: unknown[]) => mockPersistProfileImageIfNeeded(...args),
 }));
 
-jest.mock('@/features/i18n/services/languageService_Logic', () => ({
+jest.mock('@/features/i18n/services/languageService', () => ({
   normalizeCanonicalLocale: (...args: unknown[]) => mockNormalizeCanonicalLocale(...args),
 }));
 
-jest.mock('@/features/i18n/services/i18nStore_Logic', () => ({
+jest.mock('@/features/i18n/services/i18nStore', () => ({
   initializeI18nStore: (...args: unknown[]) => mockInitializeI18nStore(...args),
   getI18nSnapshot: (...args: unknown[]) => mockGetI18nSnapshot(...args),
   setI18nSettings: (...args: unknown[]) => mockSetI18nSettings(...args),

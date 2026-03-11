@@ -1,1 +1,1 @@
-export { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
+export { buildResultRoute } from '@/services/contracts/resultRoute';

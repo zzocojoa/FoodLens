@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { UserService } from '@/services/userService_Logic';
+import { UserService } from '@/services/userService';
 import { UserProfile } from '@/models/User';
 
 export const userKeys = {

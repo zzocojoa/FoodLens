@@ -1,5 +1,5 @@
-import { UserService } from '@/services/userService_Logic';
-import { getAiUserId } from './constants_Logic';
+import { UserService } from '@/services/userService';
+import { getAiUserId } from './constants';
 
 export const getAllergyString = async (): Promise<string> => {
     let allergyString = 'None';

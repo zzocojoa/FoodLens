@@ -40,7 +40,7 @@ jest.mock('@/features/i18n', () => ({
   }),
 }));
 
-jest.mock('@/services/ui/uiAlerts_Logic', () => ({
+jest.mock('@/services/ui/uiAlerts', () => ({
   showTranslatedAlert: (...args: unknown[]) => mockShowTranslatedAlert(...args),
 }));
 
@@ -48,14 +48,14 @@ jest.mock('../../constants/profile.constants', () => ({
   getProfileUserId: () => 'usr_profile',
 }));
 
-jest.mock('@/services/sync/phase2ConflictResolution_Logic', () => ({
+jest.mock('@/services/sync/phase2ConflictResolution', () => ({
   getManualMergeConflictOperationsForUser: (...args: unknown[]) =>
     mockGetManualMergeConflictOperationsForUser(...args),
   resolveManualMergeConflictsForUser: (...args: unknown[]) =>
     mockResolveManualMergeConflictsForUser(...args),
 }));
 
-jest.mock('@/services/user/userProfileStore_Logic', () => ({
+jest.mock('@/services/user/userProfileStore', () => ({
   subscribeUserProfileUpdated: () => () => {},
 }));
 

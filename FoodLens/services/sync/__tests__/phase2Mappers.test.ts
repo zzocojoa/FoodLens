@@ -8,7 +8,7 @@ import {
   serializeHistoryRecord,
 } from '../phase2Mappers';
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(async (_key: string, fallback: unknown) => fallback),
     set: jest.fn(async () => undefined),

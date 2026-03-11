@@ -25,7 +25,7 @@ import HomeScansSection from '../components/HomeScansSection';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { useI18n } from '@/features/i18n';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 
 export default function HomeScreen() {
   const router = useRouter();

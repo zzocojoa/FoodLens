@@ -1,4 +1,4 @@
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(),
     set: jest.fn(),

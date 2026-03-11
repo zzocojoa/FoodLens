@@ -16,7 +16,7 @@ import ProfileIdentitySection from './ProfileIdentitySection';
 import ProfileMenuItem from './ProfileMenuItem';
 import { profileSheetStyles as styles } from '../styles';
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
-import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage_Logic';
+import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
 
 type ProfileSheetViewProps = {

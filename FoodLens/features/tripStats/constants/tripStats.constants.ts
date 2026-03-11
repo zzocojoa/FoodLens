@@ -1,3 +1,3 @@
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 export const getTripStatsUserId = (): string => getCurrentUserId();

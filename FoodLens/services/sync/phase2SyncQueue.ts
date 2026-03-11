@@ -1,20 +1,20 @@
 import NetInfo from '@react-native-community/netinfo';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { UserProfile } from '@/models/User';
-import { SafeStorage } from '@/services/storage_Logic';
-import { logger } from '@/services/logger_Logic';
-import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
-import { restoreSession } from '@/services/auth/sessionManager_Logic';
-import { getUserStorageKey } from '@/services/user/constants_Logic';
-import { resolveImageUri } from '@/services/imageStorage_Logic';
-import { IMAGE_DIR } from '@/services/imageStorage.helpers_Logic';
-import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage_Logic';
-import { Phase2Api, Phase2SyncApiError } from './phase2Api_Logic';
+import { SafeStorage } from '@/services/storage';
+import { logger } from '@/services/logger';
+import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
+import { restoreSession } from '@/services/auth/sessionManager';
+import { getUserStorageKey } from '@/services/user/constants';
+import { resolveImageUri } from '@/services/imageStorage';
+import { IMAGE_DIR } from '@/services/imageStorage.helpers';
+import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage';
+import { Phase2Api, Phase2SyncApiError } from './phase2Api';
 import type {
   Phase2ConflictResolution,
   Phase2SyncEntity,
   Phase2SyncOperation,
-} from './phase2Sync.types_Structure';
+} from './phase2Sync.types';
 
 const SYNC_QUEUE_KEY = '@foodlens_phase2_sync_queue_v1';
 const MEDIA_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_media_migrated:';

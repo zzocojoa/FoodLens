@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { resolveImageUri } from '../imageStorage_Logic';
-import { SafeStorage } from '../storage_Logic';
-import { getUserStorageKey } from './constants_Logic';
-import { pickRandomAvatar } from './profileFactory_Logic';
+import { resolveImageUri } from '../imageStorage';
+import { SafeStorage } from '../storage';
+import { getUserStorageKey } from './constants';
+import { pickRandomAvatar } from './profileFactory';
 import { UserProfile } from '../../models/User';
 
 export const resolveAndValidateProfileImage = async (

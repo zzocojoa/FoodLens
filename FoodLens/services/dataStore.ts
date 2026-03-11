@@ -1,10 +1,10 @@
-import { SafeStorage } from './storage_Logic';
+import { SafeStorage } from './storage';
 import type {
   AnalysisStoreBackup,
   AnalysisStoreLocation,
   AnalysisStoreResult,
   AnalysisStoreSnapshot,
-} from './contracts/analysisStore_Structure';
+} from './contracts/analysisStore';
 
 const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
 const BACKUP_ERROR_LOG_PREFIX = '[AnalysisDataStore]';

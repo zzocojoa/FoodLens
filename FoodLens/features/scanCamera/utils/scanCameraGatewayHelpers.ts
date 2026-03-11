@@ -1,13 +1,16 @@
-import * as FileSystem from 'expo-file-system/legacy';
 import { Href } from 'expo-router';
 
 import { AnalyzedData } from '../../../services/ai';
-import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage_Logic';
-import { dataStore } from '../../../services/dataStore_Logic';
+import {
+    assertAnalysisImageFileReady,
+    createAnalysisUploadProgressHandler,
+} from '../../../services/analysis/flow';
+import { saveImagePermanentlyOrThrow } from '../../../services/imageStorage';
+import { dataStore } from '../../../services/dataStore';
 import { normalizeTimestamp } from '../../../services/utils';
 import { LocationData } from '../../../services/utils/types';
 import { createFallbackLocation } from './scanCameraMappers';
-import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
+import { buildResultRoute } from '@/services/contracts/resultRoute';
 
 type LocationLike = {
     isoCountryCode?: string;
@@ -28,30 +31,6 @@ export const beginAnalysis = ({ uri, setIsAnalyzing, setCapturedImage, setActive
     setIsAnalyzing(true);
     setCapturedImage(uri);
     setActiveStep(0);
-};
-
-export const assertImageFileReady = async (uri: string) => {
-    const fileInfo = await FileSystem.getInfoAsync(uri);
-    const fileSize = 'size' in fileInfo ? fileInfo.size : undefined;
-    if (!fileInfo.exists || fileSize === 0) {
-        throw new Error('File validation failed: Image is empty or missing.');
-    }
-};
-
-export const createProgressHandler = ({
-    isCancelled,
-    setUploadProgress,
-    setActiveStep,
-}: {
-    isCancelled: { current: boolean };
-    setUploadProgress: (value: number) => void;
-    setActiveStep: (value: number) => void;
-}) => {
-    return (progress: number) => {
-        if (isCancelled.current) return;
-        setUploadProgress(progress);
-        if (progress >= 1) setActiveStep(2);
-    };
 };
 
 export const getIsoCode = (locationData: LocationLike, fallback: string = 'US') => {
@@ -89,3 +68,6 @@ export const persistAndNavigateAnalysisResult = async ({
 
     router.replace(buildResultRoute({ isNew: true, sourceType: sourceType || 'camera' }));
 };
+
+export const assertImageFileReady = assertAnalysisImageFileReady;
+export const createProgressHandler = createAnalysisUploadProgressHandler;
