@@ -177,4 +177,39 @@ describe('i18nStore initialization', () => {
       targetLanguage: null,
     });
   });
+
+  it('ignores stale remote manual traveler target when local settings version is newer', async () => {
+    mockSafeStorageGetSync.mockImplementation((key: string) => {
+      if (key === '@foodlens_user_profile:usr_i18n') {
+        return {
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: null,
+          },
+          syncVersions: {
+            settingsUpdatedAt: '2026-03-14T01:00:10.000Z',
+          },
+        };
+      }
+      return null;
+    });
+    mockPhase2GetSettings.mockResolvedValue({
+      settings: {
+        language: 'ko-KR',
+        target_language: 'ko-KR',
+        updated_at: '2026-03-14T01:00:00.000Z',
+      },
+      requestId: 'req-settings-stale-version',
+    });
+
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+    await store.syncI18nSettingsFromProfile({ pullFromServer: true });
+
+    expect(store.getI18nSnapshot().settings).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+  });
 });

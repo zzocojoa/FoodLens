@@ -11,6 +11,7 @@ import {
   mergeRemoteUserSnapshot,
   normalizeLegacyProfileForUser,
 } from './sync/phase2Mappers';
+import { isRemoteSettingsSnapshotStale } from './sync/settingsFreshness';
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
@@ -134,10 +135,22 @@ const syncProfileFromServer = async (
         Phase2Api.getAllergies(),
         Phase2Api.getSettings(),
       ]);
+      const shouldIgnoreRemoteSettings = isRemoteSettingsSnapshotStale({
+        localProfile: fallbackProfile,
+        remoteSettings: settingsResult.settings,
+      });
+      if (shouldIgnoreRemoteSettings) {
+        logger.warn('[Phase2Sync] ignoring stale remote settings during profile pull', {
+          request_id: settingsResult.requestId || 'unknown',
+          user_id: uid,
+          local_updated_at: fallbackProfile.syncVersions?.settingsUpdatedAt || null,
+          remote_updated_at: settingsResult.settings.updated_at || null,
+        });
+      }
       const merged = mergeRemoteUserSnapshot(uid, fallbackProfile, {
         profile: profileResult.profile,
         allergies: allergiesResult.allergies,
-        settings: settingsResult.settings,
+        settings: shouldIgnoreRemoteSettings ? undefined : settingsResult.settings,
       });
       const queuedSettingsPayload = await getQueuedPhase2EntityPayload(uid, 'settings');
       const effectiveProfile = applyQueuedSettingsPayloadToProfile(merged, queuedSettingsPayload);

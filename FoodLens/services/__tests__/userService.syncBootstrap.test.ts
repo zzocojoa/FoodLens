@@ -332,6 +332,71 @@ describe('UserService bootstrap sync guard', () => {
     expect(profile?.settings.targetLanguage).toBeUndefined();
   });
 
+  it('ignores stale remote settings when local synced version is newer', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          safetyProfile: {
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: undefined,
+            autoPlayAudio: false,
+          },
+          syncVersions: {
+            settingsUpdatedAt: '2026-03-14T01:00:10.000Z',
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-14T01:00:10.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+    mockedPhase2Api.getProfile.mockResolvedValue({
+      profile: {
+        user_id: 'usr_a',
+        email: 'server@example.com',
+        display_name: 'Server Name',
+        updated_at: '2026-03-14T01:00:00.000Z',
+      },
+      requestId: 'req-profile-stale-settings',
+    } as never);
+    mockedPhase2Api.getAllergies.mockResolvedValue({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: [],
+        dietary_restrictions: [],
+        updated_at: '2026-03-14T01:00:00.000Z',
+      },
+      requestId: 'req-allergies-stale-settings',
+    } as never);
+    mockedPhase2Api.getSettings.mockResolvedValue({
+      settings: {
+        user_id: 'usr_a',
+        language: 'ko-KR',
+        target_language: 'ko-KR',
+        auto_play_audio: false,
+        updated_at: '2026-03-14T01:00:00.000Z',
+      },
+      requestId: 'req-settings-stale-version',
+    } as never);
+
+    const profile = await UserService.syncProfileFromCloud('usr_a', { force: true });
+
+    expect(profile?.settings.targetLanguage).toBeUndefined();
+    expect(profile?.syncVersions?.settingsUpdatedAt).toBe('2026-03-14T01:00:10.000Z');
+  });
+
   it('skips enqueue when profile update has no effective changes', async () => {
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
       if (key === scopedProfileKey) {
