@@ -174,6 +174,11 @@ describe('profileSheetService.updateTravelerLanguage', () => {
       travelerLanguage: undefined,
     });
 
+    expect(mockGetUserProfile).toHaveBeenCalledWith('usr_1', {
+      allowBackgroundRefresh: false,
+      forceServerRefresh: true,
+    });
+
     expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
       'usr_1',
       'user@example.com',

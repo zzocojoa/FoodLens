@@ -513,6 +513,23 @@ describe('phase2Mappers', () => {
     expect(merged.settings.targetLanguage).toBeUndefined();
   });
 
+  it('clears stale traveler manual target when remote settings omit target_language', () => {
+    const local = buildDefaultProfile('usr_remote_target_omitted');
+    local.settings.language = 'ko-KR';
+    local.settings.targetLanguage = 'ja-JP';
+
+    const merged = mergeRemoteUserSnapshot('usr_remote_target_omitted', local, {
+      settings: {
+        user_id: 'usr_remote_target_omitted',
+        language: 'ko-KR',
+        auto_play_audio: false,
+      },
+    });
+
+    expect(merged.settings.language).toBe('ko-KR');
+    expect(merged.settings.targetLanguage).toBeUndefined();
+  });
+
   it('normalizes legacy language settings to canonical locale format', () => {
     const legacy = buildDefaultProfile('usr_legacy_language');
     legacy.settings.language = 'en';

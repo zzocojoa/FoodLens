@@ -4,11 +4,15 @@ const mockNormalizeLanguageSettings = jest.fn();
 const mockResolveEffectiveLocale = jest.fn();
 const mockSaveLanguageSettings = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
+const mockSafeStorageSet = jest.fn();
 const mockGetCurrentUserIdSnapshot = jest.fn();
+const mockPublishUserProfileUpdated = jest.fn();
+const mockPhase2GetSettings = jest.fn();
 
 jest.mock('@/services/storage', () => ({
   SafeStorage: {
     getSync: (...args: unknown[]) => mockSafeStorageGetSync(...args),
+    set: (...args: unknown[]) => mockSafeStorageSet(...args),
   },
 }));
 
@@ -29,6 +33,16 @@ jest.mock('../services/languageService', () => ({
   saveLanguageSettings: (...args: unknown[]) => mockSaveLanguageSettings(...args),
 }));
 
+jest.mock('@/services/user/userProfileStore', () => ({
+  publishUserProfileUpdated: (...args: unknown[]) => mockPublishUserProfileUpdated(...args),
+}));
+
+jest.mock('@/services/sync/phase2Api', () => ({
+  Phase2Api: {
+    getSettings: (...args: unknown[]) => mockPhase2GetSettings(...args),
+  },
+}));
+
 describe('i18nStore initialization', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -43,6 +57,14 @@ describe('i18nStore initialization', () => {
     mockResolveEffectiveLocale.mockImplementation((settings: { language?: string }) =>
       settings?.language === 'ko-KR' ? 'ko-KR' : 'en-US'
     );
+    mockSafeStorageSet.mockResolvedValue(undefined);
+    mockPhase2GetSettings.mockResolvedValue({
+      settings: {
+        language: 'ko-KR',
+        target_language: null,
+      },
+      requestId: 'req-settings',
+    });
     mockGetCurrentUserIdSnapshot.mockReturnValue('usr_i18n');
     mockSafeStorageGetSync.mockReturnValue(null);
   });
@@ -107,6 +129,19 @@ describe('i18nStore initialization', () => {
       targetLanguage: null,
     });
     expect(store.getI18nSnapshot().settings).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+  });
+
+  it('treats omitted traveler target from server settings as auto mode', async () => {
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    expect(
+      store.normalizeRemoteLanguageSettings({
+        language: 'ko-KR',
+      })
+    ).toEqual({
       language: 'ko-KR',
       targetLanguage: null,
     });

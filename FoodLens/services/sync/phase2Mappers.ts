@@ -28,6 +28,21 @@ const normalizeTargetLanguageValue = (value: string | null | undefined) => {
   return normalized === 'auto' ? null : normalized;
 };
 
+const resolveRemoteTargetLanguageValue = (
+  settings: MeSettingsResponse | undefined,
+  fallbackTargetLanguage: string | null | undefined
+) => {
+  if (!settings) {
+    return normalizeTargetLanguageValue(fallbackTargetLanguage);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(settings, 'target_language')) {
+    return normalizeTargetLanguageValue(settings.target_language);
+  }
+
+  return null;
+};
+
 const resolveDeviceTimezone = (): string => {
   try {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -258,10 +273,10 @@ export const mergeRemoteUserSnapshot = (
   const next = { ...fallback };
   const mergedLanguageSettings = normalizeLanguageSettings({
     language: normalizeLanguageValue(input.settings?.language ?? fallback.settings.language),
-    targetLanguage:
-      input.settings?.target_language === undefined
-        ? normalizeTargetLanguageValue(fallback.settings.targetLanguage)
-        : normalizeTargetLanguageValue(input.settings.target_language),
+    targetLanguage: resolveRemoteTargetLanguageValue(
+      input.settings,
+      fallback.settings.targetLanguage
+    ),
   });
 
   next.uid = userId;

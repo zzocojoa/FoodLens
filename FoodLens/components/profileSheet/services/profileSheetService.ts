@@ -121,6 +121,7 @@ export const profileSheetService = {
 
     const existing = await UserService.getUserProfile(params.userId, {
       allowBackgroundRefresh: false,
+      forceServerRefresh: true,
     });
     const existingTargetLanguage = normalizeCanonicalLocale(existing.settings?.targetLanguage || 'auto');
     if (existingTargetLanguage === (normalizedTargetLanguage || 'auto')) {

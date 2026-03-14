@@ -68,6 +68,10 @@ const readProfileLanguageSettingsSnapshot = (): LanguageSettings | null => {
 const areLanguageSettingsEqual = (left: LanguageSettings, right: LanguageSettings): boolean =>
   left.language === right.language && left.targetLanguage === right.targetLanguage;
 
+const hasRemoteTravelerTargetLanguage = (remote: {
+  target_language?: string | null;
+}): boolean => Object.prototype.hasOwnProperty.call(remote, 'target_language');
+
 const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSettings): Promise<void> => {
   const userId = getCurrentUserIdSnapshot();
   if (!userId || userId === UNAUTHENTICATED_USER_ID) {
@@ -134,14 +138,13 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
   initialized = true;
 };
 
-const normalizeRemoteLanguageSettings = (remote: {
+export const normalizeRemoteLanguageSettings = (remote: {
   language?: string | null;
   target_language?: string | null;
 }): LanguageSettings =>
   normalizeLanguageSettings({
     language: remote.language,
-    targetLanguage:
-      remote.target_language === undefined ? state.settings.targetLanguage : remote.target_language,
+    targetLanguage: hasRemoteTravelerTargetLanguage(remote) ? remote.target_language : null,
   });
 
 const applyLanguageSettings = async (settings: LanguageSettings): Promise<void> => {
