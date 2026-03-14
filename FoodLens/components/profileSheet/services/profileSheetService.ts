@@ -115,20 +115,34 @@ export const profileSheetService = {
   async updateTravelerLanguage(params: {
     userId: string;
     travelerLanguage?: string;
+    shouldAbort?: () => boolean;
   }) {
+    if (params.shouldAbort?.()) {
+      return;
+    }
+
     const normalizedTargetLanguage = resolveTravelerTargetLanguage(params.travelerLanguage) ?? undefined;
     await applyTravelerLanguageToI18nStore(params.travelerLanguage);
+    if (params.shouldAbort?.()) {
+      return;
+    }
 
     const existing = await UserService.getUserProfile(params.userId, {
       allowBackgroundRefresh: false,
       forceServerRefresh: true,
     });
+    if (params.shouldAbort?.()) {
+      return;
+    }
     const existingTargetLanguage = normalizeCanonicalLocale(existing.settings?.targetLanguage || 'auto');
     if (existingTargetLanguage === (normalizedTargetLanguage || 'auto')) {
       return;
     }
 
     try {
+      if (params.shouldAbort?.()) {
+        return;
+      }
       await UserService.CreateOrUpdateProfile(params.userId, existing.email || 'user@example.com', {
         settings: {
           targetLanguage: normalizedTargetLanguage,

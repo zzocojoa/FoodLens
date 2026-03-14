@@ -72,6 +72,8 @@ export const useProfileSheetState = (userId: string) => {
     const loadProfileRequestIdRef = useRef(0);
     const languageSaveRequestIdRef = useRef(0);
     const travelerLanguageSaveRequestIdRef = useRef(0);
+    const travelerLanguageSaveInFlightRef = useRef<Promise<void> | null>(null);
+    const pendingTravelerLanguageSaveRef = useRef<string | undefined>(initialTravelerLanguage);
     const nameDirtyRef = useRef(false);
     const imageDirtyRef = useRef(false);
     const travelerLanguageDirtyRef = useRef(false);
@@ -103,6 +105,7 @@ export const useProfileSheetState = (userId: string) => {
             if (profile.settings) {
                 setTravelerLanguageState((previous) => {
                     if (travelerLanguageDirtyRef.current) return previous;
+                    pendingTravelerLanguageSaveRef.current = profile.settings?.targetLanguage;
                     return profile.settings?.targetLanguage;
                 });
             }
@@ -178,28 +181,57 @@ export const useProfileSheetState = (userId: string) => {
         setNameState(value);
     }, []);
 
+    const flushTravelerLanguageSave = useCallback((): Promise<void> => {
+        if (travelerLanguageSaveInFlightRef.current) {
+            return travelerLanguageSaveInFlightRef.current;
+        }
+
+        let processedRequestId = travelerLanguageSaveRequestIdRef.current;
+        const runner = (async () => {
+            while (true) {
+                processedRequestId = travelerLanguageSaveRequestIdRef.current;
+                const travelerLanguageToSave = pendingTravelerLanguageSaveRef.current;
+
+                try {
+                    await profileSheetService.updateTravelerLanguage({
+                        userId,
+                        travelerLanguage: travelerLanguageToSave,
+                        shouldAbort: () => processedRequestId !== travelerLanguageSaveRequestIdRef.current,
+                    });
+                } catch (error) {
+                    if (processedRequestId !== travelerLanguageSaveRequestIdRef.current) {
+                        continue;
+                    }
+
+                    console.warn('[ProfileSheet] traveler language auto-save failed', error);
+                    return;
+                }
+
+                if (processedRequestId !== travelerLanguageSaveRequestIdRef.current) {
+                    continue;
+                }
+
+                travelerLanguageDirtyRef.current = false;
+                return;
+            }
+        })().finally(() => {
+            travelerLanguageSaveInFlightRef.current = null;
+            if (processedRequestId !== travelerLanguageSaveRequestIdRef.current) {
+                void flushTravelerLanguageSave();
+            }
+        });
+
+        travelerLanguageSaveInFlightRef.current = runner;
+        return runner;
+    }, [userId]);
+
     const setTravelerLanguage = useCallback((value: string | undefined) => {
         travelerLanguageDirtyRef.current = true;
+        pendingTravelerLanguageSaveRef.current = value;
         setTravelerLanguageState(value);
-        const requestId = ++travelerLanguageSaveRequestIdRef.current;
-        void profileSheetService
-            .updateTravelerLanguage({
-                userId,
-                travelerLanguage: value,
-            })
-            .then(() => {
-                if (requestId !== travelerLanguageSaveRequestIdRef.current) {
-                    return;
-                }
-                travelerLanguageDirtyRef.current = false;
-            })
-            .catch((error) => {
-                if (requestId !== travelerLanguageSaveRequestIdRef.current) {
-                    return;
-                }
-                console.warn('[ProfileSheet] traveler language auto-save failed', error);
-            });
-    }, [userId]);
+        travelerLanguageSaveRequestIdRef.current += 1;
+        void flushTravelerLanguageSave();
+    }, [flushTravelerLanguageSave]);
 
     const handlePendingConflicts = useCallback(async (): Promise<void> => {
         const conflicts = await getManualMergeConflictOperationsForUser(userId);
@@ -272,6 +304,7 @@ export const useProfileSheetState = (userId: string) => {
             });
             profileImageAssetIdRef.current = nextAssetId;
             if (!travelerLanguageDirtyRef.current) {
+                pendingTravelerLanguageSaveRef.current = profile.settings?.targetLanguage;
                 setTravelerLanguageState(profile.settings?.targetLanguage);
             }
             const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);

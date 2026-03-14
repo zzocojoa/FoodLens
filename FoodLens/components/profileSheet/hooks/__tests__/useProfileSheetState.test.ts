@@ -252,6 +252,45 @@ describe('useProfileSheetState conflict handling', () => {
     expect(mockUpdateTravelerLanguage).toHaveBeenCalledWith({
       userId: 'usr_profile',
       travelerLanguage: 'ja-JP',
+      shouldAbort: expect.any(Function),
+    });
+  });
+
+  it('coalesces overlapping traveler language saves to the latest selection', async () => {
+    const resolvers: (() => void)[] = [];
+    mockUpdateTravelerLanguage.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    act(() => {
+      result.current.setTravelerLanguage('en-US');
+      result.current.setTravelerLanguage('ko-KR');
+      result.current.setTravelerLanguage(undefined);
+    });
+
+    expect(mockUpdateTravelerLanguage).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTravelerLanguage).toHaveBeenNthCalledWith(1, {
+      userId: 'usr_profile',
+      travelerLanguage: 'en-US',
+      shouldAbort: expect.any(Function),
+    });
+
+    await act(async () => {
+      resolvers[0]?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateTravelerLanguage).toHaveBeenCalledTimes(2);
+    expect(mockUpdateTravelerLanguage).toHaveBeenNthCalledWith(2, {
+      userId: 'usr_profile',
+      travelerLanguage: undefined,
+      shouldAbort: expect.any(Function),
     });
   });
 
