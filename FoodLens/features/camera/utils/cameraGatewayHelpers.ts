@@ -1,33 +1,64 @@
 import * as Location from 'expo-location';
 
+import {
+    normalizeLanguageSettings,
+    resolveEffectiveLocale,
+} from '@/features/i18n/services/languageService';
 import { assertAnalysisImageFileReady } from '../../../services/analysis/flow';
 import { getLocationData, validateCoordinates } from '../../../services/utils';
 import { UserService } from '../../../services/userService';
 import { DEFAULT_ISO_CODE, getCameraUserId } from '../constants/camera.constants';
 import { LocationContext } from '../types/camera.types';
 import { createFallbackLocation } from './cameraMappers';
-import { resolveTravelerCardCountryCode } from '@/services/travelerCardLanguage';
+import {
+    resolveTravelerCardCountryCode,
+    resolveTravelerLocaleFallbackCountryCode,
+} from '@/services/travelerCardLanguage';
 
 export const resolveIsoCodeFromContext = async (
     locationData: LocationContext | null | undefined
 ): Promise<string> => {
-    const photoCountryCode = locationData?.isoCountryCode;
+    const photoCountryCode = locationData?.isoCountryCode?.trim().toUpperCase();
     let targetLanguage: string | undefined;
+    let fallbackCountryCode = DEFAULT_ISO_CODE;
     if (!photoCountryCode) {
         try {
             const user = await UserService.getUserProfile(getCameraUserId());
             if (user && user.settings.targetLanguage) {
                 targetLanguage = user.settings.targetLanguage;
             }
+            if (user?.settings) {
+                const effectiveLocale = resolveEffectiveLocale(
+                    normalizeLanguageSettings({
+                        language: user.settings.language,
+                        targetLanguage: user.settings.targetLanguage || null,
+                    })
+                );
+                fallbackCountryCode = resolveTravelerLocaleFallbackCountryCode(effectiveLocale);
+            }
         } catch (error) {
             console.warn('Failed to load user preference for language fallback', error);
+        }
+
+        try {
+            const currentLocation = await getLocationData();
+            const currentCountryCode = currentLocation?.isoCountryCode?.trim().toUpperCase();
+            if (currentCountryCode) {
+                return resolveTravelerCardCountryCode({
+                    photoCountryCode: currentCountryCode,
+                    targetLanguage,
+                    fallbackCountryCode,
+                });
+            }
+        } catch (error) {
+            console.warn('Failed to resolve current location for language fallback', error);
         }
     }
 
     return resolveTravelerCardCountryCode({
         photoCountryCode,
         targetLanguage,
-        fallbackCountryCode: DEFAULT_ISO_CODE,
+        fallbackCountryCode,
     });
 };
 
@@ -86,11 +117,7 @@ export const resolveInitialLocationContext = async ({
         }
     }
 
-    if (sourceType === 'camera') {
-        return (await getLocationData()) || null;
-    }
-
-    return null;
+    return (await getLocationData()) || null;
 };
 
 export const assertImageFileReady = assertAnalysisImageFileReady;

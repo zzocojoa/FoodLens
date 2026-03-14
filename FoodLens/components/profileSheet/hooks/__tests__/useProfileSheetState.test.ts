@@ -255,6 +255,39 @@ describe('useProfileSheetState conflict handling', () => {
     });
   });
 
+  it('clears stale traveler language when async snapshot resolves to auto mode', async () => {
+    mockSafeStorageGetSync.mockReturnValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'ko-KR', targetLanguage: 'ja-JP', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    mockSafeStorageGet.mockResolvedValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'ko-KR', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+
+    expect(result.current.travelerLanguage).toBe('ja-JP');
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.travelerLanguage).toBeUndefined();
+  });
+
   it('applies server language to global i18n store when profile is refreshed', async () => {
     mockLoadProfile.mockResolvedValue({
       uid: 'usr_profile',

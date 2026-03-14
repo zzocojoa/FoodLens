@@ -433,6 +433,61 @@ describe('UserService bootstrap sync guard', () => {
     );
   });
 
+  it('clears traveler language when auto mode is selected', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          profileImageAssetId: '',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: [],
+            severityMap: { egg: 'moderate' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: 'ja-JP',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedEnqueuePhase2Sync.mockImplementation(async (_uid, entity) => `op-${entity}` as never);
+    mockedGetPhase2OperationsByIds.mockImplementation(async (ids) =>
+      ids.map((id) => ({
+        id,
+        entity: 'settings',
+        state: 'synced',
+        lastError: null,
+      })) as never
+    );
+
+    await UserService.CreateOrUpdateProfile('usr_a', 'local@example.com', {
+      settings: {
+        targetLanguage: undefined,
+      },
+    });
+
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledTimes(1);
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledWith(
+      'usr_a',
+      'settings',
+      expect.objectContaining({
+        target_language: null,
+      })
+    );
+  });
+
   it('queues only profile write when updating display name', async () => {
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
       if (key === scopedProfileKey) {

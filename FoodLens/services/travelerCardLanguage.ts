@@ -1,3 +1,5 @@
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
+
 export const AUTO_TRAVELER_LANGUAGE = 'auto';
 export const DEFAULT_TRAVELER_COUNTRY_CODE = 'US';
 
@@ -68,6 +70,15 @@ export const resolveTravelerCardCountryCode = ({
 
 export const resolveTravelerLanguageMode = (targetLanguage?: string | null): TravelerLanguageMode =>
   normalizeTravelerTargetLanguage(targetLanguage) ? 'manual' : 'auto';
+
+export const resolveTravelerLocaleFallbackCountryCode = (locale?: string | null): string => {
+  const normalizedLocale = normalizeCanonicalLocale(locale);
+  if (normalizedLocale === 'auto') {
+    return DEFAULT_TRAVELER_COUNTRY_CODE;
+  }
+
+  return CANONICAL_TO_LEGACY[normalizedLocale] || DEFAULT_TRAVELER_COUNTRY_CODE;
+};
 
 export const mapAiLanguageToTravelerCode = (aiLanguage?: string | null): string | null => {
   if (!aiLanguage) return null;

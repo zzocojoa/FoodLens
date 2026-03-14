@@ -259,6 +259,30 @@ type UserProfilePatch = Omit<Partial<UserProfile>, 'settings' | 'safetyProfile'>
   safetyProfile?: Partial<UserProfile['safetyProfile']>;
 };
 
+const mergeProfileSettingsPatch = (
+  existingSettings: UserProfile['settings'],
+  nextSettingsPatch?: UserProfilePatch['settings']
+): UserProfile['settings'] => {
+  if (!nextSettingsPatch) {
+    return existingSettings;
+  }
+
+  const nextSettings: UserProfile['settings'] = {
+    ...existingSettings,
+    ...nextSettingsPatch,
+  };
+
+  if ('targetLanguage' in nextSettingsPatch && !nextSettingsPatch.targetLanguage) {
+    delete nextSettings.targetLanguage;
+  }
+
+  if ('selectedEmoji' in nextSettingsPatch && !nextSettingsPatch.selectedEmoji) {
+    delete nextSettings.selectedEmoji;
+  }
+
+  return nextSettings;
+};
+
 export const UserService = {
   async syncProfileFromCloud(uid: string, options: { force?: boolean } = {}): Promise<UserProfile | null> {
     let resolvedUserId: string;
@@ -374,10 +398,7 @@ export const UserService = {
           ...existing.safetyProfile,
           ...(profileData.safetyProfile || {}),
         },
-        settings: {
-          ...existing.settings,
-          ...(profileData.settings || {}),
-        },
+        settings: mergeProfileSettingsPatch(existing.settings, profileData.settings),
       };
       if (isProfileSyncNoop(existing, candidateProfile)) {
         return existing;

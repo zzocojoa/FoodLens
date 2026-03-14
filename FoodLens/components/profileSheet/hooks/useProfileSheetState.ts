@@ -100,10 +100,10 @@ export const useProfileSheetState = (userId: string) => {
                     return previous === DEFAULT_NAME ? localName : previous;
                 });
             }
-            if (profile.settings?.targetLanguage) {
+            if (profile.settings) {
                 setTravelerLanguageState((previous) => {
                     if (travelerLanguageDirtyRef.current) return previous;
-                    return previous ?? profile.settings.targetLanguage;
+                    return profile.settings?.targetLanguage;
                 });
             }
             if (profile.settings?.language) {
