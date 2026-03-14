@@ -1,3 +1,6 @@
+import { renderHook, waitFor } from '@testing-library/react-native';
+import { useTravelerAllergyCardModel } from '../useTravelerAllergyCardModel';
+
 jest.mock('@/features/i18n/services/languageService', () => ({
   normalizeCanonicalLocale: (value: string | null | undefined) => value || 'auto',
 }));
@@ -7,9 +10,6 @@ const mockGetLocationData = jest.fn();
 jest.mock('@/services/utils', () => ({
   getLocationData: (...args: unknown[]) => mockGetLocationData(...args),
 }));
-
-import { renderHook, waitFor } from '@testing-library/react-native';
-import { useTravelerAllergyCardModel } from '../useTravelerAllergyCardModel';
 
 jest.mock('../useTravelerAllergens', () => ({
   useTravelerAllergens: () => [],
