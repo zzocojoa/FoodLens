@@ -202,4 +202,27 @@ describe('profileSheetService.updateTravelerLanguage', () => {
 
     expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
   });
+
+  it('aborts stale traveler language save before server write', async () => {
+    let shouldAbort = false;
+    mockGetUserProfile.mockImplementation(async () => {
+      shouldAbort = true;
+      return {
+        email: 'user@example.com',
+        settings: { language: 'ko-KR', targetLanguage: 'en-US', autoPlayAudio: false, selectedEmoji: null },
+      };
+    });
+
+    await profileSheetService.updateTravelerLanguage({
+      userId: 'usr_1',
+      travelerLanguage: undefined,
+      shouldAbort: () => shouldAbort,
+    });
+
+    expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+  });
 });
