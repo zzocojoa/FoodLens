@@ -1,5 +1,6 @@
 import { ServerConfig } from '@/services/aiCore/serverConfig';
 import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager';
+import { SafeStorage } from '@/services/storage';
 import type {
   MediaAssetResponse,
   MediaUploadScope,
@@ -10,6 +11,7 @@ import type {
 } from './phase2Sync.types';
 
 const PHASE2_TIMEOUT_MS = 15_000;
+const DEVICE_ID_KEY = '@foodlens_device_id';
 const AUTH_RETRY_ERROR_CODES = new Set(['AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED', 'AUTH_SESSION_REVOKED']);
 
 type ApiErrorDetail = {
@@ -84,6 +86,24 @@ const requestSessionRefresh = (): ReturnType<typeof refreshSessionNow> =>
     reason: 'phase2-401-retry',
   });
 
+let cachedDeviceId: string | null | undefined;
+
+const resolvePhase2DeviceId = async (): Promise<string | null> => {
+  if (cachedDeviceId !== undefined) {
+    return cachedDeviceId;
+  }
+
+  try {
+    const stored = await SafeStorage.get<string | null>(DEVICE_ID_KEY, null);
+    const normalized = typeof stored === 'string' ? stored.trim() : '';
+    cachedDeviceId = normalized || null;
+  } catch {
+    cachedDeviceId = null;
+  }
+
+  return cachedDeviceId;
+};
+
 const authenticatedRequest = async <T>(
   path: string,
   init: RequestInit = {}
@@ -98,6 +118,7 @@ const authenticatedRequest = async <T>(
 
   const baseUrl = await ServerConfig.getServerUrl();
   const endpoint = `${baseUrl}${path}`;
+  const deviceId = await resolvePhase2DeviceId();
   let attempt = 0;
   while (attempt < 2) {
     const requestId = createRequestId();
@@ -109,6 +130,7 @@ const authenticatedRequest = async <T>(
         headers: {
           ...(init.headers || {}),
           'X-Request-Id': requestId,
+          ...(deviceId ? { 'X-Device-Id': deviceId } : {}),
           Authorization: `Bearer ${session.accessToken}`,
           ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
         },

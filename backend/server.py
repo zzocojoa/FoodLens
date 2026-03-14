@@ -1081,6 +1081,15 @@ class HistoryImagePatchRequest(BaseModel):
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
+
+def _device_id(request: Request) -> str | None:
+    value = request.headers.get("X-Device-Id")
+    if not value:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
 def _parent_request_id(request: Request) -> str | None:
     parent = request.headers.get("X-Parent-Request-Id")
     if not parent:
@@ -1125,13 +1134,46 @@ def _log_phase2_write(
     user_id: str,
     method: str,
     path: str,
+    device_id: str | None = None,
 ) -> None:
     logger.info(
-        "[Phase2Write] request_id=%s user_id=%s method=%s path=%s",
+        "[Phase2Write] request_id=%s user_id=%s device_id=%s method=%s path=%s",
         request_id,
         user_id,
+        device_id or "unknown",
         method,
         path,
+    )
+
+
+def _log_settings_trace(
+    *,
+    phase: str,
+    request_id: str,
+    user_id: str,
+    device_id: str | None,
+    language: str | None,
+    target_language: str | None,
+    auto_play_audio: bool | None,
+    selected_emoji: str | None,
+    updated_at: str | None,
+    fields_set: list[str] | None = None,
+) -> None:
+    logger.info(
+        (
+            "[Phase2SettingsTrace] phase=%s request_id=%s user_id=%s device_id=%s "
+            "language=%s target_language=%s auto_play_audio=%s selected_emoji=%s updated_at=%s fields=%s"
+        ),
+        phase,
+        request_id,
+        user_id,
+        device_id or "unknown",
+        language,
+        target_language,
+        auto_play_audio,
+        selected_emoji,
+        updated_at,
+        ",".join(fields_set or []),
     )
 
 
@@ -1198,6 +1240,7 @@ async def _run_me_route(
             _log_phase2_write(
                 request_id=request_id,
                 user_id=user.user_id,
+                device_id=_device_id(request),
                 method=method,
                 path=path,
             )
@@ -2198,11 +2241,24 @@ async def put_me_allergies(payload: AllergiesUpdateRequest, request: Request):
 
 @app.get("/me/settings")
 async def get_me_settings(request: Request):
+    def _action(auth_service: Any, user: Any, request_id: str) -> dict[str, Any]:
+        settings = auth_service.get_settings(user_id=user.user_id)
+        _log_settings_trace(
+            phase="get_response",
+            request_id=request_id,
+            user_id=user.user_id,
+            device_id=_device_id(request),
+            language=settings.get("language") if isinstance(settings, dict) else None,
+            target_language=settings.get("target_language") if isinstance(settings, dict) else None,
+            auto_play_audio=settings.get("auto_play_audio") if isinstance(settings, dict) else None,
+            selected_emoji=settings.get("selected_emoji") if isinstance(settings, dict) else None,
+            updated_at=settings.get("updated_at") if isinstance(settings, dict) else None,
+        )
+        return {"settings": settings}
+
     return await _run_me_route(
         request=request,
-        action=lambda auth_service, user, _request_id: {
-            "settings": auth_service.get_settings(user_id=user.user_id)
-        },
+        action=_action,
     )
 
 
@@ -2219,18 +2275,41 @@ async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
         if "selected_emoji" in fields_set and payload.selected_emoji is None
         else payload.selected_emoji
     )
+
+    def _action(auth_service: Any, user: Any, request_id: str) -> dict[str, Any]:
+        settings = auth_service.update_settings(
+            user_id=user.user_id,
+            language=payload.language,
+            target_language=target_language,
+            auto_play_audio=payload.auto_play_audio,
+            selected_emoji=selected_emoji,
+            expected_updated_at=payload.expected_updated_at,
+        )
+        _log_settings_trace(
+            phase="put_apply",
+            request_id=request_id,
+            user_id=user.user_id,
+            device_id=_device_id(request),
+            language=settings.get("language") if isinstance(settings, dict) else payload.language,
+            target_language=settings.get("target_language") if isinstance(settings, dict) else target_language,
+            auto_play_audio=(
+                settings.get("auto_play_audio")
+                if isinstance(settings, dict)
+                else payload.auto_play_audio
+            ),
+            selected_emoji=(
+                settings.get("selected_emoji")
+                if isinstance(settings, dict)
+                else selected_emoji
+            ),
+            updated_at=settings.get("updated_at") if isinstance(settings, dict) else None,
+            fields_set=sorted(fields_set),
+        )
+        return {"settings": settings}
+
     return await _run_me_route(
         request=request,
-        action=lambda auth_service, user, _request_id: {
-            "settings": auth_service.update_settings(
-                user_id=user.user_id,
-                language=payload.language,
-                target_language=target_language,
-                auto_play_audio=payload.auto_play_audio,
-                selected_emoji=selected_emoji,
-                expected_updated_at=payload.expected_updated_at,
-            )
-        },
+        action=_action,
         write_event=("PUT", "/me/settings"),
     )
 
