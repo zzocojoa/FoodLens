@@ -6,6 +6,7 @@ import { SafeStorage } from '@/services/storage';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
 import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
+import { getQueuedPhase2EntityPayload } from '@/services/sync/phase2SyncQueue';
 import {
   loadLanguageSettings,
   normalizeLanguageSettings,
@@ -72,6 +73,25 @@ const hasRemoteTravelerTargetLanguage = (remote: {
   target_language?: string | null;
 }): boolean => Object.prototype.hasOwnProperty.call(remote, 'target_language');
 
+const applyQueuedSettingsPayload = (
+  baseSettings: LanguageSettings,
+  payload: Record<string, unknown> | null
+): LanguageSettings => {
+  if (!payload) {
+    return baseSettings;
+  }
+
+  return normalizeLanguageSettings({
+    language:
+      typeof payload['language'] === 'string' || payload['language'] === null
+        ? (payload['language'] as string | null)
+        : baseSettings.language,
+    targetLanguage: Object.prototype.hasOwnProperty.call(payload, 'target_language')
+      ? ((payload['target_language'] as string | null | undefined) ?? null)
+      : baseSettings.targetLanguage,
+  });
+};
+
 const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSettings): Promise<void> => {
   const userId = getCurrentUserIdSnapshot();
   if (!userId || userId === UNAUTHENTICATED_USER_ID) {
@@ -113,7 +133,12 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
     return;
   }
 
-  const normalizedSettings = profileSettings;
+  const userId = getCurrentUserIdSnapshot();
+  const queuedSettingsPayload =
+    userId && userId !== UNAUTHENTICATED_USER_ID
+      ? await getQueuedPhase2EntityPayload(userId, 'settings')
+      : null;
+  const normalizedSettings = applyQueuedSettingsPayload(profileSettings, queuedSettingsPayload);
 
   if (areLanguageSettingsEqual(normalizedSettings, state.settings)) {
     if (!state.ready) {
@@ -171,7 +196,12 @@ export const initializeI18nStore = async () => {
   initializePromise = (async () => {
     const persistedSettings = await loadLanguageSettings();
     const profileSettings = readProfileLanguageSettingsSnapshot();
-    const settings = profileSettings ?? persistedSettings;
+    const userId = getCurrentUserIdSnapshot();
+    const queuedSettingsPayload =
+      userId && userId !== UNAUTHENTICATED_USER_ID
+        ? await getQueuedPhase2EntityPayload(userId, 'settings')
+        : null;
+    const settings = applyQueuedSettingsPayload(profileSettings ?? persistedSettings, queuedSettingsPayload);
     if (
       settings.language !== persistedSettings.language ||
       settings.targetLanguage !== persistedSettings.targetLanguage
@@ -210,7 +240,11 @@ export const syncI18nSettingsFromProfile = async (
       try {
         const { Phase2Api } = await import('@/services/sync/phase2Api');
         const { settings } = await Phase2Api.getSettings();
-        const normalized = normalizeRemoteLanguageSettings(settings);
+        const queuedSettingsPayload = await getQueuedPhase2EntityPayload(userId, 'settings');
+        const normalized = applyQueuedSettingsPayload(
+          normalizeRemoteLanguageSettings(settings),
+          queuedSettingsPayload
+        );
         await applyLanguageSettings(normalized);
         await persistLanguageSettingsToProfileSnapshot(normalized);
         return;

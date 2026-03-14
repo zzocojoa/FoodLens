@@ -8,6 +8,7 @@ const mockSafeStorageSet = jest.fn();
 const mockGetCurrentUserIdSnapshot = jest.fn();
 const mockPublishUserProfileUpdated = jest.fn();
 const mockPhase2GetSettings = jest.fn();
+const mockGetQueuedPhase2EntityPayload = jest.fn();
 
 jest.mock('@/services/storage', () => ({
   SafeStorage: {
@@ -43,6 +44,10 @@ jest.mock('@/services/sync/phase2Api', () => ({
   },
 }));
 
+jest.mock('@/services/sync/phase2SyncQueue', () => ({
+  getQueuedPhase2EntityPayload: (...args: unknown[]) => mockGetQueuedPhase2EntityPayload(...args),
+}));
+
 describe('i18nStore initialization', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -65,6 +70,7 @@ describe('i18nStore initialization', () => {
       },
       requestId: 'req-settings',
     });
+    mockGetQueuedPhase2EntityPayload.mockResolvedValue(null);
     mockGetCurrentUserIdSnapshot.mockReturnValue('usr_i18n');
     mockSafeStorageGetSync.mockReturnValue(null);
   });
@@ -142,6 +148,31 @@ describe('i18nStore initialization', () => {
         language: 'ko-KR',
       })
     ).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+  });
+
+  it('keeps queued traveler auto payload over stale remote manual target', async () => {
+    mockPhase2GetSettings.mockResolvedValue({
+      settings: {
+        language: 'ko-KR',
+        target_language: 'ko-KR',
+      },
+      requestId: 'req-settings-stale',
+    });
+    mockGetQueuedPhase2EntityPayload.mockResolvedValue({
+      language: 'ko-KR',
+      target_language: null,
+      auto_play_audio: false,
+    });
+
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+    await store.syncI18nSettingsFromProfile({ pullFromServer: true });
+
+    expect(store.getI18nSnapshot().settings).toEqual({
       language: 'ko-KR',
       targetLanguage: null,
     });

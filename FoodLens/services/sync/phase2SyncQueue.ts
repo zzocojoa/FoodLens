@@ -83,6 +83,15 @@ const findLatestSyncedEntityOperation = (
     .filter((item) => item.userId === userId && item.entity === entity && item.state === 'synced')
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
+const findLatestMutableEntityOperation = (
+  queue: Phase2SyncOperation[],
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): Phase2SyncOperation | undefined =>
+  queue
+    .filter((item) => isMutableEntityOperation(item, userId, entity))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+
 const loadQueue = async (): Promise<Phase2SyncOperation[]> =>
   SafeStorage.get<Phase2SyncOperation[]>(SYNC_QUEUE_KEY, []);
 
@@ -1029,3 +1038,15 @@ export const getPhase2OperationsByIds = async (
 };
 
 export const getPhase2SyncQueueSnapshot = async (): Promise<Phase2SyncOperation[]> => loadQueue();
+
+export const getQueuedPhase2EntityPayload = async (
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): Promise<Record<string, unknown> | null> => {
+  const queue = await loadQueue();
+  const operation = findLatestMutableEntityOperation(queue, userId, entity);
+  if (!operation) {
+    return null;
+  }
+  return { ...operation.payload };
+};

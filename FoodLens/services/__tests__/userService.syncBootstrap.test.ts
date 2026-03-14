@@ -4,6 +4,7 @@ import { Phase2Api } from '../sync/phase2Api';
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
+  getQueuedPhase2EntityPayload,
   getPhase2OperationsByIds,
 } from '../sync/phase2SyncQueue';
 import { restoreSession } from '../auth/sessionManager';
@@ -20,6 +21,7 @@ jest.mock('../storage', () => ({
 jest.mock('../sync/phase2SyncQueue', () => ({
   enqueuePhase2Sync: jest.fn(),
   dispatchPhase2SyncQueue: jest.fn(),
+  getQueuedPhase2EntityPayload: jest.fn(),
   getPhase2OperationsByIds: jest.fn(),
   startPhase2SyncRuntime: jest.fn(),
 }));
@@ -90,6 +92,8 @@ const mockedPhase2Api = Phase2Api as jest.Mocked<typeof Phase2Api>;
 const mockedEnqueuePhase2Sync = enqueuePhase2Sync as jest.MockedFunction<typeof enqueuePhase2Sync>;
 const mockedDispatchPhase2SyncQueue =
   dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
+const mockedGetQueuedPhase2EntityPayload =
+  getQueuedPhase2EntityPayload as jest.MockedFunction<typeof getQueuedPhase2EntityPayload>;
 const mockedGetPhase2OperationsByIds =
   getPhase2OperationsByIds as jest.MockedFunction<typeof getPhase2OperationsByIds>;
 const mockedRestoreSession = restoreSession as jest.MockedFunction<typeof restoreSession>;
@@ -110,6 +114,7 @@ describe('UserService bootstrap sync guard', () => {
     mockedGetCurrentUserId.mockReturnValue('usr_a');
     mockedEnqueuePhase2Sync.mockResolvedValue('op-x');
     mockedDispatchPhase2SyncQueue.mockResolvedValue(undefined);
+    mockedGetQueuedPhase2EntityPayload.mockResolvedValue(null);
     mockedGetPhase2OperationsByIds.mockResolvedValue([]);
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
       if (key === scopedProfileKey) return null as unknown;
@@ -259,6 +264,72 @@ describe('UserService bootstrap sync guard', () => {
     expect(profile.email).toBe('server@example.com');
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
     nowSpy.mockRestore();
+  });
+
+  it('keeps queued traveler auto settings over stale remote manual target during profile sync', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Local Name',
+          profileImage: '',
+          safetyProfile: {
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: undefined,
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+    mockedPhase2Api.getProfile.mockResolvedValue({
+      profile: {
+        user_id: 'usr_a',
+        email: 'server@example.com',
+        display_name: 'Server Name',
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-profile',
+    } as never);
+    mockedPhase2Api.getAllergies.mockResolvedValue({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: [],
+        dietary_restrictions: [],
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-allergies',
+    } as never);
+    mockedPhase2Api.getSettings.mockResolvedValue({
+      settings: {
+        user_id: 'usr_a',
+        language: 'ko-KR',
+        target_language: 'ko-KR',
+        auto_play_audio: false,
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      requestId: 'req-settings',
+    } as never);
+    mockedGetQueuedPhase2EntityPayload.mockResolvedValue({
+      language: 'ko-KR',
+      target_language: null,
+      auto_play_audio: false,
+    } as never);
+
+    const profile = await UserService.syncProfileFromCloud('usr_a', { force: true });
+
+    expect(profile?.settings.targetLanguage).toBeUndefined();
   });
 
   it('skips enqueue when profile update has no effective changes', async () => {

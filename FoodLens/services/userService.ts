@@ -14,6 +14,7 @@ import {
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
+  getQueuedPhase2EntityPayload,
   getPhase2OperationsByIds,
   startPhase2SyncRuntime,
 } from './sync/phase2SyncQueue';
@@ -138,10 +139,12 @@ const syncProfileFromServer = async (
         allergies: allergiesResult.allergies,
         settings: settingsResult.settings,
       });
-      await saveScopedProfile(uid, merged);
+      const queuedSettingsPayload = await getQueuedPhase2EntityPayload(uid, 'settings');
+      const effectiveProfile = applyQueuedSettingsPayloadToProfile(merged, queuedSettingsPayload);
+      await saveScopedProfile(uid, effectiveProfile);
       await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
       publishUserProfileUpdated(uid, 'server_pull');
-      return merged;
+      return effectiveProfile;
     } catch (error) {
       const apiError = error instanceof Phase2SyncApiError ? error : null;
       if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
@@ -219,6 +222,48 @@ const queueProfileWrites = async (
   }
 
   return operationIds;
+};
+
+const applyQueuedSettingsPayloadToProfile = (
+  profile: UserProfile,
+  payload: Record<string, unknown> | null
+): UserProfile => {
+  if (!payload) {
+    return profile;
+  }
+
+  const nextSettings = { ...profile.settings };
+
+  if (typeof payload['language'] === 'string' && payload['language'].trim()) {
+    nextSettings.language = payload['language'].trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'target_language')) {
+    const targetLanguage = payload['target_language'];
+    if (typeof targetLanguage === 'string' && targetLanguage.trim()) {
+      nextSettings.targetLanguage = targetLanguage.trim();
+    } else {
+      delete nextSettings.targetLanguage;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'auto_play_audio')) {
+    nextSettings.autoPlayAudio = !!payload['auto_play_audio'];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'selected_emoji')) {
+    const selectedEmoji = payload['selected_emoji'];
+    if (typeof selectedEmoji === 'string' && selectedEmoji.trim()) {
+      nextSettings.selectedEmoji = selectedEmoji.trim();
+    } else {
+      delete nextSettings.selectedEmoji;
+    }
+  }
+
+  return {
+    ...profile,
+    settings: nextSettings,
+  };
 };
 
 const profileSyncComparableShape = (profile: UserProfile) => ({
