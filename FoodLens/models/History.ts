@@ -1,4 +1,4 @@
-import { AnalysisRecord } from '../services/analysisService_Logic';
+import { AnalysisRecord } from '../services/analysisService';
 
 export type SafetyType = 'ok' | 'avoid' | 'ask';
 export type CountryCoordinates = [number, number] | number[];

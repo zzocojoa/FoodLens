@@ -1,20 +1,42 @@
-import { UserService } from '@/services/userService_Logic';
+import { UserService } from '@/services/userService';
 import { persistProfileImageIfNeeded } from '../utils/profileSheetStateUtils';
-import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService_Logic';
+import { normalizeCanonicalLocale } from '@/features/i18n/services/languageService';
 import {
   getI18nSnapshot,
   initializeI18nStore,
   setI18nSettings,
-} from '@/features/i18n/services/i18nStore_Logic';
-import type { CanonicalLocale } from '@/features/i18n/types';
+} from '@/features/i18n/services/i18nStore';
+import type { CanonicalLocale, LanguageSettings } from '@/features/i18n/types';
+
+const resolveTravelerTargetLanguage = (
+  travelerLanguage?: string
+): LanguageSettings['targetLanguage'] => {
+  const normalizedTargetLanguage = normalizeCanonicalLocale(travelerLanguage || 'auto');
+  return normalizedTargetLanguage === 'auto' ? null : normalizedTargetLanguage;
+};
+
+const isDeferredPhase2SyncError = (error: unknown): boolean =>
+  error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED';
+
+const applyI18nSettingsToStore = async (
+  resolveNextSettings: (currentSettings: LanguageSettings) => LanguageSettings
+): Promise<void> => {
+  await initializeI18nStore();
+  await setI18nSettings(resolveNextSettings(getI18nSnapshot().settings));
+};
 
 const applyUiLanguageToI18nStore = async (language: CanonicalLocale): Promise<void> => {
-  await initializeI18nStore();
-  const i18nSettings = getI18nSnapshot().settings;
-  await setI18nSettings({
+  await applyI18nSettingsToStore((currentSettings) => ({
+    ...currentSettings,
     language,
-    targetLanguage: i18nSettings.targetLanguage,
-  });
+  }));
+};
+
+const applyTravelerLanguageToI18nStore = async (travelerLanguage?: string): Promise<void> => {
+  await applyI18nSettingsToStore((currentSettings) => ({
+    ...currentSettings,
+    targetLanguage: resolveTravelerTargetLanguage(travelerLanguage),
+  }));
 };
 
 export const profileSheetService = {
@@ -52,7 +74,7 @@ export const profileSheetService = {
         profileImage: profileImageToSave,
       });
     } catch (error) {
-      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+      if (isDeferredPhase2SyncError(error)) {
         await applyUiLanguageToI18nStore(normalizedUiLanguage);
       }
       throw error;
@@ -83,7 +105,7 @@ export const profileSheetService = {
         },
       });
     } catch (error) {
-      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+      if (isDeferredPhase2SyncError(error)) {
         return;
       }
       throw error;
@@ -94,11 +116,12 @@ export const profileSheetService = {
     userId: string;
     travelerLanguage?: string;
   }) {
-    const nextTargetLanguage = normalizeCanonicalLocale(params.travelerLanguage || 'auto');
-    const normalizedTargetLanguage = nextTargetLanguage === 'auto' ? undefined : nextTargetLanguage;
+    const normalizedTargetLanguage = resolveTravelerTargetLanguage(params.travelerLanguage) ?? undefined;
+    await applyTravelerLanguageToI18nStore(params.travelerLanguage);
 
     const existing = await UserService.getUserProfile(params.userId, {
       allowBackgroundRefresh: false,
+      forceServerRefresh: true,
     });
     const existingTargetLanguage = normalizeCanonicalLocale(existing.settings?.targetLanguage || 'auto');
     if (existingTargetLanguage === (normalizedTargetLanguage || 'auto')) {
@@ -112,7 +135,7 @@ export const profileSheetService = {
         },
       });
     } catch (error) {
-      if (error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED') {
+      if (isDeferredPhase2SyncError(error)) {
         return;
       }
       throw error;

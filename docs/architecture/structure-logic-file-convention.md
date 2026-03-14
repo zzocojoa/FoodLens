@@ -1,35 +1,30 @@
-# Structure/Logic File Convention
+# Base Module Convention
 
-This convention separates data-shape definitions from executable behavior so that modules remain predictable for both humans and AI agents.
+FoodLens now treats the base file as the only import surface for each module.
 
 ## Naming rule
 
-- `*_Structure.ts` / `*_Structure.py`
-: Data structure facade. Re-exports shape-oriented symbols (types, interfaces, DTO/schema/dataclass-like structures).
-- `*_Logic.ts` / `*_Logic.py`
-: Logic facade. Re-exports executable behavior (functions, services, runtime helpers).
+- Use the canonical module file directly.
+: Examples: `authApi.ts`, `analysisService.ts`, `backend/modules/auth/service.py`, `backend/server.py`
+- Do not add role-suffixed facade files or imports.
 
-## Dependency direction
+## Import rule
 
-- `Structure` must not import `Logic`.
-- `Logic` can use `Structure` symbols.
-- Existing legacy module path remains source-compatible.
-: Example: `authApi.ts` stays valid; `authApi_Structure.ts` and `authApi_Logic.ts` are additive facades.
+- Runtime code, type-only imports, tests, mocks, and scripts should all target the same base module path.
+- Re-export wrappers that exist only to mirror another file are not allowed.
 
-## Why facade-first
+## Refactoring rule
 
-A full physical split of every existing file can break routing/build/test paths.
-Facade files provide immediate separation points while preserving runtime compatibility.
+- When separating types from behavior, do it inside the canonical module or by introducing a clearly named sibling module with a domain-specific name.
+- Prefer names that describe responsibility, not file role.
+: Examples: `profileAnalysisLoader.ts`, `analysis/flow.ts`, `media/render_signing.py`
 
 ## Applied scope
 
-- `FoodLens/services/**`
-- `FoodLens/features/**/services/**`
-- `backend/modules/**`
-- `backend/server.py` (facades only)
+- `FoodLens/**`
+- `backend/**`
+- `.github/**`
 
-## Migration guideline
+## Guardrail
 
-1. New type-only imports should target `*_Structure` first.
-2. New runtime imports should target `*_Logic` first.
-3. When touching a legacy mixed file, move shape declarations into `*_Structure` and keep behavior in `*_Logic`.
+- CI must fail if any new role-suffixed facade file or reference is introduced.

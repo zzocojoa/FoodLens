@@ -1,18 +1,14 @@
 import * as Location from 'expo-location';
-import { AnalysisService } from '@/services/analysisService_Logic';
-import { UserService } from '@/services/userService_Logic';
+import { loadUserProfileWithHistory } from '@/services/user/profileAnalysisLoader';
+import { UserService } from '@/services/userService';
 import { buildLocationLabel } from '../utils/tripStatsCalculations';
-import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService_Logic';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 type Coordinates = { latitude: number; longitude: number };
 
 export const tripStatsService = {
   async loadUserTripData(userId: string) {
-    const [user, allAnalyses] = await Promise.all([
-      UserService.getUserProfile(userId),
-      AnalysisService.getAllAnalyses(userId),
-    ]);
-
+    const { profile: user, allHistory: allAnalyses } = await loadUserProfileWithHistory(userId);
     return { user, allAnalyses };
   },
 

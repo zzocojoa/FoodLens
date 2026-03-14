@@ -1,6 +1,6 @@
 import type { AnimatedStyle } from 'react-native-reanimated';
 import type { AllergySeverity, Gender } from '@/features/profile/types/profile.types';
-import type { PermissionResultStatus } from '../services/onboardingPermissionService_Structure';
+import type { PermissionResultStatus } from '../services/onboardingPermissionService';
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
 

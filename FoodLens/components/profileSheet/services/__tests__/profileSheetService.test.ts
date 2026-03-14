@@ -8,7 +8,7 @@ const mockInitializeI18nStore = jest.fn();
 const mockGetI18nSnapshot = jest.fn();
 const mockSetI18nSettings = jest.fn();
 
-jest.mock('@/services/userService_Logic', () => ({
+jest.mock('@/services/userService', () => ({
   UserService: {
     getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
     CreateOrUpdateProfile: (...args: unknown[]) => mockCreateOrUpdateProfile(...args),
@@ -19,11 +19,11 @@ jest.mock('../../utils/profileSheetStateUtils', () => ({
   persistProfileImageIfNeeded: (...args: unknown[]) => mockPersistProfileImageIfNeeded(...args),
 }));
 
-jest.mock('@/features/i18n/services/languageService_Logic', () => ({
+jest.mock('@/features/i18n/services/languageService', () => ({
   normalizeCanonicalLocale: (...args: unknown[]) => mockNormalizeCanonicalLocale(...args),
 }));
 
-jest.mock('@/features/i18n/services/i18nStore_Logic', () => ({
+jest.mock('@/features/i18n/services/i18nStore', () => ({
   initializeI18nStore: (...args: unknown[]) => mockInitializeI18nStore(...args),
   getI18nSnapshot: (...args: unknown[]) => mockGetI18nSnapshot(...args),
   setI18nSettings: (...args: unknown[]) => mockSetI18nSettings(...args),
@@ -139,6 +139,11 @@ describe('profileSheetService.updateTravelerLanguage', () => {
       settings: { language: 'ko-KR', targetLanguage: 'en-US', autoPlayAudio: false, selectedEmoji: null },
     });
     mockNormalizeCanonicalLocale.mockImplementation((value: string) => value);
+    mockInitializeI18nStore.mockResolvedValue(undefined);
+    mockGetI18nSnapshot.mockReturnValue({
+      settings: { language: 'ko-KR', targetLanguage: 'en-US' },
+    });
+    mockSetI18nSettings.mockResolvedValue(undefined);
     mockCreateOrUpdateProfile.mockResolvedValue({ uid: 'usr_1' });
   });
 
@@ -157,12 +162,21 @@ describe('profileSheetService.updateTravelerLanguage', () => {
         }),
       })
     );
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: 'ja-JP',
+    });
   });
 
   it('maps auto selection to undefined target language', async () => {
     await profileSheetService.updateTravelerLanguage({
       userId: 'usr_1',
       travelerLanguage: undefined,
+    });
+
+    expect(mockGetUserProfile).toHaveBeenCalledWith('usr_1', {
+      allowBackgroundRefresh: false,
+      forceServerRefresh: true,
     });
 
     expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
@@ -174,6 +188,10 @@ describe('profileSheetService.updateTravelerLanguage', () => {
         }),
       })
     );
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
   });
 
   it('skips server write when selected traveler language is already current', async () => {

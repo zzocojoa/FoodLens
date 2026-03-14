@@ -1,13 +1,13 @@
 import { hasCompletedOnboarding } from '../onboardingGateService';
-import { Phase2Api } from '../sync/phase2Api_Logic';
-import { hasSeenOnboarding, setOnboardingComplete } from '../storage_Logic';
+import { Phase2Api } from '../sync/phase2Api';
+import { hasSeenOnboarding, setOnboardingComplete } from '../storage';
 
-jest.mock('../storage_Logic', () => ({
+jest.mock('../storage', () => ({
   hasSeenOnboarding: jest.fn(),
   setOnboardingComplete: jest.fn(),
 }));
 
-jest.mock('../sync/phase2Api_Logic', () => ({
+jest.mock('../sync/phase2Api', () => ({
   Phase2Api: {
     getProfile: jest.fn(),
     getAllergies: jest.fn(),

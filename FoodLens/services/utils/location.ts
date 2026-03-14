@@ -1,9 +1,9 @@
 import * as Location from 'expo-location';
 import type { LocationGeocodedAddress } from 'expo-location';
-import { validateCoordinates } from './coordinates_Logic';
+import { validateCoordinates } from './coordinates';
 import { LocationData } from './types';
-import { mapPlaceToLocationData } from './locationMapper_Logic';
-import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService_Logic';
+import { mapPlaceToLocationData } from './locationMapper';
+import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 const LOCATION_TIMEOUT_MS = Number(process.env['EXPO_PUBLIC_LOCATION_TIMEOUT_MS'] || '7000');
 const REVERSE_GEOCODE_TIMEOUT_MS = 2500;

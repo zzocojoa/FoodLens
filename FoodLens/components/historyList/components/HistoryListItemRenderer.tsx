@@ -10,7 +10,7 @@ import { historyListViewStyles as styles } from '@/components/historyList/styles
 import { FoodThumbnail } from '@/components/FoodThumbnail';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { useI18n } from '@/features/i18n';
-import { formatCalendarDate } from '@/features/i18n/services/formatService_Logic';
+import { formatCalendarDate } from '@/features/i18n/services/formatService';
 
 export default function HistoryListItemRenderer({
   item,

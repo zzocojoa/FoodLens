@@ -1,5 +1,0 @@
-/**
- * Logic facade for `scanCameraAnalysisService.ts`.
- * Re-exports executable behaviors while preserving existing module boundaries.
- */
-export * from './scanCameraAnalysisService';

@@ -34,7 +34,7 @@ jest.mock('@/services/storage', () => ({
   },
 }));
 
-jest.mock('@/services/onboardingGateService_Logic', () => ({
+jest.mock('@/services/onboardingGateService', () => ({
   hasCompletedOnboarding: (...args: unknown[]) => mockHasCompletedOnboarding(...args),
 }));
 

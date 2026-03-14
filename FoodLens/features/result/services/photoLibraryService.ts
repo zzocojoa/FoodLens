@@ -1,7 +1,7 @@
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
-import { decimalToDMS, validateCoordinates } from '@/services/utils/coordinates_Logic';
-import { logger } from '@/services/logger_Logic';
+import { decimalToDMS, validateCoordinates } from '@/services/utils/coordinates';
+import { logger } from '@/services/logger';
 
 const piexif = require('piexifjs');
 const LOG_PREFIX = '[PhotoLibraryGPS]';

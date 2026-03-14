@@ -1,6 +1,6 @@
-import { buildResultRoute } from '@/services/contracts/resultRoute_Logic';
-import type { AnalysisStoreNavigableRecord } from '@/services/contracts/analysisStore_Structure';
-import { dataStore } from '@/services/dataStore_Logic';
+import { buildResultRoute } from '@/services/contracts/resultRoute';
+import type { AnalysisStoreNavigableRecord } from '@/services/contracts/analysisStore';
+import { dataStore } from '@/services/dataStore';
 
 type RouterLike = {
   push: (route: any) => void;

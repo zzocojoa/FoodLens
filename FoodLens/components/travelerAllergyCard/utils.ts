@@ -1,5 +1,5 @@
 import { ALLERGEN_TERMS, ALLERGY_TRANSLATIONS } from '@/services/staticTranslations';
-import { TravelerLanguageMode, mapAiLanguageToTravelerCode } from '@/services/travelerCardLanguage_Logic';
+import { TravelerLanguageMode, mapAiLanguageToTravelerCode } from '@/services/travelerCardLanguage';
 import { AiTranslation } from './types';
 
 export const isNullAiTranslation = (aiTranslation: AiTranslation, isAiLoaded: boolean) =>

@@ -8,7 +8,7 @@ import {
   serializeHistoryRecord,
 } from '../phase2Mappers';
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(async (_key: string, fallback: unknown) => fallback),
     set: jest.fn(async () => undefined),
@@ -493,6 +493,41 @@ describe('phase2Mappers', () => {
     expect(payload.settings.language).toBe('auto');
     expect(payload.profile.locale).toBeNull();
     expect(payload.profile.timezone).toBeNull();
+  });
+
+  it('keeps traveler auto mode when remote snapshot only changes ui language', () => {
+    const local = buildDefaultProfile('usr_auto_target');
+    local.settings.language = 'auto';
+    local.settings.targetLanguage = undefined;
+
+    const merged = mergeRemoteUserSnapshot('usr_auto_target', local, {
+      settings: {
+        user_id: 'usr_auto_target',
+        language: 'ko-KR',
+        target_language: null,
+        auto_play_audio: false,
+      },
+    });
+
+    expect(merged.settings.language).toBe('ko-KR');
+    expect(merged.settings.targetLanguage).toBeUndefined();
+  });
+
+  it('clears stale traveler manual target when remote settings omit target_language', () => {
+    const local = buildDefaultProfile('usr_remote_target_omitted');
+    local.settings.language = 'ko-KR';
+    local.settings.targetLanguage = 'ja-JP';
+
+    const merged = mergeRemoteUserSnapshot('usr_remote_target_omitted', local, {
+      settings: {
+        user_id: 'usr_remote_target_omitted',
+        language: 'ko-KR',
+        auto_play_audio: false,
+      },
+    });
+
+    expect(merged.settings.language).toBe('ko-KR');
+    expect(merged.settings.targetLanguage).toBeUndefined();
   });
 
   it('normalizes legacy language settings to canonical locale format', () => {

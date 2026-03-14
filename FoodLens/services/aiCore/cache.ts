@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { SafeStorage } from '@/services/storage_Logic';
+import { SafeStorage } from '@/services/storage';
 
-import { AI_CACHE_MAX_ENTRIES, AI_CACHE_TTL_SECONDS } from './constants_Logic';
+import { AI_CACHE_MAX_ENTRIES, AI_CACHE_TTL_SECONDS } from './constants';
 
 const CACHE_STORAGE_KEY = '@foodlens_ai_cache_v1';
 

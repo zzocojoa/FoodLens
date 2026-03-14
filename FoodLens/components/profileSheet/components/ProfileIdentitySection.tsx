@@ -1,7 +1,7 @@
 import React from 'react';
-import { Image, Text, TextInput, View } from 'react-native';
+import { Image, Keyboard, Text, TextInput, View } from 'react-native';
 import { Camera, Edit3, Image as ImageIcon } from 'lucide-react-native';
-import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import { HapticPressable, HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
 import { useI18n } from '@/features/i18n';
 
@@ -70,8 +70,13 @@ export default function ProfileIdentitySection({
                         placeholder={t('profileSheet.identity.namePlaceholder', 'Enter your name')}
                         placeholderTextColor={theme.textSecondary}
                     />
-                    <HapticTouchableOpacity
-                        onPress={onClearName}
+                    <HapticPressable
+                        onPress={() => {
+                            Keyboard.dismiss();
+                            requestAnimationFrame(() => {
+                                onClearName();
+                            });
+                        }}
                         style={{
                             position: 'absolute',
                             right: 10,
@@ -81,6 +86,7 @@ export default function ProfileIdentitySection({
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 2,
+                            elevation: 3,
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"
@@ -88,7 +94,7 @@ export default function ProfileIdentitySection({
                         accessibilityLabel={t('profileSheet.identity.clearDisplayName', 'Clear display name')}
                     >
                         <Edit3 size={16} color={theme.textSecondary} />
-                    </HapticTouchableOpacity>
+                    </HapticPressable>
                 </View>
             </View>
 

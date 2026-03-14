@@ -1,6 +1,6 @@
 import { INGREDIENTS_INITIAL_LIMIT } from '../constants';
 import { ResultIngredient, ResultLocationData } from '../types';
-import { formatDateTime } from '@/features/i18n/services/formatService_Logic';
+import { formatDateTime } from '@/features/i18n/services/formatService';
 
 export const formatTimestamp = (timestamp: string, locale?: string): string =>
     formatDateTime(timestamp, locale);

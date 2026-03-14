@@ -1,11 +1,11 @@
-import { mapAnalyzedData } from './mappers_Logic';
+import { mapAnalyzedData } from './mappers';
 import { AnalyzedData, BarcodeLookupResult } from './types';
 import {
     performMultipartAnalysisUpload,
     rethrowTimeoutAsColdStartMessage,
-} from './internal/analyzeUpload_Logic';
-import { resolveRequestIsoCountryCode } from './internal/requestLocale_Logic';
-import { lookupBarcodeWithAllergyContext } from './internal/barcodeLookup_Logic';
+} from './internal/analyzeUpload';
+import { resolveRequestIsoCountryCode } from './internal/requestLocale';
+import { lookupBarcodeWithAllergyContext } from './internal/barcodeLookup';
 
 const normalizeIsoCountryCode = (value?: string): string | null => {
     if (!value) return null;

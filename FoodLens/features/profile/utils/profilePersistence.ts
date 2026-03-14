@@ -1,4 +1,4 @@
-import { UserService } from '@/services/userService_Logic';
+import { UserService } from '@/services/userService';
 import { TEST_EMAIL, getProfileUserId } from '../constants/profile.constants';
 import { AllergySeverity } from '../types/profile.types';
 

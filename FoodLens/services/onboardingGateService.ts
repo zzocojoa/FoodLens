@@ -1,10 +1,10 @@
-import { hasSeenOnboarding, setOnboardingComplete } from './storage_Logic';
-import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
+import { hasSeenOnboarding, setOnboardingComplete } from './storage';
+import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
 import type {
   MeAllergiesResponse,
   MeProfileResponse,
   MeSettingsResponse,
-} from './sync/phase2Sync.types_Structure';
+} from './sync/phase2Sync.types';
 
 const onboardingGateInFlight = new Map<string, Promise<boolean>>();
 

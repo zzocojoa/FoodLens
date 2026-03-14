@@ -1,22 +1,30 @@
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 
-jest.mock('@/services/aiCore/serverConfig_Logic', () => ({
+jest.mock('@/services/aiCore/serverConfig', () => ({
   ServerConfig: {
     getServerUrl: jest.fn(),
   },
 }));
 
-jest.mock('@/services/auth/sessionManager_Logic', () => ({
+jest.mock('@/services/auth/sessionManager', () => ({
   restoreSession: jest.fn(),
   refreshSessionNow: jest.fn(),
 }));
 
-import { ServerConfig } from '@/services/aiCore/serverConfig_Logic';
-import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager_Logic';
+jest.mock('@/services/storage', () => ({
+  SafeStorage: {
+    get: jest.fn(),
+  },
+}));
+
+import { ServerConfig } from '@/services/aiCore/serverConfig';
+import { refreshSessionNow, restoreSession } from '@/services/auth/sessionManager';
+import { SafeStorage } from '@/services/storage';
 
 const mockedServerConfig = ServerConfig as jest.Mocked<typeof ServerConfig>;
 const mockedRestoreSession = restoreSession as jest.Mock;
 const mockedRefreshSessionNow = refreshSessionNow as jest.Mock;
+const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 
 const session = {
   accessToken: 'atk-old',
@@ -47,6 +55,7 @@ describe('phase2Api auth recovery', () => {
     mockedServerConfig.getServerUrl.mockResolvedValue('https://api.example.com');
     mockedRestoreSession.mockResolvedValue(session);
     mockedRefreshSessionNow.mockResolvedValue(refreshedSession);
+    mockedSafeStorage.get.mockResolvedValue('device_test_1' as never);
     global.fetch = jest.fn();
   });
 
@@ -74,6 +83,7 @@ describe('phase2Api auth recovery', () => {
     expect(mockedRefreshSessionNow).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect((global.fetch as jest.Mock).mock.calls[1][1].headers.Authorization).toBe('Bearer atk-new');
+    expect((global.fetch as jest.Mock).mock.calls[1][1].headers['X-Device-Id']).toBe('device_test_1');
   });
 
   it('normalizes to AUTH_SESSION_REQUIRED when refresh recovery fails', async () => {

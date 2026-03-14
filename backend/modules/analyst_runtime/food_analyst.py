@@ -8,37 +8,37 @@ from PIL import Image
 import json
 import io
 import tempfile
-from backend.modules.analyst_core.allergen_utils_Logic import format_allergens_for_prompt
-from backend.modules.analyst_core.postprocess_Logic import enrich_with_nutrition
-from backend.modules.analyst_core.prompts_Structure import (
+from backend.modules.analyst_core.allergen_utils import format_allergens_for_prompt
+from backend.modules.analyst_core.postprocess import enrich_with_nutrition
+from backend.modules.analyst_core.prompts import (
     ANALYSIS_PROMPT_VERSION,
     LABEL_2PASS_PROMPT_VERSION,
     LABEL_PROMPT_VERSION,
 )
-from backend.modules.analyst_core.prompts_Logic import (
+from backend.modules.analyst_core.prompts import (
     build_analysis_prompt,
     build_barcode_ingredients_prompt,
     build_label_assess_prompt,
     build_label_prompt,
 )
-from backend.modules.analyst_core.response_utils_Logic import (
+from backend.modules.analyst_core.response_utils import (
     get_safe_fallback_response,
     parse_ai_response,
     sanitize_response,
     strip_box2d,
 )
-from backend.modules.analyst_core.schemas_Logic import (
+from backend.modules.analyst_core.schemas import (
     build_barcode_allergen_schema,
     build_food_response_schema,
     build_label_response_schema,
 )
-from backend.modules.analyst_runtime.generation_Logic import (
+from backend.modules.analyst_runtime.generation import (
     create_request_semaphore,
     generate_with_429_backoff,
     generate_with_retry_and_fallback,
     generate_with_semaphore,
 )
-from backend.modules.analyst_runtime.safety_Logic import build_default_safety_settings
+from backend.modules.analyst_runtime.safety import build_default_safety_settings
 import traceback
 
 

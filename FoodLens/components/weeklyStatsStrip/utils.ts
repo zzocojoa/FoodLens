@@ -1,5 +1,5 @@
 import { DAY_ITEM_HALF_WIDTH, SNAP_INTERVAL } from './constants';
-import { formatWeekdayShort } from '@/features/i18n/services/formatService_Logic';
+import { formatWeekdayShort } from '@/features/i18n/services/formatService';
 
 export const isSameDay = (d1: Date, d2: Date): boolean => {
   return (

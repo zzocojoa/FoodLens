@@ -6,9 +6,9 @@ import {
 import {
   getPhase2ConflictedOperations,
   resolvePhase2Conflict,
-} from '../phase2SyncQueue_Logic';
+} from '../phase2SyncQueue';
 
-jest.mock('../phase2SyncQueue_Logic', () => ({
+jest.mock('../phase2SyncQueue', () => ({
   getPhase2ConflictedOperations: jest.fn(),
   resolvePhase2Conflict: jest.fn(),
 }));

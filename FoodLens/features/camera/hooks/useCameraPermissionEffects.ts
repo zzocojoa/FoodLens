@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { PermissionResponse } from 'expo-image-picker';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type UseCameraPermissionEffectsParams = {
   permission: PermissionResponse | null;

@@ -2,17 +2,19 @@ import { useSyncExternalStore } from 'react';
 import { DEFAULT_LANGUAGE } from '../constants';
 import { CanonicalLocale, I18nState, LanguageSettings } from '../types';
 import type { UserProfile } from '@/models/User';
-import { SafeStorage } from '@/services/storage_Logic';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants_Logic';
-import { publishUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+import { SafeStorage } from '@/services/storage';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
+import { logger } from '@/services/logger';
+import { getQueuedPhase2EntityPayload } from '@/services/sync/phase2SyncQueue';
+import { isRemoteSettingsSnapshotStale } from '@/services/sync/settingsFreshness';
 import {
   loadLanguageSettings,
-  normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
   saveLanguageSettings,
-} from './languageService_Logic';
+} from './languageService';
 
 type Listener = () => void;
 
@@ -42,34 +44,57 @@ const setState = (next: I18nState) => {
   emit();
 };
 
-const readProfileLanguageSettingsSnapshot = (): Partial<LanguageSettings> | null => {
+const normalizeProfileLanguageSettings = (
+  profile: UserProfile | null | undefined
+): LanguageSettings | null => {
+  if (!profile?.settings) {
+    return null;
+  }
+
+  return normalizeLanguageSettings(profile.settings);
+};
+
+const readProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
   if (userId && userId !== 'auth-required') {
     const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
-    if (scoped?.settings) {
-      const normalizedTarget = scoped.settings.targetLanguage
-        ? normalizeCanonicalLocale(scoped.settings.targetLanguage)
-        : null;
-      return {
-        language: normalizeCanonicalLocale(scoped.settings.language),
-        targetLanguage: normalizedTarget === 'auto' ? null : normalizedTarget,
-      };
+    if (scoped) {
+      return scoped;
     }
   }
 
-  const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
-  if (!legacy?.settings) return null;
-  const normalizedLegacyTarget = legacy.settings.targetLanguage
-    ? normalizeCanonicalLocale(legacy.settings.targetLanguage)
-    : null;
-  return {
-    language: normalizeCanonicalLocale(legacy.settings.language),
-    targetLanguage: normalizedLegacyTarget === 'auto' ? null : normalizedLegacyTarget,
-  };
+  return SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+};
+
+const readProfileLanguageSettingsSnapshot = (): LanguageSettings | null => {
+  return normalizeProfileLanguageSettings(readProfileSnapshot());
 };
 
 const areLanguageSettingsEqual = (left: LanguageSettings, right: LanguageSettings): boolean =>
   left.language === right.language && left.targetLanguage === right.targetLanguage;
+
+const hasRemoteTravelerTargetLanguage = (remote: {
+  target_language?: string | null;
+}): boolean => Object.prototype.hasOwnProperty.call(remote, 'target_language');
+
+const applyQueuedSettingsPayload = (
+  baseSettings: LanguageSettings,
+  payload: Record<string, unknown> | null
+): LanguageSettings => {
+  if (!payload) {
+    return baseSettings;
+  }
+
+  return normalizeLanguageSettings({
+    language:
+      typeof payload['language'] === 'string' || payload['language'] === null
+        ? (payload['language'] as string | null)
+        : baseSettings.language,
+    targetLanguage: Object.prototype.hasOwnProperty.call(payload, 'target_language')
+      ? ((payload['target_language'] as string | null | undefined) ?? null)
+      : baseSettings.targetLanguage,
+  });
+};
 
 const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSettings): Promise<void> => {
   const userId = getCurrentUserIdSnapshot();
@@ -81,18 +106,12 @@ const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSe
   const scoped = SafeStorage.getSync<UserProfile | null>(scopedKey, null);
   const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
   const baseProfile = scoped || legacy;
-  if (!baseProfile?.settings) {
+  const currentSettings = normalizeProfileLanguageSettings(baseProfile);
+  if (!baseProfile?.settings || !currentSettings) {
     return;
   }
 
-  const currentLanguage = normalizeCanonicalLocale(baseProfile.settings.language);
-  const currentTargetRaw = baseProfile.settings.targetLanguage || 'auto';
-  const currentTarget =
-    normalizeCanonicalLocale(currentTargetRaw) === 'auto'
-      ? null
-      : normalizeCanonicalLocale(currentTargetRaw);
-
-  if (currentLanguage === nextSettings.language && currentTarget === nextSettings.targetLanguage) {
+  if (areLanguageSettingsEqual(currentSettings, nextSettings)) {
     return;
   }
 
@@ -118,10 +137,12 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
     return;
   }
 
-  const normalizedSettings = normalizeLanguageSettings({
-    language: profileSettings.language ?? state.settings.language,
-    targetLanguage: profileSettings.targetLanguage ?? state.settings.targetLanguage,
-  });
+  const userId = getCurrentUserIdSnapshot();
+  const queuedSettingsPayload =
+    userId && userId !== UNAUTHENTICATED_USER_ID
+      ? await getQueuedPhase2EntityPayload(userId, 'settings')
+      : null;
+  const normalizedSettings = applyQueuedSettingsPayload(profileSettings, queuedSettingsPayload);
 
   if (areLanguageSettingsEqual(normalizedSettings, state.settings)) {
     if (!state.ready) {
@@ -146,19 +167,13 @@ const applyProfileLanguageSettingsSnapshot = async (): Promise<void> => {
   initialized = true;
 };
 
-const normalizeRemoteLanguageSettings = (remote: {
+export const normalizeRemoteLanguageSettings = (remote: {
   language?: string | null;
   target_language?: string | null;
 }): LanguageSettings =>
   normalizeLanguageSettings({
-    language: normalizeCanonicalLocale(remote.language),
-    targetLanguage:
-      remote.target_language === undefined
-        ? state.settings.targetLanguage
-        : (() => {
-            const normalized = normalizeCanonicalLocale(remote.target_language);
-            return normalized === 'auto' ? null : normalized;
-          })(),
+    language: remote.language,
+    targetLanguage: hasRemoteTravelerTargetLanguage(remote) ? remote.target_language : null,
   });
 
 const applyLanguageSettings = async (settings: LanguageSettings): Promise<void> => {
@@ -185,10 +200,12 @@ export const initializeI18nStore = async () => {
   initializePromise = (async () => {
     const persistedSettings = await loadLanguageSettings();
     const profileSettings = readProfileLanguageSettingsSnapshot();
-    const settings = normalizeLanguageSettings({
-      language: profileSettings?.language ?? persistedSettings.language,
-      targetLanguage: profileSettings?.targetLanguage ?? persistedSettings.targetLanguage,
-    });
+    const userId = getCurrentUserIdSnapshot();
+    const queuedSettingsPayload =
+      userId && userId !== UNAUTHENTICATED_USER_ID
+        ? await getQueuedPhase2EntityPayload(userId, 'settings')
+        : null;
+    const settings = applyQueuedSettingsPayload(profileSettings ?? persistedSettings, queuedSettingsPayload);
     if (
       settings.language !== persistedSettings.language ||
       settings.targetLanguage !== persistedSettings.targetLanguage
@@ -225,9 +242,23 @@ export const syncI18nSettingsFromProfile = async (
 
     if (pullFromServer && hasAuthenticatedUser) {
       try {
-        const { Phase2Api } = await import('@/services/sync/phase2Api_Logic');
+        const { Phase2Api } = await import('@/services/sync/phase2Api');
         const { settings } = await Phase2Api.getSettings();
-        const normalized = normalizeRemoteLanguageSettings(settings);
+        const profileSnapshot = readProfileSnapshot();
+        if (isRemoteSettingsSnapshotStale({ localProfile: profileSnapshot, remoteSettings: settings })) {
+          logger.warn('[Phase2Sync] ignoring stale remote settings snapshot', {
+            user_id: userId,
+            local_updated_at: profileSnapshot?.syncVersions?.settingsUpdatedAt || null,
+            remote_updated_at: settings.updated_at || null,
+          });
+          await applyProfileLanguageSettingsSnapshot();
+          return;
+        }
+        const queuedSettingsPayload = await getQueuedPhase2EntityPayload(userId, 'settings');
+        const normalized = applyQueuedSettingsPayload(
+          normalizeRemoteLanguageSettings(settings),
+          queuedSettingsPayload
+        );
         await applyLanguageSettings(normalized);
         await persistLanguageSettingsToProfileSnapshot(normalized);
         return;

@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { saveImagePermanentlyOrThrow } from '@/services/imageStorage_Logic';
-import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs_Logic';
+import { saveImagePermanentlyOrThrow } from '@/services/imageStorage';
+import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 
 type CameraPermissionDialogTexts = {
   title: string;

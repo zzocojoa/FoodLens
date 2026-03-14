@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { dataStore } from '../../services/dataStore_Logic';
+import { dataStore } from '../../services/dataStore';
 import { analysisDataService } from './analysisDataService';
 import {
   toDisplayImageUri,
 } from './analysisDataUtils';
 import type { LoadedAnalysisData } from './analysisDataService';
 import type { ImageSourcePropType } from 'react-native';
-import { parseResultRouteFlags } from '@/services/contracts/resultRoute_Logic';
-import type { ResultSearchParams } from '@/services/contracts/resultRoute_Structure';
+import { parseResultRouteFlags } from '@/services/contracts/resultRoute';
+import type { ResultSearchParams } from '@/services/contracts/resultRoute';
 
 export function useAnalysisData() {
   const params = useLocalSearchParams<ResultSearchParams>();

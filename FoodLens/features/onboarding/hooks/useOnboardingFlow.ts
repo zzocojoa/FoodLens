@@ -4,13 +4,13 @@ import { TOTAL_STEPS, DEFAULT_BIRTH_DATE } from '../constants/onboarding.constan
 import {
   getOnboardingPermissionStatuses,
   requestOnboardingPermissions,
-} from '../services/onboardingPermissionService_Logic';
-import { completeOnboardingProfile } from '../services/onboardingProfileService_Logic';
+} from '../services/onboardingPermissionService';
+import { completeOnboardingProfile } from '../services/onboardingProfileService';
 import type { OnboardingStep, PermissionStatusMap } from '../types/onboarding.types';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { buildSuggestions } from '@/features/profile/utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type UseOnboardingFlowParams = {
   onCompleted: () => void;

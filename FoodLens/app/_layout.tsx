@@ -9,19 +9,19 @@ import { AppState } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
-import { SafeStorage, initializeSafeStorage } from '../services/storage_Logic';
-import { cleanupOrphanedImages } from '../services/imageStorage_Logic';
-import { clearSession, restoreSession } from '../services/auth/sessionManager_Logic';
-import { getCurrentUserIdSnapshot } from '../services/auth/currentUser_Logic';
-import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue_Logic';
-import { hasCompletedOnboarding } from '../services/onboardingGateService_Logic';
-import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore_Logic';
-import { AnalysisService } from '../services/analysisService_Logic';
-import { UserService } from '../services/userService_Logic';
+import { SafeStorage, initializeSafeStorage } from '../services/storage';
+import { cleanupOrphanedImages } from '../services/imageStorage';
+import { clearSession, restoreSession } from '../services/auth/sessionManager';
+import { getCurrentUserIdSnapshot } from '../services/auth/currentUser';
+import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue';
+import { hasCompletedOnboarding } from '../services/onboardingGateService';
+import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore';
+import { AnalysisService } from '../services/analysisService';
+import { UserService } from '../services/userService';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { initSentry, setUser } from '../services/sentry_Logic';
+import { initSentry, setUser } from '../services/sentry';
 
 SplashScreen.preventAutoHideAsync();
 

@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { getStoredAnalyses } from './analysis/storage_Logic';
+import { getStoredAnalyses } from './analysis/storage';
 import {
   buildManagedImageUri,
   createManagedFilename,
@@ -7,11 +7,11 @@ import {
   getManagedImageDirectory,
   isLegacyAbsoluteUri,
   isManagedImageReference,
-} from './imageStorage.helpers_Logic';
-import { SafeStorage } from './storage_Logic';
-import { getUserStorageKey } from './user/constants_Logic';
+} from './imageStorage.helpers';
+import { SafeStorage } from './storage';
+import { getUserStorageKey } from './user/constants';
 import { UserProfile } from '../models/User';
-import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
 
 /**
  * ImageStorage Utility

@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { resolveGalleryMetadata } from '../utils/galleryMetadata';
 import { LocationData } from '@/services/utils/types';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type Translate = (key: string, fallback?: string) => string;
 

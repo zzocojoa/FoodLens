@@ -3,11 +3,11 @@ import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
-import { AuthApi } from '@/services/auth/authApi_Logic';
-import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore_Logic';
-import { clearSession } from '@/services/auth/sessionManager_Logic';
-import { logoutFromOAuthProvider } from '@/services/auth/providerLogout_Logic';
-import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue_Logic';
+import { AuthApi } from '@/services/auth/authApi';
+import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
+import { clearSession } from '@/services/auth/sessionManager';
+import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
+import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
 import { useProfileSheetController } from './profileSheet/hooks/useProfileSheetController';
 import { ProfileSheetProps } from './profileSheet/types';
@@ -101,11 +101,21 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     }
   };
 
+  const handleManageProfile = React.useCallback(() => {
+    onClose();
+    requestAnimationFrame(() => {
+      router.push({
+        pathname: '/profile',
+        params: { fromProfileSheet: '1' },
+      });
+    });
+  }, [onClose, router]);
+
   return (
     <ProfileSheetView
       isOpen={isOpen}
       closeProfile={profileSheet.closeSheet}
-      onPressManageProfile={() => router.push('/profile')}
+      onPressManageProfile={handleManageProfile}
       onPressUpdate={() => void state.handleUpdate(onUpdate, onClose)}
       onPressLogout={() => void handleLogout()}
       logoutLoading={logoutLoading}

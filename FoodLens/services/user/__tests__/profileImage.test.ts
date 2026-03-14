@@ -1,25 +1,25 @@
 import type { UserProfile } from '@/models/User';
-import { ensureProfileImageExists } from '../profileImage_Logic';
+import { ensureProfileImageExists } from '../profileImage';
 
 const mockSafeStorageSet = jest.fn();
 const mockPickRandomAvatar = jest.fn();
 const mockGetUserStorageKey = jest.fn();
 
-jest.mock('../../storage_Logic', () => ({
+jest.mock('../../storage', () => ({
   SafeStorage: {
     set: (...args: unknown[]) => mockSafeStorageSet(...args),
   },
 }));
 
-jest.mock('../constants_Logic', () => ({
+jest.mock('../constants', () => ({
   getUserStorageKey: (...args: unknown[]) => mockGetUserStorageKey(...args),
 }));
 
-jest.mock('../profileFactory_Logic', () => ({
+jest.mock('../profileFactory', () => ({
   pickRandomAvatar: (...args: unknown[]) => mockPickRandomAvatar(...args),
 }));
 
-jest.mock('../../imageStorage_Logic', () => ({
+jest.mock('../../imageStorage', () => ({
   resolveImageUri: (value: string) => value,
 }));
 

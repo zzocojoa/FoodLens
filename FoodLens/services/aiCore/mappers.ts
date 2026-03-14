@@ -1,5 +1,5 @@
 import { AnalyzedData, NutritionData, TranslationCard } from './types';
-import { getI18nSnapshot } from '@/features/i18n/services/i18nStore_Logic';
+import { getI18nSnapshot } from '@/features/i18n/services/i18nStore';
 
 export const clampConfidence = (confidence: unknown) =>
     typeof confidence === 'number' ? Math.max(0, Math.min(100, confidence)) : undefined;

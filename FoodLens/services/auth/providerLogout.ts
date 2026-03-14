@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { AuthApiError } from './authApi_Logic';
+import { AuthApiError } from './authApi';
 
 type OAuthProvider = 'google' | 'kakao';
 const GOOGLE_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL';

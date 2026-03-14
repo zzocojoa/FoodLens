@@ -1,4 +1,4 @@
-import { captureError, captureWarning } from '@/services/sentry_Logic';
+import { captureError, captureWarning } from '@/services/sentry';
 
 type LogMeta = unknown;
 

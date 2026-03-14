@@ -1,7 +1,7 @@
 import { Image } from 'react-native';
-import { resolveImageUri } from '../../services/imageStorage_Logic';
+import { resolveImageUri } from '../../services/imageStorage';
 import type { ImageSourcePropType } from 'react-native';
-import type { AnalyzedData } from '@/services/ai_Structure';
+import type { AnalyzedData } from '@/services/ai';
 
 type ResultLike = (AnalyzedData & { raw_data?: Record<string, unknown> }) | null | undefined;
 const EMPTY_IMAGE_RESOLUTION = {

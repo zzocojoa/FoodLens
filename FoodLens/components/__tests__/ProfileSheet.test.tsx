@@ -52,6 +52,14 @@ jest.mock('@/services/sync/phase2SyncQueue', () => ({
   dispatchPhase2SyncQueue: (...args: unknown[]) => mockDispatchPhase2SyncQueue(...args),
 }));
 
+jest.mock('@/services/storage', () => ({
+  SafeStorage: {
+    get: jest.fn(),
+    getSync: jest.fn(),
+    set: jest.fn(),
+  },
+}));
+
 jest.mock('../profileSheet/hooks/useProfileSheetController', () => ({
   useProfileSheetController: () => ({
     state: {

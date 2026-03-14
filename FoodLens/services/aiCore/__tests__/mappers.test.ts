@@ -4,7 +4,7 @@ const mockGetI18nSnapshot = jest.fn(() => ({
     ready: true,
 }));
 
-jest.mock('@/features/i18n/services/i18nStore_Logic', () => ({
+jest.mock('@/features/i18n/services/i18nStore', () => ({
     getI18nSnapshot: () => mockGetI18nSnapshot(),
 }));
 

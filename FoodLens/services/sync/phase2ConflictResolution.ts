@@ -1,12 +1,12 @@
 import {
   getPhase2ConflictedOperations,
   resolvePhase2Conflict,
-} from './phase2SyncQueue_Logic';
+} from './phase2SyncQueue';
 import type {
   Phase2ConflictResolution,
   Phase2SyncEntity,
   Phase2SyncOperation,
-} from './phase2Sync.types_Structure';
+} from './phase2Sync.types';
 
 const MANUAL_MERGE_ENTITIES = new Set<Phase2SyncEntity>([
   'profile',

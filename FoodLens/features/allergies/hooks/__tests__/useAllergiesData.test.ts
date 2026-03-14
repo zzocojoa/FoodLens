@@ -12,7 +12,7 @@ jest.mock('../../constants/allergies.constants', () => ({
     getAllergiesUserId: () => 'test-user-v1',
 }));
 
-jest.mock('@/services/user/userProfileStore_Logic', () => ({
+jest.mock('@/services/user/userProfileStore', () => ({
     subscribeUserProfileUpdated: () => () => {},
 }));
 

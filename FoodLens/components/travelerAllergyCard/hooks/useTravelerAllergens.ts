@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { UserService } from '@/services/userService_Logic';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
-import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore_Logic';
+import { UserService } from '@/services/userService';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 
 export const useTravelerAllergens = () => {
   const [allergens, setAllergens] = useState<string[]>([]);

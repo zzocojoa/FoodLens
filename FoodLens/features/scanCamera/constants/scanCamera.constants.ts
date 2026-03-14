@@ -1,5 +1,5 @@
 import { ScanCameraModeOption } from '../types/scanCamera.types';
-import { getCurrentUserId } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserId } from '@/services/auth/currentUser';
 
 export const getScanCameraUserId = (): string => getCurrentUserId();
 

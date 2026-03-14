@@ -1,5 +1,5 @@
 import { ResultContentData, ResultIngredient } from '../types';
-import { resolveLocalizedOptionalText, resolveLocalizedText } from '@/services/i18n/nameResolver_Logic';
+import { resolveLocalizedOptionalText, resolveLocalizedText } from '@/services/i18n/nameResolver';
 
 export const resolveLocalizedFoodName = (
   result: ResultContentData,

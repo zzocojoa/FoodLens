@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { MutableRefObject } from 'react';
 import { CameraView } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { showTranslatedAlert } from '@/services/ui/uiAlerts_Logic';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
 type Translate = (key: string, fallback?: string) => string;
 

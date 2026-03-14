@@ -9,7 +9,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -26,6 +26,7 @@ const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
 
 export default function ProfileScreen() {
     const router = useRouter();
+    const params = useLocalSearchParams<{ fromProfileSheet?: string }>();
     const { t } = useI18n();
     const { colorScheme } = useTheme();
     const theme = Colors[colorScheme];
@@ -58,9 +59,20 @@ export default function ProfileScreen() {
         Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service/');
     };
 
+    const handleBack = React.useCallback(() => {
+        if (params.fromProfileSheet === '1') {
+            router.replace({
+                pathname: '/(tabs)',
+                params: { openProfile: '1' },
+            });
+            return;
+        }
+        router.back();
+    }, [params.fromProfileSheet, router]);
+
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-            <ProfileHeader theme={theme} onBack={() => router.back()} />
+            <ProfileHeader theme={theme} onBack={handleBack} />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}

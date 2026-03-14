@@ -1,4 +1,4 @@
-import { SafeStorage } from '@/services/storage_Logic';
+import { SafeStorage } from '@/services/storage';
 import { NativeModules, Platform } from 'react-native';
 import {
   DEFAULT_FALLBACK_LOCALE,
@@ -89,22 +89,22 @@ export const normalizeCanonicalLocale = (value: string | null | undefined): Cano
   return resolved;
 };
 
+const normalizeTargetLanguage = (value: string | null | undefined): ResolvedLocale | null => {
+  const canonicalTarget = normalizeCanonicalLocale(value);
+  return canonicalTarget === AUTO_LANGUAGE ? null : canonicalTarget;
+};
+
+type RawLanguageSettings = {
+  language?: string | null;
+  targetLanguage?: string | null;
+};
+
 export const normalizeLanguageSettings = (
-  raw: Partial<LanguageSettings> | null | undefined
+  raw: RawLanguageSettings | null | undefined
 ): LanguageSettings => {
-  const canonicalLanguage = normalizeCanonicalLocale(raw?.language);
-  const canonicalTarget = normalizeCanonicalLocale(raw?.targetLanguage);
-
-  if (canonicalLanguage === AUTO_LANGUAGE) {
-    return {
-      language: AUTO_LANGUAGE,
-      targetLanguage: canonicalTarget === AUTO_LANGUAGE ? null : canonicalTarget,
-    };
-  }
-
   return {
-    language: canonicalLanguage,
-    targetLanguage: canonicalTarget === AUTO_LANGUAGE ? canonicalLanguage : canonicalTarget,
+    language: normalizeCanonicalLocale(raw?.language),
+    targetLanguage: normalizeTargetLanguage(raw?.targetLanguage),
   };
 };
 

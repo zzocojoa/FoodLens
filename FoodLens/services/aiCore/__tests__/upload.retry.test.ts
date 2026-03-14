@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { uploadWithRetry } from '../upload';
-import { runWithAnalysisTimeout, sleep } from '../internal/retryUtils_Logic';
+import { runWithAnalysisTimeout, sleep } from '../internal/retryUtils';
 
 jest.mock('expo-file-system/legacy', () => ({
   __esModule: true,
@@ -9,7 +9,7 @@ jest.mock('expo-file-system/legacy', () => ({
   createUploadTask: jest.fn(),
 }));
 
-jest.mock('../internal/retryUtils_Logic', () => ({
+jest.mock('../internal/retryUtils', () => ({
   runWithAnalysisTimeout: jest.fn(async (promise: Promise<unknown>) => promise),
   sleep: jest.fn(async () => undefined),
 }));

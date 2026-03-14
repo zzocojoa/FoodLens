@@ -1,30 +1,30 @@
 import { lookupBarcodeWithAllergyContext } from '../internal/barcodeLookup';
 
-jest.mock('../allergy_Logic', () => ({
+jest.mock('../allergy', () => ({
   getAllergyString: jest.fn(async () => 'None'),
 }));
 
-jest.mock('../serverConfig_Logic', () => ({
+jest.mock('../serverConfig', () => ({
   ServerConfig: {
     getServerUrl: jest.fn(async () => 'https://example.com'),
   },
 }));
 
-jest.mock('../internal/requestLocale_Logic', () => ({
+jest.mock('../internal/requestLocale', () => ({
   resolveRequestLocale: jest.fn(async () => 'ko-KR'),
 }));
 
-jest.mock('../internal/retryUtils_Logic', () => ({
+jest.mock('../internal/retryUtils', () => ({
   sleep: jest.fn(async () => undefined),
 }));
 
-jest.mock('../cache_Logic', () => ({
+jest.mock('../cache', () => ({
   buildBarcodeCacheKey: jest.fn(() => 'cache-key'),
   getAiCacheValue: jest.fn(async () => null),
   setAiCacheValue: jest.fn(async () => undefined),
 }));
 
-jest.mock('../constants_Logic', () => ({
+jest.mock('../constants', () => ({
   BARCODE_LOOKUP_MAX_RETRIES: 3,
   BARCODE_LOOKUP_TIMEOUT_MS: 15000,
 }));

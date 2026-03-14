@@ -1,12 +1,12 @@
-import { getAllergyString } from '../allergy_Logic';
-import { mapBarcodeToAnalyzedData } from '../mappers_Logic';
-import { ServerConfig } from '../serverConfig_Logic';
+import { getAllergyString } from '../allergy';
+import { mapBarcodeToAnalyzedData } from '../mappers';
+import { ServerConfig } from '../serverConfig';
 import { BarcodeLookupResult } from '../types';
-import { resolveRequestLocale } from './requestLocale_Logic';
-import { assertBarcodeLookupContract } from '../contracts_Logic';
-import { sleep } from './retryUtils_Logic';
-import { BARCODE_LOOKUP_MAX_RETRIES, BARCODE_LOOKUP_TIMEOUT_MS } from '../constants_Logic';
-import { buildBarcodeCacheKey, getAiCacheValue, setAiCacheValue } from '../cache_Logic';
+import { resolveRequestLocale } from './requestLocale';
+import { assertBarcodeLookupContract } from '../contracts';
+import { sleep } from './retryUtils';
+import { BARCODE_LOOKUP_MAX_RETRIES, BARCODE_LOOKUP_TIMEOUT_MS } from '../constants';
+import { buildBarcodeCacheKey, getAiCacheValue, setAiCacheValue } from '../cache';
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 

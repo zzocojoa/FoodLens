@@ -8,7 +8,7 @@ import {
 
 const mockMemoryStore = new Map<string, unknown>();
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(async (key: string, fallback: unknown) =>
       mockMemoryStore.has(key) ? mockMemoryStore.get(key) : fallback

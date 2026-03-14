@@ -1,4 +1,4 @@
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser_Logic';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 
 export const getAutoSaveUserId = (): string => getCurrentUserIdSnapshot();
 

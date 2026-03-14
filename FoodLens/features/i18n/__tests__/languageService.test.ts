@@ -1,4 +1,4 @@
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(),
     set: jest.fn(),
@@ -16,7 +16,7 @@ jest.mock('react-native', () => ({
 }));
 
 import { NativeModules, Platform } from 'react-native';
-import { getDeviceLocale } from '../services/languageService';
+import { getDeviceLocale, normalizeLanguageSettings } from '../services/languageService';
 
 describe('languageService.getDeviceLocale', () => {
   const intlDateTimeFormat = Intl.DateTimeFormat;
@@ -96,5 +96,29 @@ describe('languageService.getDeviceLocale', () => {
     const locale = getDeviceLocale();
 
     expect(locale).toBe('ko-KR');
+  });
+});
+
+describe('languageService.normalizeLanguageSettings', () => {
+  it('preserves traveler auto mode when ui language is manual', () => {
+    expect(
+      normalizeLanguageSettings({
+        language: 'ko-KR',
+        targetLanguage: undefined,
+      })
+    ).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
+
+    expect(
+      normalizeLanguageSettings({
+        language: 'ko-KR',
+        targetLanguage: 'auto',
+      })
+    ).toEqual({
+      language: 'ko-KR',
+      targetLanguage: null,
+    });
   });
 });

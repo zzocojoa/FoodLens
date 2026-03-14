@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AnalysisService } from '@/services/analysisService_Logic';
+import { AnalysisService } from '@/services/analysisService';
 import { historyKeys } from '../queries/useHistoryQuery';
 import { AnalyzedData } from '@/services/ai';
-import { AnalysisRecord } from '@/services/analysis/types_Logic';
+import { AnalysisRecord } from '@/services/analysis/types';
 
 /**
  * Hook for saving a new analysis

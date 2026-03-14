@@ -1,24 +1,26 @@
 import { UserProfile } from '../models/User';
-import { SafeStorage } from './storage_Logic';
-import { USER_STORAGE_KEY, getUserStorageKey } from './user/constants_Logic';
-import { buildDefaultProfile } from './user/profileFactory_Logic';
-import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage_Logic';
-import { publishUserProfileUpdated } from './user/userProfileStore_Logic';
-import { logger } from './logger_Logic';
-import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api_Logic';
+import { SafeStorage } from './storage';
+import { USER_STORAGE_KEY, getUserStorageKey } from './user/constants';
+import { buildDefaultProfile } from './user/profileFactory';
+import { ensureProfileImageExists, resolveAndValidateProfileImage } from './user/profileImage';
+import { publishUserProfileUpdated } from './user/userProfileStore';
+import { logger } from './logger';
+import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
 import {
   buildProfileWritePayload,
   mergeRemoteUserSnapshot,
   normalizeLegacyProfileForUser,
-} from './sync/phase2Mappers_Logic';
+} from './sync/phase2Mappers';
+import { isRemoteSettingsSnapshotStale } from './sync/settingsFreshness';
 import {
   dispatchPhase2SyncQueue,
   enqueuePhase2Sync,
+  getQueuedPhase2EntityPayload,
   getPhase2OperationsByIds,
   startPhase2SyncRuntime,
-} from './sync/phase2SyncQueue_Logic';
-import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser_Logic';
-import { restoreSession } from './auth/sessionManager_Logic';
+} from './sync/phase2SyncQueue';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
+import { restoreSession } from './auth/sessionManager';
 
 const PROFILE_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_profile_migrated:';
 const PROFILE_SERVER_SYNC_MARKER_PREFIX = '@foodlens_phase2_profile_server_synced:';
@@ -133,15 +135,29 @@ const syncProfileFromServer = async (
         Phase2Api.getAllergies(),
         Phase2Api.getSettings(),
       ]);
+      const shouldIgnoreRemoteSettings = isRemoteSettingsSnapshotStale({
+        localProfile: fallbackProfile,
+        remoteSettings: settingsResult.settings,
+      });
+      if (shouldIgnoreRemoteSettings) {
+        logger.warn('[Phase2Sync] ignoring stale remote settings during profile pull', {
+          request_id: settingsResult.requestId || 'unknown',
+          user_id: uid,
+          local_updated_at: fallbackProfile.syncVersions?.settingsUpdatedAt || null,
+          remote_updated_at: settingsResult.settings.updated_at || null,
+        });
+      }
       const merged = mergeRemoteUserSnapshot(uid, fallbackProfile, {
         profile: profileResult.profile,
         allergies: allergiesResult.allergies,
-        settings: settingsResult.settings,
+        settings: shouldIgnoreRemoteSettings ? undefined : settingsResult.settings,
       });
-      await saveScopedProfile(uid, merged);
+      const queuedSettingsPayload = await getQueuedPhase2EntityPayload(uid, 'settings');
+      const effectiveProfile = applyQueuedSettingsPayloadToProfile(merged, queuedSettingsPayload);
+      await saveScopedProfile(uid, effectiveProfile);
       await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
       publishUserProfileUpdated(uid, 'server_pull');
-      return merged;
+      return effectiveProfile;
     } catch (error) {
       const apiError = error instanceof Phase2SyncApiError ? error : null;
       if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
@@ -221,6 +237,48 @@ const queueProfileWrites = async (
   return operationIds;
 };
 
+const applyQueuedSettingsPayloadToProfile = (
+  profile: UserProfile,
+  payload: Record<string, unknown> | null
+): UserProfile => {
+  if (!payload) {
+    return profile;
+  }
+
+  const nextSettings = { ...profile.settings };
+
+  if (typeof payload['language'] === 'string' && payload['language'].trim()) {
+    nextSettings.language = payload['language'].trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'target_language')) {
+    const targetLanguage = payload['target_language'];
+    if (typeof targetLanguage === 'string' && targetLanguage.trim()) {
+      nextSettings.targetLanguage = targetLanguage.trim();
+    } else {
+      delete nextSettings.targetLanguage;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'auto_play_audio')) {
+    nextSettings.autoPlayAudio = !!payload['auto_play_audio'];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'selected_emoji')) {
+    const selectedEmoji = payload['selected_emoji'];
+    if (typeof selectedEmoji === 'string' && selectedEmoji.trim()) {
+      nextSettings.selectedEmoji = selectedEmoji.trim();
+    } else {
+      delete nextSettings.selectedEmoji;
+    }
+  }
+
+  return {
+    ...profile,
+    settings: nextSettings,
+  };
+};
+
 const profileSyncComparableShape = (profile: UserProfile) => ({
   uid: profile.uid || '',
   email: profile.email || '',
@@ -257,6 +315,30 @@ type GetUserProfileOptions = {
 type UserProfilePatch = Omit<Partial<UserProfile>, 'settings' | 'safetyProfile'> & {
   settings?: Partial<UserProfile['settings']>;
   safetyProfile?: Partial<UserProfile['safetyProfile']>;
+};
+
+const mergeProfileSettingsPatch = (
+  existingSettings: UserProfile['settings'],
+  nextSettingsPatch?: UserProfilePatch['settings']
+): UserProfile['settings'] => {
+  if (!nextSettingsPatch) {
+    return existingSettings;
+  }
+
+  const nextSettings: UserProfile['settings'] = {
+    ...existingSettings,
+    ...nextSettingsPatch,
+  };
+
+  if ('targetLanguage' in nextSettingsPatch && !nextSettingsPatch.targetLanguage) {
+    delete nextSettings.targetLanguage;
+  }
+
+  if ('selectedEmoji' in nextSettingsPatch && !nextSettingsPatch.selectedEmoji) {
+    delete nextSettings.selectedEmoji;
+  }
+
+  return nextSettings;
 };
 
 export const UserService = {
@@ -374,10 +456,7 @@ export const UserService = {
           ...existing.safetyProfile,
           ...(profileData.safetyProfile || {}),
         },
-        settings: {
-          ...existing.settings,
-          ...(profileData.settings || {}),
-        },
+        settings: mergeProfileSettingsPatch(existing.settings, profileData.settings),
       };
       if (isProfileSyncNoop(existing, candidateProfile)) {
         return existing;

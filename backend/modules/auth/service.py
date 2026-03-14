@@ -14,13 +14,13 @@ from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Literal
 from uuid import uuid4
-from .email_sender_Logic import (
+from .email_sender import (
     EmailVerificationDeliveryError,
     EmailVerificationSender,
     build_email_verification_sender_from_env,
 )
-from .email_sender_Structure import LoggingEmailVerificationSender
-from .state_store_Logic import (
+from .email_sender import LoggingEmailVerificationSender
+from .state_store import (
     AuthProjectionStore,
     AuthStateStore,
     AuthStateStoreError,

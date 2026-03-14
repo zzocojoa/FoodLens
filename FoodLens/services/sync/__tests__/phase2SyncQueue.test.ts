@@ -1,9 +1,9 @@
 import NetInfo from '@react-native-community/netinfo';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser_Logic';
-import { restoreSession } from '@/services/auth/sessionManager_Logic';
-import { SafeStorage } from '@/services/storage_Logic';
-import { Phase2Api, Phase2SyncApiError } from '../phase2Api_Logic';
+import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
+import { restoreSession } from '@/services/auth/sessionManager';
+import { SafeStorage } from '@/services/storage';
+import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 import {
   __resetPhase2SettingsDispatchDedupeForTests,
   dispatchPhase2SyncQueue,
@@ -41,16 +41,16 @@ jest.mock('expo-file-system/legacy', () => ({
   deleteAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('@/services/auth/currentUser_Logic', () => ({
+jest.mock('@/services/auth/currentUser', () => ({
   getCurrentUserId: jest.fn(),
   hasAuthenticatedUser: jest.fn(),
 }));
 
-jest.mock('@/services/auth/sessionManager_Logic', () => ({
+jest.mock('@/services/auth/sessionManager', () => ({
   restoreSession: jest.fn(),
 }));
 
-jest.mock('@/services/storage_Logic', () => ({
+jest.mock('@/services/storage', () => ({
   SafeStorage: {
     get: jest.fn(),
     set: jest.fn(),
@@ -58,7 +58,7 @@ jest.mock('@/services/storage_Logic', () => ({
   },
 }));
 
-jest.mock('../phase2Api_Logic', () => ({
+jest.mock('../phase2Api', () => ({
   Phase2Api: {
     putProfile: jest.fn(),
     putAllergies: jest.fn(),

@@ -5,7 +5,7 @@ import { Colors } from '../../../constants/theme';
 import { useColorScheme } from '../../../hooks/use-color-scheme';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { FloatingEmojisHandle } from '../../../components/FloatingEmojis';
-import { HapticsService } from '../../../services/haptics_Logic';
+import { HapticsService } from '../../../services/haptics';
 import { useHomeDashboard } from './useHomeDashboard';
 import {
   navigateToAllergies,
@@ -14,7 +14,7 @@ import {
   navigateToResultFromHome,
   navigateToScanCamera,
   navigateToTripStats,
-} from '../services/homeNavigationService_Logic';
+} from '../services/homeNavigationService';
 
 export const useHomeScreenController = () => {
   const router = useRouter();

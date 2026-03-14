@@ -1,19 +1,19 @@
 import type { UserProfile } from '@/models/User';
-import type { AnalysisRecord } from '@/services/analysis/types_Structure';
+import type { AnalysisRecord } from '@/services/analysis/types';
 import {
   normalizeCanonicalLocale,
   normalizeLanguageSettings,
   resolveEffectiveLocale,
-} from '@/features/i18n/services/languageService_Logic';
-import { IMAGE_DIR } from '@/services/imageStorage.helpers_Logic';
-import { buildDefaultProfile } from '@/services/user/profileFactory_Logic';
+} from '@/features/i18n/services/languageService';
+import { IMAGE_DIR } from '@/services/imageStorage.helpers';
+import { buildDefaultProfile } from '@/services/user/profileFactory';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import type {
   MeAllergiesResponse,
   MeHistoryItemResponse,
   MeProfileResponse,
   MeSettingsResponse,
-} from './phase2Sync.types_Structure';
+} from './phase2Sync.types';
 
 type UserSnapshotInput = {
   profile?: MeProfileResponse;
@@ -26,6 +26,21 @@ const normalizeLanguageValue = (value: string | null | undefined) => normalizeCa
 const normalizeTargetLanguageValue = (value: string | null | undefined) => {
   const normalized = normalizeCanonicalLocale(value);
   return normalized === 'auto' ? null : normalized;
+};
+
+const resolveRemoteTargetLanguageValue = (
+  settings: MeSettingsResponse | undefined,
+  fallbackTargetLanguage: string | null | undefined
+) => {
+  if (!settings) {
+    return normalizeTargetLanguageValue(fallbackTargetLanguage);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(settings, 'target_language')) {
+    return normalizeTargetLanguageValue(settings.target_language);
+  }
+
+  return null;
 };
 
 const resolveDeviceTimezone = (): string => {
@@ -258,10 +273,10 @@ export const mergeRemoteUserSnapshot = (
   const next = { ...fallback };
   const mergedLanguageSettings = normalizeLanguageSettings({
     language: normalizeLanguageValue(input.settings?.language ?? fallback.settings.language),
-    targetLanguage:
-      input.settings?.target_language === undefined
-        ? normalizeTargetLanguageValue(fallback.settings.targetLanguage)
-        : normalizeTargetLanguageValue(input.settings.target_language),
+    targetLanguage: resolveRemoteTargetLanguageValue(
+      input.settings,
+      fallback.settings.targetLanguage
+    ),
   });
 
   next.uid = userId;

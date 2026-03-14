@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import inspect
 import io
 import logging
 import os
@@ -18,35 +19,35 @@ import requests
 from pydantic import BaseModel
 from PIL import Image, ImageOps
 
-from backend.modules.server_bootstrap_Logic import (
+from backend.modules.server_bootstrap import (
     decode_upload_to_image,
     initialize_services,
     load_environment,
     log_environment_debug,
 )
-from backend.modules.analyst_core.prompts_Structure import LABEL_2PASS_PROMPT_VERSION
-from backend.modules.analyst_core.response_utils_Logic import get_safe_fallback_response
-from backend.modules.ops.cost_guardrail_Structure import CostGuardrailAction
-from backend.modules.ops.cost_guardrail_Logic import (
+from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
+from backend.modules.analyst_core.response_utils import get_safe_fallback_response
+from backend.modules.ops.cost_guardrail import CostGuardrailAction
+from backend.modules.ops.cost_guardrail import (
     CostGuardrailService,
     InMemoryMonthlyUsageStorage,
 )
-from backend.modules.ops.data_retention_Logic import (
+from backend.modules.ops.data_retention import (
     InMemoryRetentionStore,
     JsonFileRetentionStore,
     LocalFileRetentionCleanupAdapter,
     NoOpRetentionCleanupAdapter,
     RetentionCleanupJob,
 )
-from backend.modules.ops.data_retention_Structure import RetentionPolicyConfig
-from backend.modules.ops.deletion_queue_Logic import (
+from backend.modules.ops.data_retention import RetentionPolicyConfig
+from backend.modules.ops.deletion_queue import (
     DeletionQueueConsumer,
     DeletionQueueProducer,
     InMemoryDeletionQueueStorage,
     JsonFileDeletionQueueStorage,
     NoOpDeletionHandler,
 )
-from backend.modules.ops.rollout_control_Logic import (
+from backend.modules.ops.rollout_control import (
     InMemoryRolloutStateStore,
     JsonFileRolloutStateStore,
     LabelRolloutAutoManager,
@@ -54,11 +55,11 @@ from backend.modules.ops.rollout_control_Logic import (
     evaluate_kpi_gate,
     load_kpi_input_from_env,
 )
-from backend.modules.ops.rollout_control_Structure import (
+from backend.modules.ops.rollout_control import (
     KpiThresholds,
     RolloutConfig,
 )
-from backend.modules.ops.api_edge_guard_Logic import (
+from backend.modules.ops.api_edge_guard import (
     InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
     build_cors_config_from_env,
@@ -68,18 +69,18 @@ from backend.modules.ops.api_edge_guard_Logic import (
     build_rate_limit_subject,
     extract_client_ip,
 )
-from backend.modules.quality.label_quality_gate_Logic import evaluate_label_image_quality
-from backend.modules.runtime_guardrails_Structure import ErrorCode
-from backend.modules.runtime_guardrails_Logic import (
+from backend.modules.quality.label_quality_gate import evaluate_label_image_quality
+from backend.modules.runtime_guardrails import ErrorCode
+from backend.modules.runtime_guardrails import (
     raise_service_unavailable,
     run_in_threadpool,
     run_with_error_policy,
 )
-from backend.modules.runtime_guardrails_Structure import EndpointErrorPolicy
-from backend.modules.contracts.analysis_response_Structure import AnalysisResponseContract
-from backend.modules.contracts.barcode_response_Structure import BarcodeLookupResponseContract
-from backend.modules.auth.service_Logic import AuthServiceError, InMemoryAuthSessionService
-from backend.modules.media.service_Logic import (
+from backend.modules.runtime_guardrails import EndpointErrorPolicy
+from backend.modules.contracts.analysis_response import AnalysisResponseContract
+from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
+from backend.modules.auth.service import AuthServiceError, InMemoryAuthSessionService
+from backend.modules.media.service import (
     MediaStorageError,
     build_media_storage_from_env,
 )
@@ -1080,6 +1081,15 @@ class HistoryImagePatchRequest(BaseModel):
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
+
+def _device_id(request: Request) -> str | None:
+    value = request.headers.get("X-Device-Id")
+    if not value:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
 def _parent_request_id(request: Request) -> str | None:
     parent = request.headers.get("X-Parent-Request-Id")
     if not parent:
@@ -1124,13 +1134,299 @@ def _log_phase2_write(
     user_id: str,
     method: str,
     path: str,
+    device_id: str | None = None,
 ) -> None:
     logger.info(
-        "[Phase2Write] request_id=%s user_id=%s method=%s path=%s",
+        "[Phase2Write] request_id=%s user_id=%s device_id=%s method=%s path=%s",
         request_id,
         user_id,
+        device_id or "unknown",
         method,
         path,
+    )
+
+
+def _log_settings_trace(
+    *,
+    phase: str,
+    request_id: str,
+    user_id: str,
+    device_id: str | None,
+    language: str | None,
+    target_language: str | None,
+    auto_play_audio: bool | None,
+    selected_emoji: str | None,
+    updated_at: str | None,
+    fields_set: list[str] | None = None,
+) -> None:
+    logger.info(
+        (
+            "[Phase2SettingsTrace] phase=%s request_id=%s user_id=%s device_id=%s "
+            "language=%s target_language=%s auto_play_audio=%s selected_emoji=%s updated_at=%s fields=%s"
+        ),
+        phase,
+        request_id,
+        user_id,
+        device_id or "unknown",
+        language,
+        target_language,
+        auto_play_audio,
+        selected_emoji,
+        updated_at,
+        ",".join(fields_set or []),
+    )
+
+
+def _raise_auth_route_error(
+    *,
+    error: AuthServiceError,
+    request_id: str,
+    provider: str | None,
+    user_id: str | None = None,
+) -> None:
+    _log_auth_failure(
+        request_id=request_id,
+        user_id=user_id or error.user_id,
+        provider=provider,
+        code=error.code,
+    )
+    raise _auth_error_to_http_exception(error, request_id) from error
+
+
+async def _resolve_route_result(
+    result: Awaitable[dict[str, Any]] | dict[str, Any],
+) -> dict[str, Any]:
+    if inspect.isawaitable(result):
+        resolved = await result
+        return dict(resolved)
+    return dict(result)
+
+
+async def _run_auth_route(
+    *,
+    request: Request,
+    provider: str | None,
+    action: Callable[[Any, str], Awaitable[dict[str, Any]] | dict[str, Any]],
+    on_success: Callable[[dict[str, Any], str], None] | None = None,
+) -> dict[str, Any]:
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    try:
+        result = await _resolve_route_result(action(auth_service, request_id))
+        on_success and on_success(result, request_id)
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _raise_auth_route_error(
+            error=error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+async def _run_me_route(
+    *,
+    request: Request,
+    action: Callable[[Any, Any, str], Awaitable[dict[str, Any]] | dict[str, Any]],
+    write_event: tuple[str, str] | None = None,
+) -> dict[str, Any]:
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    user = _resolve_authenticated_user(request, request_id)
+    try:
+        result = await _resolve_route_result(action(auth_service, user, request_id))
+        if write_event is not None:
+            method, path = write_event
+            _log_phase2_write(
+                request_id=request_id,
+                user_id=user.user_id,
+                device_id=_device_id(request),
+                method=method,
+                path=path,
+            )
+        result["request_id"] = request_id
+        return result
+    except AuthServiceError as error:
+        _raise_auth_route_error(
+            error=error,
+            request_id=request_id,
+            provider=None,
+            user_id=user.user_id,
+        )
+
+
+def _log_email_verification_event(
+    *,
+    result: dict[str, Any],
+    request_id: str,
+    event: str,
+) -> None:
+    if result.get("verification_required") is not True:
+        return
+
+    user = result.get("user") if isinstance(result.get("user"), dict) else {}
+    logger.info(
+        "[Auth] email verification %s request_id=%s user_id=%s email=%s verification_id=%s",
+        event,
+        request_id,
+        user.get("id", "unknown"),
+        user.get("email", "unknown"),
+        result.get("verification_id", "unknown"),
+    )
+
+
+def _build_provider_start_redirect(
+    *,
+    request: Request,
+    provider: str,
+    redirect_uri: str | None,
+    state: str | None,
+) -> RedirectResponse:
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=redirect_uri)
+        packed_state = _pack_oauth_state(
+            state=(state or os.urandom(8).hex()).strip(),
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_callback_uri = _resolve_provider_callback_uri(request=request, provider=provider)
+        authorize_url = _build_oauth_authorize_url(
+            provider=provider,
+            callback_uri=provider_callback_uri,
+            packed_state=packed_state,
+        )
+        return RedirectResponse(url=authorize_url, status_code=302)
+    except AuthServiceError as error:
+        _raise_auth_route_error(
+            error=error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+def _build_provider_callback_redirect(
+    *,
+    request: Request,
+    provider: str,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    error_description: str | None,
+    redirect_uri: str | None,
+) -> RedirectResponse:
+    request_id = _request_id(request)
+    try:
+        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
+        app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=requested_redirect)
+        params: dict[str, str] = {"request_id": request_id}
+        if code:
+            params["code"] = code
+        if state:
+            params["state"] = state
+        if error:
+            params["error"] = error
+        if error_description:
+            params["error_description"] = error_description
+        return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
+    except AuthServiceError as auth_error:
+        _raise_auth_route_error(
+            error=auth_error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+def _build_provider_logout_start_redirect(
+    *,
+    request: Request,
+    provider: str,
+    redirect_uri: str | None,
+) -> RedirectResponse:
+    request_id = _request_id(request)
+    try:
+        app_redirect_uri = _resolve_app_logout_redirect_uri(requested_uri=redirect_uri)
+        provider_logout_callback_uri = _resolve_provider_logout_callback_uri(
+            request=request,
+            provider=provider,
+            app_redirect_uri=app_redirect_uri,
+        )
+        provider_logout_url = _build_provider_logout_url(
+            provider=provider,
+            provider_logout_callback_uri=provider_logout_callback_uri,
+        )
+        return RedirectResponse(url=provider_logout_url, status_code=302)
+    except AuthServiceError as error:
+        _raise_auth_route_error(
+            error=error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+def _build_provider_logout_callback_redirect(
+    *,
+    request: Request,
+    provider: str,
+    app_redirect_uri: str | None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> RedirectResponse:
+    request_id = _request_id(request)
+    try:
+        redirect_target = _resolve_app_logout_redirect_uri(requested_uri=app_redirect_uri)
+        params: dict[str, str] = {
+            "request_id": request_id,
+            "provider": provider,
+        }
+        if error:
+            params["error"] = error
+            if error_description:
+                params["error_description"] = error_description
+        else:
+            params["logout"] = "ok"
+
+        return RedirectResponse(
+            url=_append_query_params(redirect_target, params),
+            status_code=302,
+        )
+    except AuthServiceError as auth_error:
+        _raise_auth_route_error(
+            error=auth_error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+def _build_oauth_provider_login_result(
+    *,
+    auth_service: Any,
+    provider: str,
+    payload: OAuthProviderRequest,
+    request: Request,
+) -> dict[str, Any]:
+    provider_user_id = payload.provider_user_id
+    email = payload.email
+    if payload.code and not payload.error:
+        if provider == "google" and _is_google_code_verification_enabled():
+            provider_user_id, verified_email = _verify_google_identity(request=request, code=payload.code)
+            if verified_email:
+                email = verified_email
+        elif provider == "kakao" and _is_kakao_code_verification_enabled():
+            provider_user_id, verified_email = _verify_kakao_identity(request=request, code=payload.code)
+            if verified_email:
+                email = verified_email
+
+    return auth_service.oauth_login(
+        provider=provider,
+        code=payload.code,
+        state=payload.state,
+        redirect_uri=payload.redirect_uri,
+        error=payload.error,
+        provider_user_id=provider_user_id,
+        email=email,
+        locale=payload.locale,
+        accept_language=request.headers.get("Accept-Language"),
+        device_id=payload.device_id,
     )
 
 
@@ -1303,10 +1599,10 @@ async def debug_models():
 
 @app.post("/auth/email/signup")
 async def auth_email_signup(payload: EmailSignupRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = await run_in_threadpool(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: run_in_threadpool(
             auth_service.signup_email,
             email=payload.email,
             password=payload.password,
@@ -1314,143 +1610,81 @@ async def auth_email_signup(payload: EmailSignupRequest, request: Request):
             locale=payload.locale,
             accept_language=request.headers.get("Accept-Language"),
             device_id=payload.device_id,
-        )
-        if result.get("verification_required") is True:
-            user = result.get("user") if isinstance(result.get("user"), dict) else {}
-            logger.info(
-                "[Auth] email verification issued request_id=%s user_id=%s email=%s verification_id=%s",
-                request_id,
-                user.get("id", "unknown"),
-                user.get("email", "unknown"),
-                result.get("verification_id", "unknown"),
-            )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
+        ),
+        on_success=lambda result, request_id: _log_email_verification_event(
+            result=result,
             request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+            event="issued",
+        ),
+    )
 
 
 @app.post("/auth/email/login")
 async def auth_email_login(payload: EmailLoginRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = auth_service.login_email(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: auth_service.login_email(
             email=payload.email,
             password=payload.password,
             device_id=payload.device_id,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        ),
+    )
 
 
 @app.post("/auth/email/verify")
 async def auth_email_verify(payload: EmailVerifyRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = auth_service.verify_email(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: auth_service.verify_email(
             email=payload.email,
             code=payload.code,
             device_id=payload.device_id,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        ),
+    )
 
 
 @app.post("/auth/email/verification/request")
 async def auth_email_verification_request(payload: EmailVerificationRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = await run_in_threadpool(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: run_in_threadpool(
             auth_service.request_email_verification,
             email=payload.email,
-        )
-        if result.get("verification_required") is True:
-            user = result.get("user") if isinstance(result.get("user"), dict) else {}
-            logger.info(
-                "[Auth] email verification reissued request_id=%s user_id=%s email=%s verification_id=%s",
-                request_id,
-                user.get("id", "unknown"),
-                user.get("email", "unknown"),
-                result.get("verification_id", "unknown"),
-            )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
+        ),
+        on_success=lambda result, request_id: _log_email_verification_event(
+            result=result,
             request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+            event="reissued",
+        ),
+    )
 
 
 @app.post("/auth/email/password/reset/request")
 async def auth_email_password_reset_request(payload: PasswordResetRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = await run_in_threadpool(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: run_in_threadpool(
             auth_service.request_password_reset,
             email=payload.email,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        ),
+    )
 
 
 @app.post("/auth/email/password/reset/confirm")
 async def auth_email_password_reset_confirm(payload: PasswordResetConfirmRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = auth_service.confirm_password_reset(
+    return await _run_auth_route(
+        request=request,
+        provider="email",
+        action=lambda auth_service, _request_id: auth_service.confirm_password_reset(
             email=payload.email,
             code=payload.code,
             new_password=payload.new_password,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="email",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        ),
+    )
 
 
 @app.get("/auth/google/start")
@@ -1459,28 +1693,12 @@ async def auth_google_start(
     redirect_uri: str | None = None,
     state: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        app_redirect_uri = _resolve_app_redirect_uri(provider="google", requested_uri=redirect_uri)
-        packed_state = _pack_oauth_state(
-            state=(state or os.urandom(8).hex()).strip(),
-            app_redirect_uri=app_redirect_uri,
-        )
-        provider_callback_uri = _resolve_provider_callback_uri(request=request, provider="google")
-        authorize_url = _build_oauth_authorize_url(
-            provider="google",
-            callback_uri=provider_callback_uri,
-            packed_state=packed_state,
-        )
-        return RedirectResponse(url=authorize_url, status_code=302)
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="google",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return _build_provider_start_redirect(
+        request=request,
+        provider="google",
+        redirect_uri=redirect_uri,
+        state=state,
+    )
 
 
 @app.get("/auth/google/callback")
@@ -1492,29 +1710,15 @@ async def auth_google_callback(
     error_description: str | None = None,
     redirect_uri: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
-        app_redirect_uri = _resolve_app_redirect_uri(provider="google", requested_uri=requested_redirect)
-        params: dict[str, str] = {"request_id": request_id}
-        if code:
-            params["code"] = code
-        if state:
-            params["state"] = state
-        if error:
-            params["error"] = error
-        if error_description:
-            params["error_description"] = error_description
-
-        return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
-    except AuthServiceError as auth_error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=auth_error.user_id,
-            provider="google",
-            code=auth_error.code,
-        )
-        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+    return _build_provider_callback_redirect(
+        request=request,
+        provider="google",
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+        redirect_uri=redirect_uri,
+    )
 
 
 @app.get("/auth/kakao/start")
@@ -1523,28 +1727,12 @@ async def auth_kakao_start(
     redirect_uri: str | None = None,
     state: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        app_redirect_uri = _resolve_app_redirect_uri(provider="kakao", requested_uri=redirect_uri)
-        packed_state = _pack_oauth_state(
-            state=(state or os.urandom(8).hex()).strip(),
-            app_redirect_uri=app_redirect_uri,
-        )
-        provider_callback_uri = _resolve_provider_callback_uri(request=request, provider="kakao")
-        authorize_url = _build_oauth_authorize_url(
-            provider="kakao",
-            callback_uri=provider_callback_uri,
-            packed_state=packed_state,
-        )
-        return RedirectResponse(url=authorize_url, status_code=302)
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="kakao",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return _build_provider_start_redirect(
+        request=request,
+        provider="kakao",
+        redirect_uri=redirect_uri,
+        state=state,
+    )
 
 
 @app.get("/auth/kakao/callback")
@@ -1556,29 +1744,15 @@ async def auth_kakao_callback(
     error_description: str | None = None,
     redirect_uri: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
-        app_redirect_uri = _resolve_app_redirect_uri(provider="kakao", requested_uri=requested_redirect)
-        params: dict[str, str] = {"request_id": request_id}
-        if code:
-            params["code"] = code
-        if state:
-            params["state"] = state
-        if error:
-            params["error"] = error
-        if error_description:
-            params["error_description"] = error_description
-
-        return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
-    except AuthServiceError as auth_error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=auth_error.user_id,
-            provider="kakao",
-            code=auth_error.code,
-        )
-        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+    return _build_provider_callback_redirect(
+        request=request,
+        provider="kakao",
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+        redirect_uri=redirect_uri,
+    )
 
 
 @app.get("/auth/google/logout/start")
@@ -1586,27 +1760,11 @@ async def auth_google_logout_start(
     request: Request,
     redirect_uri: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        app_redirect_uri = _resolve_app_logout_redirect_uri(requested_uri=redirect_uri)
-        provider_logout_callback_uri = _resolve_provider_logout_callback_uri(
-            request=request,
-            provider="google",
-            app_redirect_uri=app_redirect_uri,
-        )
-        provider_logout_url = _build_provider_logout_url(
-            provider="google",
-            provider_logout_callback_uri=provider_logout_callback_uri,
-        )
-        return RedirectResponse(url=provider_logout_url, status_code=302)
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="google",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return _build_provider_logout_start_redirect(
+        request=request,
+        provider="google",
+        redirect_uri=redirect_uri,
+    )
 
 
 @app.get("/auth/google/logout/callback")
@@ -1614,28 +1772,11 @@ async def auth_google_logout_callback(
     request: Request,
     app_redirect_uri: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        redirect_target = _resolve_app_logout_redirect_uri(requested_uri=app_redirect_uri)
-        return RedirectResponse(
-            url=_append_query_params(
-                redirect_target,
-                {
-                    "request_id": request_id,
-                    "provider": "google",
-                    "logout": "ok",
-                },
-            ),
-            status_code=302,
-        )
-    except AuthServiceError as auth_error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=auth_error.user_id,
-            provider="google",
-            code=auth_error.code,
-        )
-        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+    return _build_provider_logout_callback_redirect(
+        request=request,
+        provider="google",
+        app_redirect_uri=app_redirect_uri,
+    )
 
 
 @app.get("/auth/kakao/logout/start")
@@ -1643,27 +1784,11 @@ async def auth_kakao_logout_start(
     request: Request,
     redirect_uri: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        app_redirect_uri = _resolve_app_logout_redirect_uri(requested_uri=redirect_uri)
-        provider_logout_callback_uri = _resolve_provider_logout_callback_uri(
-            request=request,
-            provider="kakao",
-            app_redirect_uri=app_redirect_uri,
-        )
-        provider_logout_url = _build_provider_logout_url(
-            provider="kakao",
-            provider_logout_callback_uri=provider_logout_callback_uri,
-        )
-        return RedirectResponse(url=provider_logout_url, status_code=302)
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="kakao",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return _build_provider_logout_start_redirect(
+        request=request,
+        provider="kakao",
+        redirect_uri=redirect_uri,
+    )
 
 
 @app.get("/auth/kakao/logout/callback")
@@ -1673,122 +1798,52 @@ async def auth_kakao_logout_callback(
     error: str | None = None,
     error_description: str | None = None,
 ):
-    request_id = _request_id(request)
-    try:
-        redirect_target = _resolve_app_logout_redirect_uri(requested_uri=app_redirect_uri)
-        params: dict[str, str] = {
-            "request_id": request_id,
-            "provider": "kakao",
-        }
-        if error:
-            params["error"] = error
-            if error_description:
-                params["error_description"] = error_description
-        else:
-            params["logout"] = "ok"
-
-        return RedirectResponse(
-            url=_append_query_params(redirect_target, params),
-            status_code=302,
-        )
-    except AuthServiceError as auth_error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=auth_error.user_id,
-            provider="kakao",
-            code=auth_error.code,
-        )
-        raise _auth_error_to_http_exception(auth_error, request_id) from auth_error
+    return _build_provider_logout_callback_redirect(
+        request=request,
+        provider="kakao",
+        app_redirect_uri=app_redirect_uri,
+        error=error,
+        error_description=error_description,
+    )
 
 
 @app.post("/auth/google")
 async def auth_google(payload: OAuthProviderRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        provider_user_id = payload.provider_user_id
-        email = payload.email
-        if _is_google_code_verification_enabled() and payload.code and not payload.error:
-            provider_user_id, verified_email = _verify_google_identity(request=request, code=payload.code)
-            if verified_email:
-                email = verified_email
-
-        result = auth_service.oauth_login(
+    return await _run_auth_route(
+        request=request,
+        provider="google",
+        action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
+            auth_service=auth_service,
             provider="google",
-            code=payload.code,
-            state=payload.state,
-            redirect_uri=payload.redirect_uri,
-            error=payload.error,
-            provider_user_id=provider_user_id,
-            email=email,
-            locale=payload.locale,
-            accept_language=request.headers.get("Accept-Language"),
-            device_id=payload.device_id,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="google",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+            payload=payload,
+            request=request,
+        ),
+    )
 
 
 @app.post("/auth/kakao")
 async def auth_kakao(payload: OAuthProviderRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        provider_user_id = payload.provider_user_id
-        email = payload.email
-        if _is_kakao_code_verification_enabled() and payload.code and not payload.error:
-            provider_user_id, verified_email = _verify_kakao_identity(request=request, code=payload.code)
-            if verified_email:
-                email = verified_email
-
-        result = auth_service.oauth_login(
+    return await _run_auth_route(
+        request=request,
+        provider="kakao",
+        action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
+            auth_service=auth_service,
             provider="kakao",
-            code=payload.code,
-            state=payload.state,
-            redirect_uri=payload.redirect_uri,
-            error=payload.error,
-            provider_user_id=provider_user_id,
-            email=email,
-            locale=payload.locale,
-            accept_language=request.headers.get("Accept-Language"),
-            device_id=payload.device_id,
-        )
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider="kakao",
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+            payload=payload,
+            request=request,
+        ),
+    )
 
 
 @app.post("/auth/refresh")
 async def auth_refresh(payload: RefreshRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    try:
-        result = auth_service.refresh(refresh_token=payload.refresh_token)
-        result["request_id"] = request_id
-        return result
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=error.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return await _run_auth_route(
+        request=request,
+        provider=None,
+        action=lambda auth_service, _request_id: auth_service.refresh(
+            refresh_token=payload.refresh_token
+        ),
+    )
 
 
 @app.post("/auth/logout")
@@ -1822,13 +1877,11 @@ async def auth_logout(payload: LogoutRequest, request: Request):
                 "revoked_sessions": 0,
                 "request_id": request_id,
             }
-        _log_auth_failure(
+        _raise_auth_route_error(
+            error=error,
             request_id=request_id,
-            user_id=error.user_id,
             provider=None,
-            code=error.code,
         )
-        raise _auth_error_to_http_exception(error, request_id) from error
 
 
 @app.post("/me/media/upload")
@@ -2109,29 +2162,20 @@ async def patch_me_history_image(
 
 @app.get("/me/profile")
 async def get_me_profile(request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
-        profile = auth_service.get_profile(user_id=user.user_id)
-        profile = _decorate_profile_media(profile, request)
-        return {"profile": profile, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return await _run_me_route(
+        request=request,
+        action=lambda auth_service, user, _request_id: {
+            "profile": _decorate_profile_media(
+                auth_service.get_profile(user_id=user.user_id),
+                request,
+            )
+        },
+    )
 
 
 @app.put("/me/profile")
 async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
+    def _action(auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
         current_trip_coordinates = None
         if payload.current_trip_coordinates is not None:
             if hasattr(payload.current_trip_coordinates, "model_dump"):
@@ -2159,127 +2203,120 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             current_trip_coordinates=current_trip_coordinates,
             expected_updated_at=payload.expected_updated_at,
         )
-        profile = _decorate_profile_media(profile, request)
-        _log_phase2_write(
-            request_id=request_id,
-            user_id=user.user_id,
-            method="PUT",
-            path="/me/profile",
-        )
-        return {"profile": profile, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        return {"profile": _decorate_profile_media(profile, request)}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+        write_event=("PUT", "/me/profile"),
+    )
 
 
 @app.get("/me/allergies")
 async def get_me_allergies(request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
-        allergies = auth_service.get_allergies(user_id=user.user_id)
-        return {"allergies": allergies, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return await _run_me_route(
+        request=request,
+        action=lambda auth_service, user, _request_id: {
+            "allergies": auth_service.get_allergies(user_id=user.user_id)
+        },
+    )
 
 
 @app.put("/me/allergies")
 async def put_me_allergies(payload: AllergiesUpdateRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
-        allergies = auth_service.update_allergies(
-            user_id=user.user_id,
-            allergies=payload.allergies,
-            dietary_restrictions=payload.dietary_restrictions,
-            severity_map=payload.severity_map,
-            expected_updated_at=payload.expected_updated_at,
-        )
-        _log_phase2_write(
-            request_id=request_id,
-            user_id=user.user_id,
-            method="PUT",
-            path="/me/allergies",
-        )
-        return {"allergies": allergies, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return await _run_me_route(
+        request=request,
+        action=lambda auth_service, user, _request_id: {
+            "allergies": auth_service.update_allergies(
+                user_id=user.user_id,
+                allergies=payload.allergies,
+                dietary_restrictions=payload.dietary_restrictions,
+                severity_map=payload.severity_map,
+                expected_updated_at=payload.expected_updated_at,
+            )
+        },
+        write_event=("PUT", "/me/allergies"),
+    )
 
 
 @app.get("/me/settings")
 async def get_me_settings(request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
+    def _action(auth_service: Any, user: Any, request_id: str) -> dict[str, Any]:
         settings = auth_service.get_settings(user_id=user.user_id)
-        return {"settings": settings, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
+        _log_settings_trace(
+            phase="get_response",
             request_id=request_id,
             user_id=user.user_id,
-            provider=None,
-            code=error.code,
+            device_id=_device_id(request),
+            language=settings.get("language") if isinstance(settings, dict) else None,
+            target_language=settings.get("target_language") if isinstance(settings, dict) else None,
+            auto_play_audio=settings.get("auto_play_audio") if isinstance(settings, dict) else None,
+            selected_emoji=settings.get("selected_emoji") if isinstance(settings, dict) else None,
+            updated_at=settings.get("updated_at") if isinstance(settings, dict) else None,
         )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        return {"settings": settings}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+    )
 
 
 @app.put("/me/settings")
 async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
+    fields_set = set(getattr(payload, "model_fields_set", set()))
+    target_language = (
+        ""
+        if "target_language" in fields_set and payload.target_language is None
+        else payload.target_language
+    )
+    selected_emoji = (
+        ""
+        if "selected_emoji" in fields_set and payload.selected_emoji is None
+        else payload.selected_emoji
+    )
+
+    def _action(auth_service: Any, user: Any, request_id: str) -> dict[str, Any]:
         settings = auth_service.update_settings(
             user_id=user.user_id,
             language=payload.language,
-            target_language=payload.target_language,
+            target_language=target_language,
             auto_play_audio=payload.auto_play_audio,
-            selected_emoji=payload.selected_emoji,
+            selected_emoji=selected_emoji,
             expected_updated_at=payload.expected_updated_at,
         )
-        _log_phase2_write(
+        _log_settings_trace(
+            phase="put_apply",
             request_id=request_id,
             user_id=user.user_id,
-            method="PUT",
-            path="/me/settings",
+            device_id=_device_id(request),
+            language=settings.get("language") if isinstance(settings, dict) else payload.language,
+            target_language=settings.get("target_language") if isinstance(settings, dict) else target_language,
+            auto_play_audio=(
+                settings.get("auto_play_audio")
+                if isinstance(settings, dict)
+                else payload.auto_play_audio
+            ),
+            selected_emoji=(
+                settings.get("selected_emoji")
+                if isinstance(settings, dict)
+                else selected_emoji
+            ),
+            updated_at=settings.get("updated_at") if isinstance(settings, dict) else None,
+            fields_set=sorted(fields_set),
         )
-        return {"settings": settings, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        return {"settings": settings}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+        write_event=("PUT", "/me/settings"),
+    )
 
 
 @app.get("/me/history")
 async def get_me_history(request: Request, limit: int | None = None):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
+    def _action(auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
         history = auth_service.get_history(user_id=user.user_id, limit=limit)
         decorated_history: list[dict[str, Any]] = []
         for item in history:
@@ -2287,23 +2324,17 @@ async def get_me_history(request: Request, limit: int | None = None):
             if isinstance(entry, dict):
                 item = {**item, "entry": _decorate_history_media_entry(entry, request)}
             decorated_history.append(item)
-        return {"history": decorated_history, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        return {"history": decorated_history}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+    )
 
 
 @app.post("/me/history")
 async def post_me_history(payload: HistoryWriteRequest, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
+    def _action(auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
         entry = _sanitize_history_entry_for_persistence(payload.entry)
         image_asset_id = entry.get("image_asset_id")
         if isinstance(image_asset_id, str) and image_asset_id.strip():
@@ -2319,48 +2350,27 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
         item_entry = history_item.get("entry")
         if isinstance(item_entry, dict):
             history_item["entry"] = _decorate_history_media_entry(item_entry, request)
-        _log_phase2_write(
-            request_id=request_id,
-            user_id=user.user_id,
-            method="POST",
-            path="/me/history",
-        )
-        return {"history_item": history_item, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+        return {"history_item": history_item}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+        write_event=("POST", "/me/history"),
+    )
 
 
 @app.delete("/me/history/{history_item_id}")
 async def delete_me_history(history_item_id: str, request: Request):
-    request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    user = _resolve_authenticated_user(request, request_id)
-    try:
-        deleted = auth_service.delete_history_item(
-            user_id=user.user_id,
-            history_item_id=history_item_id,
-        )
-        _log_phase2_write(
-            request_id=request_id,
-            user_id=user.user_id,
-            method="DELETE",
-            path="/me/history",
-        )
-        return {"deleted": deleted, "request_id": request_id}
-    except AuthServiceError as error:
-        _log_auth_failure(
-            request_id=request_id,
-            user_id=user.user_id,
-            provider=None,
-            code=error.code,
-        )
-        raise _auth_error_to_http_exception(error, request_id) from error
+    return await _run_me_route(
+        request=request,
+        action=lambda auth_service, user, _request_id: {
+            "deleted": auth_service.delete_history_item(
+                user_id=user.user_id,
+                history_item_id=history_item_id,
+            )
+        },
+        write_event=("DELETE", "/me/history"),
+    )
 
 
 @app.post("/analyze", response_model=AnalysisResponseContract)

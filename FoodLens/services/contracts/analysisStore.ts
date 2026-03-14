@@ -1,4 +1,4 @@
-import type { AnalyzedData } from '@/services/ai_Structure';
+import type { AnalyzedData } from '@/services/ai';
 
 export type AnalysisStoreLocation =
   | {

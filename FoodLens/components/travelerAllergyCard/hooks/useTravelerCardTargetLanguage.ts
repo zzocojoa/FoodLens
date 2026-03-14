@@ -1,4 +1,4 @@
-import { useI18nSnapshot } from '@/features/i18n/services/i18nStore_Logic';
+import { useI18nSnapshot } from '@/features/i18n/services/i18nStore';
 
 export const useTravelerCardTargetLanguage = () => {
   const snapshot = useI18nSnapshot();
