@@ -50,6 +50,7 @@ export default {
       bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
       googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSAppTransportSecurity: {
           NSAllowsArbitraryLoads: false,
           NSAllowsLocalNetworking: true,
