@@ -4,7 +4,7 @@ import { Animated } from 'react-native';
 import LanguageSelectorModal from '../LanguageSelectorModal';
 
 jest.mock('@/components/HapticFeedback', () => {
-  const ReactNative = require('react-native');
+  const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     HapticPressable: ({ children, ...props }: React.ComponentProps<typeof ReactNative.Pressable>) => (
       <ReactNative.Pressable {...props}>{children}</ReactNative.Pressable>
