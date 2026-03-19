@@ -8,6 +8,7 @@ const SHEET_SPRING_CONFIG = { useNativeDriver: true, friction: 8, tension: 40 } 
 
 type UseSheetGestureOptions = {
     animateOnOpen: boolean;
+    animateOnClose: boolean;
 };
 
 export const useSheetGesture = (
@@ -17,12 +18,22 @@ export const useSheetGesture = (
     const panY = React.useRef(new RNAnimated.Value(SHEET_INITIAL_Y)).current;
 
     const closeSheet = React.useCallback(() => {
+        panY.stopAnimation();
+        if (!options.animateOnClose) {
+            panY.setValue(SHEET_INITIAL_Y);
+            onCloseComplete();
+            return;
+        }
         RNAnimated.timing(panY, {
             toValue: SHEET_INITIAL_Y,
             duration: 250,
             useNativeDriver: true,
-        }).start(onCloseComplete);
-    }, [onCloseComplete, panY]);
+        }).start(({ finished }) => {
+            if (finished) {
+                onCloseComplete();
+            }
+        });
+    }, [onCloseComplete, options.animateOnClose, panY]);
 
     const openSheet = React.useCallback(() => {
         panY.stopAnimation();
