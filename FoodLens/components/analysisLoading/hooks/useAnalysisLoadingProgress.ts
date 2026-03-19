@@ -35,7 +35,7 @@ export function useAnalysisLoadingProgress({
         setIsLongWait(false);
 
         let timer: ReturnType<typeof setTimeout> | undefined;
-        if (currentStep === 2) {
+        if (currentStep === 4) {
             timer = setTimeout(() => {
                 setIsLongWait(true);
             }, LONG_WAIT_THRESHOLD_MS);

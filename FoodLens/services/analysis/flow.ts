@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { AnalysisJobStatus } from '@/services/ai';
 
 import { showAlert } from '@/services/ui/uiAlerts';
 
@@ -90,4 +91,28 @@ export const createAnalysisUploadProgressHandler = ({
       setActiveStep(2);
     }
   };
+};
+
+const ANALYSIS_JOB_STAGE_TO_STEP: Record<AnalysisJobStatus, number> = {
+  queued: 2,
+  preprocessing: 3,
+  inference: 4,
+  nutrition: 5,
+  finalizing: 6,
+  completed: 6,
+  fallback_completed: 6,
+  failed: 6,
+};
+
+export const applyAnalysisJobStageToHud = ({
+  status,
+  setActiveStep,
+  setUploadProgress,
+}: {
+  status: AnalysisJobStatus;
+  setActiveStep: (value: number | undefined) => void;
+  setUploadProgress: (value: number | undefined) => void;
+}): void => {
+  setUploadProgress(1);
+  setActiveStep(ANALYSIS_JOB_STAGE_TO_STEP[status]);
 };

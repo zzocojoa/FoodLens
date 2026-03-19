@@ -1,6 +1,14 @@
 import { AnalysisLoadingColors } from './types';
 
-export const STEPS = ['Image Ready', 'Uploading', 'AI Analyzing', 'Syncing Results'];
+export const STEPS = [
+    'Image Ready',
+    'Uploading',
+    'Queued',
+    'Preprocessing',
+    'AI Inference',
+    'Nutrition',
+    'Finalizing',
+];
 export const DEFAULT_IMAGE_URI =
     'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1000&auto=format&fit=crop';
 export const LONG_WAIT_THRESHOLD_MS = 8000;

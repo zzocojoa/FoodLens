@@ -78,12 +78,26 @@ from backend.modules.runtime_guardrails import (
 )
 from backend.modules.runtime_guardrails import EndpointErrorPolicy
 from backend.modules.contracts.analysis_response import AnalysisResponseContract
+from backend.modules.contracts.analysis_job import (
+    AnalysisJobStatusResponseContract,
+    AnalysisJobSubmitResponseContract,
+)
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
+from backend.modules.analysis_jobs import (
+    AnalysisJobWorker,
+    build_analysis_job_store_from_env,
+    build_nutrition_cache_store_from_env,
+    create_analysis_job_payload,
+    NutritionEnrichmentService,
+    serialize_job_status_response,
+    serialize_job_submit_response,
+)
 from backend.modules.auth.service import AuthServiceError, InMemoryAuthSessionService
 from backend.modules.media.service import (
     MediaStorageError,
     build_media_storage_from_env,
 )
+from backend.modules.nutrition import lookup_nutrition
 
 load_environment()
 log_environment_debug()
@@ -144,6 +158,31 @@ def _is_label_rollout_auto_enabled() -> bool:
     return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
 
 
+def _analysis_job_worker_count() -> int:
+    return max(1, _env_int("ANALYSIS_JOB_WORKER_COUNT", 1))
+
+
+def _analysis_job_lease_seconds() -> int:
+    return max(15, _env_int("ANALYSIS_JOB_LEASE_SECONDS", 90))
+
+
+def _analysis_job_poll_after_ms() -> int:
+    return max(250, _env_int("ANALYSIS_JOB_POLL_AFTER_MS", 1000))
+
+
+def _analysis_job_poll_interval_seconds() -> float:
+    return max(0.1, _env_float("ANALYSIS_JOB_POLL_INTERVAL_SECONDS", 0.5))
+
+
+def _analysis_job_max_upload_bytes() -> int:
+    return max(128 * 1024, _env_int("ANALYSIS_JOB_MAX_UPLOAD_BYTES", 900_000))
+
+
+def _analysis_job_allowed_content_types() -> set[str]:
+    raw = _env_str("ANALYSIS_JOB_ALLOWED_CONTENT_TYPES", ",".join(sorted(MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES)))
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
@@ -178,6 +217,35 @@ async def _startup() -> None:
     logger.info(
         "[Media] storage enabled=%s",
         getattr(app.state.media_storage, "enabled", False),
+    )
+    app.state.analysis_job_store = build_analysis_job_store_from_env(os.environ.get)
+    app.state.analysis_nutrition_cache_store = build_nutrition_cache_store_from_env(os.environ.get)
+    app.state.analysis_nutrition_service = NutritionEnrichmentService(
+        cache_store=app.state.analysis_nutrition_cache_store,
+        lookup_func=lookup_nutrition,
+        budget_seconds=_env_float("ANALYSIS_NUTRITION_BUDGET_SECONDS", 3.0),
+        max_parallelism=max(1, _env_int("ANALYSIS_NUTRITION_MAX_PARALLELISM", 4)),
+    )
+    app.state.analysis_job_workers = [
+        AnalysisJobWorker(
+            store=app.state.analysis_job_store,
+            nutrition_service=app.state.analysis_nutrition_service,
+            get_analyst=lambda: _service("analyst"),
+            get_smart_router=lambda: _service("smart_router"),
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            lease_seconds=_analysis_job_lease_seconds(),
+            poll_interval_seconds=_analysis_job_poll_interval_seconds(),
+            worker_id=f"worker-{index + 1}",
+        )
+        for index in range(_analysis_job_worker_count())
+    ]
+    for worker in app.state.analysis_job_workers:
+        worker.start()
+    logger.info(
+        "[AnalysisJob] workers initialized count=%d backend=%s",
+        len(app.state.analysis_job_workers),
+        type(app.state.analysis_job_store).__name__,
     )
 
     if _is_openapi_export_mode():
@@ -268,6 +336,12 @@ async def _startup() -> None:
         app.state.analysis_admission_limiter = None
         app.state.analysis_admission_retry_after_seconds = 1
         logger.info("[Admission] disabled")
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    for worker in list(getattr(app.state, "analysis_job_workers", [])):
+        await worker.stop()
 
 
 def _service(name: str) -> Any:
@@ -1096,6 +1170,52 @@ def _parent_request_id(request: Request) -> str | None:
         return None
     cleaned = parent.strip()
     return cleaned or None
+
+
+def _analysis_job_store():
+    return _service("analysis_job_store")
+
+
+def _analysis_job_status_payload(record: dict[str, Any]) -> dict[str, Any]:
+    return serialize_job_status_response(record=record)
+
+
+async def _read_analysis_job_upload(*, file: UploadFile, request_id: str) -> tuple[bytes, str]:
+    content_type = (file.content_type or "").strip().lower()
+    allowed_content_types = _analysis_job_allowed_content_types()
+    if content_type not in allowed_content_types:
+        raise HTTPException(
+            status_code=415,
+            detail={
+                "message": "Unsupported image content type.",
+                "code": ErrorCode.IMAGE_DECODE_FAILED,
+                "request_id": request_id,
+            },
+        )
+
+    contents = await file.read()
+    if len(contents) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Uploaded image is empty.",
+                "code": ErrorCode.IMAGE_DECODE_FAILED,
+                "request_id": request_id,
+            },
+        )
+
+    max_bytes = _analysis_job_max_upload_bytes()
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "message": f"Uploaded image exceeds server limit ({max_bytes} bytes).",
+                "code": ErrorCode.IMAGE_DECODE_FAILED,
+                "request_id": request_id,
+            },
+        )
+
+    return contents, content_type
 
 
 def _auth_error_to_http_exception(error: AuthServiceError, request_id: str) -> HTTPException:
@@ -2371,6 +2491,108 @@ async def delete_me_history(history_item_id: str, request: Request):
         },
         write_event=("DELETE", "/me/history"),
     )
+
+
+@app.post("/analyze/jobs", response_model=AnalysisJobSubmitResponseContract, status_code=202)
+async def submit_analysis_job(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    allergy_info: str = Form("None"),
+    iso_country_code: str = Form("US"),
+    locale: str | None = Form(None),
+    mode: str = Form("food"),
+):
+    request_id = _request_id(request)
+    normalized_mode = (mode or "").strip().lower()
+    if normalized_mode not in {"food", "label", "smart"}:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Invalid analyze job mode.",
+                "code": ErrorCode.ANALYZE_FAILED,
+                "request_id": request_id,
+            },
+        )
+
+    _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs", request_id=request_id)
+    slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/jobs", request_id=request_id)
+    started_at = time.perf_counter()
+
+    try:
+        contents, content_type = await _read_analysis_job_upload(file=file, request_id=request_id)
+        job_payload = create_analysis_job_payload(
+            request_id=request_id,
+            mode=normalized_mode,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            content_type=content_type,
+            image_bytes=contents,
+            image_sha256=hashlib.sha256(contents).hexdigest(),
+            poll_after_ms=_analysis_job_poll_after_ms(),
+        )
+        store = _analysis_job_store()
+        await run_in_threadpool(
+            store.create_job,
+            job_id=job_payload.job_id,
+            request_id=job_payload.request_id,
+            mode=job_payload.mode,
+            allergy_info=job_payload.allergy_info,
+            iso_country_code=job_payload.iso_country_code,
+            locale=job_payload.locale,
+            content_type=job_payload.content_type,
+            image_base64=job_payload.image_base64,
+            image_sha256=job_payload.image_sha256,
+            accepted_at=job_payload.accepted_at,
+            poll_after_ms=job_payload.poll_after_ms,
+        )
+        accepted_record = {
+            "job_id": job_payload.job_id,
+            "request_id": job_payload.request_id,
+            "status": "queued",
+            "accepted_at": job_payload.accepted_at,
+            "poll_after_ms": job_payload.poll_after_ms,
+        }
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "[AnalysisJob] accepted request_id=%s job_id=%s mode=%s bytes=%d latency_ms=%d",
+            request_id,
+            job_payload.job_id,
+            normalized_mode,
+            len(contents),
+            elapsed_ms,
+        )
+        response.headers["Retry-After"] = str(max(1, job_payload.poll_after_ms // 1000))
+        return serialize_job_submit_response(record=accepted_record)
+    finally:
+        if slot_acquired:
+            _release_analysis_slot(endpoint="/analyze/jobs")
+
+
+@app.get("/analyze/jobs/{job_id}", response_model=AnalysisJobStatusResponseContract)
+async def get_analysis_job_status(request: Request, job_id: str):
+    request_id = _request_id(request)
+    _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs/status", request_id=request_id)
+    record = await run_in_threadpool(_analysis_job_store().get_job, job_id=job_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Analysis job not found.",
+                "code": ErrorCode.ANALYZE_FAILED,
+                "request_id": request_id,
+            },
+        )
+    payload = _analysis_job_status_payload(record=record)
+    logger.info(
+        "[AnalysisJob] poll request_id=%s job_id=%s status=%s poll_after_ms=%s",
+        request_id,
+        job_id,
+        payload.get("status"),
+        payload.get("poll_after_ms"),
+    )
+    return payload
 
 
 @app.post("/analyze", response_model=AnalysisResponseContract)

@@ -8,6 +8,31 @@ export type AnalysisApiContract = {
   ingredients: unknown[];
 };
 
+export type AnalysisJobSubmitContract = {
+  job_id: string;
+  request_id: string;
+  status: 'queued';
+  accepted_at: string;
+  poll_after_ms: number;
+};
+
+export type AnalysisJobStatusContract = {
+  job_id: string;
+  request_id: string;
+  status:
+    | 'queued'
+    | 'preprocessing'
+    | 'inference'
+    | 'nutrition'
+    | 'finalizing'
+    | 'completed'
+    | 'fallback_completed'
+    | 'failed';
+  poll_after_ms: number;
+  accepted_at: string;
+  updated_at: string;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -51,4 +76,74 @@ export const assertBarcodeLookupContract = (value: unknown): BarcodeLookupResult
   }
 
   return value as BarcodeLookupResult;
+};
+
+export const assertAnalysisJobSubmitContract = (value: unknown): AnalysisJobSubmitContract => {
+  if (!isRecord(value)) {
+    throw new Error('[AI Contract] /analyze/jobs: response is not an object');
+  }
+
+  if (typeof value['job_id'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs: missing/invalid "job_id"');
+  }
+
+  if (typeof value['request_id'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs: missing/invalid "request_id"');
+  }
+
+  if (value['status'] !== 'queued') {
+    throw new Error('[AI Contract] /analyze/jobs: missing/invalid "status"');
+  }
+
+  if (typeof value['accepted_at'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs: missing/invalid "accepted_at"');
+  }
+
+  if (typeof value['poll_after_ms'] !== 'number') {
+    throw new Error('[AI Contract] /analyze/jobs: missing/invalid "poll_after_ms"');
+  }
+
+  return value as AnalysisJobSubmitContract;
+};
+
+export const assertAnalysisJobStatusContract = (value: unknown): AnalysisJobStatusContract => {
+  if (!isRecord(value)) {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: response is not an object');
+  }
+
+  if (typeof value['job_id'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "job_id"');
+  }
+
+  if (typeof value['request_id'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "request_id"');
+  }
+
+  const status = value['status'];
+  if (
+    status !== 'queued' &&
+    status !== 'preprocessing' &&
+    status !== 'inference' &&
+    status !== 'nutrition' &&
+    status !== 'finalizing' &&
+    status !== 'completed' &&
+    status !== 'fallback_completed' &&
+    status !== 'failed'
+  ) {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "status"');
+  }
+
+  if (typeof value['accepted_at'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "accepted_at"');
+  }
+
+  if (typeof value['updated_at'] !== 'string') {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "updated_at"');
+  }
+
+  if (typeof value['poll_after_ms'] !== 'number') {
+    throw new Error('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "poll_after_ms"');
+  }
+
+  return value as AnalysisJobStatusContract;
 };

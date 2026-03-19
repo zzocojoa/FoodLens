@@ -104,6 +104,28 @@ def build_food_response_schema() -> SchemaDict:
     )
 
 
+def build_food_job_response_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "foodName": {"type": "STRING"},
+            "canonicalFoodId": {"type": "STRING"},
+            "foodOrigin": {"type": "STRING"},
+            "safetyStatus": {"type": "STRING", "enum": SAFETY_STATUS_ENUM},
+            "confidence": {"type": "INTEGER"},
+            "ingredients": _build_array_schema(_build_food_ingredient_item_schema()),
+            "translationCard": _build_object_schema(
+                properties={
+                    "language": {"type": "STRING"},
+                    "text": {"type": "STRING"},
+                    "audio_query": {"type": "STRING"},
+                },
+            ),
+            "raw_result": {"type": "STRING"},
+        },
+        required=["foodName", "ingredients", "safetyStatus"],
+    )
+
+
 def build_barcode_allergen_schema() -> SchemaDict:
     return _build_object_schema(
         properties={

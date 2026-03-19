@@ -2,7 +2,7 @@ import { STEPS } from '../constants';
 
 export const getMainMessage = (isError: boolean, isLongWait: boolean, currentStep: number): string => {
     if (isError) return 'ANALYSIS FAILED';
-    if (isLongWait && currentStep === 2) return 'SERVER WARMING UP...';
+    if (isLongWait && currentStep === 4) return 'ANALYSIS IS TAKING LONGER THAN USUAL...';
     return STEPS[currentStep] ?? STEPS[STEPS.length - 1];
 };
 
@@ -17,14 +17,14 @@ export const getProgressWidth = (
     }
 
     if (currentStep === 1) {
-        const startOffset = 0.25;
-        const uploadRange = 0.5;
+        const startOffset = 0.14;
+        const uploadRange = 0.22;
         const calculated = startOffset + manualProgress * uploadRange;
-        return `${Math.min(calculated * 100, 75)}%`;
+        return `${Math.min(calculated * 100, 36)}%`;
     }
 
     if (currentStep > 1) {
-        return currentStep === 2 ? '85%' : '100%';
+        return `${Math.min(((currentStep + 1) / STEPS.length) * 100, 100)}%`;
     }
 
     return '10%';

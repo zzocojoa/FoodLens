@@ -1,7 +1,14 @@
 import { MutableRefObject } from 'react';
 import { Href } from 'expo-router';
-import { AnalyzedData } from '../../../services/ai';
 import {
+    AnalyzedData,
+    isAsyncAnalyzeEnabled,
+    PendingAnalysisJob,
+    resumePendingAnalysisJob,
+    runAsyncAnalysisJob,
+} from '../../../services/ai';
+import {
+  applyAnalysisJobStageToHud,
   assertAnalysisImageFileReady,
   createAnalysisUploadProgressHandler,
   resolveAnalysisLocation,
@@ -23,6 +30,8 @@ type AnalysisExecutor = (
   onProgress: (progress: number) => void
 ) => Promise<AnalyzedData>;
 
+type AnalysisMode = 'food' | 'label' | 'smart';
+
 type RunAnalysisFlowParams = {
   uri: string;
   sourceType?: 'camera' | 'library';
@@ -33,6 +42,7 @@ type RunAnalysisFlowParams = {
   offlineAlertMessage: string;
   needsFileValidation?: boolean;
   analyzer: AnalysisExecutor;
+  analysisMode: AnalysisMode;
   isCancelled: MutableRefObject<boolean>;
   isConnectedRef: MutableRefObject<boolean>;
   cachedLocation: MutableRefObject<LocationData | null | undefined>;
@@ -43,6 +53,13 @@ type RunAnalysisFlowParams = {
   replace: (route: Href) => void;
   resetState: () => void;
   handleError: (error: unknown) => void;
+};
+
+type ResumeAnalysisFlowParams = Pick<
+  RunAnalysisFlowParams,
+  'isCancelled' | 'setIsAnalyzing' | 'setCapturedImage' | 'setActiveStep' | 'setUploadProgress' | 'replace' | 'resetState' | 'handleError'
+> & {
+  pendingJob: PendingAnalysisJob;
 };
 
 const resolveLocationForAnalysis = async ({
@@ -75,6 +92,7 @@ export const runAnalysisFlow = async ({
   offlineAlertMessage,
   needsFileValidation = true,
   analyzer,
+  analysisMode,
   isCancelled,
   isConnectedRef,
   cachedLocation,
@@ -123,11 +141,32 @@ export const runAnalysisFlow = async ({
     setActiveStep(1);
     setUploadProgress(0);
 
-    const analysisResult = await analyzer(
-      uri,
-      isoCode,
-      createAnalysisUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
-    );
+    const progressHandler = createAnalysisUploadProgressHandler({
+      isCancelled,
+      setUploadProgress,
+      setActiveStep,
+    });
+    const analysisResult = isAsyncAnalyzeEnabled()
+      ? await runAsyncAnalysisJob({
+          flow: 'scan',
+          mode: analysisMode,
+          imageUri: uri,
+          isoCountryCode: isoCode,
+          location: locationData,
+          timestamp: timestamp ?? null,
+          sourceType: sourceType || 'camera',
+          onUploadProgress: progressHandler,
+          onStageChange: (status) => {
+            if (isCancelled.current) return;
+            applyAnalysisJobStageToHud({
+              status,
+              setActiveStep,
+              setUploadProgress,
+            });
+          },
+          isCancelled,
+        })
+      : await analyzer(uri, isoCode, progressHandler);
 
     if (isCancelled.current) return;
 
@@ -140,6 +179,61 @@ export const runAnalysisFlow = async ({
       imageUri: uri,
       fallbackAddress,
       sourceType,
+      router: { replace },
+    });
+
+    resetState();
+  } catch (error) {
+    if (isCancelled.current) return;
+    handleError(error);
+  }
+};
+
+export const resumeAnalysisFlow = async ({
+  pendingJob,
+  isCancelled,
+  setIsAnalyzing,
+  setCapturedImage,
+  setActiveStep,
+  setUploadProgress,
+  replace,
+  resetState,
+  handleError,
+}: ResumeAnalysisFlowParams) => {
+  try {
+    isCancelled.current = false;
+    setIsAnalyzing(true);
+    setCapturedImage(pendingJob.imageUri);
+    applyAnalysisJobStageToHud({
+      status: pendingJob.status,
+      setActiveStep,
+      setUploadProgress,
+    });
+
+    const analysisResult = await resumePendingAnalysisJob({
+      pendingJob,
+      onStageChange: (status) => {
+        if (isCancelled.current) return;
+        applyAnalysisJobStageToHud({
+          status,
+          setActiveStep,
+          setUploadProgress,
+        });
+      },
+      isCancelled,
+    });
+
+    if (isCancelled.current) return;
+
+    setActiveStep(6);
+    await persistAndNavigateAnalysisResult({
+      analysisResult,
+      locationData: (pendingJob.location as LocationData | null) || null,
+      isoCode: pendingJob.isoCountryCode,
+      timestamp: pendingJob.timestamp,
+      imageUri: pendingJob.imageUri,
+      fallbackAddress: 'Location Unavailable',
+      sourceType: pendingJob.sourceType,
       router: { replace },
     });
 

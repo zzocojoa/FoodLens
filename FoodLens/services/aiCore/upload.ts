@@ -53,7 +53,28 @@ export const uploadWithRetry = async (
     timeoutMs?: number,
     onProgress?: (progress: number) => void
 ): Promise<FileSystem.FileSystemUploadResult> => {
+    return uploadWithRetryForAcceptedStatuses(
+        url,
+        imageUri,
+        options,
+        [200],
+        maxRetries,
+        timeoutMs,
+        onProgress
+    );
+};
+
+export const uploadWithRetryForAcceptedStatuses = async (
+    url: string,
+    imageUri: string,
+    options: any,
+    acceptedStatuses: number[],
+    maxRetries = 3,
+    timeoutMs?: number,
+    onProgress?: (progress: number) => void
+): Promise<FileSystem.FileSystemUploadResult> => {
     let lastError: any;
+    const accepted = new Set(acceptedStatuses);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -71,7 +92,7 @@ export const uploadWithRetry = async (
 
             if (!result) throw new Error('Upload failed: No result');
 
-            if (result.status === 200) {
+            if (accepted.has(result.status)) {
                 return result;
             }
 
