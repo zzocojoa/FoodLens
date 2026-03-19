@@ -1,5 +1,7 @@
 import {
   assertAnalysisResponseContract,
+  assertAnalysisJobStatusContract,
+  assertAnalysisJobSubmitContract,
   assertBarcodeLookupContract,
 } from '../contracts';
 
@@ -40,5 +42,30 @@ describe('aiCore contracts', () => {
     expect(() =>
       assertBarcodeLookupContract(payload as unknown)
     ).toThrow('[AI Contract] /lookup/barcode: missing/invalid "found"');
+  });
+
+  it('accepts valid analysis job submit shape', () => {
+    const payload = {
+      job_id: 'job_123',
+      request_id: 'req_123',
+      status: 'queued',
+      accepted_at: '2026-03-17T00:00:00Z',
+      poll_after_ms: 1000,
+    };
+
+    expect(assertAnalysisJobSubmitContract(payload)).toEqual(payload);
+  });
+
+  it('accepts valid analysis job status shape', () => {
+    const payload = {
+      job_id: 'job_123',
+      request_id: 'req_123',
+      status: 'completed',
+      accepted_at: '2026-03-17T00:00:00Z',
+      updated_at: '2026-03-17T00:00:10Z',
+      poll_after_ms: 0,
+    };
+
+    expect(assertAnalysisJobStatusContract(payload)).toEqual(payload);
   });
 });

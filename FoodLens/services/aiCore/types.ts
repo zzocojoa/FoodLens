@@ -44,6 +44,32 @@ export interface AnalyzedData {
     isBarcode?: boolean;
 }
 
+export type AnalysisJobMode = 'food' | 'label' | 'smart';
+
+export type AnalysisJobStatus =
+    | 'queued'
+    | 'preprocessing'
+    | 'inference'
+    | 'nutrition'
+    | 'finalizing'
+    | 'completed'
+    | 'fallback_completed'
+    | 'failed';
+
+export type PendingAnalysisJob = {
+    jobId: string;
+    requestId: string;
+    flow: 'camera' | 'scan';
+    mode: AnalysisJobMode;
+    status: AnalysisJobStatus;
+    imageUri: string;
+    isoCountryCode: string;
+    location: Record<string, unknown> | null;
+    timestamp: string | null;
+    sourceType: 'camera' | 'library';
+    submittedAt: string;
+};
+
 export type BarcodeLookupResult = {
     found: boolean;
     data?: AnalyzedData;

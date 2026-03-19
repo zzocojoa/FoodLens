@@ -1,6 +1,13 @@
 import { MutableRefObject } from 'react';
-import { analyzeImage } from '../../../services/ai';
 import {
+  analyzeImage,
+  isAsyncAnalyzeEnabled,
+  PendingAnalysisJob,
+  resumePendingAnalysisJob,
+  runAsyncAnalysisJob,
+} from '../../../services/ai';
+import {
+  applyAnalysisJobStageToHud,
   assertAnalysisImageFileReady,
   createAnalysisUploadProgressHandler,
   resolveAnalysisLocation,
@@ -29,6 +36,13 @@ type RunCameraImageAnalysisParams = {
   onSuccess: () => void;
   offlineAlertTitle: string;
   offlineAlertMessage: string;
+};
+
+type ResumeCameraImageAnalysisParams = Omit<
+  RunCameraImageAnalysisParams,
+  'uri' | 'photoTimestamp' | 'cachedLocation' | 'isConnectedRef' | 'offlineAlertTitle' | 'offlineAlertMessage' | 'onExit'
+> & {
+  pendingJob: PendingAnalysisJob;
 };
 
 const beginCameraAnalysis = ({
@@ -109,11 +123,32 @@ export const runCameraImageAnalysis = async ({
   setActiveStep(1);
   setUploadProgress(0);
 
-  const analysisResult = await analyzeImage(
-    uri,
-    isoCode,
-    createAnalysisUploadProgressHandler({ isCancelled, setUploadProgress, setActiveStep })
-  );
+  const progressHandler = createAnalysisUploadProgressHandler({
+    isCancelled,
+    setUploadProgress,
+    setActiveStep,
+  });
+  const analysisResult = isAsyncAnalyzeEnabled()
+    ? await runAsyncAnalysisJob({
+        flow: 'camera',
+        mode: 'food',
+        imageUri: uri,
+        isoCountryCode: isoCode,
+        location: locationData ?? null,
+        timestamp: normalizeTimestamp(photoTimestamp),
+        sourceType: 'camera',
+        onUploadProgress: progressHandler,
+        onStageChange: (status) => {
+          if (isCancelled.current) return;
+          applyAnalysisJobStageToHud({
+            status,
+            setActiveStep,
+            setUploadProgress,
+          });
+        },
+        isCancelled,
+      })
+    : await analyzeImage(uri, isoCode, progressHandler);
 
   if (isCancelled.current) return;
 
@@ -133,6 +168,63 @@ export const runCameraImageAnalysis = async ({
   }
 
   dataStore.setData(analysisResult, locationContext, persistedImageRef, finalTimestamp);
+  onSuccess();
+  resetState();
+};
+
+export const resumeCameraImageAnalysis = async ({
+  pendingJob,
+  isCancelled,
+  setIsAnalyzing,
+  setCapturedImage,
+  setActiveStep,
+  setUploadProgress,
+  resetState,
+  onSuccess,
+}: ResumeCameraImageAnalysisParams) => {
+  isCancelled.current = false;
+  setIsAnalyzing(true);
+  setCapturedImage(pendingJob.imageUri);
+  applyAnalysisJobStageToHud({
+    status: pendingJob.status,
+    setActiveStep,
+    setUploadProgress,
+  });
+
+  const analysisResult = await resumePendingAnalysisJob({
+    pendingJob,
+    onStageChange: (status) => {
+      if (isCancelled.current) return;
+      applyAnalysisJobStageToHud({
+        status,
+        setActiveStep,
+        setUploadProgress,
+      });
+    },
+    isCancelled,
+  });
+
+  if (isCancelled.current) return;
+
+  const locationContext =
+    (pendingJob.location as LocationContext | null) ||
+    createFallbackLocation(0, 0, pendingJob.isoCountryCode, 'Location Unavailable (Recovered)');
+  let persistedImageRef = pendingJob.imageUri;
+  try {
+    persistedImageRef = await saveImagePermanentlyOrThrow(
+      pendingJob.imageUri,
+      'STORAGE_ERROR: Failed to save image permanently. Check disk space.'
+    );
+  } catch (error) {
+    logger.warn('Failed to persist resumed camera image; fallback to original URI', error, 'CameraAnalysis');
+  }
+
+  dataStore.setData(
+    analysisResult,
+    locationContext,
+    persistedImageRef,
+    normalizeTimestamp(pendingJob.timestamp || undefined)
+  );
   onSuccess();
   resetState();
 };

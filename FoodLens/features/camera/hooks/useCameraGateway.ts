@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { getCameraErrorMessages } from '../constants/camera.constants';
 import { CameraGatewayState, CameraRouteParams, LocationContext } from '../types/camera.types';
-import { runCameraImageAnalysis } from '../services/cameraAnalysisService';
+import { resumeCameraImageAnalysis, runCameraImageAnalysis } from '../services/cameraAnalysisService';
 import { useCameraPermissionEffects } from './useCameraPermissionEffects';
 import { useCameraGatewayInitialization } from './useCameraGatewayInitialization';
 import { useI18n } from '@/features/i18n';
 import { useCameraGatewayErrorHandler } from './useCameraGatewayErrorHandler';
+import { loadPendingAnalysisJob } from '@/services/ai';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -35,6 +36,7 @@ export const useCameraGateway = ({
     const isConnectedRef = useRef(true);
     const cachedLocation = useRef<LocationContext | null | undefined>(undefined);
     const processImageRef = useRef<(uri: string) => Promise<void>>(async () => {});
+    const hasResumedPendingRef = useRef(false);
 
     const { imageUri: externalImageUri, photoLat, photoLng, photoTimestamp, sourceType } = params;
 
@@ -100,6 +102,36 @@ export const useCameraGateway = ({
     useEffect(() => {
         processImageRef.current = processImage;
     }, [processImage]);
+
+    useEffect(() => {
+        if (externalImageUri || hasResumedPendingRef.current) return;
+
+        let isMounted = true;
+        const resumePending = async () => {
+            const pendingJob = await loadPendingAnalysisJob();
+            if (!isMounted || !pendingJob || pendingJob.flow !== 'camera') return;
+            hasResumedPendingRef.current = true;
+            await resumeCameraImageAnalysis({
+                pendingJob,
+                isCancelled,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                resetState,
+                onSuccess,
+            });
+        };
+
+        void resumePending().catch((error) => {
+            if (!isMounted || isCancelled.current) return;
+            handleError(error, '');
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [externalImageUri, handleError, onSuccess, resetState]);
 
     useCameraGatewayInitialization({
         photoLat,

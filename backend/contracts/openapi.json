@@ -60,6 +60,317 @@
         "title": "AllergiesUpdateRequest",
         "type": "object"
       },
+      "AnalysisJobStatusResponseContract": {
+        "properties": {
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "foodName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foodname"
+          },
+          "foodName_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foodname En"
+          },
+          "foodName_ko": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foodname Ko"
+          },
+          "ingredients": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Ingredients",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "latency_ms_by_stage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Latency Ms By Stage",
+            "type": "object"
+          },
+          "nutrition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nutrition"
+          },
+          "poll_after_ms": {
+            "title": "Poll After Ms",
+            "type": "integer"
+          },
+          "progress_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Hint"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "raw_result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Result"
+          },
+          "raw_result_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Result En"
+          },
+          "raw_result_ko": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Result Ko"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "safetyStatus": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SAFE",
+                  "CAUTION",
+                  "DANGER"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safetystatus"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "preprocessing",
+              "inference",
+              "nutrition",
+              "finalizing",
+              "completed",
+              "fallback_completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "translationCard": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translationcard"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "used_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Model"
+          }
+        },
+        "required": [
+          "job_id",
+          "request_id",
+          "status",
+          "accepted_at",
+          "updated_at",
+          "poll_after_ms"
+        ],
+        "title": "AnalysisJobStatusResponseContract",
+        "type": "object"
+      },
+      "AnalysisJobSubmitResponseContract": {
+        "properties": {
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "poll_after_ms": {
+            "title": "Poll After Ms",
+            "type": "integer"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "preprocessing",
+              "inference",
+              "nutrition",
+              "finalizing",
+              "completed",
+              "fallback_completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "request_id",
+          "status",
+          "accepted_at",
+          "poll_after_ms"
+        ],
+        "title": "AnalysisJobSubmitResponseContract",
+        "type": "object"
+      },
       "AnalysisResponseContract": {
         "properties": {
           "confidence": {
@@ -709,6 +1020,46 @@
           "scope"
         ],
         "title": "Body_post_me_media_upload_me_media_upload_post",
+        "type": "object"
+      },
+      "Body_submit_analysis_job_analyze_jobs_post": {
+        "properties": {
+          "allergy_info": {
+            "default": "None",
+            "title": "Allergy Info",
+            "type": "string"
+          },
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "iso_country_code": {
+            "default": "US",
+            "title": "Iso Country Code",
+            "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "mode": {
+            "default": "food",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_submit_analysis_job_analyze_jobs_post",
         "type": "object"
       },
       "EmailLoginRequest": {
@@ -1586,6 +1937,83 @@
           }
         },
         "summary": "Analyze Food"
+      }
+    },
+    "/analyze/jobs": {
+      "post": {
+        "operationId": "submit_analysis_job_analyze_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_analysis_job_analyze_jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobSubmitResponseContract"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Analysis Job"
+      }
+    },
+    "/analyze/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_analysis_job_status_analyze_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobStatusResponseContract"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Job Status"
       }
     },
     "/analyze/label": {

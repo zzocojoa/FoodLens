@@ -88,6 +88,8 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
     label_limit = _env_int("ANALYSIS_RATE_LIMIT_LABEL_PER_MIN", 15)
     smart_limit = _env_int("ANALYSIS_RATE_LIMIT_SMART_PER_MIN", analyze_limit)
     barcode_limit = _env_int("ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN", 30)
+    jobs_limit = _env_int("ANALYSIS_RATE_LIMIT_JOBS_PER_MIN", analyze_limit)
+    job_status_limit = _env_int("ANALYSIS_RATE_LIMIT_JOB_STATUS_PER_MIN", max(jobs_limit * 4, 60))
     return RateLimitSettings(
         enabled=enabled,
         window_seconds=window_seconds,
@@ -95,6 +97,8 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
             "/analyze": analyze_limit,
             "/analyze/label": label_limit,
             "/analyze/smart": smart_limit,
+            "/analyze/jobs": jobs_limit,
+            "/analyze/jobs/status": job_status_limit,
             "/lookup/barcode": barcode_limit,
         },
     )
@@ -107,6 +111,7 @@ def build_inflight_admission_settings_from_env() -> InflightAdmissionSettings:
     label_max = _env_int("ANALYSIS_INFLIGHT_MAX_LABEL", 3)
     smart_max = _env_int("ANALYSIS_INFLIGHT_MAX_SMART", analyze_max)
     barcode_max = _env_int("ANALYSIS_INFLIGHT_MAX_BARCODE", 6)
+    jobs_max = _env_int("ANALYSIS_INFLIGHT_MAX_JOBS", analyze_max)
     return InflightAdmissionSettings(
         enabled=enabled,
         retry_after_seconds=retry_after_seconds,
@@ -114,6 +119,7 @@ def build_inflight_admission_settings_from_env() -> InflightAdmissionSettings:
             "/analyze": analyze_max,
             "/analyze/label": label_max,
             "/analyze/smart": smart_max,
+            "/analyze/jobs": jobs_max,
             "/lookup/barcode": barcode_max,
         },
     )

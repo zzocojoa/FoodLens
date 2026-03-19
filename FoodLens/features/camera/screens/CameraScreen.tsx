@@ -54,7 +54,7 @@ export default function CameraScreen() {
             />
             <View style={styles.darkOverlay} />
 
-            {camera.externalImageUri ? (
+            {camera.capturedImage || camera.externalImageUri ? (
                 <AnalysisLoadingScreen
                     onCancel={camera.handleCancelAnalysis}
                     imageUri={camera.capturedImage || camera.externalImageUri}

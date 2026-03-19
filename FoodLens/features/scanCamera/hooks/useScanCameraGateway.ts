@@ -13,7 +13,7 @@ import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
 import { useScanCameraLaserAnimation } from './useScanCameraLaserAnimation';
-import { runAnalysisFlow } from '../services/scanCameraAnalysisService';
+import { resumeAnalysisFlow, runAnalysisFlow } from '../services/scanCameraAnalysisService';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { LocationData } from '@/services/utils/types';
@@ -21,6 +21,7 @@ import { useScanPermissionFlow } from './useScanPermissionFlow';
 import { useScanBarcodeFlow } from './useScanBarcodeFlow';
 import { useScanCaptureFlow } from './useScanCaptureFlow';
 import { useScanGalleryFlow } from './useScanGalleryFlow';
+import { loadPendingAnalysisJob } from '@/services/ai';
 
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
@@ -43,6 +44,7 @@ export const useScanCameraGateway = () => {
     const isCancelled = useRef(false);
     const isProcessingRef = useRef(false);
     const cachedLocation = useRef<LocationData | null | undefined>(undefined);
+    const hasResumedPendingRef = useRef(false);
 
     const { isConnected } = useNetworkStatus();
     const isConnectedRef = useRef(true);
@@ -152,6 +154,12 @@ export const useScanCameraGateway = () => {
                 offlineAlertMessage: t('camera.error.offline', 'Please check your internet connection.'),
                 needsFileValidation: params.needsFileValidation,
                 analyzer: params.analyzer,
+                analysisMode:
+                    params.analyzer === analyzeLabel
+                        ? 'label'
+                        : params.analyzer === analyzeSmart
+                          ? 'smart'
+                          : 'food',
                 isCancelled,
                 isConnectedRef,
                 cachedLocation,
@@ -223,6 +231,37 @@ export const useScanCameraGateway = () => {
         },
         [runFlow]
     );
+
+    useEffect(() => {
+        if (hasResumedPendingRef.current) return;
+
+        let isMounted = true;
+        const resumePending = async () => {
+            const pendingJob = await loadPendingAnalysisJob();
+            if (!isMounted || !pendingJob || pendingJob.flow !== 'scan') return;
+            hasResumedPendingRef.current = true;
+            await resumeAnalysisFlow({
+                pendingJob,
+                isCancelled,
+                setIsAnalyzing,
+                setCapturedImage,
+                setActiveStep,
+                setUploadProgress,
+                replace,
+                resetState,
+                handleError,
+            });
+        };
+
+        void resumePending().catch((error) => {
+            if (!isMounted || isCancelled.current) return;
+            handleError(error);
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [handleError, replace, resetState]);
 
 
 

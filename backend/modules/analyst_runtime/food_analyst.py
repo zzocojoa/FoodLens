@@ -29,6 +29,7 @@ from backend.modules.analyst_core.response_utils import (
 )
 from backend.modules.analyst_core.schemas import (
     build_barcode_allergen_schema,
+    build_food_job_response_schema,
     build_food_response_schema,
     build_label_response_schema,
 )
@@ -515,6 +516,45 @@ class FoodAnalyst:
             
             # Return unified fallback schema (reuse existing method)
             fallback = self._get_safe_fallback_response(user_msg)
+            fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+            fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+            return fallback
+
+    def analyze_food_job_json(self, food_image: Image.Image, allergy_info: str, iso_current_country: str) -> dict:
+        normalized_allergens = format_allergens_for_prompt(allergy_info)
+        prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
+        response_schema = build_food_job_response_schema()
+        generation_config = {
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 1536,
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+        safety_settings = build_default_safety_settings()
+
+        try:
+            vertex_image = self._prepare_vertex_image(food_image)
+            response = generate_with_retry_and_fallback(
+                primary_model=self.model,
+                primary_model_name=self.model_name,
+                fallback_model_name="gemini-2.0-flash",
+                contents=[prompt, vertex_image],
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+                retry_stats=FoodAnalyst._retry_stats,
+            )
+            result = self._parse_ai_response(response.text)
+            result = self._sanitize_response(result)
+            result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+            result["prompt_version"] = ANALYSIS_PROMPT_VERSION
+            return result
+        except Exception as error:
+            error_msg = str(error)
+            print(f"[Internal Log] Async analysis error: {error_msg}")
+            fallback = self._get_safe_fallback_response("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
             fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
             fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
             return fallback
