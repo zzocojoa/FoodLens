@@ -10,6 +10,7 @@ import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers
 import {
   dispatchPhase2SyncQueue,
   enqueueHistorySync,
+  enqueueHistoryTimestampPatch,
   getPhase2SyncQueueSnapshot,
   startPhase2SyncRuntime,
 } from './sync/phase2SyncQueue';
@@ -45,23 +46,51 @@ const saveHistoryDeleteSet = async (userId: string, deleteSet: Set<string>): Pro
   await SafeStorage.set(historyDeleteTombstoneKey(userId), [...deleteSet]);
 };
 
-const getPendingHistoryLocalIds = async (userId: string): Promise<Set<string>> => {
+const getPendingHistoryMergeHints = async (
+  userId: string
+): Promise<{
+  keepLocalOnlyIds: Set<string>;
+  preserveLocalTimestampIds: Set<string>;
+}> => {
   try {
     const queue = await getPhase2SyncQueueSnapshot();
-    const keepIds = new Set<string>();
+    const keepLocalOnlyIds = new Set<string>();
+    const preserveLocalTimestampIds = new Set<string>();
     queue.forEach((item) => {
       if (item.userId !== userId) return;
       if (item.entity !== 'history') return;
       if (item.state === 'synced') return;
-      const payloadId =
-        typeof item.payload?.['id'] === 'string' ? (item.payload['id'] as string) : null;
-      const id = (payloadId || item.idempotencyKey || '').trim();
-      if (!id) return;
-      keepIds.add(id);
+      if (
+        item.payload?.['kind'] === 'create' &&
+        item.payload?.['entry'] &&
+        typeof item.payload['entry'] === 'object'
+      ) {
+        const entry = item.payload['entry'] as Record<string, unknown>;
+        const payloadId = typeof entry['id'] === 'string' ? entry['id'] : null;
+        const id = (payloadId || item.idempotencyKey || '').trim();
+        if (!id) return;
+        keepLocalOnlyIds.add(id);
+        return;
+      }
+
+      if (item.payload?.['kind'] === 'timestamp_patch') {
+        const historyItemId =
+          typeof item.payload['history_item_id'] === 'string'
+            ? item.payload['history_item_id'].trim()
+            : '';
+        if (!historyItemId) return;
+        preserveLocalTimestampIds.add(historyItemId);
+      }
     });
-    return keepIds;
+    return {
+      keepLocalOnlyIds,
+      preserveLocalTimestampIds,
+    };
   } catch {
-    return new Set<string>();
+    return {
+      keepLocalOnlyIds: new Set<string>(),
+      preserveLocalTimestampIds: new Set<string>(),
+    };
   }
 };
 
@@ -91,9 +120,10 @@ const syncHistoryFromServer = async (
           typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
         return !deleteSet.has(remoteEntryId);
       });
-      const pendingLocalIds = await getPendingHistoryLocalIds(userId);
+      const pendingMergeHints = await getPendingHistoryMergeHints(userId);
       const merged = mergeRemoteHistory(local, filteredRemote, {
-        keepLocalOnlyIds: pendingLocalIds,
+        keepLocalOnlyIds: pendingMergeHints.keepLocalOnlyIds,
+        preserveLocalTimestampIds: pendingMergeHints.preserveLocalTimestampIds,
       });
       await saveAnalyses(userId, merged);
       updateHistoryQueryCache(userId, merged);
@@ -253,6 +283,7 @@ export const AnalysisService = {
                 ...data,
                 id: generateId(),
                 timestamp: finalDate, // Use the parsed original date
+                updatedAt: new Date().toISOString(),
                 imageUri: imageUri || undefined,
                 location: location || undefined,
             };
@@ -394,14 +425,22 @@ export const AnalysisService = {
      */
     updateAnalysisTimestamp: async (userId: string, analysisId: string, newTimestamp: Date) => {
         try {
+            startPhase2SyncRuntime();
             const analyses = await getStoredAnalyses(userId);
             const index = analyses.findIndex(a => a.id === analysisId);
             
             if (index !== -1) {
+                const previousUpdatedAt = analyses[index].updatedAt;
                 analyses[index].timestamp = newTimestamp;
-                // Optional: Re-sort if strictly chronological
                 await saveAnalyses(userId, analyses);
                 updateHistoryQueryCache(userId, analyses);
+                await enqueueHistoryTimestampPatch(userId, {
+                  kind: 'timestamp_patch',
+                  history_item_id: analysisId,
+                  timestamp: newTimestamp.toISOString(),
+                  expected_updated_at: previousUpdatedAt,
+                });
+                await flushHistoryWrites(userId);
                 logger.info(
                   `[UPDATE] Updated timestamp for ${analysisId} to ${newTimestamp.toISOString()}`,
                   undefined,

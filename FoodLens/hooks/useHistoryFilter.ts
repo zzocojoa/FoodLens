@@ -1,24 +1,42 @@
-import { useState, useCallback } from 'react';
-import { CountryData, RegionData } from '../models/History';
+import { useState, useCallback, useEffect } from 'react';
+import { CountryData } from '../models/History';
 
 export type FilterType = 'all' | 'ok' | 'avoid' | 'ask';
 
-export const useHistoryFilter = () => {
-    const [archiveFilter, setArchiveFilter] = useState<FilterType>('all');
+export const useHistoryFilter = ({
+    initialFilter,
+    onFilterChange,
+}: {
+    initialFilter?: FilterType;
+    onFilterChange?: (value: FilterType) => void;
+}) => {
+    const normalizedInitialFilter = initialFilter || 'all';
+    const [archiveFilterState, setArchiveFilterState] = useState<FilterType>(normalizedInitialFilter);
+
+    useEffect(() => {
+        setArchiveFilterState((prev) => (prev === normalizedInitialFilter ? prev : normalizedInitialFilter));
+    }, [normalizedInitialFilter]);
+
+    const setArchiveFilter = useCallback((value: FilterType) => {
+        setArchiveFilterState(value);
+        onFilterChange?.(value);
+    }, [onFilterChange]);
 
     const matchesFilter = useCallback((type: string | undefined) => {
+        const archiveFilter = archiveFilterState;
         if (archiveFilter === 'all') return true;
         if (archiveFilter === 'ok') return type === 'ok';
         if (archiveFilter === 'avoid') return type === 'avoid';
         if (archiveFilter === 'ask') return type === 'ask';
         return false;
-    }, [archiveFilter]);
+    }, [archiveFilterState]);
 
     const isAllowedItemType = useCallback((type: string | undefined) => {
         return type === 'ok' || type === 'avoid' || type === 'ask';
     }, []);
 
     const getFilteredItemsCount = useCallback((country: CountryData) => {
+        const archiveFilter = archiveFilterState;
         let count = 0;
         (country.regions || []).forEach(r => {
             const items = r.items || [];
@@ -29,10 +47,10 @@ export const useHistoryFilter = () => {
             }
         });
         return count;
-    }, [archiveFilter, matchesFilter, isAllowedItemType]);
+    }, [archiveFilterState, matchesFilter, isAllowedItemType]);
 
     return {
-        archiveFilter,
+        archiveFilter: archiveFilterState,
         setArchiveFilter,
         matchesFilter,
         getFilteredItemsCount,

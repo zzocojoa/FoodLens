@@ -11,6 +11,7 @@ import {
   mergeRemoteUserSnapshot,
   normalizeLegacyProfileForUser,
 } from './sync/phase2Mappers';
+import { mergeSyncedClientState, parseRemoteClientState } from './sync/clientState';
 import { isRemoteSettingsSnapshotStale } from './sync/settingsFreshness';
 import {
   dispatchPhase2SyncQueue,
@@ -273,6 +274,13 @@ const applyQueuedSettingsPayloadToProfile = (
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload, 'client_state')) {
+    nextSettings.clientState = mergeSyncedClientState(
+      nextSettings.clientState,
+      parseRemoteClientState(payload['client_state'] as Parameters<typeof parseRemoteClientState>[0])
+    );
+  }
+
   return {
     ...profile,
     settings: nextSettings,
@@ -301,6 +309,7 @@ const profileSyncComparableShape = (profile: UserProfile) => ({
     targetLanguage: profile.settings?.targetLanguage || null,
     autoPlayAudio: !!profile.settings?.autoPlayAudio,
     selectedEmoji: profile.settings?.selectedEmoji || null,
+    clientState: mergeSyncedClientState(undefined, profile.settings?.clientState),
   },
 });
 
@@ -336,6 +345,13 @@ const mergeProfileSettingsPatch = (
 
   if ('selectedEmoji' in nextSettingsPatch && !nextSettingsPatch.selectedEmoji) {
     delete nextSettings.selectedEmoji;
+  }
+
+  if ('clientState' in nextSettingsPatch) {
+    nextSettings.clientState = mergeSyncedClientState(
+      existingSettings.clientState,
+      nextSettingsPatch.clientState
+    );
   }
 
   return nextSettings;

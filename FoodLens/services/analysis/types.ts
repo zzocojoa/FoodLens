@@ -7,6 +7,7 @@ export const getAnalysesStorageKey = (userId: string): string => `${ANALYSES_STO
 export interface AnalysisRecord extends AnalyzedData {
   id: string;
   timestamp: Date;
+  updatedAt?: string;
   imageUri?: string;
   imageAssetId?: string;
   imageRenderUrl?: string;

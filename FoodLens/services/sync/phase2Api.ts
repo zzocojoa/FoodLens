@@ -5,6 +5,7 @@ import type {
   MediaAssetResponse,
   MediaUploadScope,
   MeAllergiesResponse,
+  MeSettingsClientState,
   MeHistoryItemResponse,
   MeProfileResponse,
   MeSettingsResponse,
@@ -246,6 +247,7 @@ export const Phase2Api = {
     target_language?: string | null;
     auto_play_audio?: boolean;
     selected_emoji?: string | null;
+    client_state?: MeSettingsClientState;
     expected_updated_at?: string;
   }): Promise<{ settings: MeSettingsResponse; requestId: string }> {
     const { data, requestId } = await authenticatedRequest<{ settings: MeSettingsResponse }>('/me/settings', {
@@ -281,6 +283,25 @@ export const Phase2Api = {
       { method: 'DELETE' }
     );
     return { deleted: data.deleted !== false, requestId };
+  },
+
+  async patchHistoryTimestamp(input: {
+    historyItemId: string;
+    timestamp: string;
+    expected_updated_at?: string;
+  }): Promise<{ historyItem: MeHistoryItemResponse; requestId: string }> {
+    const encodedHistoryId = encodeURIComponent(input.historyItemId);
+    const { data, requestId } = await authenticatedRequest<{ history_item: MeHistoryItemResponse }>(
+      `/me/history/${encodedHistoryId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          timestamp: input.timestamp,
+          expected_updated_at: input.expected_updated_at,
+        }),
+      }
+    );
+    return { historyItem: data.history_item, requestId };
   },
 
   async postMediaUpload(input: {

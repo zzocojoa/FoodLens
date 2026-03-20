@@ -5,13 +5,25 @@ import { SafeStorage } from '@/services/storage';
 import { logger } from '@/services/logger';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
-import { getUserStorageKey } from '@/services/user/constants';
+import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
 import { resolveImageUri } from '@/services/imageStorage';
 import { IMAGE_DIR } from '@/services/imageStorage.helpers';
 import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api';
+import {
+  buildRemoteClientState,
+  mergeSyncedClientState,
+  parseRemoteClientState,
+} from './clientState';
+import { deserializeHistoryItem, mergeRemoteHistory } from './phase2Mappers';
 import type {
+  MeHistoryItemResponse,
+  MeSettingsClientState,
+  MeSettingsResponse,
   Phase2ConflictResolution,
+  Phase2HistoryCreatePayload,
+  Phase2HistoryPayload,
+  Phase2HistoryTimestampPatchPayload,
   Phase2SyncEntity,
   Phase2SyncOperation,
 } from './phase2Sync.types';
@@ -46,6 +58,16 @@ const normalizePayloadForDedupe = (payload: Record<string, unknown>): string => 
   delete clone['expected_updated_at'];
   return JSON.stringify(clone);
 };
+
+const isHistoryCreatePayload = (payload: Record<string, unknown>): payload is Phase2HistoryCreatePayload =>
+  payload['kind'] === 'create' && !!payload['entry'] && typeof payload['entry'] === 'object';
+
+const isHistoryTimestampPatchPayload = (
+  payload: Record<string, unknown>
+): payload is Phase2HistoryTimestampPatchPayload =>
+  payload['kind'] === 'timestamp_patch' &&
+  typeof payload['history_item_id'] === 'string' &&
+  typeof payload['timestamp'] === 'string';
 
 export const __resetPhase2SettingsDispatchDedupeForTests = (): void => {
   settingsDispatchDedupeCache.clear();
@@ -97,6 +119,23 @@ const loadQueue = async (): Promise<Phase2SyncOperation[]> =>
 
 const saveQueue = async (queue: Phase2SyncOperation[]): Promise<void> => {
   await SafeStorage.set(SYNC_QUEUE_KEY, queue);
+};
+
+const getQueueOperationById = async (operationId: string): Promise<Phase2SyncOperation | null> => {
+  const queue = await loadQueue();
+  const operation = queue.find((item) => item.id === operationId);
+  return operation || null;
+};
+
+const saveQueueOperation = async (operation: Phase2SyncOperation): Promise<boolean> => {
+  const queue = await loadQueue();
+  const index = queue.findIndex((item) => item.id === operation.id);
+  if (index < 0) {
+    return false;
+  }
+  queue[index] = operation;
+  await saveQueue(pruneQueue(queue));
+  return true;
 };
 
 const shouldDispatch = (item: Phase2SyncOperation): boolean => {
@@ -176,6 +215,8 @@ type DispatchResult = {
   settingsUpdatedAt?: string;
   profileImageAssetId?: string;
   profileImageRenderUrl?: string;
+  settings?: MeSettingsResponse;
+  historyItem?: MeHistoryItemResponse;
 };
 
 const applyServerVersionToLocalProfile = async (
@@ -213,14 +254,77 @@ const applyServerVersionToLocalProfile = async (
   const nextProfileImage = shouldKeepCurrentLocalImage
     ? current.profileImage
     : versionPatch.profileImageRenderUrl ?? current.profileImage;
-  await SafeStorage.set(storageKey, {
+  const nextProfile = {
     ...current,
     profileImageAssetId: versionPatch.profileImageAssetId ?? current.profileImageAssetId,
     profileImage: nextProfileImage,
     photoURL: nextProfileImage ?? current.photoURL,
     updatedAt: nextUpdatedAt,
     syncVersions: nextSyncVersions,
-  });
+  };
+  await Promise.all([
+    SafeStorage.set(storageKey, nextProfile),
+    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
+  ]);
+};
+
+const applyServerSettingsToLocalProfile = async (
+  userId: string,
+  settings: MeSettingsResponse
+): Promise<void> => {
+  const storageKey = getUserStorageKey(userId);
+  const current = await SafeStorage.get<UserProfile | null>(storageKey, null);
+  if (!current) return;
+
+  const nextProfile: UserProfile = {
+    ...current,
+    updatedAt: settings.updated_at || current.updatedAt,
+    syncVersions: {
+      ...(current.syncVersions || {}),
+      ...(settings.updated_at ? { settingsUpdatedAt: settings.updated_at } : {}),
+    },
+    settings: {
+      ...current.settings,
+      ...(typeof settings.language === 'string' && settings.language.trim()
+        ? { language: settings.language.trim() }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(settings, 'target_language')
+        ? { targetLanguage: settings.target_language || undefined }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(settings, 'auto_play_audio')
+        ? { autoPlayAudio: !!settings.auto_play_audio }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(settings, 'selected_emoji')
+        ? { selectedEmoji: settings.selected_emoji || undefined }
+        : {}),
+      clientState: mergeSyncedClientState(
+        current.settings.clientState,
+        parseRemoteClientState(settings.client_state)
+      ),
+    },
+  };
+  await Promise.all([
+    SafeStorage.set(storageKey, nextProfile),
+    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
+  ]);
+};
+
+const applyServerHistoryItemToLocalAnalyses = async (
+  userId: string,
+  historyItem: MeHistoryItemResponse
+): Promise<void> => {
+  const current = await getStoredAnalyses(userId);
+  const parsed = deserializeHistoryItem(historyItem);
+  if (!parsed) return;
+
+  const existing = current.find((item) => item.id === parsed.id);
+  const mergedItem = existing
+    ? mergeRemoteHistory([existing], [historyItem])[0]
+    : parsed;
+  const next = current.filter((item) => item.id !== mergedItem.id);
+  next.unshift(mergedItem);
+  next.sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
+  await saveAnalyses(userId, next);
 };
 
 const isRemoteImageUri = (uri: string): boolean => {
@@ -276,11 +380,6 @@ const resolveHistoryImageFileUri = (rawUri: string): string | null => {
     return resolved;
   }
   return null;
-};
-
-const inferContentTypeFromDataUrl = (value: string): string => {
-  const matched = value.match(/^data:([^;,]+);base64,/i);
-  return matched?.[1]?.trim().toLowerCase() || 'image/jpeg';
 };
 
 const inferContentTypeFromUri = (value: string): string => {
@@ -656,6 +755,62 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
   }
 };
 
+const buildSettingsConflictRetryPayload = (
+  localPayload: {
+    language?: string | null;
+    target_language?: string | null;
+    auto_play_audio?: boolean;
+    selected_emoji?: string | null;
+    client_state?: MeSettingsClientState;
+    expected_updated_at?: string;
+  },
+  serverPayload: Record<string, unknown>
+): {
+  language?: string | null;
+  target_language?: string | null;
+  auto_play_audio?: boolean;
+  selected_emoji?: string | null;
+  client_state?: MeSettingsClientState;
+  expected_updated_at?: string;
+} | null => {
+  const serverUpdatedAt =
+    typeof serverPayload['updated_at'] === 'string' ? serverPayload['updated_at'].trim() : '';
+  if (!serverUpdatedAt) {
+    return null;
+  }
+
+  const mergedClientState = mergeSyncedClientState(
+    parseRemoteClientState(serverPayload['client_state'] as MeSettingsClientState | null | undefined),
+    parseRemoteClientState(localPayload.client_state)
+  );
+
+  return {
+    language:
+      typeof localPayload.language === 'string' || localPayload.language === null
+        ? localPayload.language
+        : typeof serverPayload['language'] === 'string'
+          ? (serverPayload['language'] as string)
+          : null,
+    target_language: Object.prototype.hasOwnProperty.call(localPayload, 'target_language')
+      ? localPayload.target_language
+      : typeof serverPayload['target_language'] === 'string' || serverPayload['target_language'] === null
+        ? (serverPayload['target_language'] as string | null)
+        : undefined,
+    auto_play_audio: Object.prototype.hasOwnProperty.call(localPayload, 'auto_play_audio')
+      ? localPayload.auto_play_audio
+      : typeof serverPayload['auto_play_audio'] === 'boolean'
+        ? (serverPayload['auto_play_audio'] as boolean)
+        : undefined,
+    selected_emoji: Object.prototype.hasOwnProperty.call(localPayload, 'selected_emoji')
+      ? localPayload.selected_emoji
+      : typeof serverPayload['selected_emoji'] === 'string' || serverPayload['selected_emoji'] === null
+        ? (serverPayload['selected_emoji'] as string | null)
+        : undefined,
+    client_state: buildRemoteClientState(mergedClientState),
+    expected_updated_at: serverUpdatedAt,
+  };
+};
+
 const dispatchOperation = async (operation: Phase2SyncOperation): Promise<DispatchResult> => {
   if (operation.entity === 'profile') {
     const profilePayload = await normalizeProfilePayloadForSync(operation.payload, operation.userId);
@@ -699,15 +854,44 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
       };
     }
 
-    const result = await Phase2Api.putSettings(
-      operation.payload as {
-        language?: string | null;
-        target_language?: string | null;
-        auto_play_audio?: boolean;
-        selected_emoji?: string | null;
-        expected_updated_at?: string;
+    const payload = operation.payload as {
+      language?: string | null;
+      target_language?: string | null;
+      auto_play_audio?: boolean;
+      selected_emoji?: string | null;
+      client_state?: MeSettingsClientState;
+      expected_updated_at?: string;
+    };
+    let result;
+    try {
+      result = await Phase2Api.putSettings(payload);
+    } catch (error) {
+      const apiError = error instanceof Phase2SyncApiError ? error : null;
+      const hasClientState = Object.prototype.hasOwnProperty.call(payload, 'client_state');
+      if (apiError && isConflictError(apiError) && hasClientState && apiError.serverPayload) {
+        const retryPayload = buildSettingsConflictRetryPayload(payload, apiError.serverPayload);
+        if (!retryPayload) {
+          throw error;
+        }
+        try {
+          result = await Phase2Api.putSettings(retryPayload);
+        } catch (retryError) {
+          const retryApiError = retryError instanceof Phase2SyncApiError ? retryError : null;
+          if (retryApiError && isConflictError(retryApiError)) {
+            throw new Phase2SyncApiError(
+              'Settings client_state conflict retry failed.',
+              'PHASE2_SETTINGS_CLIENT_STATE_RETRY_FAILED',
+              400,
+              retryApiError.requestId,
+              retryApiError.serverPayload
+            );
+          }
+          throw retryError;
+        }
+      } else {
+        throw error;
       }
-    );
+    }
     settingsDispatchDedupeCache.set(operation.userId, {
       payloadKey: dedupeKey,
       at: now(),
@@ -716,15 +900,70 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
     return {
       requestId: result.requestId,
       settingsUpdatedAt: result.settings.updated_at,
+      settings: result.settings,
     };
   }
 
-  const historyEntry = await normalizeHistoryEntryForSync(operation.payload, operation.userId);
-  const historyResult = await Phase2Api.postHistory({
-    entry: historyEntry,
-    idempotency_key: operation.idempotencyKey,
-  });
-  return { requestId: historyResult.requestId };
+  const historyPayload = operation.payload as Phase2HistoryPayload;
+  if (isHistoryCreatePayload(historyPayload)) {
+    const historyEntry = await normalizeHistoryEntryForSync(historyPayload.entry, operation.userId);
+    const historyResult = await Phase2Api.postHistory({
+      entry: historyEntry,
+      idempotency_key: operation.idempotencyKey,
+    });
+    return {
+      requestId: historyResult.requestId,
+      historyItem: historyResult.historyItem,
+    };
+  }
+
+  if (isHistoryTimestampPatchPayload(historyPayload)) {
+    try {
+      const historyResult = await Phase2Api.patchHistoryTimestamp({
+        historyItemId: historyPayload.history_item_id,
+        timestamp: historyPayload.timestamp,
+        expected_updated_at: historyPayload.expected_updated_at,
+      });
+      return {
+        requestId: historyResult.requestId,
+        historyItem: historyResult.historyItem,
+      };
+    } catch (error) {
+      const apiError = error instanceof Phase2SyncApiError ? error : null;
+      const serverUpdatedAt =
+        typeof apiError?.serverPayload?.['updated_at'] === 'string'
+          ? String(apiError.serverPayload?.['updated_at']).trim()
+          : '';
+      if (apiError && isConflictError(apiError) && serverUpdatedAt) {
+        try {
+          const retryResult = await Phase2Api.patchHistoryTimestamp({
+            historyItemId: historyPayload.history_item_id,
+            timestamp: historyPayload.timestamp,
+            expected_updated_at: serverUpdatedAt,
+          });
+          return {
+            requestId: retryResult.requestId,
+            historyItem: retryResult.historyItem,
+          };
+        } catch (retryError) {
+          const retryApiError = retryError instanceof Phase2SyncApiError ? retryError : null;
+          if (retryApiError && isConflictError(retryApiError)) {
+            throw new Phase2SyncApiError(
+              'History timestamp conflict retry failed.',
+              'PHASE2_HISTORY_TIMESTAMP_RETRY_FAILED',
+              400,
+              retryApiError.requestId,
+              retryApiError.serverPayload
+            );
+          }
+          throw retryError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('PHASE2_HISTORY_PAYLOAD_INVALID');
 };
 
 const isNetworkAvailable = async (): Promise<boolean> => {
@@ -793,23 +1032,25 @@ export const dispatchPhase2SyncQueue = async (
 
     if (ordered.length === 0) return;
 
-    const mutable = [...queue];
-
     for (const item of ordered) {
-      const index = mutable.findIndex((candidate) => candidate.id === item.id);
-      if (index < 0) continue;
+      const latest = await getQueueOperationById(item.id);
+      if (!latest) continue;
+      if (latest.userId !== activeUserId) continue;
+      if (!shouldDispatch(latest)) continue;
 
       const sending = {
-        ...mutable[index],
+        ...latest,
         state: 'sending' as const,
         updatedAt: now(),
       };
-      mutable[index] = sending;
-      await saveQueue(pruneQueue(mutable));
+      const markedSending = await saveQueueOperation(sending);
+      if (!markedSending) {
+        continue;
+      }
 
       try {
         const result = await dispatchOperation(sending);
-        mutable[index] = {
+        const synced: Phase2SyncOperation = {
           ...sending,
           state: 'synced',
           updatedAt: now(),
@@ -823,12 +1064,19 @@ export const dispatchPhase2SyncQueue = async (
           profileImageAssetId: result.profileImageAssetId,
           profileImageRenderUrl: result.profileImageRenderUrl,
         });
+        if (result.settings) {
+          await applyServerSettingsToLocalProfile(sending.userId, result.settings);
+        }
+        if (result.historyItem) {
+          await applyServerHistoryItemToLocalAnalyses(sending.userId, result.historyItem);
+        }
+        await saveQueueOperation(synced);
       } catch (error) {
         const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;
 
         if (isAuthRecoveryError(apiError)) {
-          mutable[index] = {
+          await saveQueueOperation({
             ...sending,
             state: 'pending',
             updatedAt: now(),
@@ -836,13 +1084,12 @@ export const dispatchPhase2SyncQueue = async (
             requestId: apiError?.requestId,
             lastError: undefined,
             conflict: undefined,
-          };
-          await saveQueue(pruneQueue(mutable));
+          });
           break;
         }
 
         if (isConflictError(apiError)) {
-          mutable[index] = {
+          await saveQueueOperation({
             ...sending,
             attempts: previousAttempts,
             state: 'conflicted',
@@ -856,14 +1103,13 @@ export const dispatchPhase2SyncQueue = async (
               detectedAt: now(),
               serverPayload: apiError?.serverPayload,
             },
-          };
-          await saveQueue(pruneQueue(mutable));
+          });
           continue;
         }
 
         const reachedLimit = previousAttempts >= RETRY_LIMIT;
 
-        mutable[index] = {
+        const failed: Phase2SyncOperation = {
           ...sending,
           attempts: previousAttempts,
           state: 'failed',
@@ -881,9 +1127,8 @@ export const dispatchPhase2SyncQueue = async (
           code: apiError?.code || 'PHASE2_QUEUE_FAILED',
           attempts: previousAttempts,
         });
+        await saveQueueOperation(failed);
       }
-
-      await saveQueue(pruneQueue(mutable));
     }
   });
 
@@ -951,7 +1196,10 @@ export const enqueueHistorySync = async (
     id: generateOperationId(),
     userId,
     entity: 'history',
-    payload: entry,
+    payload: {
+      kind: 'create',
+      entry,
+    },
     idempotencyKey,
     attempts: 0,
     state: 'pending',
@@ -962,6 +1210,57 @@ export const enqueueHistorySync = async (
   });
   await saveQueue(pruneQueue(queue));
   void dispatchPhase2SyncQueue();
+};
+
+export const enqueueHistoryTimestampPatch = async (
+  userId: string,
+  payload: Phase2HistoryTimestampPatchPayload
+): Promise<string> => {
+  const queue = await loadQueue();
+  const sendingDuplicate = queue.find((item) => {
+    if (item.userId !== userId || item.entity !== 'history') return false;
+    if (item.state !== 'sending') return false;
+    if (!isHistoryTimestampPatchPayload(item.payload)) return false;
+    return (
+      item.payload.history_item_id === payload.history_item_id &&
+      item.payload.timestamp === payload.timestamp
+    );
+  });
+  if (sendingDuplicate) {
+    return sendingDuplicate.id;
+  }
+
+  let existingIndex = -1;
+  for (let index = queue.length - 1; index >= 0; index -= 1) {
+    const item = queue[index];
+    if (item.userId !== userId || item.entity !== 'history') continue;
+    if (!MUTABLE_ENTITY_STATES.has(item.state as MutableEntityState)) continue;
+    if (item.state === 'sending') continue;
+    if (!isHistoryTimestampPatchPayload(item.payload)) continue;
+    if (item.payload.history_item_id !== payload.history_item_id) continue;
+    existingIndex = index;
+    break;
+  }
+  const nextItem: Phase2SyncOperation = {
+    id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
+    userId,
+    entity: 'history',
+    payload,
+    attempts: 0,
+    state: 'pending',
+    nextAttemptAt: now(),
+    createdAt: existingIndex >= 0 ? queue[existingIndex].createdAt : now(),
+    updatedAt: now(),
+    conflict: undefined,
+  };
+  if (existingIndex >= 0) {
+    queue[existingIndex] = nextItem;
+  } else {
+    queue.push(nextItem);
+  }
+  await saveQueue(pruneQueue(queue));
+  void dispatchPhase2SyncQueue();
+  return nextItem.id;
 };
 
 export const getPhase2ConflictedOperations = async (

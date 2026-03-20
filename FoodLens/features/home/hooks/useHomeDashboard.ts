@@ -14,6 +14,12 @@ import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { SafeStorage } from '@/services/storage';
 import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import {
+  buildHomeSelectedDatePatch,
+  readHomeSelectedDateSnapshot,
+  updateUserClientState,
+} from '@/services/user/clientStateService';
+import { fromLocalDateString, toLocalDateString } from '@/services/sync/clientState';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_BACKGROUND_REFRESH_MS = 15_000;
@@ -68,10 +74,13 @@ const readInitialProfileSnapshot = (): UserProfile | null => {
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const { t } = useI18n();
   const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot());
+  const initialUserId = getCurrentUserIdSnapshot();
+  const initialSelectedDate =
+    readHomeSelectedDateSnapshot(initialUserId) || new Date();
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]);
   const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDateState] = useState<Date>(initialSelectedDate);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyData[]>([]);
   const [allergyCount, setAllergyCount] = useState(() =>
     initialProfileSnapshotRef.current
@@ -84,6 +93,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     () => initialProfileSnapshotRef.current
   );
   const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedDateKeyRef = useRef<string>(toLocalDateString(initialSelectedDate));
   const loadInFlightRef = useRef(false);
   const profileHydrationInFlightRef = useRef(false);
   const hasRequestedInitialLoadRef = useRef(false);
@@ -109,6 +119,14 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       setSafeCount(safeCount);
 
       if (profile) {
+        const syncedSelectedDate = fromLocalDateString(profile.settings.clientState?.home?.selectedDate);
+        if (syncedSelectedDate) {
+          const syncedKey = toLocalDateString(syncedSelectedDate);
+          if (selectedDateKeyRef.current !== syncedKey) {
+            selectedDateKeyRef.current = syncedKey;
+            setSelectedDateState(syncedSelectedDate);
+          }
+        }
         setUserProfile((previous) => {
           if (!shouldKeepExistingProfileImage(previous, profile)) {
             return profile;
@@ -227,6 +245,18 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     },
     [loadDashboardData, recentScans, t],
   );
+
+  const setSelectedDate = useCallback((date: Date) => {
+    const nextKey = toLocalDateString(date);
+    if (selectedDateKeyRef.current === nextKey) {
+      setSelectedDateState(date);
+      return;
+    }
+    selectedDateKeyRef.current = nextKey;
+    setSelectedDateState(date);
+    const userId = getCurrentUserIdSnapshot();
+    void updateUserClientState(userId, buildHomeSelectedDatePatch(date)).catch(() => undefined);
+  }, []);
 
   return {
     activeModal,

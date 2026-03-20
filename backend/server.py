@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from urllib.parse import urlencode
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 import requests
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -1135,14 +1135,6 @@ class AllergiesUpdateRequest(BaseModel):
     expected_updated_at: str | None = None
 
 
-class SettingsUpdateRequest(BaseModel):
-    language: str | None = None
-    target_language: str | None = None
-    auto_play_audio: bool | None = None
-    selected_emoji: str | None = None
-    expected_updated_at: str | None = None
-
-
 class HistoryWriteRequest(BaseModel):
     entry: dict[str, Any]
     idempotency_key: str | None = None
@@ -1150,6 +1142,47 @@ class HistoryWriteRequest(BaseModel):
 
 class HistoryImagePatchRequest(BaseModel):
     image_asset_id: str
+
+
+class HistoryMapRegionRequest(BaseModel):
+    latitude: float
+    longitude: float
+    latitudeDelta: float
+    longitudeDelta: float
+
+
+class HistoryTimestampPatchRequest(BaseModel):
+    timestamp: str
+    expected_updated_at: str | None = None
+
+
+class OnboardingClientStateRequest(BaseModel):
+    completed_at: str | None = None
+
+
+class HomeClientStateRequest(BaseModel):
+    selected_date: str | None = None
+
+
+class HistoryClientStateRequest(BaseModel):
+    archive_mode: Literal["list", "map"] | None = None
+    filter: Literal["all", "ok", "avoid", "ask"] | None = None
+    map_region: HistoryMapRegionRequest | None = None
+
+
+class SettingsClientStateRequest(BaseModel):
+    onboarding: OnboardingClientStateRequest | None = None
+    home: HomeClientStateRequest | None = None
+    history: HistoryClientStateRequest | None = None
+
+
+class SettingsUpdateRequest(BaseModel):
+    language: str | None = None
+    target_language: str | None = None
+    auto_play_audio: bool | None = None
+    selected_emoji: str | None = None
+    client_state: SettingsClientStateRequest | None = None
+    expected_updated_at: str | None = None
 
 
 def _request_id(request: Request) -> str:
@@ -2395,6 +2428,15 @@ async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
         if "selected_emoji" in fields_set and payload.selected_emoji is None
         else payload.selected_emoji
     )
+    client_state = (
+        {}
+        if "client_state" in fields_set and payload.client_state is None
+        else (
+            payload.client_state.model_dump(exclude_none=False)
+            if payload.client_state is not None
+            else None
+        )
+    )
 
     def _action(auth_service: Any, user: Any, request_id: str) -> dict[str, Any]:
         settings = auth_service.update_settings(
@@ -2403,6 +2445,7 @@ async def put_me_settings(payload: SettingsUpdateRequest, request: Request):
             target_language=target_language,
             auto_play_audio=payload.auto_play_audio,
             selected_emoji=selected_emoji,
+            client_state=client_state,
             expected_updated_at=payload.expected_updated_at,
         )
         _log_settings_trace(
@@ -2476,6 +2519,31 @@ async def post_me_history(payload: HistoryWriteRequest, request: Request):
         request=request,
         action=_action,
         write_event=("POST", "/me/history"),
+    )
+
+
+@app.patch("/me/history/{history_item_id}")
+async def patch_me_history(
+    history_item_id: str,
+    payload: HistoryTimestampPatchRequest,
+    request: Request,
+):
+    def _action(auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+        history_item = auth_service.patch_history_timestamp(
+            user_id=user.user_id,
+            history_item_id=history_item_id,
+            timestamp=payload.timestamp,
+            expected_updated_at=payload.expected_updated_at,
+        )
+        entry = history_item.get("entry")
+        if isinstance(entry, dict):
+            history_item["entry"] = _decorate_history_media_entry(entry, request)
+        return {"history_item": history_item}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+        write_event=("PATCH", "/me/history"),
     )
 
 

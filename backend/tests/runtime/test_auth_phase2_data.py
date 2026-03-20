@@ -153,6 +153,20 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                     "target_language": "ja-JP",
                     "auto_play_audio": True,
                     "selected_emoji": "🍎",
+                    "client_state": {
+                        "onboarding": {"completed_at": "2026-03-03T10:00:00Z"},
+                        "home": {"selected_date": "2026-03-03"},
+                        "history": {
+                            "archive_mode": "map",
+                            "filter": "ok",
+                            "map_region": {
+                                "latitude": 37.5665,
+                                "longitude": 126.9780,
+                                "latitudeDelta": 0.5,
+                                "longitudeDelta": 0.5,
+                            },
+                        },
+                    },
                 },
                 headers=headers,
             )
@@ -166,11 +180,20 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(settings_payload["settings"]["target_language"], "ja-JP")
             self.assertTrue(settings_payload["settings"]["auto_play_audio"])
             self.assertEqual(settings_payload["settings"]["selected_emoji"], "🍎")
+            self.assertEqual(
+                settings_payload["settings"]["client_state"]["home"]["selected_date"],
+                "2026-03-03",
+            )
+            self.assertEqual(
+                settings_payload["settings"]["client_state"]["history"]["archive_mode"],
+                "map",
+            )
 
             history_entry = {
                 "id": "local-analysis-1",
                 "foodName": "Bibimbap",
                 "safetyStatus": "SAFE",
+                "ingredients": [],
                 "timestamp": "2026-02-25T00:00:00Z",
             }
             post_history = client.post(
@@ -192,6 +215,21 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertIn("request_id", history_list)
             self.assertEqual(len(history_list["history"]), 1)
             self.assertEqual(history_list["history"][0]["entry"]["id"], "local-analysis-1")
+
+            initial_history_updated_at = history_list["history"][0]["updated_at"]
+            patch_history = client.patch(
+                "/me/history/local-analysis-1",
+                json={
+                    "timestamp": "2026-02-26T00:00:00Z",
+                    "expected_updated_at": initial_history_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(patch_history.status_code, 200)
+            self.assertEqual(
+                patch_history.json()["history_item"]["entry"]["timestamp"],
+                "2026-02-26T00:00:00Z",
+            )
 
     def test_history_idempotency_isolated_by_user(self):
         with TestClient(app) as client:
@@ -352,6 +390,49 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(settings_detail["entity"], "settings")
             self.assertIn("server_payload", settings_detail)
             self.assertEqual(settings_detail["server_payload"]["language"], "en-US")
+
+            history_create = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "history-conflict-1",
+                        "foodName": "History Conflict",
+                        "safetyStatus": "SAFE",
+                        "ingredients": [],
+                        "timestamp": "2026-03-10T00:00:00Z",
+                    },
+                    "idempotency_key": "idem-history-conflict-1",
+                },
+                headers=headers,
+            )
+            self.assertEqual(history_create.status_code, 200)
+            history_initial_updated_at = history_create.json()["history_item"]["updated_at"]
+
+            history_ok = client.patch(
+                "/me/history/history-conflict-1",
+                json={
+                    "timestamp": "2026-03-11T00:00:00Z",
+                    "expected_updated_at": history_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(history_ok.status_code, 200)
+            history_conflict = client.patch(
+                "/me/history/history-conflict-1",
+                json={
+                    "timestamp": "2026-03-12T00:00:00Z",
+                    "expected_updated_at": history_initial_updated_at,
+                },
+                headers=headers,
+            )
+            self.assertEqual(history_conflict.status_code, 409)
+            history_detail = history_conflict.json()["detail"]
+            self.assertEqual(history_detail["code"], "PHASE2_CONFLICT")
+            self.assertEqual(history_detail["entity"], "history")
+            self.assertEqual(
+                history_detail["server_payload"]["entry"]["timestamp"],
+                "2026-03-11T00:00:00Z",
+            )
 
     def test_me_endpoints_require_bearer_token(self):
         with TestClient(app) as client:

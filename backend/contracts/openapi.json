@@ -1197,6 +1197,54 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HistoryClientStateRequest": {
+        "properties": {
+          "archive_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "list",
+                  "map"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archive Mode"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "ok",
+                  "avoid",
+                  "ask"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          },
+          "map_region": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoryMapRegionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "HistoryClientStateRequest",
+        "type": "object"
+      },
       "HistoryImagePatchRequest": {
         "properties": {
           "image_asset_id": {
@@ -1208,6 +1256,58 @@
           "image_asset_id"
         ],
         "title": "HistoryImagePatchRequest",
+        "type": "object"
+      },
+      "HistoryMapRegionRequest": {
+        "properties": {
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "latitudeDelta": {
+            "title": "Latitudedelta",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "longitudeDelta": {
+            "title": "Longitudedelta",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "latitudeDelta",
+          "longitudeDelta"
+        ],
+        "title": "HistoryMapRegionRequest",
+        "type": "object"
+      },
+      "HistoryTimestampPatchRequest": {
+        "properties": {
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp"
+        ],
+        "title": "HistoryTimestampPatchRequest",
         "type": "object"
       },
       "HistoryWriteRequest": {
@@ -1233,6 +1333,23 @@
           "entry"
         ],
         "title": "HistoryWriteRequest",
+        "type": "object"
+      },
+      "HomeClientStateRequest": {
+        "properties": {
+          "selected_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Date"
+          }
+        },
+        "title": "HomeClientStateRequest",
         "type": "object"
       },
       "IngredientContract": {
@@ -1541,6 +1658,23 @@
         "title": "OAuthProviderRequest",
         "type": "object"
       },
+      "OnboardingClientStateRequest": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "title": "OnboardingClientStateRequest",
+        "type": "object"
+      },
       "PasswordResetConfirmRequest": {
         "properties": {
           "code": {
@@ -1730,6 +1864,42 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "SettingsClientStateRequest": {
+        "properties": {
+          "history": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoryClientStateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HomeClientStateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "onboarding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingClientStateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "SettingsClientStateRequest",
+        "type": "object"
+      },
       "SettingsUpdateRequest": {
         "properties": {
           "auto_play_audio": {
@@ -1742,6 +1912,16 @@
               }
             ],
             "title": "Auto Play Audio"
+          },
+          "client_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettingsClientStateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "expected_updated_at": {
             "anyOf": [
@@ -3217,6 +3397,51 @@
           }
         },
         "summary": "Delete Me History"
+      },
+      "patch": {
+        "operationId": "patch_me_history_me_history__history_item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "history_item_id",
+            "required": true,
+            "schema": {
+              "title": "History Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryTimestampPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Me History"
       }
     },
     "/me/history/{history_item_id}/image": {

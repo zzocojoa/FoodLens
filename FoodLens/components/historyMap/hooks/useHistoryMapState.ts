@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import MapView, { Region } from 'react-native-maps';
 import {
     ENABLE_QA_MAP_METRICS,
@@ -37,6 +37,7 @@ export const useHistoryMapState = ({
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [didFitOnce, setDidFitOnce] = useState(false);
     const [activeRegion, setActiveRegion] = useState<Region>(initialRegion || INITIAL_REGION);
+    const activeRegionKeyRef = useRef(buildRegionKey(initialRegion || INITIAL_REGION));
 
     renderCountRef.current += 1;
     debugLog(`[MAP_DEBUG] ===== Render #${renderCountRef.current} =====`);
@@ -75,6 +76,22 @@ export const useHistoryMapState = ({
         metricsRegionEventCountRef,
     });
 
+    useEffect(() => {
+        const nextRegion = initialRegion || INITIAL_REGION;
+        const nextRegionKey = buildRegionKey(nextRegion);
+
+        if (activeRegionKeyRef.current === nextRegionKey) {
+            return;
+        }
+
+        activeRegionKeyRef.current = nextRegionKey;
+        setActiveRegion(nextRegion);
+
+        if (isMapReady && mapRef.current) {
+            mapRef.current.animateToRegion(nextRegion, 250);
+        }
+    }, [initialRegion, isMapReady, mapRef]);
+
     const handleRetry = useCallback(() => {
         setIsMapError(false);
         setErrorType(null);
@@ -108,6 +125,7 @@ export const useHistoryMapState = ({
             }
 
             lastRegionKeyRef.current = regionKey;
+            activeRegionKeyRef.current = regionKey;
             regionChangeCountRef.current += 1;
             debugLog(
                 `[MAP_DEBUG] onRegionChangeComplete #${regionChangeCountRef.current} | lat=${region.latitude.toFixed(4)} lng=${region.longitude.toFixed(4)} delta=${region.latitudeDelta.toFixed(4)}`

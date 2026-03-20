@@ -51,11 +51,37 @@ export interface UserSettings {
   targetLanguage?: string; // Traveler Allergy Card 번역 언어 (auto/null = 위치 기반)
   autoPlayAudio: boolean; // 분석 결과 오디오 자동 재생 여부
   selectedEmoji?: string; // 대시보드 히어로 이모지 (예: '🍎', '🍊')
+  clientState?: SyncedClientState;
 }
 
 export interface UserCoordinates {
   latitude: number;
   longitude: number;
+}
+
+export type SyncedHistoryMode = 'list' | 'map';
+
+export type SyncedHistoryFilter = 'all' | 'ok' | 'avoid' | 'ask';
+
+export interface SyncedMapRegion {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
+export interface SyncedClientState {
+  onboarding?: {
+    completedAt?: string | null;
+  };
+  home?: {
+    selectedDate?: string | null;
+  };
+  history?: {
+    archiveMode?: SyncedHistoryMode;
+    filter?: SyncedHistoryFilter;
+    mapRegion?: SyncedMapRegion | null;
+  };
 }
 
 export type NewUserProfileDefaults = Omit<UserProfile, 'uid' | 'email' | 'createdAt' | 'updatedAt'>;
@@ -69,6 +95,7 @@ export const DEFAULT_USER_PROFILE: NewUserProfileDefaults = {
   settings: {
     language: 'auto',
     autoPlayAudio: false,
+    clientState: {},
   },
 };
 

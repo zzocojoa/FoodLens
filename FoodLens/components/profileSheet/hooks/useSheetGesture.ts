@@ -6,24 +6,47 @@ const CLOSE_THRESHOLD_Y = 120;
 const CLOSE_THRESHOLD_VY = 0.5;
 const SHEET_SPRING_CONFIG = { useNativeDriver: true, friction: 8, tension: 40 } as const;
 
-export const useSheetGesture = (onCloseComplete: () => void) => {
+type UseSheetGestureOptions = {
+    animateOnOpen: boolean;
+    animateOnClose: boolean;
+};
+
+export const useSheetGesture = (
+    onCloseComplete: () => void,
+    options: UseSheetGestureOptions,
+) => {
     const panY = React.useRef(new RNAnimated.Value(SHEET_INITIAL_Y)).current;
 
     const closeSheet = React.useCallback(() => {
+        panY.stopAnimation();
+        if (!options.animateOnClose) {
+            panY.setValue(SHEET_INITIAL_Y);
+            onCloseComplete();
+            return;
+        }
         RNAnimated.timing(panY, {
             toValue: SHEET_INITIAL_Y,
             duration: 250,
             useNativeDriver: true,
-        }).start(onCloseComplete);
-    }, [onCloseComplete, panY]);
+        }).start(({ finished }) => {
+            if (finished) {
+                onCloseComplete();
+            }
+        });
+    }, [onCloseComplete, options.animateOnClose, panY]);
 
     const openSheet = React.useCallback(() => {
+        panY.stopAnimation();
+        if (!options.animateOnOpen) {
+            panY.setValue(0);
+            return;
+        }
         panY.setValue(SHEET_INITIAL_Y);
         RNAnimated.spring(panY, {
             toValue: 0,
             ...SHEET_SPRING_CONFIG,
             }).start();
-    }, [panY]);
+    }, [options.animateOnOpen, panY]);
 
     const panResponder = React.useRef(
         PanResponder.create({

@@ -1,5 +1,6 @@
 import { hasSeenOnboarding, setOnboardingComplete } from './storage';
 import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
+import { buildOnboardingCompletedPatch, updateUserClientState } from './user/clientStateService';
 import type {
   MeAllergiesResponse,
   MeProfileResponse,
@@ -32,6 +33,8 @@ const hasAllergyEvidence = (allergies: MeAllergiesResponse): boolean => {
 };
 
 const hasSettingsEvidence = (settings: MeSettingsResponse): boolean => {
+  const completedAt = settings.client_state?.onboarding?.completed_at;
+  if (typeof completedAt === 'string' && completedAt.trim().length > 0) return true;
   if (settings.auto_play_audio === true) return true;
   if (typeof settings.selected_emoji === 'string' && settings.selected_emoji.trim().length > 0) return true;
   if (typeof settings.target_language === 'string' && settings.target_language.trim().length > 0) return true;
@@ -67,6 +70,17 @@ const resolveFromServer = async (userId: string): Promise<boolean> => {
 
     if (completed) {
       await setOnboardingComplete(userId);
+      const existingCompletedAt = settingsResult.settings.client_state?.onboarding?.completed_at;
+      if (!(typeof existingCompletedAt === 'string' && existingCompletedAt.trim().length > 0)) {
+        try {
+          await updateUserClientState(
+            userId,
+            buildOnboardingCompletedPatch(new Date().toISOString())
+          );
+        } catch {
+          return completed;
+        }
+      }
     }
     return completed;
   } catch (error) {
