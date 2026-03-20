@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import { waitFor } from '@testing-library/react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
@@ -7,6 +8,7 @@ import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 import {
   __resetPhase2SettingsDispatchDedupeForTests,
   dispatchPhase2SyncQueue,
+  enqueueHistoryTimestampPatch,
   enqueuePhase2Sync,
   getPhase2ConflictedOperations,
   resolvePhase2Conflict,
@@ -64,6 +66,7 @@ jest.mock('../phase2Api', () => ({
     putAllergies: jest.fn(),
     putSettings: jest.fn(),
     postHistory: jest.fn(),
+    patchHistoryTimestamp: jest.fn(),
     postMediaUpload: jest.fn(),
     patchHistoryImage: jest.fn(),
     deleteHistory: jest.fn(),
@@ -171,6 +174,15 @@ beforeEach(() => {
       entry: {},
     },
     requestId: 'req-history-a',
+  });
+  mockedPhase2Api.patchHistoryTimestamp.mockResolvedValue({
+    historyItem: {
+      id: 'his_1',
+      user_id: 'usr_a',
+      entry: {},
+      updated_at: '2026-03-20T00:00:00Z',
+    },
+    requestId: 'req-history-patch-a',
   });
   mockedPhase2Api.postMediaUpload.mockResolvedValue({
     asset: {
@@ -487,15 +499,249 @@ describe('phase2SyncQueue', () => {
     expect(queueState[1].state).toBe('synced');
   });
 
+  it('auto-merges settings client_state conflict and retries once', async () => {
+    queueState = [
+      {
+        id: 'op-settings-client-state',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          language: 'ko-KR',
+          auto_play_audio: false,
+          client_state: {
+            home: { selected_date: '2026-03-20' },
+            history: { archive_mode: 'map' },
+          },
+          expected_updated_at: '2026-03-19T00:00:00Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+    mockedPhase2Api.putSettings
+      .mockRejectedValueOnce(
+        new Phase2SyncApiError('Conflict detected.', 'PHASE2_CONFLICT', 409, 'req-settings-conflict', {
+          user_id: 'usr_a',
+          language: 'ko-KR',
+          auto_play_audio: false,
+          client_state: {
+            onboarding: { completed_at: '2026-03-01T00:00:00Z' },
+            history: { filter: 'ok' },
+          },
+          updated_at: '2026-03-20T00:00:00Z',
+        })
+      )
+      .mockResolvedValueOnce({
+        settings: {
+          user_id: 'usr_a',
+          language: 'ko-KR',
+          auto_play_audio: false,
+          client_state: {
+            onboarding: { completed_at: '2026-03-01T00:00:00Z' },
+            home: { selected_date: '2026-03-20' },
+            history: { archive_mode: 'map', filter: 'ok' },
+          },
+          updated_at: '2026-03-20T00:00:01Z',
+        },
+        requestId: 'req-settings-merged',
+      });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putSettings).toHaveBeenCalledTimes(2);
+    expect(mockedPhase2Api.putSettings.mock.calls[1][0]).toEqual({
+      language: 'ko-KR',
+      target_language: undefined,
+      auto_play_audio: false,
+      selected_emoji: undefined,
+      client_state: {
+        onboarding: { completed_at: '2026-03-01T00:00:00Z' },
+        home: { selected_date: '2026-03-20' },
+        history: { archive_mode: 'map', filter: 'ok' },
+      },
+      expected_updated_at: '2026-03-20T00:00:00Z',
+    });
+    expect(queueState[0].state).toBe('synced');
+    expect(queueState[0].requestId).toBe('req-settings-merged');
+  });
+
+  it('retries history timestamp patch once on conflict and then syncs', async () => {
+    queueState = [
+      {
+        id: 'op-history-patch',
+        userId: 'usr_a',
+        entity: 'history',
+        state: 'pending',
+        payload: {
+          kind: 'timestamp_patch',
+          history_item_id: 'analysis_3',
+          timestamp: '2026-03-21T00:00:00.000Z',
+          expected_updated_at: '2026-03-20T00:00:00Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+    mockedPhase2Api.patchHistoryTimestamp
+      .mockRejectedValueOnce(
+        new Phase2SyncApiError('Conflict detected.', 'PHASE2_CONFLICT', 409, 'req-history-conflict', {
+          id: 'his_3',
+          user_id: 'usr_a',
+          entry: {
+            id: 'analysis_3',
+            foodName: 'Soup',
+            safetyStatus: 'SAFE',
+            ingredients: [],
+            timestamp: '2026-03-20T00:00:00.000Z',
+          },
+          updated_at: '2026-03-20T00:00:05Z',
+        })
+      )
+      .mockResolvedValueOnce({
+        historyItem: {
+          id: 'his_3',
+          user_id: 'usr_a',
+          entry: {
+            id: 'analysis_3',
+            foodName: 'Soup',
+            safetyStatus: 'SAFE',
+            ingredients: [],
+            timestamp: '2026-03-21T00:00:00.000Z',
+          },
+          updated_at: '2026-03-20T00:00:06Z',
+        },
+        requestId: 'req-history-patch-merged',
+      });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.patchHistoryTimestamp).toHaveBeenCalledTimes(2);
+    expect(mockedPhase2Api.patchHistoryTimestamp.mock.calls[1][0]).toEqual({
+      historyItemId: 'analysis_3',
+      timestamp: '2026-03-21T00:00:00.000Z',
+      expected_updated_at: '2026-03-20T00:00:05Z',
+    });
+    expect(queueState[0].state).toBe('synced');
+  });
+
+  it('preserves newer timestamp patch queued while previous patch is sending', async () => {
+    type HistoryPatchResult = {
+      historyItem: {
+        id: string;
+        user_id: string;
+        entry: Record<string, unknown>;
+        updated_at: string;
+      };
+      requestId: string;
+    };
+
+    queueState = [
+      {
+        id: 'op-history-patch-sending',
+        userId: 'usr_a',
+        entity: 'history',
+        state: 'pending',
+        payload: {
+          kind: 'timestamp_patch',
+          history_item_id: 'analysis_4',
+          timestamp: '2026-03-21T00:00:00.000Z',
+          expected_updated_at: '2026-03-20T00:00:00Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+
+    let resolveFirstPatch: ((value: HistoryPatchResult) => void) | undefined;
+    let resolveSecondPatch: ((value: HistoryPatchResult) => void) | undefined;
+
+    mockedPhase2Api.patchHistoryTimestamp
+      .mockImplementationOnce(
+        () =>
+          new Promise<HistoryPatchResult>((resolve) => {
+            resolveFirstPatch = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<HistoryPatchResult>((resolve) => {
+            resolveSecondPatch = resolve;
+          })
+      );
+
+    const firstDispatch = dispatchPhase2SyncQueue();
+
+    await waitFor(() => {
+      expect(queueState[0].state).toBe('sending');
+      expect(mockedPhase2Api.patchHistoryTimestamp).toHaveBeenCalledTimes(1);
+    });
+
+    const secondOperationId = await enqueueHistoryTimestampPatch('usr_a', {
+      kind: 'timestamp_patch',
+      history_item_id: 'analysis_4',
+      timestamp: '2026-03-22T00:00:00.000Z',
+      expected_updated_at: '2026-03-20T00:00:06Z',
+    });
+
+    expect(queueState.some((item) => item.id === secondOperationId && item.state === 'pending')).toBe(true);
+    expect(queueState.some((item) => item.id === 'op-history-patch-sending' && item.state === 'sending')).toBe(true);
+
+    expect(resolveFirstPatch).toBeDefined();
+    const flushFirstPatch = resolveFirstPatch as (value: HistoryPatchResult) => void;
+    flushFirstPatch({
+      historyItem: {
+        id: 'his_4',
+        user_id: 'usr_a',
+        entry: {},
+        updated_at: '2026-03-20T00:00:06Z',
+      },
+      requestId: 'req-history-patch-first',
+    });
+    await firstDispatch;
+
+    await waitFor(() => {
+      expect(mockedPhase2Api.patchHistoryTimestamp).toHaveBeenCalledTimes(2);
+      expect(queueState.some((item) => item.id === secondOperationId)).toBe(true);
+    });
+
+    expect(resolveSecondPatch).toBeDefined();
+    const flushSecondPatch = resolveSecondPatch as (value: HistoryPatchResult) => void;
+    flushSecondPatch({
+      historyItem: {
+        id: 'his_4',
+        user_id: 'usr_a',
+        entry: {},
+        updated_at: '2026-03-20T00:00:07Z',
+      },
+      requestId: 'req-history-patch-second',
+    });
+
+    await waitFor(() => {
+      const secondOperation = queueState.find((item) => item.id === secondOperationId);
+      expect(secondOperation?.state).toBe('synced');
+      expect(secondOperation?.requestId).toBe('req-history-patch-second');
+    });
+  });
+
   it('uploads local/data history images first and dispatches image_asset_id', async () => {
     const historyOp: Phase2SyncOperation = {
       id: 'op-history-a',
       userId: 'usr_a',
       entity: 'history',
       payload: {
-        id: 'analysis_1',
-        foodName: 'Sushi',
-        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        kind: 'create',
+        entry: {
+          id: 'analysis_1',
+          foodName: 'Sushi',
+          imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        },
       },
       idempotencyKey: 'analysis_1',
       attempts: 0,
@@ -560,9 +806,12 @@ describe('phase2SyncQueue', () => {
       userId: 'usr_a',
       entity: 'history',
       payload: {
-        id: 'analysis_2',
-        foodName: 'Pasta',
-        imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        kind: 'create',
+        entry: {
+          id: 'analysis_2',
+          foodName: 'Pasta',
+          imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        },
       },
       idempotencyKey: 'analysis_2',
       attempts: 0,

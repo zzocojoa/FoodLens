@@ -63,7 +63,27 @@ export type MeSettingsResponse = {
   target_language?: string | null;
   auto_play_audio?: boolean;
   selected_emoji?: string | null;
+  client_state?: MeSettingsClientState;
   updated_at?: string;
+};
+
+export type MeSettingsClientState = {
+  onboarding?: {
+    completed_at?: string | null;
+  };
+  home?: {
+    selected_date?: string | null;
+  };
+  history?: {
+    archive_mode?: 'list' | 'map';
+    filter?: 'all' | 'ok' | 'avoid' | 'ask';
+    map_region?: {
+      latitude: number;
+      longitude: number;
+      latitudeDelta: number;
+      longitudeDelta: number;
+    } | null;
+  };
 };
 
 export type MeHistoryItemResponse = {
@@ -74,6 +94,22 @@ export type MeHistoryItemResponse = {
   created_at?: string;
   updated_at?: string;
 };
+
+export type Phase2HistoryCreatePayload = {
+  kind: 'create';
+  entry: Record<string, unknown>;
+};
+
+export type Phase2HistoryTimestampPatchPayload = {
+  kind: 'timestamp_patch';
+  history_item_id: string;
+  timestamp: string;
+  expected_updated_at?: string;
+};
+
+export type Phase2HistoryPayload =
+  | Phase2HistoryCreatePayload
+  | Phase2HistoryTimestampPatchPayload;
 
 export type MediaUploadScope = 'profile' | 'history';
 

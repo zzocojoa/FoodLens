@@ -1,6 +1,10 @@
 import { setOnboardingComplete } from '@/services/storage';
 import { UserService } from '@/services/userService';
 import { getCurrentUserId } from '@/services/auth/currentUser';
+import {
+  buildOnboardingCompletedPatch,
+  updateUserClientState,
+} from '@/services/user/clientStateService';
 import type { CompletePayload } from '../types/onboarding.types';
 
 export const completeOnboardingProfile = async (payload: CompletePayload): Promise<void> => {
@@ -15,6 +19,10 @@ export const completeOnboardingProfile = async (payload: CompletePayload): Promi
       dietaryRestrictions: [],
     },
   });
+  await updateUserClientState(
+    currentUserId,
+    buildOnboardingCompletedPatch(new Date().toISOString())
+  );
 
   await setOnboardingComplete(currentUserId);
 };

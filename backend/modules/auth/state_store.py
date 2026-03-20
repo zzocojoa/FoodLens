@@ -226,13 +226,14 @@ class PostgresAuthProjectionStore:
                         cursor.execute(
                             (
                                 f"INSERT INTO {self._table('settings')} "
-                                "(user_id,language,target_language,auto_play_audio,selected_emoji,updated_at) "
-                                "VALUES (%s,%s,%s,%s,%s,%s::timestamptz) "
+                                "(user_id,language,target_language,auto_play_audio,selected_emoji,client_state,updated_at) "
+                                "VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::timestamptz) "
                                 "ON CONFLICT (user_id) DO UPDATE SET "
                                 "language=EXCLUDED.language,"
                                 "target_language=EXCLUDED.target_language,"
                                 "auto_play_audio=EXCLUDED.auto_play_audio,"
                                 "selected_emoji=EXCLUDED.selected_emoji,"
+                                "client_state=EXCLUDED.client_state,"
                                 "updated_at=EXCLUDED.updated_at"
                             ),
                             (
@@ -241,6 +242,7 @@ class PostgresAuthProjectionStore:
                                 row.get("target_language"),
                                 bool(row.get("auto_play_audio")),
                                 row.get("selected_emoji"),
+                                json.dumps(row.get("client_state") or {}, ensure_ascii=False),
                                 row.get("updated_at"),
                             ),
                         )
@@ -362,9 +364,13 @@ class PostgresAuthProjectionStore:
                     "target_language TEXT NULL,"
                     "auto_play_audio BOOLEAN NOT NULL DEFAULT FALSE,"
                     "selected_emoji TEXT NULL,"
+                    "client_state JSONB NOT NULL DEFAULT '{}'::jsonb,"
                     "updated_at TIMESTAMPTZ NOT NULL"
                     ")"
                 )
+            )
+            cursor.execute(
+                f"ALTER TABLE {settings} ADD COLUMN IF NOT EXISTS client_state JSONB NOT NULL DEFAULT '{{}}'::jsonb"
             )
             cursor.execute(
                 (

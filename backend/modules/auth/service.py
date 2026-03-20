@@ -163,6 +163,139 @@ def _normalize_resolved_locale(
     return fallback_locale or "en-US"
 
 
+def _is_finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _normalize_client_state(value: dict[str, object] | None) -> dict[str, object]:
+    if not value:
+        return {}
+
+    payload: dict[str, object] = {}
+
+    raw_onboarding = value.get("onboarding")
+    if isinstance(raw_onboarding, dict):
+        onboarding: dict[str, object] = {}
+        if "completed_at" in raw_onboarding:
+            completed_at = raw_onboarding.get("completed_at")
+            if completed_at is None:
+                onboarding["completed_at"] = None
+            elif isinstance(completed_at, str):
+                normalized_completed_at = completed_at.strip()
+                onboarding["completed_at"] = normalized_completed_at or None
+            else:
+                raise AuthServiceError(
+                    code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                    message="client_state.onboarding.completed_at must be a string or null.",
+                    status_code=400,
+                )
+        if onboarding:
+            payload["onboarding"] = onboarding
+
+    raw_home = value.get("home")
+    if isinstance(raw_home, dict):
+        home: dict[str, object] = {}
+        if "selected_date" in raw_home:
+            selected_date = raw_home.get("selected_date")
+            if selected_date is None:
+                home["selected_date"] = None
+            elif isinstance(selected_date, str):
+                normalized_selected_date = selected_date.strip()
+                home["selected_date"] = normalized_selected_date or None
+            else:
+                raise AuthServiceError(
+                    code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                    message="client_state.home.selected_date must be a string or null.",
+                    status_code=400,
+                )
+        if home:
+            payload["home"] = home
+
+    raw_history = value.get("history")
+    if isinstance(raw_history, dict):
+        history: dict[str, object] = {}
+        if "archive_mode" in raw_history:
+            archive_mode = raw_history.get("archive_mode")
+            if archive_mode is None:
+                history["archive_mode"] = None
+            elif isinstance(archive_mode, str) and archive_mode in {"list", "map"}:
+                history["archive_mode"] = archive_mode
+            else:
+                raise AuthServiceError(
+                    code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                    message="client_state.history.archive_mode must be 'list', 'map', or null.",
+                    status_code=400,
+                )
+        if "filter" in raw_history:
+            raw_filter = raw_history.get("filter")
+            if raw_filter is None:
+                history["filter"] = None
+            elif isinstance(raw_filter, str) and raw_filter in {"all", "ok", "avoid", "ask"}:
+                history["filter"] = raw_filter
+            else:
+                raise AuthServiceError(
+                    code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                    message="client_state.history.filter must be one of all|ok|avoid|ask or null.",
+                    status_code=400,
+                )
+        if "map_region" in raw_history:
+            map_region = raw_history.get("map_region")
+            if map_region is None:
+                history["map_region"] = None
+            elif isinstance(map_region, dict):
+                latitude = map_region.get("latitude")
+                longitude = map_region.get("longitude")
+                latitude_delta = map_region.get("latitudeDelta")
+                longitude_delta = map_region.get("longitudeDelta")
+                if (
+                    not _is_finite_number(latitude)
+                    or not _is_finite_number(longitude)
+                    or not _is_finite_number(latitude_delta)
+                    or not _is_finite_number(longitude_delta)
+                ):
+                    raise AuthServiceError(
+                        code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                        message="client_state.history.map_region must include numeric coordinates and deltas.",
+                        status_code=400,
+                    )
+                history["map_region"] = {
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "latitudeDelta": float(latitude_delta),
+                    "longitudeDelta": float(longitude_delta),
+                }
+            else:
+                raise AuthServiceError(
+                    code="AUTH_SETTINGS_CLIENT_STATE_INVALID",
+                    message="client_state.history.map_region must be an object or null.",
+                    status_code=400,
+                )
+        if history:
+            payload["history"] = history
+
+    return payload
+
+
+def _merge_client_state(
+    current: dict[str, object],
+    patch: dict[str, object],
+) -> dict[str, object]:
+    if not patch:
+        return _normalize_client_state(current)
+
+    merged = _normalize_client_state(current)
+    normalized_patch = _normalize_client_state(patch)
+    for section in ("onboarding", "home", "history"):
+        patch_section = normalized_patch.get(section)
+        if not isinstance(patch_section, dict):
+            continue
+        current_section = merged.get(section)
+        next_section = dict(current_section) if isinstance(current_section, dict) else {}
+        next_section.update(patch_section)
+        merged[section] = next_section
+    return _normalize_client_state(merged)
+
+
 class AuthServiceError(Exception):
     def __init__(
         self,
@@ -231,6 +364,7 @@ class UserSettingsProfile:
     target_language: str | None = None
     auto_play_audio: bool = False
     selected_emoji: str | None = None
+    client_state: dict[str, object] = field(default_factory=dict)
     updated_at: datetime = field(default_factory=_utc_now)
 
 
@@ -1446,6 +1580,7 @@ class InMemoryAuthSessionService:
         target_language: str | None,
         auto_play_audio: bool | None,
         selected_emoji: str | None,
+        client_state: dict[str, object] | None,
         expected_updated_at: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
@@ -1483,6 +1618,8 @@ class InMemoryAuthSessionService:
             if selected_emoji is not None:
                 normalized_emoji = selected_emoji.strip()
                 settings.selected_emoji = normalized_emoji or None
+            if client_state is not None:
+                settings.client_state = _merge_client_state(settings.client_state, client_state)
             settings.updated_at = _utc_now()
             payload = self._serialize_settings(settings)
             self._persist_state_unlocked()
@@ -1580,6 +1717,74 @@ class InMemoryAuthSessionService:
 
             self._persist_state_unlocked()
             return True
+
+    def patch_history_timestamp(
+        self,
+        *,
+        user_id: str,
+        history_item_id: str,
+        timestamp: str,
+        expected_updated_at: str | None = None,
+    ) -> dict[str, object]:
+        with self._lock:
+            records = self._history_by_user_id.get(user_id)
+            if records is None:
+                raise AuthServiceError(
+                    code="AUTH_PROFILE_NOT_FOUND",
+                    message="Profile not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            normalized_history_id = history_item_id.strip()
+            normalized_timestamp = timestamp.strip()
+            if not normalized_history_id or not normalized_timestamp:
+                raise AuthServiceError(
+                    code="AUTH_HISTORY_INVALID_REQUEST",
+                    message="history_item_id and timestamp are required.",
+                    status_code=400,
+                    user_id=user_id,
+                )
+
+            target: UserHistoryRecord | None = None
+            for item in records:
+                entry_id = item.entry.get("id") if isinstance(item.entry, dict) else None
+                if item.history_id == normalized_history_id or entry_id == normalized_history_id:
+                    target = item
+                    break
+
+            if target is None:
+                raise AuthServiceError(
+                    code="AUTH_HISTORY_NOT_FOUND",
+                    message="History item not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            try:
+                normalized_timestamp = _to_iso8601(_from_iso8601(normalized_timestamp))
+            except Exception as exc:
+                raise AuthServiceError(
+                    code="AUTH_HISTORY_INVALID_TIMESTAMP",
+                    message="timestamp must be an ISO-8601 UTC timestamp.",
+                    status_code=400,
+                    user_id=user_id,
+                ) from exc
+
+            self._assert_expected_updated_at(
+                user_id=user_id,
+                entity="history",
+                expected_updated_at=expected_updated_at,
+                server_payload=self._serialize_history_item(target),
+            )
+
+            next_entry = dict(target.entry)
+            next_entry["timestamp"] = normalized_timestamp
+            target.entry = next_entry
+            target.updated_at = _utc_now()
+            payload = self._serialize_history_item(target)
+            self._persist_state_unlocked()
+            return payload
 
     def register_media_asset(
         self,
@@ -2028,6 +2233,7 @@ class InMemoryAuthSessionService:
             "target_language": settings.target_language,
             "auto_play_audio": settings.auto_play_audio,
             "selected_emoji": settings.selected_emoji,
+            "client_state": _normalize_client_state(settings.client_state),
             "updated_at": _to_iso8601(settings.updated_at),
         }
 

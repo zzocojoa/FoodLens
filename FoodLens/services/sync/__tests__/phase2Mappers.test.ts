@@ -420,6 +420,42 @@ describe('phase2Mappers', () => {
     expect(merged.map((item) => item.id).sort()).toEqual(['rec_local_pending', 'rec_remote']);
   });
 
+  it('keeps local timestamp while timestamp_patch is still pending', () => {
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        timestamp: new Date('2026-02-26T03:00:00Z'),
+        updatedAt: '2026-02-26T03:00:00Z',
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        updated_at: '2026-02-25T03:00:00Z',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote, {
+      preserveLocalTimestampIds: new Set(['rec_1']),
+    });
+    expect(merged).toHaveLength(1);
+    expect(merged[0].foodName).toBe('Remote');
+    expect(merged[0].timestamp.toISOString()).toBe('2026-02-26T03:00:00.000Z');
+    expect(merged[0].updatedAt).toBe('2026-02-26T03:00:00Z');
+  });
+
   it('builds profile write payload for queue dispatch', () => {
     const profile = buildDefaultProfile('usr_q');
     profile.name = 'Queue User';

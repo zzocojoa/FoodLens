@@ -8,6 +8,11 @@ import {
 import { IMAGE_DIR } from '@/services/imageStorage.helpers';
 import { buildDefaultProfile } from '@/services/user/profileFactory';
 import type { AllergySeverity } from '@/features/profile/types/profile.types';
+import {
+  buildRemoteClientState,
+  mergeSyncedClientState,
+  parseRemoteClientState,
+} from './clientState';
 import type {
   MeAllergiesResponse,
   MeHistoryItemResponse,
@@ -325,6 +330,10 @@ export const mergeRemoteUserSnapshot = (
       input.settings?.selected_emoji === undefined
         ? fallback.settings.selectedEmoji
         : input.settings.selected_emoji || undefined,
+    clientState: mergeSyncedClientState(
+      fallback.settings.clientState,
+      parseRemoteClientState(input.settings?.client_state)
+    ),
   };
 
   next.createdAt = input.profile?.created_at || fallback.createdAt;
@@ -370,6 +379,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
     target_language?: string | null;
     auto_play_audio: boolean;
     selected_emoji?: string | null;
+    client_state?: MeSettingsResponse['client_state'];
     expected_updated_at?: string;
   };
 } => {
@@ -411,6 +421,7 @@ export const buildProfileWritePayload = (profile: UserProfile): {
       target_language: normalizedLanguageSettings.targetLanguage || null,
       auto_play_audio: !!profile.settings.autoPlayAudio,
       selected_emoji: profile.settings.selectedEmoji || null,
+      client_state: buildRemoteClientState(profile.settings.clientState),
       expected_updated_at: profile.syncVersions?.settingsUpdatedAt,
     },
   };
@@ -468,15 +479,20 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
     imageRenderUrl: toStringOrNull(entry['image_render_url']) ?? undefined,
     location: normalizeLocation(entry['location']),
     timestamp: parseTimestamp(entry['timestamp']),
+    updatedAt: item.updated_at || undefined,
   };
 };
 
 export const mergeRemoteHistory = (
   current: AnalysisRecord[],
   remoteItems: MeHistoryItemResponse[],
-  options: { keepLocalOnlyIds?: Set<string> } = {}
+  options: {
+    keepLocalOnlyIds?: Set<string>;
+    preserveLocalTimestampIds?: Set<string>;
+  } = {}
 ): AnalysisRecord[] => {
   const keepLocalOnlyIds = options.keepLocalOnlyIds ?? new Set<string>();
+  const preserveLocalTimestampIds = options.preserveLocalTimestampIds ?? new Set<string>();
   const parsed = remoteItems
     .map((item) => deserializeHistoryItem(item))
     .filter((item): item is AnalysisRecord => item !== null);
@@ -503,9 +519,12 @@ export const mergeRemoteHistory = (
 
     const keepLocalImage = isStableManagedLocalHistoryImage(existing.imageUri);
     const keepExistingRemoteImage = shouldKeepExistingRemoteHistoryImage(existing, item);
+    const preserveLocalTimestamp = preserveLocalTimestampIds.has(item.id);
     mergedById.set(item.id, {
       ...existing,
       ...item,
+      timestamp: preserveLocalTimestamp ? existing.timestamp : item.timestamp,
+      updatedAt: preserveLocalTimestamp ? existing.updatedAt : item.updatedAt,
       imageUri: keepLocalImage || keepExistingRemoteImage ? existing.imageUri : item.imageUri,
       imageRenderUrl: keepExistingRemoteImage ? existing.imageRenderUrl || existing.imageUri : item.imageRenderUrl,
     });
@@ -539,6 +558,7 @@ export const normalizeLegacyProfileForUser = (userId: string, profile: UserProfi
       targetLanguage: normalizedLegacyLanguageSettings.targetLanguage || undefined,
       autoPlayAudio: !!profile.settings?.autoPlayAudio,
       selectedEmoji: profile.settings?.selectedEmoji || undefined,
+      clientState: mergeSyncedClientState(undefined, profile.settings?.clientState),
     },
     updatedAt: new Date().toISOString(),
   };
