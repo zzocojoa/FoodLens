@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 import type { PermissionResponse } from 'expo-camera';
 import type { CameraView } from 'expo-camera';
+import { PermissionStatus } from 'expo-modules-core';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '@/services/sync/phase2SyncQueue';
 import { updateUserClientState } from '@/services/user/clientStateService';
@@ -54,7 +55,7 @@ describe('scan local-only flows', () => {
       granted: false,
       canAskAgain: false,
       expires: 'never',
-      status: 'denied',
+      status: PermissionStatus.DENIED,
     };
     const requestPermission = jest.fn<Promise<PermissionResponse>, []>().mockResolvedValue(permission);
     const { result } = renderHook(() =>
