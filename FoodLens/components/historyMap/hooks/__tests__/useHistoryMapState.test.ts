@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { renderHook, waitFor } from '@testing-library/react-native';
 import * as Location from 'expo-location';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '@/services/sync/phase2SyncQueue';
 import { updateUserClientState } from '@/services/user/clientStateService';
@@ -39,8 +39,9 @@ jest.mock('../../utils/historyMapUtils', () => ({
 }));
 
 jest.mock('react-native-maps', () => {
-  const React = require('react');
-  const MapView = React.forwardRef(() => null);
+  const mockReact = jest.requireActual('react') as typeof import('react');
+  const MapView = mockReact.forwardRef(() => null);
+  MapView.displayName = 'MockMapView';
   return {
     __esModule: true,
     default: MapView,
