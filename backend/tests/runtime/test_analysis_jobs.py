@@ -35,10 +35,14 @@ class _AsyncJobAnalyst:
     def analyze_food_job_json(self, *_args, **_kwargs):
         return {
             "foodName": "Bibimbap",
+            "foodName_en": "Bibimbap",
+            "foodName_ko": "비빔밥",
             "foodOrigin": "korean",
             "safetyStatus": "SAFE",
             "ingredients": [{"name": "Rice", "bbox": [0, 0, 10, 10], "isAllergen": False}],
             "raw_result": "Safe to eat.",
+            "raw_result_en": "Safe to eat.",
+            "raw_result_ko": "안전하게 먹을 수 있습니다.",
             "used_model": self.model_name,
             "prompt_version": "food-v3.2-context-engineered",
         }
@@ -104,6 +108,8 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["status"], "completed")
         self.assertEqual(terminal_payload["request_id"], "req-analysis-job-1")
         self.assertEqual(terminal_payload["foodName"], "Bibimbap")
+        self.assertEqual(terminal_payload["foodName_en"], "Bibimbap")
+        self.assertEqual(terminal_payload["foodName_ko"], "비빔밥")
         self.assertEqual(terminal_payload["used_model"], "gemini-2.0-flash")
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
         self.assertIn("latency_ms_by_stage", terminal_payload)

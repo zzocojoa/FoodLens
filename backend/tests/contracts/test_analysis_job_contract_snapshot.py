@@ -38,8 +38,13 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
                 "finalizing": 3,
             },
             "foodName": "Bibimbap",
+            "foodName_en": "Bibimbap",
+            "foodName_ko": "비빔밥",
             "safetyStatus": "SAFE",
             "ingredients": [],
+            "raw_result": "Safe to eat.",
+            "raw_result_en": "Safe to eat.",
+            "raw_result_ko": "안전하게 먹을 수 있습니다.",
         }
 
         normalized = AnalysisJobStatusResponseContract.model_validate(payload).model_dump(exclude_none=True)

@@ -131,6 +131,8 @@ describe('analysisJobs', () => {
           updated_at: '2026-03-17T00:00:02Z',
           poll_after_ms: 0,
           foodName: 'Bibimbap',
+          foodName_en: 'Bibimbap',
+          foodName_ko: '비빔밥',
           safetyStatus: 'SAFE',
           ingredients: [],
         },
@@ -150,6 +152,8 @@ describe('analysisJobs', () => {
     });
 
     expect(result.foodName).toBe('Bibimbap');
+    expect(result.foodName_en).toBe('Bibimbap');
+    expect(result.foodName_ko).toBe('비빔밥');
     expect(statuses).toEqual(['queued', 'queued', 'completed']);
     expect(pendingStoreModule.savePendingAnalysisJob).toHaveBeenCalled();
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
@@ -210,6 +214,8 @@ describe('analysisJobs', () => {
           updated_at: '2026-03-17T00:00:02Z',
           poll_after_ms: 0,
           foodName: 'Salad',
+          foodName_en: 'Salad',
+          foodName_ko: '샐러드',
           safetyStatus: 'SAFE',
           ingredients: [],
         },
@@ -233,6 +239,8 @@ describe('analysisJobs', () => {
     });
 
     expect(result.foodName).toBe('Salad');
+    expect(result.foodName_en).toBe('Salad');
+    expect(result.foodName_ko).toBe('샐러드');
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
   });
 });
