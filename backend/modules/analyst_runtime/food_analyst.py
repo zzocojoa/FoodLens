@@ -286,6 +286,59 @@ class FoodAnalyst:
             retry_stats=FoodAnalyst._retry_stats,
         )
 
+    def _build_food_generation_config(self, response_schema: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 4096,
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+
+    def _build_food_analysis_request(
+        self,
+        allergy_info: str,
+        iso_current_country: str,
+        response_schema: dict[str, Any],
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        normalized_allergens = format_allergens_for_prompt(allergy_info)
+        prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
+        generation_config = self._build_food_generation_config(response_schema)
+        safety_settings = build_default_safety_settings()
+        return prompt, generation_config, safety_settings
+
+    def _build_food_fallback(self, user_message: str) -> dict[str, Any]:
+        fallback = self._get_safe_fallback_response(user_message)
+        fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+        fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+        return fallback
+
+    def _finalize_food_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+        result["prompt_version"] = ANALYSIS_PROMPT_VERSION
+        return result
+
+    def _run_food_analysis(
+        self,
+        food_image: Image.Image,
+        allergy_info: str,
+        iso_current_country: str,
+        response_schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        prompt, generation_config, safety_settings = self._build_food_analysis_request(
+            allergy_info,
+            iso_current_country,
+            response_schema,
+        )
+        response = self._generate_food_analysis_response(
+            food_image,
+            prompt,
+            generation_config,
+            safety_settings,
+        )
+        return self._parse_ai_response(response.text)
+
     def _build_label_prompt(self, allergy_info: str, locale: str, iso_current_country: str) -> str:
         """Constructs the nutrition label OCR prompt."""
         return build_label_prompt(allergy_info, locale, iso_current_country)
@@ -475,47 +528,21 @@ class FoodAnalyst:
         ingredients, and food name, considering the user's allergy info.
         Also generates a translated allergy card based on the current country.
         """
-        # Normalize allergen input for consistent AI judgment
-        normalized_allergens = format_allergens_for_prompt(allergy_info)
-        prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
-        
-        # Define Schema for Structured Output (Strict Mode)
         response_schema = build_food_response_schema()
 
-        # Configure generation and safety
-        generation_config = {
-            "temperature": 0.2,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 4096,
-            "response_mime_type": "application/json",
-            "response_schema": response_schema,
-        }
-
-        # Safety Settings (P2: Balanced approach)
-        # - BLOCK_LOW_AND_ABOVE: Block most inappropriate content
-        # - Second layer filtering at app level via _sanitize_response()
-        safety_settings = build_default_safety_settings()
-
         try:
-            response = self._generate_food_analysis_response(
+            result = self._run_food_analysis(
                 food_image,
-                prompt,
-                generation_config,
-                safety_settings,
+                allergy_info,
+                iso_current_country,
+                response_schema,
             )
-            result = self._parse_ai_response(response.text)
             # result = self._strip_box2d(result)  # ENABLED: Keep bbox data from v3.0 prompt
             print(f"AI Response JSON: {json.dumps(result, indent=2)}")  # Debug log
             
             result = self._enrich_with_nutrition(result)
             result = self._sanitize_response(result)  # P2: App-level content filter
-            
-            # Attach model info for debugging/verification
-            result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
-            result["prompt_version"] = ANALYSIS_PROMPT_VERSION
-            
-            return result
+            return self._finalize_food_result(result)
             
         except Exception as e:
             # Log internal error (NOT exposed to user)
@@ -532,45 +559,24 @@ class FoodAnalyst:
             else:
                 user_msg = "이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요."
             
-            # Return unified fallback schema (reuse existing method)
-            fallback = self._get_safe_fallback_response(user_msg)
-            fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
-            fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
-            return fallback
+            return self._build_food_fallback(user_msg)
 
     def analyze_food_job_json(self, food_image: Image.Image, allergy_info: str, iso_current_country: str) -> dict:
-        normalized_allergens = format_allergens_for_prompt(allergy_info)
-        prompt = self._build_analysis_prompt(normalized_allergens, iso_current_country)
         response_schema = build_food_job_response_schema()
-        generation_config = {
-            "temperature": 0.2,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 4096,
-            "response_mime_type": "application/json",
-            "response_schema": response_schema,
-        }
-        safety_settings = build_default_safety_settings()
 
         try:
-            response = self._generate_food_analysis_response(
+            result = self._run_food_analysis(
                 food_image,
-                prompt,
-                generation_config,
-                safety_settings,
+                allergy_info,
+                iso_current_country,
+                response_schema,
             )
-            result = self._parse_ai_response(response.text)
             result = self._sanitize_response(result)
-            result["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
-            result["prompt_version"] = ANALYSIS_PROMPT_VERSION
-            return result
+            return self._finalize_food_result(result)
         except Exception as error:
             error_msg = str(error)
             print(f"[Internal Log] Async analysis error: {error_msg}")
-            fallback = self._get_safe_fallback_response("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
-            fallback["used_model"] = FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
-            fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
-            return fallback
+            return self._build_food_fallback("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
 
     def analyze_barcode_ingredients(
         self,
