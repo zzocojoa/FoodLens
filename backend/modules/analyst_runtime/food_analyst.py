@@ -2,6 +2,7 @@ import os
 import atexit
 import time
 import logging
+from typing import Any
 from google.api_core.exceptions import ResourceExhausted
 import vertexai
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
