@@ -40,6 +40,11 @@ const resolveSystemColorScheme = (colorScheme: ColorSchemeName): 'light' | 'dark
 
 const readDeviceColorScheme = (): 'light' | 'dark' => resolveSystemColorScheme(Appearance.getColorScheme());
 
+const applyThemePreference = (theme: ThemeType): 'light' | 'dark' => {
+  Appearance.setColorScheme(theme === 'system' ? null : theme);
+  return readDeviceColorScheme();
+};
+
 const loadSavedTheme = async (): Promise<ThemeType | null> => SafeStorage.get<ThemeType | null>(THEME_KEY, null);
 
 const persistTheme = async (theme: ThemeType): Promise<void> => {
@@ -57,8 +62,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const savedTheme = await loadSavedTheme();
         if (savedTheme) {
           setThemeState(savedTheme);
+          setDeviceColorScheme(applyThemePreference(savedTheme));
+          return;
         }
-        setDeviceColorScheme(readDeviceColorScheme());
+        setDeviceColorScheme(applyThemePreference('system'));
       } catch (e) {
         console.error('Failed to load theme preference', {
           error: e instanceof Error ? e.message : String(e),
@@ -93,6 +100,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: ThemeType): void => {
     setThemeState(newTheme);
+    setDeviceColorScheme(applyThemePreference(newTheme));
     void persistTheme(newTheme).catch((e) => {
       console.error('Failed to save theme preference', {
         theme: newTheme,
