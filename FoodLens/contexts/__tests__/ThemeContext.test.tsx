@@ -32,6 +32,11 @@ describe('ThemeContext', () => {
     mockedSafeStorage.get.mockResolvedValue('system');
     mockedSafeStorage.set.mockResolvedValue(undefined);
     jest.spyOn(Appearance, 'getColorScheme').mockImplementation(() => mockCurrentColorScheme);
+    jest.spyOn(Appearance, 'setColorScheme').mockImplementation((colorScheme) => {
+      if (colorScheme === 'dark' || colorScheme === 'light') {
+        mockCurrentColorScheme = colorScheme;
+      }
+    });
     jest.spyOn(Appearance, 'addChangeListener').mockImplementation((listener) => {
       mockAppearanceListener = listener as MockAppearanceListener;
       return {
@@ -97,6 +102,7 @@ describe('ThemeContext', () => {
       result.current.setTheme('dark');
     });
 
+    expect(Appearance.setColorScheme).toHaveBeenLastCalledWith('dark');
     expect(result.current.colorScheme).toBe('dark');
 
     act(() => {
@@ -105,6 +111,31 @@ describe('ThemeContext', () => {
       mockAppStateListener?.('active');
     });
 
+    expect(result.current.colorScheme).toBe('dark');
+  });
+
+  it('reapplies native system mode when switching back to system', async () => {
+    mockCurrentColorScheme = 'dark';
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.colorScheme).toBe('dark');
+    });
+
+    act(() => {
+      result.current.setTheme('light');
+    });
+
+    expect(Appearance.setColorScheme).toHaveBeenLastCalledWith('light');
+    expect(result.current.colorScheme).toBe('light');
+
+    act(() => {
+      mockCurrentColorScheme = 'dark';
+      result.current.setTheme('system');
+    });
+
+    expect(Appearance.setColorScheme).toHaveBeenLastCalledWith(null);
+    expect(result.current.theme).toBe('system');
     expect(result.current.colorScheme).toBe('dark');
   });
 });

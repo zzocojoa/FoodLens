@@ -46,6 +46,11 @@ const persistTheme = async (theme: ThemeType): Promise<void> => {
   await SafeStorage.set(THEME_KEY, theme);
 };
 
+const applyThemePreference = (theme: ThemeType): 'light' | 'dark' => {
+  Appearance.setColorScheme(theme === 'system' ? null : theme);
+  return readSystemColorScheme();
+};
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeType>('system');
   const [systemColorScheme, setSystemColorScheme] = useState<'light' | 'dark'>(readSystemColorScheme());
@@ -57,7 +62,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const savedTheme = await loadSavedTheme();
         if (savedTheme) {
           setThemeState(savedTheme);
+          setSystemColorScheme(applyThemePreference(savedTheme));
+          return;
         }
+        setSystemColorScheme(applyThemePreference('system'));
       } catch (e) {
         console.error('Failed to load theme preference', {
           error: e instanceof Error ? e.message : String(e),
@@ -92,6 +100,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: ThemeType): void => {
     setThemeState(newTheme);
+    setSystemColorScheme(applyThemePreference(newTheme));
     void persistTheme(newTheme).catch((e) => {
       console.error('Failed to save theme preference', {
         theme: newTheme,
