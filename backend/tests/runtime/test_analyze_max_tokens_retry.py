@@ -76,6 +76,37 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             self.assertEqual(mock_generate.call_count, 1)
             self.assertEqual(result["foodName"], "OneShot")
 
+    def test_analyze_food_job_retries_once_when_finish_reason_is_max_tokens(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_retry_and_fallback") as mock_generate,
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.side_effect = [
+                _MockResponse('{"foodName":"RetryDish","ingredients":[]}', 2),
+                _MockResponse('{"foodName":"RetryDish","ingredients":[],"safetyStatus":"SAFE"}', 1),
+            ]
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={"foodName": "RetryDish", "ingredients": [], "safetyStatus": "SAFE"},
+                ),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                result = analyst.analyze_food_job_json(Image.new("RGB", (4, 4)), "None", "US")
+
+            self.assertEqual(mock_generate.call_count, 2)
+            first_config = mock_generate.call_args_list[0].kwargs["generation_config"]
+            second_config = mock_generate.call_args_list[1].kwargs["generation_config"]
+            self.assertEqual(first_config["max_output_tokens"], 4096)
+            self.assertEqual(second_config["max_output_tokens"], 8192)
+            self.assertEqual(result["foodName"], "RetryDish")
+
     def test_enrich_with_nutrition_skips_analysis_error_payload(self):
         payload = {
             "foodName": "Analysis Error",
@@ -91,4 +122,3 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
