@@ -38,7 +38,7 @@ const resolveSystemColorScheme = (colorScheme: ColorSchemeName): 'light' | 'dark
   return resolveSystemThemeFallback();
 };
 
-const readSystemColorScheme = (): 'light' | 'dark' => resolveSystemColorScheme(Appearance.getColorScheme());
+const readDeviceColorScheme = (): 'light' | 'dark' => resolveSystemColorScheme(Appearance.getColorScheme());
 
 const loadSavedTheme = async (): Promise<ThemeType | null> => SafeStorage.get<ThemeType | null>(THEME_KEY, null);
 
@@ -46,14 +46,9 @@ const persistTheme = async (theme: ThemeType): Promise<void> => {
   await SafeStorage.set(THEME_KEY, theme);
 };
 
-const applyThemePreference = (theme: ThemeType): 'light' | 'dark' => {
-  Appearance.setColorScheme(theme === 'system' ? null : theme);
-  return readSystemColorScheme();
-};
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeType>('system');
-  const [systemColorScheme, setSystemColorScheme] = useState<'light' | 'dark'>(readSystemColorScheme());
+  const [deviceColorScheme, setDeviceColorScheme] = useState<'light' | 'dark'>(readDeviceColorScheme());
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -62,10 +57,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const savedTheme = await loadSavedTheme();
         if (savedTheme) {
           setThemeState(savedTheme);
-          setSystemColorScheme(applyThemePreference(savedTheme));
-          return;
         }
-        setSystemColorScheme(applyThemePreference('system'));
+        setDeviceColorScheme(readDeviceColorScheme());
       } catch (e) {
         console.error('Failed to load theme preference', {
           error: e instanceof Error ? e.message : String(e),
@@ -79,16 +72,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const syncSystemTheme = (): void => {
-      setSystemColorScheme(readSystemColorScheme());
+    const syncDeviceTheme = (): void => {
+      setDeviceColorScheme(readDeviceColorScheme());
     };
 
     const appearanceSubscription = Appearance.addChangeListener(({ colorScheme }) => {
-      setSystemColorScheme(resolveSystemColorScheme(colorScheme));
+      setDeviceColorScheme(resolveSystemColorScheme(colorScheme));
     });
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        syncSystemTheme();
+        syncDeviceTheme();
       }
     });
 
@@ -100,7 +93,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: ThemeType): void => {
     setThemeState(newTheme);
-    setSystemColorScheme(applyThemePreference(newTheme));
     void persistTheme(newTheme).catch((e) => {
       console.error('Failed to save theme preference', {
         theme: newTheme,
@@ -109,7 +101,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const activeColorScheme = theme === 'system' ? systemColorScheme : theme;
+  const activeColorScheme = theme === 'system' ? deviceColorScheme : theme;
 
   if (!isReady) {
     return null;

@@ -189,7 +189,7 @@ function LayoutContent() {
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
             <Stack.Screen name="oauth/kakao-callback" options={{ animation: 'none' }} />
           </Stack>
-          <StatusBar style="auto" />
+          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </ThemeProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
