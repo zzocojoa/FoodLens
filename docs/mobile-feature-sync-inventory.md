@@ -21,6 +21,7 @@ FoodLens 모바일 앱의 사용자 기능이 `완전 sync`, `부분 sync`, `로
 | 대표 이모지 선택 | `FoodLens/features/emojiPicker/services/emojiPickerService.ts` | 선택 이모지가 `UserService.updateUserProfile`를 타므로 settings sync 대상이다. |
 | 여행 시작 정보 | `FoodLens/features/tripStats/services/tripStatsService.ts` `startTrip` | 현재 여행 시작 시점/위치를 프로필에 저장하므로 sync된다. |
 | 새 분석 결과 저장 | `FoodLens/hooks/result/useAutoSave.ts`, `FoodLens/hooks/result/autoSaveService.ts`, `FoodLens/services/analysisService.ts` `saveAnalysis` | 결과 생성 시 history 엔티티로 enqueue/flush까지 수행한다. |
+| 결과 날짜 수정 | `FoodLens/features/result/hooks/useResultSideEffects.ts` `useDateUpdateAction`, `FoodLens/services/analysisService.ts` `updateAnalysisTimestamp` | 날짜 수정 시 로컬 cache/query cache를 즉시 갱신하고 `timestamp_patch` history queue로 서버까지 동기화한다. |
 
 ## 부분 sync
 
@@ -30,8 +31,7 @@ FoodLens 모바일 앱의 사용자 기능이 `완전 sync`, `부분 sync`, `로
 | 홈 대시보드 | `FoodLens/features/home/hooks/useHomeDashboard.ts`, `FoodLens/app/_layout.tsx` | 히스토리/프로필은 sync-backed 데이터지만, 선택 날짜/모달 상태/애니메이션은 로컬 상태다. |
 | 여행 통계 화면 | `FoodLens/features/tripStats/services/tripStatsService.ts`, `FoodLens/services/user/profileAnalysisLoader.ts` | 통계의 원본 데이터는 sync-backed 프로필/히스토리이지만, 현재 위치 조회와 토스트 표시는 로컬 런타임이다. |
 | 히스토리 / Food Passport | `FoodLens/services/analysisService.ts` `getAllAnalyses`, `deleteAnalyses`, `syncHistoryFromCloud`; `FoodLens/features/history/hooks/useHistoryScreen.ts` | 기록 저장/삭제는 sync되지만, map/list 모드, selection, expanded country, map region은 로컬 상태다. |
-| 결과 화면 전체 | `FoodLens/hooks/result/useAutoSave.ts`, `FoodLens/features/result/hooks/useResultSideEffects.ts` | 결과 생성 자체는 sync되지만, 결과 화면의 사진 저장은 로컬 only이고 날짜 수정도 로컬 히스토리만 갱신한다. |
-| 결과 날짜 수정 | `FoodLens/features/result/hooks/useResultSideEffects.ts` `useDateUpdateAction`, `FoodLens/services/analysisService.ts` `updateAnalysisTimestamp` | timestamp 수정 시 sync queue 재등록이 없다. 현재는 local cache/query cache만 바뀐다. |
+| 결과 화면 전체 | `FoodLens/hooks/result/useAutoSave.ts`, `FoodLens/features/result/hooks/useResultSideEffects.ts` | 결과 생성과 날짜 수정은 sync되지만, 결과 화면의 사진 저장과 일부 화면 상태는 로컬 only다. |
 | 지도 표시 기능 | `FoodLens/features/history/screens/HistoryScreen.tsx`, `FoodLens/hooks/useHistoryData.ts` | 지도에 쓰는 데이터는 sync-backed history지만, 지도 사용 가능 여부와 UI 상태는 디바이스/빌드 의존이다. |
 | 인증 기능 | `FoodLens/services/auth/sessionManager.ts`, `FoodLens/features/auth/login/hooks/useLoginScreen.ts` | 계정 인증은 서버 기반이지만, 세션 저장은 디바이스 local secure storage이고 로그인 화면 UI state는 로컬이다. |
 
@@ -63,11 +63,14 @@ FoodLens 모바일 앱의 사용자 기능이 `완전 sync`, `부분 sync`, `로
   - 권한 UI
   - 사진첩 저장
   - 오프라인 배너
-- 현재 가장 큰 sync 공백은 `결과 날짜 수정`이다.
-  - 저장된 기록의 timestamp를 바꾸지만 history sync queue에는 다시 반영하지 않는다.
+- 현재 남은 공백은 주로 `UI/디바이스 상태` 쪽이다.
+  - 테마
+  - 권한/카메라 런타임
+  - 사진첩 저장
+  - 일부 화면 전용 상태
 
 ## 다음 우선순위
 
-1. `결과 날짜 수정`을 history sync 경로에 포함할지 결정
-2. `테마`를 계정 settings로 올릴지 결정
-3. `온보딩 완료 여부`를 별도 sync 필드로 둘지, 현재처럼 evidence 기반 판정으로 유지할지 결정
+1. `테마`를 계정 settings로 올릴지 결정
+2. `온보딩 완료 여부`를 별도 sync 필드로 둘지, 현재처럼 evidence 기반 판정으로 유지할지 결정
+3. `UI/디바이스 상태` 중 어디까지를 계정 sync 대상으로 올릴지 결정

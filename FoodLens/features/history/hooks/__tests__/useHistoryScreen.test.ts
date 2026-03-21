@@ -80,4 +80,33 @@ describe('useHistoryScreen', () => {
     expect(result.current.archiveMode).toBe('map');
     expect(onArchiveModeChange).toHaveBeenCalledWith('map');
   });
+
+  it('keeps selected items in local screen state only', () => {
+    const onArchiveModeChange = jest.fn();
+    const { result } = renderHook(() =>
+      useHistoryScreen({
+        deleteMultipleItems: async () => undefined,
+        initialArchiveMode: 'list',
+        initialMapRegion: null,
+        onArchiveModeChange,
+      })
+    );
+
+    act(() => {
+      result.current.toggleEditMode();
+      result.current.toggleSelectItem('item_a');
+      result.current.toggleSelectItem('item_b');
+    });
+
+    expect(result.current.isEditMode).toBe(true);
+    expect(Array.from(result.current.selectedItems)).toEqual(['item_a', 'item_b']);
+    expect(onArchiveModeChange).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.replaceSelection(new Set(['item_c']));
+    });
+
+    expect(Array.from(result.current.selectedItems)).toEqual(['item_c']);
+    expect(onArchiveModeChange).not.toHaveBeenCalled();
+  });
 });

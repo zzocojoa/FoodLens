@@ -124,6 +124,30 @@ describe('useLoginScreen', () => {
     expect(result.current.loginCopy.forgotPassword).toBe(LOGIN_COPY.forgotPassword);
   });
 
+  it('keeps login form edits in local ui state until submit', () => {
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.setFieldValue('email', 'draft@example.com');
+      result.current.setFieldValue('password', 'Passw0rd!');
+      result.current.setFieldValue('rememberMe', false);
+      result.current.setPasswordVisible(true);
+    });
+
+    expect(result.current.formValues).toEqual(
+      expect.objectContaining({
+        email: 'draft@example.com',
+        password: 'Passw0rd!',
+        rememberMe: false,
+      })
+    );
+    expect(result.current.passwordVisible).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(mockSubmitEmailAuth).not.toHaveBeenCalled();
+    expect(mockPersistSession).not.toHaveBeenCalled();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+  });
+
   it('completes signup with email verification and routes to tabs', async () => {
     const verificationChallenge = {
       verificationRequired: true as const,

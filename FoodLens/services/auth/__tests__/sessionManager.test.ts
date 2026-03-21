@@ -2,6 +2,7 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from '../authApi';
 import { AuthSecureSessionStore } from '../secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from '../currentUser';
 import { queryClient } from '../../queryClient';
+import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '../../sync/phase2SyncQueue';
 import { clearSession, persistSession, refreshSessionNow, restoreSession } from '../sessionManager';
 
 jest.mock('../authApi', () => ({
@@ -43,6 +44,11 @@ jest.mock('../../queryClient', () => ({
   },
 }));
 
+jest.mock('../../sync/phase2SyncQueue', () => ({
+  enqueuePhase2Sync: jest.fn(),
+  dispatchPhase2SyncQueue: jest.fn(),
+}));
+
 const mockedAuthApi = AuthApi as jest.Mocked<typeof AuthApi>;
 const mockedStore = AuthSecureSessionStore as jest.Mocked<typeof AuthSecureSessionStore>;
 const mockedSetCurrentUserId = setCurrentUserId as jest.Mock;
@@ -50,6 +56,9 @@ const mockedClearCurrentUserId = clearCurrentUserId as jest.Mock;
 const mockedGetCurrentUserId = getCurrentUserId as jest.Mock;
 const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.Mock;
 const mockedQueryClient = queryClient as unknown as { clear: jest.Mock };
+const mockedEnqueuePhase2Sync = enqueuePhase2Sync as jest.MockedFunction<typeof enqueuePhase2Sync>;
+const mockedDispatchPhase2SyncQueue =
+  dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
 
 const now = Date.now();
 const activeSession: AuthSessionTokens = {
@@ -87,6 +96,13 @@ describe('sessionManager', () => {
 
     expect(mockedStore.write).toHaveBeenCalledWith(activeSession, { persist: false });
     expect(mockedSetCurrentUserId).toHaveBeenCalledWith('usr_1');
+  });
+
+  it('persists session without touching phase2 sync queue', async () => {
+    await persistSession(activeSession);
+
+    expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
+    expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
   });
 
   it('clears query cache when authenticated user switches accounts', async () => {
