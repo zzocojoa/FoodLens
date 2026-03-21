@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useColorScheme as useSystemColorScheme } from 'react-native';
+import { AppState, Appearance, ColorSchemeName } from 'react-native';
 import { SafeStorage } from '../services/storage';
 
 type ThemeType = 'light' | 'dark' | 'system';
@@ -28,43 +28,82 @@ const resolveSystemThemeFallback = (): 'light' | 'dark' => {
   return 'light';
 };
 
+const resolveSystemColorScheme = (colorScheme: ColorSchemeName): 'light' | 'dark' => {
+  if (colorScheme === 'dark') {
+    return 'dark';
+  }
+  if (colorScheme === 'light') {
+    return 'light';
+  }
+  return resolveSystemThemeFallback();
+};
+
+const readSystemColorScheme = (): 'light' | 'dark' => resolveSystemColorScheme(Appearance.getColorScheme());
+
+const loadSavedTheme = async (): Promise<ThemeType | null> => SafeStorage.get<ThemeType | null>(THEME_KEY, null);
+
+const persistTheme = async (theme: ThemeType): Promise<void> => {
+  await SafeStorage.set(THEME_KEY, theme);
+};
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const systemColorScheme = useSystemColorScheme();
   const [theme, setThemeState] = useState<ThemeType>('system');
+  const [systemColorScheme, setSystemColorScheme] = useState<'light' | 'dark'>(readSystemColorScheme());
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // Load saved theme
-    (async () => {
+    const initializeTheme = async (): Promise<void> => {
       try {
-        const savedTheme = await SafeStorage.get<ThemeType | null>(THEME_KEY, null);
+        const savedTheme = await loadSavedTheme();
         if (savedTheme) {
           setThemeState(savedTheme);
         }
       } catch (e) {
-        console.error('Failed to load theme preference', e);
+        console.error('Failed to load theme preference', {
+          error: e instanceof Error ? e.message : String(e),
+        });
       } finally {
         setIsReady(true);
       }
-    })();
+    };
+
+    void initializeTheme();
   }, []);
 
-  const setTheme = async (newTheme: ThemeType) => {
+  useEffect(() => {
+    const syncSystemTheme = (): void => {
+      setSystemColorScheme(readSystemColorScheme());
+    };
+
+    const appearanceSubscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setSystemColorScheme(resolveSystemColorScheme(colorScheme));
+    });
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncSystemTheme();
+      }
+    });
+
+    return () => {
+      appearanceSubscription.remove();
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  const setTheme = (newTheme: ThemeType): void => {
     setThemeState(newTheme);
-    try {
-      await SafeStorage.set(THEME_KEY, newTheme);
-    } catch (e) {
-      console.error('Failed to save theme preference', e);
-    }
+    void persistTheme(newTheme).catch((e) => {
+      console.error('Failed to save theme preference', {
+        theme: newTheme,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   };
 
-  const activeColorScheme = 
-    theme === 'system' 
-      ? (systemColorScheme ?? resolveSystemThemeFallback()) 
-      : theme;
+  const activeColorScheme = theme === 'system' ? systemColorScheme : theme;
 
   if (!isReady) {
-    return null; // Or a splash screen if needed, but null is usually fine for quick load
+    return null;
   }
 
   return (
