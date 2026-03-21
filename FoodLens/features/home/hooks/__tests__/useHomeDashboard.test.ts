@@ -10,6 +10,9 @@ const mockGetCurrentUserIdSnapshot = jest.fn();
 const mockSafeStorageGet = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
+const mockReadHomeSelectedDateSnapshot = jest.fn();
+const mockBuildHomeSelectedDatePatch = jest.fn();
+const mockUpdateUserClientState = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const React = require('react');
@@ -46,6 +49,12 @@ jest.mock('@/services/user/constants', () => ({
   USER_STORAGE_KEY: '@foodlens_user_profile',
 }));
 
+jest.mock('@/services/user/clientStateService', () => ({
+  readHomeSelectedDateSnapshot: (...args: unknown[]) => mockReadHomeSelectedDateSnapshot(...args),
+  buildHomeSelectedDatePatch: (...args: unknown[]) => mockBuildHomeSelectedDatePatch(...args),
+  updateUserClientState: (...args: unknown[]) => mockUpdateUserClientState(...args),
+}));
+
 jest.mock('@/features/i18n', () => ({
   useI18n: () => ({
     t: (_key: string, fallback?: string) => fallback || _key,
@@ -61,6 +70,16 @@ jest.mock('@/services/analysisService', () => ({
     deleteAnalysis: jest.fn(),
   },
 }));
+
+const buildSelectedDatePatch = (date: Date) => ({
+  home: {
+    selectedDate: [
+      date.getFullYear(),
+      `${date.getMonth() + 1}`.padStart(2, '0'),
+      `${date.getDate()}`.padStart(2, '0'),
+    ].join('-'),
+  },
+});
 
 describe('useHomeDashboard profile update subscription', () => {
   beforeEach(() => {
@@ -94,6 +113,9 @@ describe('useHomeDashboard profile update subscription', () => {
     mockGetProfileRestrictionCount.mockReturnValue(2);
     mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
+    mockReadHomeSelectedDateSnapshot.mockReturnValue(null);
+    mockBuildHomeSelectedDatePatch.mockImplementation((date: Date) => buildSelectedDatePatch(date));
+    mockUpdateUserClientState.mockResolvedValue({});
     mockFetchHomeDashboardData.mockResolvedValue({
       recentData: [],
       allHistory: [],
@@ -285,5 +307,73 @@ describe('useHomeDashboard profile update subscription', () => {
     await waitFor(() => {
       expect(result.current.userProfile?.profileImage).toBe(globalProfile.profileImage);
     });
+  });
+
+  it('hydrates selected date from synced client_state home.selectedDate on initial load', async () => {
+    mockFetchHomeDashboardData.mockResolvedValueOnce({
+      recentData: [],
+      allHistory: [],
+      profile: {
+        uid: 'usr_home',
+        name: 'Tester',
+        email: 'user@example.com',
+        safetyProfile: {
+          allergies: ['egg'],
+          dietaryRestrictions: ['vegan'],
+          severityMap: {},
+        },
+        settings: {
+          language: 'en',
+          autoPlayAudio: false,
+          clientState: {
+            home: {
+              selectedDate: '2026-03-20',
+            },
+          },
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      weeklyStats: [],
+      safeCount: 0,
+    });
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(result.current.selectedDate.getFullYear()).toBe(2026);
+      expect(result.current.selectedDate.getMonth()).toBe(2);
+      expect(result.current.selectedDate.getDate()).toBe(20);
+    });
+    expect(mockUpdateUserClientState).not.toHaveBeenCalled();
+  });
+
+  it('persists selected date only when the calendar day changes', async () => {
+    mockReadHomeSelectedDateSnapshot.mockReturnValue(new Date(2026, 2, 20, 9, 0, 0));
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.setSelectedDate(new Date(2026, 2, 20, 18, 45, 0));
+    });
+
+    expect(mockBuildHomeSelectedDatePatch).not.toHaveBeenCalled();
+    expect(mockUpdateUserClientState).not.toHaveBeenCalled();
+
+    const nextDay = new Date(2026, 2, 21, 8, 15, 0);
+    const nextDayPatch = buildSelectedDatePatch(nextDay);
+
+    act(() => {
+      result.current.setSelectedDate(nextDay);
+    });
+
+    expect(mockBuildHomeSelectedDatePatch).toHaveBeenCalledTimes(1);
+    expect(mockBuildHomeSelectedDatePatch).toHaveBeenCalledWith(nextDay);
+    expect(mockUpdateUserClientState).toHaveBeenCalledTimes(1);
+    expect(mockUpdateUserClientState).toHaveBeenCalledWith('usr_home', nextDayPatch);
   });
 });
