@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Text, TouchableOpacity, View, Animated as RNAnimated } from 'react-native';
+import { Text, View, Animated as RNAnimated } from 'react-native';
+import { HapticPressable } from '@/components/HapticFeedback';
 import { profileSheetStyles as styles } from '../styles';
 import { useI18n } from '@/features/i18n';
 
@@ -42,6 +43,7 @@ export default function AnimatedThemeToggle({
 
     return (
         <View
+            testID="theme-toggle-container"
             style={[
                 styles.menuContainer,
                 {
@@ -56,6 +58,8 @@ export default function AnimatedThemeToggle({
         >
             {containerWidth > 0 && (
                 <RNAnimated.View
+                    pointerEvents="none"
+                    testID="theme-toggle-highlight"
                     style={{
                         position: 'absolute',
                         left: 4,
@@ -78,16 +82,18 @@ export default function AnimatedThemeToggle({
                 {options.map((value) => {
                     const isActive = currentTheme === value;
                     return (
-                        <TouchableOpacity
+                        <HapticPressable
                             key={value}
                             onPress={() => setTheme(value)}
+                            testID={`theme-toggle-option-${value}`}
                             style={{
                                 flex: 1,
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 borderRadius: 24,
                             }}
-                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            hapticType="selection"
                         >
                             <Text
                                 style={{
@@ -99,7 +105,7 @@ export default function AnimatedThemeToggle({
                             >
                                 {optionLabels[value]}
                             </Text>
-                        </TouchableOpacity>
+                        </HapticPressable>
                     );
                 })}
             </View>
