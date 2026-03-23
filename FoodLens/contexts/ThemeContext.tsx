@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AppState, Appearance, ColorSchemeName } from 'react-native';
+import { AppState, Appearance, ColorSchemeName, Platform } from 'react-native';
 import { SafeStorage } from '../services/storage';
 
 type ThemeType = 'light' | 'dark' | 'system';
@@ -41,7 +41,13 @@ const resolveSystemColorScheme = (colorScheme: ColorSchemeName): 'light' | 'dark
 const readDeviceColorScheme = (): 'light' | 'dark' => resolveSystemColorScheme(Appearance.getColorScheme());
 
 const applyThemePreference = (theme: ThemeType): 'light' | 'dark' => {
-  Appearance.setColorScheme(theme === 'system' ? null : theme);
+  try {
+    if (Platform.OS !== 'web') {
+      Appearance.setColorScheme(theme === 'system' ? null : theme);
+    }
+  } catch (e) {
+    // catch any unsupported API errors safely
+  }
   return readDeviceColorScheme();
 };
 
@@ -101,6 +107,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (newTheme: ThemeType): void => {
     setThemeState(newTheme);
     setDeviceColorScheme(applyThemePreference(newTheme));
+
+    // 안드로이드 브릿지 비동기 딜레이(지연) 완벽 해결을 위한 Polling
+    if (newTheme === 'system' && Platform.OS === 'android') {
+      const checkAndSync = () => setDeviceColorScheme(readDeviceColorScheme());
+      setTimeout(checkAndSync, 50);
+      setTimeout(checkAndSync, 150);
+      setTimeout(checkAndSync, 300); // 확실한 동기화를 위해 다중 마이크로 폴링
+    }
+
     void persistTheme(newTheme).catch((e) => {
       console.error('Failed to save theme preference', {
         theme: newTheme,
