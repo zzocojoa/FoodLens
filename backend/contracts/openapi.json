@@ -1104,6 +1104,23 @@
         "title": "Body_submit_analysis_job_analyze_jobs_post",
         "type": "object"
       },
+      "DeletionRequestCreateRequest": {
+        "properties": {
+          "target": {
+            "enum": [
+              "account",
+              "data"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "DeletionRequestCreateRequest",
+        "type": "object"
+      },
       "EmailLoginRequest": {
         "properties": {
           "device_id": {
@@ -3396,6 +3413,58 @@
           }
         },
         "summary": "Put Me Allergies"
+      }
+    },
+    "/me/deletion-requests": {
+      "post": {
+        "operationId": "post_me_deletion_request_me_deletion_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionRequestCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Me Deletion Request"
+      }
+    },
+    "/me/deletion-requests/latest": {
+      "get": {
+        "operationId": "get_me_latest_deletion_request_me_deletion_requests_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Me Latest Deletion Request"
       }
     },
     "/me/history": {

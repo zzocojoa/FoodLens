@@ -33,20 +33,28 @@ from backend.modules.ops.cost_guardrail import (
     InMemoryMonthlyUsageStorage,
 )
 from backend.modules.ops.data_retention import (
+    CallbackRetentionCleanupAdapter,
     InMemoryRetentionStore,
     JsonFileRetentionStore,
     LocalFileRetentionCleanupAdapter,
     NoOpRetentionCleanupAdapter,
+    PostgresRetentionStore,
+    RetentionDataClass,
+    RetentionRecord,
     RetentionCleanupJob,
 )
 from backend.modules.ops.data_retention import RetentionPolicyConfig
 from backend.modules.ops.deletion_queue import (
+    DeletionStatusSnapshot,
+    DeletionTarget,
     DeletionQueueConsumer,
     DeletionQueueProducer,
     InMemoryDeletionQueueStorage,
     JsonFileDeletionQueueStorage,
     NoOpDeletionHandler,
+    PostgresDeletionQueueStorage,
 )
+from backend.modules.ops.privacy_deletion import UserDeletionHandler
 from backend.modules.ops.rollout_control import (
     InMemoryRolloutStateStore,
     JsonFileRolloutStateStore,
@@ -84,6 +92,7 @@ from backend.modules.contracts.analysis_job import (
 )
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 from backend.modules.contracts.observability import LatencyMsContract
+from backend.modules.auth.email_sender import _mask_email
 from backend.modules.analysis_jobs import (
     AnalysisJobWorker,
     build_analysis_job_store_from_env,
@@ -159,6 +168,18 @@ def _is_label_rollout_auto_enabled() -> bool:
     return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
 
 
+def _retention_cleanup_interval_seconds() -> float:
+    return max(5.0, _env_float("RETENTION_CLEANUP_INTERVAL_SECONDS", 3600.0))
+
+
+def _deletion_queue_interval_seconds() -> float:
+    return max(1.0, _env_float("DELETION_QUEUE_INTERVAL_SECONDS", 30.0))
+
+
+def _deletion_queue_max_batch() -> int:
+    return max(1, _env_int("DELETION_QUEUE_MAX_BATCH", 20))
+
+
 def _analysis_job_worker_count() -> int:
     return max(1, _env_int("ANALYSIS_JOB_WORKER_COUNT", 1))
 
@@ -182,6 +203,64 @@ def _analysis_job_max_upload_bytes() -> int:
 def _analysis_job_allowed_content_types() -> set[str]:
     raw = _env_str("ANALYSIS_JOB_ALLOWED_CONTENT_TYPES", ",".join(sorted(MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES)))
     return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
+def _initialize_phase5_runtime() -> None:
+    app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
+    database_url = _env_str("DATABASE_URL", "")
+    retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
+    if retention_store_backend == "file":
+        retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
+    elif retention_store_backend == "postgres":
+        retention_store = PostgresRetentionStore(
+            database_url=database_url,
+            table_name=_env_str("RETENTION_STORE_TABLE", "retention_records"),
+        )
+    else:
+        retention_store = InMemoryRetentionStore()
+    app.state.retention_store = retention_store
+
+    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
+    if retention_delete_backend == "local_file":
+        delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
+        cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
+    elif retention_delete_backend == "media_asset":
+        cleanup_adapter = CallbackRetentionCleanupAdapter(_delete_media_retention_record)
+    else:
+        cleanup_adapter = NoOpRetentionCleanupAdapter()
+
+    app.state.retention_cleanup_job = RetentionCleanupJob(
+        store=retention_store,
+        policy=app.state.retention_policy,
+        adapter=cleanup_adapter,
+    )
+
+    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
+    if deletion_queue_backend == "file":
+        deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
+    elif deletion_queue_backend == "postgres":
+        deletion_storage = PostgresDeletionQueueStorage(
+            database_url=database_url,
+            queue_table_name=_env_str("DELETION_QUEUE_TABLE", "deletion_queue"),
+            status_table_name=_env_str("DELETION_STATUS_TABLE", "deletion_statuses"),
+        )
+    else:
+        deletion_storage = InMemoryDeletionQueueStorage()
+    app.state.deletion_queue_storage = deletion_storage
+    app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
+
+    deletion_handler_backend = _env_str("DELETION_HANDLER_BACKEND", "user").lower()
+    if deletion_handler_backend == "noop":
+        deletion_handler = NoOpDeletionHandler()
+    else:
+        deletion_handler = UserDeletionHandler(
+            auth_service=app.state.auth_service,
+            media_storage=app.state.media_storage,
+            retention_store=retention_store,
+        )
+    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, deletion_handler)
+    app.state.retention_cleanup_task = asyncio.create_task(_retention_cleanup_loop())
+    app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
 
 
 @app.on_event("startup")
@@ -248,6 +327,7 @@ async def _startup() -> None:
         len(app.state.analysis_job_workers),
         type(app.state.analysis_job_store).__name__,
     )
+    _initialize_phase5_runtime()
 
     if _is_openapi_export_mode():
         app.state.analyst = None
@@ -289,32 +369,6 @@ async def _startup() -> None:
     else:
         app.state.label_rollout_auto_manager = None
     app.state.label_rollout_kpi_thresholds = KpiThresholds()
-    app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
-    retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
-    if retention_store_backend == "file":
-        retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
-    else:
-        retention_store = InMemoryRetentionStore()
-
-    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
-    if retention_delete_backend == "local_file":
-        delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
-        cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
-    else:
-        cleanup_adapter = NoOpRetentionCleanupAdapter()
-
-    app.state.retention_cleanup_job = RetentionCleanupJob(
-        store=retention_store,
-        policy=app.state.retention_policy,
-        adapter=cleanup_adapter,
-    )
-    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
-    if deletion_queue_backend == "file":
-        deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
-    else:
-        deletion_storage = InMemoryDeletionQueueStorage()
-    app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
-    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, NoOpDeletionHandler())
     rate_limit_settings = build_rate_limit_settings_from_env()
     if rate_limit_settings.enabled:
         app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
@@ -351,6 +405,15 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     for worker in list(getattr(app.state, "analysis_job_workers", [])):
         await worker.stop()
+    for task_name in ("retention_cleanup_task", "deletion_queue_task"):
+        task = getattr(app.state, task_name, None)
+        if task is None:
+            continue
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 def _service(name: str) -> Any:
@@ -1194,6 +1257,10 @@ class SettingsUpdateRequest(BaseModel):
     expected_updated_at: str | None = None
 
 
+class DeletionRequestCreateRequest(BaseModel):
+    target: Literal["account", "data"]
+
+
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
@@ -1204,6 +1271,105 @@ def _device_id(request: Request) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _serialize_deletion_status(snapshot: DeletionStatusSnapshot | None) -> dict[str, Any] | None:
+    if snapshot is None:
+        return None
+    return {
+        "queue_id": snapshot.queue_id,
+        "request_id": snapshot.request_id,
+        "target": snapshot.target.value,
+        "status": snapshot.status.value,
+        "created_at": snapshot.created_at.isoformat().replace("+00:00", "Z"),
+        "updated_at": snapshot.updated_at.isoformat().replace("+00:00", "Z"),
+        "reason": snapshot.reason,
+        "error": snapshot.error,
+    }
+
+
+def _register_media_retention_record(
+    *,
+    asset_id: str,
+    user_id: str,
+    object_key: str,
+) -> None:
+    retention_store = getattr(app.state, "retention_store", None)
+    if retention_store is None:
+        return
+    retention_store.add(
+        RetentionRecord(
+            record_id=asset_id,
+            data_class=RetentionDataClass.ORIGINAL,
+            created_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            storage_key=object_key,
+        )
+    )
+
+
+def _delete_media_retention_record(record: RetentionRecord) -> bool:
+    media_storage = _service("media_storage")
+    auth_service = _service("auth_service")
+    if record.storage_key:
+        try:
+            media_storage.delete_original(object_key=record.storage_key)
+        except MediaStorageError as error:
+            if error.code != "MEDIA_NOT_FOUND":
+                raise
+    if record.record_id:
+        auth_service.delete_media_asset(asset_id=record.record_id)
+    return True
+
+
+async def _retention_cleanup_loop() -> None:
+    try:
+        while True:
+            await asyncio.sleep(_retention_cleanup_interval_seconds())
+            job = getattr(app.state, "retention_cleanup_job", None)
+            if job is None:
+                continue
+            for data_class in (
+                RetentionDataClass.ORIGINAL,
+                RetentionDataClass.DERIVED,
+                RetentionDataClass.LOG,
+            ):
+                result = await run_in_threadpool(
+                    job.run_once,
+                    data_class=data_class,
+                    now=datetime.now(timezone.utc),
+                    limit=100,
+                )
+                logger.info(
+                    "[Retention] cleanup data_class=%s scanned=%s expired=%s deleted=%s",
+                    result.data_class.value,
+                    result.scanned_count,
+                    result.expired_count,
+                    result.deleted_count,
+                )
+    except asyncio.CancelledError:
+        return
+
+
+async def _deletion_queue_loop() -> None:
+    try:
+        while True:
+            await asyncio.sleep(_deletion_queue_interval_seconds())
+            consumer = getattr(app.state, "deletion_queue_consumer", None)
+            if consumer is None:
+                continue
+            for _ in range(_deletion_queue_max_batch()):
+                result = await run_in_threadpool(consumer.consume_once)
+                if result is None:
+                    break
+                logger.info(
+                    "[Deletion] queue_processed queue_id=%s target=%s status=%s",
+                    result.queue_id,
+                    result.target.value,
+                    result.status.value,
+                )
+    except asyncio.CancelledError:
+        return
 
 
 def _parent_request_id(request: Request) -> str | None:
@@ -1451,7 +1617,7 @@ def _log_email_verification_event(
         event,
         request_id,
         user.get("id", "unknown"),
-        user.get("email", "unknown"),
+        _mask_email(str(user.get("email", "unknown"))),
         result.get("verification_id", "unknown"),
     )
 
@@ -2116,6 +2282,11 @@ async def post_me_media_upload(
             object_key=upload.object_key,
             asset_id=upload.asset_id,
         )
+        _register_media_retention_record(
+            asset_id=upload.asset_id,
+            user_id=user.user_id,
+            object_key=upload.object_key,
+        )
         render_url = _build_media_render_url(request, asset_id=upload.asset_id)
         logger.info(
             "[Media] upload success request_id=%s user_id=%s asset_id=%s scope=%s bytes=%s",
@@ -2586,6 +2757,46 @@ async def delete_me_history(history_item_id: str, request: Request):
             )
         },
         write_event=("DELETE", "/me/history"),
+    )
+
+
+@app.get("/me/deletion-requests/latest")
+async def get_me_latest_deletion_request(request: Request):
+    def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+        storage = getattr(app.state, "deletion_queue_storage", None)
+        snapshot = storage.get_latest_status_for_user(user.user_id) if storage is not None else None
+        return {"deletion_request": _serialize_deletion_status(snapshot)}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+    )
+
+
+@app.post("/me/deletion-requests")
+async def post_me_deletion_request(payload: DeletionRequestCreateRequest, request: Request):
+    def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+        producer = getattr(app.state, "deletion_queue_producer", None)
+        consumer = getattr(app.state, "deletion_queue_consumer", None)
+        storage = getattr(app.state, "deletion_queue_storage", None)
+        if producer is None or consumer is None or storage is None:
+            raise raise_service_unavailable("deletion_queue")
+
+        target = DeletionTarget(payload.target)
+        item = producer.enqueue_user_deletion(
+            user_id=user.user_id,
+            target=target,
+            reason="user_requested",
+            request_id=_request_id,
+        )
+        consumer.consume_queue_id(item.queue_id)
+        snapshot = storage.get_status(item.queue_id)
+        return {"deletion_request": _serialize_deletion_status(snapshot)}
+
+    return await _run_me_route(
+        request=request,
+        action=_action,
+        write_event=("POST", "/me/deletion-requests"),
     )
 
 

@@ -99,6 +99,8 @@ class MediaStorage(Protocol):
 
     def fetch_original(self, *, object_key: str) -> MediaObjectPayload: ...
 
+    def delete_original(self, *, object_key: str) -> None: ...
+
 
 class DisabledMediaStorage:
     enabled = False
@@ -119,6 +121,13 @@ class DisabledMediaStorage:
         )
 
     def fetch_original(self, *, object_key: str) -> MediaObjectPayload:
+        raise MediaStorageError(
+            code="MEDIA_STORAGE_DISABLED",
+            message="Media storage is disabled.",
+            status_code=503,
+        )
+
+    def delete_original(self, *, object_key: str) -> None:
         raise MediaStorageError(
             code="MEDIA_STORAGE_DISABLED",
             message="Media storage is disabled.",
@@ -259,6 +268,37 @@ class GcsMediaStorage:
             ) from exc
         mime_type = (blob.content_type or "").strip().lower() or "application/octet-stream"
         return MediaObjectPayload(bytes_data=payload, mime_type=mime_type)
+
+    def delete_original(self, *, object_key: str) -> None:
+        blob = self._bucket.blob(object_key)
+        try:
+            deleted = blob.delete()
+        except Exception as exc:
+            status_code = _status_code_from_error(exc)
+            if status_code in {401, 403}:
+                raise MediaStorageError(
+                    code="MEDIA_GCS_PERMISSION_DENIED",
+                    message="Media bucket access denied.",
+                    status_code=503,
+                ) from exc
+            if status_code == 404:
+                raise MediaStorageError(
+                    code="MEDIA_NOT_FOUND",
+                    message="Media object not found.",
+                    status_code=404,
+                ) from exc
+            raise MediaStorageError(
+                code="MEDIA_DELETE_FAILED",
+                message="Failed to delete media object from storage.",
+                status_code=502,
+            ) from exc
+
+        if deleted is False:
+            raise MediaStorageError(
+                code="MEDIA_NOT_FOUND",
+                message="Media object not found.",
+                status_code=404,
+            )
 
 
 def build_media_storage_from_env(

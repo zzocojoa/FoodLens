@@ -138,10 +138,11 @@
   - `profile.locale`에 `auto` 문자열 저장은 금지합니다.
   - locale 미전달 시 우선순위는 `Accept-Language` > `en-US` fallback 입니다.
 
-### B. 사용자 데이터(Profile/Settings/History)
+### B. 사용자 데이터(Profile/Settings/History/Deletion)
 - `GET /me/profile`, `PUT /me/profile`
 - `GET /me/allergies`, `PUT /me/allergies`
 - `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
+- `GET /me/deletion-requests/latest`, `POST /me/deletion-requests`
 - `POST /me/media/upload` (multipart: `file`, `scope=profile|history`, `linked_entry_id?`)
 - `GET /media/render/{asset_id}?w=<preset>&q=<50~85>&fmt=auto`
 - media render 운영 env(추가):
@@ -179,6 +180,22 @@
 - 타인의 데이터는 접근할 수 없어야 합니다.
 - `/me/history/{history_item_id}` 삭제는 idempotent입니다.
   - 이미 삭제된 항목이거나 없는 항목이어도 `200` + `{"deleted": false}`를 반환할 수 있습니다.
+- Phase 5 삭제 요청 계약:
+  - `POST /me/deletion-requests`
+    - 입력: `target` (`account` | `data`)
+    - 출력: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error }`, `request_id`
+  - `GET /me/deletion-requests/latest`
+    - 출력: 최근 삭제 요청의 `deletion_request` 또는 `null`, `request_id`
+  - 상태값: `pending` -> `in_progress` -> `done | failed`
+  - `target=data`
+    - 로그인 계정은 유지하고, 히스토리/미디어/프로필 개인화/알레르기/설정/client_state를 초기화합니다.
+  - `target=account`
+    - 사용자 계정, 프로필, 알레르기, 설정, 히스토리, 미디어를 제거하고 세션을 무효화합니다.
+- Phase 5 TTL 정책(기본값):
+  - 원본(original): `30일`
+  - 파생(derived): `90일`
+  - 로그(log): `14일`
+  - 원본 미디어 업로드는 retention record로 등록되고, 정리 작업이 만료 데이터를 삭제합니다.
 
 ## 5) 버전/변경 정책
 - 계약 버전 표기:
@@ -217,6 +234,6 @@
 
 ---
 
-문서 버전: v1.5  
+문서 버전: v1.6
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-03-28
+최종 수정: 2026-03-29

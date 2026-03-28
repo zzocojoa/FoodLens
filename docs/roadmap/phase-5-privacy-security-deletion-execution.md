@@ -51,6 +51,10 @@
   - 삭제 큐 producer/consumer 구현
   - `user_id` 기준 삭제 API 연결
   - TTL 만료 정리 작업(배치/잡) 적용
+  - 계약 고정:
+    - `POST /me/deletion-requests` (`target=account|data`)
+    - `GET /me/deletion-requests/latest`
+    - 상태값 `pending|in_progress|done|failed`
 - Mobile Lead
   - 계정 삭제/데이터 삭제 요청 UI 연결
   - 삭제 진행 상태 표시(접수/진행/완료/실패)
@@ -97,6 +101,30 @@
   - 감사 로그 추적 가능
   - 민감정보 로그 노출 없음
 
+## 6-1) 현재 계약 기준 메모
+
+- 삭제 요청 API:
+  - `POST /me/deletion-requests`
+    - 요청 본문: `target` (`account` | `data`)
+    - 응답 본문: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error }`, `request_id`
+  - `GET /me/deletion-requests/latest`
+    - 최근 삭제 요청 상태를 조회하며, 요청이 없으면 `deletion_request: null`, `request_id`
+- 삭제 의미:
+  - `data`: 계정은 유지, 사용자 데이터와 개인화 상태를 초기화
+  - `account`: 계정 자체를 제거하고 세션까지 무효화
+- TTL 기본값:
+  - 원본(original) `30일`
+  - 파생(derived) `90일`
+  - 로그(log) `14일`
+- 운영 루프:
+  - retention cleanup loop가 TTL 만료 데이터를 정리
+  - deletion queue loop가 사용자 삭제 요청을 처리
+
+## 6-2) 현재 최소수집·제3자 연동 증적
+
+- 현재 저장소 기준 최소수집 및 제3자 연동 인벤토리: [Phase 5 최소수집 및 제3자 연동 인벤토리](../security/phase-5-data-minimization-and-third-party-inventory.md)
+- 이 문서를 기준으로 필수 수집, 비수집 항목, 제3자 전송 목적, TTL/삭제 통제를 함께 검토한다.
+
 ## 7) 리스크와 대응 (쉽게 설명)
 
 - 리스크 1: 삭제 요청했는데 일부 데이터가 남음
@@ -114,6 +142,6 @@
 
 ---
 
-문서 버전: v1.0  
+문서 버전: v1.1
 연결 문서: [Master Plan](./master-plan.md), [Phase 4 실행표](./phase-4-ai-ops-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
-최종 수정: 2026-02-19
+최종 수정: 2026-03-29
