@@ -159,7 +159,7 @@
 ## 10) Phase 4 완료 증적 체크
 
 - [ ] Render 로그에 request_id 기반 시작/완료/오류 추적 가능
-- [ ] 429 유도 시 `Retry-After`와 표준 detail 응답 확인 (Render Live 기준)
+- [x] 429 유도 시 `Retry-After`와 표준 detail 응답 확인 (Render Live 기준)
 - [x] Render blueprint에 timeout/retry/cost guardrail/barcode upstream env가 선언됨
 - [x] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
 - [x] `/analyze`, `/analyze/label`, `/lookup/barcode` 응답의 `latency_ms` 확인
@@ -194,8 +194,32 @@
     - `/analyze`, `/analyze/jobs`, `/lookup/barcode` 15초/3회 기준
     - on-device cache hit 로그
     - request_id / prompt_version / used_model / latency 메타 보존
-- Render runtime rehearsal (burst 429): 환경 제한으로 미완료
-  - 필요 후속: Render Live Logs에서 429/latency/request_id/fallback 라인 캡처
+- Render runtime rehearsal (burst 429): PASS
+  - 실행 일시:
+    - `2026-03-28 23:31 KST`
+  - 대상 endpoint:
+    - `/lookup/barcode`
+  - 실행 방식:
+    - 동일 barcode 요청 `40건`을 동시 burst로 전송
+  - 결과:
+    - `200 = 6건`
+    - `429 = 34건`
+  - 확인 응답:
+    - HTTP `429`
+    - header `Retry-After: 48`
+    - body `detail.code=API_RATE_LIMITED`
+    - body `detail.request_id=e745d231f78f`
+    - body `detail.retry_after_seconds=48`
+  - 복구 확인:
+    - `60초` 대기 후 동일 요청 재시도 시 `200 OK`
+  - 산출물:
+    - `/tmp/phase4_rehearsal/statuses_parallel.tsv`
+    - `/tmp/phase4_rehearsal/headers_429.txt`
+    - `/tmp/phase4_rehearsal/body_429.json`
+    - `/tmp/phase4_rehearsal/headers_recovery.txt`
+    - `/tmp/phase4_rehearsal/body_recovery.json`
+  - 남은 후속:
+    - Render Live Logs에서 동일 시각 `request_id` 상관 로그 캡처를 추가하면 운영 증적이 더 강해진다
 
 ---
 
