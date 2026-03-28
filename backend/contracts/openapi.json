@@ -417,6 +417,16 @@
             "title": "Ingredients",
             "type": "array"
           },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatencyMsContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "nutrition": {
             "anyOf": [
               {
@@ -829,6 +839,16 @@
             "title": "Found",
             "type": "boolean"
           },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatencyMsContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "message": {
             "anyOf": [
               {
@@ -840,6 +860,17 @@
             ],
             "title": "Message"
           },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
           "request_id": {
             "anyOf": [
               {
@@ -850,6 +881,17 @@
               }
             ],
             "title": "Request Id"
+          },
+          "used_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Model"
           }
         },
         "required": [
@@ -1440,6 +1482,78 @@
           "name"
         ],
         "title": "IngredientContract",
+        "type": "object"
+      },
+      "LatencyMsContract": {
+        "properties": {
+          "allergen_analysis": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allergen Analysis"
+          },
+          "assess": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assess"
+          },
+          "extract": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extract"
+          },
+          "preprocess": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preprocess"
+          },
+          "source_lookup": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Lookup"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "title": "LatencyMsContract",
         "type": "object"
       },
       "LogoutRequest": {

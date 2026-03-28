@@ -4,7 +4,6 @@ import os
 import threading
 from typing import Any, Callable
 
-from google.api_core import retry
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from vertexai.generative_models import GenerativeModel
 
@@ -39,7 +38,8 @@ MAX_CONCURRENT_SLOTS = _env_int("GEMINI_MAX_CONCURRENT_SLOTS", 3)
 RETRY_INITIAL_SECONDS = _env_float("GEMINI_RETRY_INITIAL_SECONDS", 2.0)
 RETRY_MAX_SECONDS = _env_float("GEMINI_RETRY_MAX_SECONDS", 30.0)
 RETRY_MULTIPLIER = _env_float("GEMINI_RETRY_MULTIPLIER", 2.0)
-RETRY_TIMEOUT_SECONDS = _env_float("GEMINI_RETRY_TIMEOUT_SECONDS", 60.0)
+RETRY_TIMEOUT_SECONDS = _env_float("GEMINI_RETRY_TIMEOUT_SECONDS", 15.0)
+RETRY_MAX_ATTEMPTS = _env_int("GEMINI_RETRY_MAX_ATTEMPTS", 3)
 LABEL_429_BACKOFF_INITIAL_SECONDS = _env_float("GEMINI_429_BACKOFF_INITIAL_SECONDS", 0.5)
 LABEL_429_BACKOFF_MULTIPLIER = _env_float("GEMINI_429_BACKOFF_MULTIPLIER", 2.0)
 RETRY_429_COOLDOWN_SECONDS = _env_float("GEMINI_429_COOLDOWN_SECONDS", 15.0)
@@ -63,18 +63,55 @@ def _build_retry_error_handler(retry_stats: dict[str, Any]) -> Callable[[Excepti
     return on_retry_error
 
 
+def _is_retryable_generation_error(error: Exception) -> bool:
+    return isinstance(error, (ResourceExhausted, ServiceUnavailable))
+
+
+def _build_retry_delay_seconds(attempt: int) -> float:
+    backoff_seconds = RETRY_INITIAL_SECONDS * (RETRY_MULTIPLIER ** max(0, attempt - 1))
+    return min(backoff_seconds, RETRY_MAX_SECONDS)
+
+
 def _invoke_generation_with_retry(
-    retry_policy: retry.Retry,
     model: GenerativeModel,
     contents: Any,
     generation_config: dict[str, Any],
     safety_settings: dict[str, Any],
+    retry_stats: dict[str, Any],
 ) -> Any:
-    return retry_policy(model.generate_content)(
-        contents,
-        generation_config=generation_config,
-        safety_settings=safety_settings,
-    )
+    last_error: Exception | None = None
+    on_retry_error = _build_retry_error_handler(retry_stats)
+    started_at = time.perf_counter()
+    max_attempts = max(1, RETRY_MAX_ATTEMPTS)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return model.generate_content(
+                contents,
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+            )
+        except Exception as error:
+            if not _is_retryable_generation_error(error):
+                raise
+            on_retry_error(error)
+            last_error = error
+            if attempt >= max_attempts:
+                break
+            elapsed_seconds = time.perf_counter() - started_at
+            remaining_seconds = RETRY_TIMEOUT_SECONDS - elapsed_seconds
+            if remaining_seconds <= 0:
+                break
+            delay_seconds = min(_build_retry_delay_seconds(attempt), remaining_seconds)
+            print(
+                f"[API Retry] attempt={attempt} max_attempts={max_attempts} "
+                f"sleep_s={delay_seconds:.2f} error={type(error).__name__}"
+            )
+            time.sleep(delay_seconds)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Generation failed without explicit error")
 
 
 def generate_with_semaphore(
@@ -133,17 +170,6 @@ def generate_with_429_backoff(
     raise RuntimeError("Label generation failed without explicit error")
 
 
-def build_retry_policy(retry_stats: dict[str, Any]) -> retry.Retry:
-    return retry.Retry(
-        predicate=retry.if_exception_type(ResourceExhausted, ServiceUnavailable),
-        initial=RETRY_INITIAL_SECONDS,
-        maximum=RETRY_MAX_SECONDS,
-        multiplier=RETRY_MULTIPLIER,
-        timeout=RETRY_TIMEOUT_SECONDS,
-        on_error=_build_retry_error_handler(retry_stats),
-    )
-
-
 def generate_with_retry_and_fallback(
     primary_model,
     primary_model_name: str,
@@ -157,7 +183,6 @@ def generate_with_retry_and_fallback(
     jitter_s = random.uniform(0, JITTER_MAX_MS) / JITTER_DIVISOR
     time.sleep(jitter_s)
 
-    retry_policy = build_retry_policy(retry_stats)
     now = time.time()
     last_429_time = float(retry_stats.get("last_429_time") or 0.0)
     consecutive_429 = int(retry_stats.get("consecutive_429", 0))
@@ -179,11 +204,11 @@ def generate_with_retry_and_fallback(
         )
         backup_model = GenerativeModel(fallback_model_name)
         response = _invoke_generation_with_retry(
-            retry_policy,
             backup_model,
             contents,
             generation_config,
             safety_settings,
+            retry_stats,
         )
         retry_stats["last_used_model"] = fallback_model_name
         print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")
@@ -192,11 +217,11 @@ def generate_with_retry_and_fallback(
     with semaphore:
         try:
             response = _invoke_generation_with_retry(
-                retry_policy,
                 primary_model,
                 contents,
                 generation_config,
                 safety_settings,
+                retry_stats,
             )
             retry_stats["last_used_model"] = primary_model_name
             retry_stats["consecutive_429"] = 0
@@ -209,11 +234,11 @@ def generate_with_retry_and_fallback(
 
             backup_model = GenerativeModel(fallback_model_name)
             response = _invoke_generation_with_retry(
-                retry_policy,
                 backup_model,
                 contents,
                 generation_config,
                 safety_settings,
+                retry_stats,
             )
             retry_stats["last_used_model"] = fallback_model_name
             print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")

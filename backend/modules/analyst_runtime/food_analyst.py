@@ -14,6 +14,7 @@ from backend.modules.analyst_core.allergen_utils import format_allergens_for_pro
 from backend.modules.analyst_core.postprocess import enrich_with_nutrition
 from backend.modules.analyst_core.prompts import (
     ANALYSIS_PROMPT_VERSION,
+    BARCODE_INGREDIENTS_PROMPT_VERSION,
     LABEL_2PASS_PROMPT_VERSION,
     LABEL_PROMPT_VERSION,
 )
@@ -610,6 +611,8 @@ class FoodAnalyst:
             return {
                 "safetyStatus": "SAFE",
                 "coachMessage": safe_message,
+                "used_model": None,
+                "prompt_version": None,
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in ingredients
@@ -664,6 +667,9 @@ class FoodAnalyst:
                 print(f"[Allergen Analysis] ⚠️  Flagged: {[f['name'] for f in flagged]}")
             else:
                 print(f"[Allergen Analysis] ✓ No allergens detected.")
+
+            result["used_model"] = self.model_name
+            result["prompt_version"] = BARCODE_INGREDIENTS_PROMPT_VERSION
             
             return result
             
@@ -688,6 +694,8 @@ class FoodAnalyst:
             return {
                 "safetyStatus": "CAUTION",
                 "coachMessage": error_message,
+                "used_model": self.model_name,
+                "prompt_version": BARCODE_INGREDIENTS_PROMPT_VERSION,
                 "ingredients": [
                     {"name": ing, "isAllergen": False, "riskReason": ""} 
                     for ing in unique_input

@@ -2,6 +2,8 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Any, Dict, Optional, TypedDict
+
 from .clients.datago_client import DatagoClient
 from .clients.openfoodfacts_client import OpenFoodFactsClient
 from .clients.public_data_client import PublicDataClient
@@ -11,7 +13,12 @@ from .normalizers import (
     normalize_datago,
     normalize_off,
 )
-from typing import Dict, Any, Optional
+
+
+class BarcodeUpstreamFailure(TypedDict):
+    source: str
+    kind: str
+    message: str
 
 class BarcodeService:
     """
@@ -28,6 +35,7 @@ class BarcodeService:
         cache_path = os.getenv("BARCODE_LOOKUP_CACHE_PATH", "/tmp/foodlens_barcode_lookup_cache.json").strip()
         self.cache_path = Path(cache_path) if cache_path else None
         self._cache: dict[str, dict[str, Any]] = {}
+        self.last_upstream_failure: BarcodeUpstreamFailure | None = None
         self._load_cache()
 
     def _load_cache(self) -> None:
@@ -81,6 +89,32 @@ class BarcodeService:
             self._cache = dict(ordered[: self.cache_max_entries])
         self._persist_cache()
 
+    def _reset_last_upstream_failure(self) -> None:
+        self.last_upstream_failure = None
+
+    def _record_client_failure(self, *, source: str, client: Any) -> None:
+        checker = getattr(client, "had_upstream_failure", None)
+        if not callable(checker):
+            return
+        try:
+            had_failure = bool(checker())
+        except Exception:
+            return
+        if not had_failure:
+            return
+        failure_kind = getattr(client, "last_failure_kind", None)
+        if not isinstance(failure_kind, str) or len(failure_kind) == 0:
+            return
+        failure_message = getattr(client, "last_failure_message", None)
+        self.last_upstream_failure = {
+            "source": source,
+            "kind": failure_kind,
+            "message": failure_message if isinstance(failure_message, str) else "",
+        }
+
+    def get_last_upstream_failure(self) -> BarcodeUpstreamFailure | None:
+        return self.last_upstream_failure
+
     @staticmethod
     def _client_unavailable(client: Any) -> bool:
         checker = getattr(client, "had_upstream_failure", None)
@@ -99,11 +133,14 @@ class BarcodeService:
         3. Normalize Output
         """
         
+        self._reset_last_upstream_failure()
+
         # 1. Try Data.go.kr
         print(f"\n[BarcodeTrace] >>> Starting lookup for: {barcode}")
         print(f"[BarcodeTrace] Step 1: Querying Data.go.kr (C005)...")
         clean_barcode = barcode.strip()
         korean_data = await self.datago_client.get_product_by_barcode(clean_barcode)
+        self._record_client_failure(source="datago", client=self.datago_client)
         datago_unavailable = self._client_unavailable(self.datago_client)
         
         if korean_data:
@@ -139,6 +176,7 @@ class BarcodeService:
                     print(f"[BarcodeTrace] Step 1.3: Nutrition still missing. Trying Public Data Portal (Name: {food_name})...")
                     if food_name:
                         pd_nutrition = await self.public_data_client.get_nutrition_by_name(food_name)
+                        self._record_client_failure(source="public_data", client=self.public_data_client)
                         if pd_nutrition:
                             print(f"[BarcodeTrace] ✓ Public Data Nutrition Found! Patching...")
                             norm_pd = self.public_data_client.normalize_response(pd_nutrition)
@@ -156,6 +194,7 @@ class BarcodeService:
         # 2. Try Open Food Facts
         print(f"[BarcodeTrace] Step 2: Not found in KR DB. Trying OpenFoodFacts...")
         off_data = await self.off_client.get_product_by_barcode(clean_barcode)
+        self._record_client_failure(source="open_food_facts", client=self.off_client)
         off_unavailable = self._client_unavailable(self.off_client)
         
         if off_data:

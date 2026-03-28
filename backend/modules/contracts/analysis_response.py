@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
+from backend.modules.contracts.observability import LatencyMsContract
+
 
 SafetyStatus = Literal["SAFE", "CAUTION", "DANGER"]
 
@@ -52,3 +54,4 @@ class AnalysisResponseContract(BaseModel):
     request_id: Optional[str] = None
     prompt_version: Optional[str] = None
     used_model: Optional[str] = None
+    latency_ms: Optional[LatencyMsContract] = None

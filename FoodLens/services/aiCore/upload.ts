@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { AI_RETRY_BASE_DELAY_MS, ANALYSIS_TIMEOUT_MS } from './constants';
 import { runWithAnalysisTimeout, sleep } from './internal/retryUtils';
 
 type UploadErrorDetail = {
@@ -88,7 +89,10 @@ export const uploadWithRetryForAcceptedStatuses = async (
                 if (onProgress) onProgress(progress);
             });
 
-            const result = await runWithAnalysisTimeout(task.uploadAsync(), timeoutMs);
+            const result = await runWithAnalysisTimeout(
+                task.uploadAsync(),
+                typeof timeoutMs === 'number' ? timeoutMs : ANALYSIS_TIMEOUT_MS
+            );
 
             if (!result) throw new Error('Upload failed: No result');
 
@@ -141,7 +145,7 @@ export const uploadWithRetryForAcceptedStatuses = async (
                     typeof (error as RetryableUploadError).retryAfterMs === 'number' &&
                     (error as RetryableUploadError).retryAfterMs! > 0
                         ? (error as RetryableUploadError).retryAfterMs!
-                        : Math.pow(2, attempt - 1) * 1000;
+                        : Math.pow(2, attempt - 1) * AI_RETRY_BASE_DELAY_MS;
                 console.log(`Waiting ${delay}ms before next retry...`);
                 await sleep(delay);
             }

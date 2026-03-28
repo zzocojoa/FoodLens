@@ -1,11 +1,15 @@
+import { resumePendingAnalysisJob, runAsyncAnalysisJob } from '../internal/analysisJobs';
+
 jest.mock('../upload', () => ({
   uploadWithRetryForAcceptedStatuses: jest.fn(),
 }));
 
 jest.mock('../constants', () => ({
   AI_ASYNC_ANALYZE_ENABLED: true,
-  ANALYSIS_POLL_TIMEOUT_MS: 5,
-  ANALYSIS_SUBMIT_TIMEOUT_MS: 5,
+  AI_REQUEST_MAX_RETRIES: 3,
+  AI_RETRY_BASE_DELAY_MS: 1000,
+  ANALYSIS_POLL_TIMEOUT_MS: 15000,
+  ANALYSIS_SUBMIT_TIMEOUT_MS: 15000,
   getAiUserId: jest.fn(() => 'user-1'),
 }));
 
@@ -43,7 +47,9 @@ jest.mock('../internal/imageCompress', () => ({
   compressForUpload: jest.fn(async (value: string) => value),
 }));
 
-const { runAsyncAnalysisJob, resumePendingAnalysisJob } = require('../internal/analysisJobs') as typeof import('../internal/analysisJobs');
+jest.mock('../internal/retryUtils', () => ({
+  sleep: jest.fn(async () => undefined),
+}));
 
 type MockResponse = {
   ok: boolean;
@@ -66,6 +72,10 @@ const cacheModule = jest.requireMock('../cache') as {
 const pendingStoreModule = jest.requireMock('./../pendingAnalysisStore') as {
   savePendingAnalysisJob: jest.Mock;
   clearPendingAnalysisJob: jest.Mock;
+};
+
+const retryUtilsModule = jest.requireMock('../internal/retryUtils') as {
+  sleep: jest.Mock;
 };
 
 const createMockResponse = ({
@@ -154,6 +164,7 @@ describe('analysisJobs', () => {
     expect(result.foodName).toBe('Bibimbap');
     expect(result.foodName_en).toBe('Bibimbap');
     expect(result.foodName_ko).toBe('비빔밥');
+    expect(result.request_id).toBe('req_123');
     expect(statuses).toEqual(['queued', 'queued', 'completed']);
     expect(pendingStoreModule.savePendingAnalysisJob).toHaveBeenCalled();
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
@@ -241,6 +252,64 @@ describe('analysisJobs', () => {
     expect(result.foodName).toBe('Salad');
     expect(result.foodName_en).toBe('Salad');
     expect(result.foodName_ko).toBe('샐러드');
+    expect(result.request_id).toBe('req_resume');
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries poll requests after 429 using Retry-After', async () => {
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_retry',
+        request_id: 'req_retry',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      createMockResponse({
+        status: 429,
+        body: {
+          detail: {
+            message: 'rate limited',
+            code: 'UPSTREAM_RATE_LIMITED',
+            request_id: 'req_retry',
+            retry_after_seconds: 2,
+          },
+        },
+        retryAfter: '2',
+      }) as unknown as Response
+    ).mockResolvedValueOnce(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_retry',
+          request_id: 'req_retry',
+          status: 'completed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          foodName: 'Toast',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+        },
+      }) as unknown as Response
+    );
+
+    const result = await runAsyncAnalysisJob({
+      flow: 'camera',
+      mode: 'food',
+      imageUri: 'file://food.jpg',
+      isoCountryCode: 'KR',
+      location: null,
+      timestamp: null,
+      sourceType: 'camera',
+    });
+
+    expect(result.foodName).toBe('Toast');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(retryUtilsModule.sleep).toHaveBeenCalledWith(2000);
   });
 });

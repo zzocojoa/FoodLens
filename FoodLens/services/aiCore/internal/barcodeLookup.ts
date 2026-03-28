@@ -5,7 +5,11 @@ import { BarcodeLookupResult } from '../types';
 import { resolveRequestLocale } from './requestLocale';
 import { assertBarcodeLookupContract } from '../contracts';
 import { sleep } from './retryUtils';
-import { BARCODE_LOOKUP_MAX_RETRIES, BARCODE_LOOKUP_TIMEOUT_MS } from '../constants';
+import {
+  AI_RETRY_BASE_DELAY_MS,
+  BARCODE_LOOKUP_MAX_RETRIES,
+  BARCODE_LOOKUP_TIMEOUT_MS,
+} from '../constants';
 import { buildBarcodeCacheKey, getAiCacheValue, setAiCacheValue } from '../cache';
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
@@ -238,8 +242,17 @@ export const lookupBarcodeWithAllergyContext = async (
 
         const result = assertBarcodeLookupContract(await response.json());
         if (result.found && result.data) {
-          result.data = mapBarcodeToAnalyzedData(result.data);
-          result.data.isBarcode = true;
+          const mappedData = mapBarcodeToAnalyzedData(result.data, {
+            requestId: result.request_id,
+            promptVersion: result.prompt_version,
+            usedModel: result.used_model,
+            latencyMs: result.latency_ms,
+            latencyMsByStage: undefined,
+          });
+          result.data = {
+            ...mappedData,
+            isBarcode: true,
+          };
         }
         await setAiCacheValue(cacheKey, result);
 
@@ -274,7 +287,10 @@ export const lookupBarcodeWithAllergyContext = async (
           typeof (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs === 'number'
             ? (normalizedError as Error & { retryAfterMs?: number }).retryAfterMs
             : undefined;
-        const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.pow(2, attempt - 1) * 500;
+        const delayMs =
+          retryAfterMs && retryAfterMs > 0
+            ? retryAfterMs
+            : Math.pow(2, attempt - 1) * AI_RETRY_BASE_DELAY_MS;
         console.log(`${TRACE_TAG} lookup:retry-scheduled`, {
           attempt,
           barcode: maskedBarcode,

@@ -115,7 +115,7 @@
 - 신규 인증 공급자 추가(Phase 1 범위)
 - 대규모 DB 구조 재설계(Phase 2 범위)
 
-## 9) 구현 기준 고정값 (2026-03-02)
+## 9) 구현 기준 고정값 (2026-03-28)
 
 - CORS: Allowlist + LAN regex 허용
   - `ANALYSIS_CORS_ALLOWED_ORIGINS`
@@ -130,46 +130,75 @@
   - `detail.code`: `API_RATE_LIMITED | UPSTREAM_RATE_LIMITED`
   - `detail.request_id`, `detail.retry_after_seconds`
 - Timeout/Retry
-  - 서버: `GEMINI_RETRY_TIMEOUT_SECONDS=15`
-  - 모바일: `ANALYSIS_TIMEOUT_MS=15000`, 재시도 최대 3회
+  - 서버 공통 생성 경로(`/analyze`, `/analyze/jobs`): `GEMINI_RETRY_TIMEOUT_SECONDS=15`, `GEMINI_RETRY_MAX_ATTEMPTS=3`
+  - `/analyze/label`: 429 지수 백오프, 최대 3회
+  - `/lookup/barcode`: `BARCODE_UPSTREAM_TIMEOUT_SECONDS=15`, `BARCODE_UPSTREAM_RETRY_COUNT=3`, `BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS=1.0`
+  - 모바일: 각 HTTP 요청 기준 `15000ms`, 재시도 최대 3회
+    - `ANALYSIS_TIMEOUT_MS=15000`
+    - `ANALYSIS_SUBMIT_TIMEOUT_MS=15000`
+    - `ANALYSIS_POLL_TIMEOUT_MS=15000`
+    - `BARCODE_LOOKUP_TIMEOUT_MS=15000`
+  - 429 재시도는 `Retry-After` 헤더 우선
+  - `/analyze/jobs`는 submit/poll을 분리하고, poll 간격은 `poll_after_ms`를 따른다
 - On-device cache
   - 이미지/바코드 모두 적용
   - TTL 24h (`EXPO_PUBLIC_AI_CACHE_TTL_SECONDS=86400`)
   - LRU 200 entries
+- Cost guardrail
+  - `LABEL_COST_GUARDRAIL_ENABLED=1`
+  - `LABEL_MONTHLY_BUDGET_USD=10`
+  - `LABEL_ESTIMATED_COST_USD_PER_REQUEST=0.02`
+  - `LABEL_ESTIMATED_TOKENS_PER_REQUEST=1500`
+  - `LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE=0.012`
+  - `LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE=900`
+- Observability 메타
+  - `/analyze`, `/analyze/label`, `/analyze/smart`: `request_id`, `used_model`, `prompt_version`, `latency_ms`
+  - `/analyze/jobs/{job_id}`: `request_id`, `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
+  - `/lookup/barcode`: `request_id`, `latency_ms`, 그리고 알러지 분석 수행 시 `used_model`, `prompt_version`
 
 ## 10) Phase 4 완료 증적 체크
 
 - [ ] Render 로그에 request_id 기반 시작/완료/오류 추적 가능
 - [ ] 429 유도 시 `Retry-After`와 표준 detail 응답 확인 (Render Live 기준)
+- [x] Render blueprint에 timeout/retry/cost guardrail/barcode upstream env가 선언됨
 - [x] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
+- [x] `/analyze`, `/analyze/label`, `/lookup/barcode` 응답의 `latency_ms` 확인
+- [x] `/lookup/barcode` 알러지 분석 응답의 `used_model`, `prompt_version` 확인
 - [x] label 공급자 429가 API 429로 통일되는지 확인
 - [x] 모바일 로그에 `cache_hit=true` 확인 (단위 테스트 로그)
 - [x] 백엔드/모바일 테스트 PASS 로그 첨부
 
-### 10-1) 검증 실행 결과 (2026-03-02)
+### 10-1) 검증 실행 결과 (2026-03-28)
 
-- Backend validation suite: PASS (19 tests)
+- Backend validation suite A: PASS (40 tests)
   - 실행 명령:
-    - `AUTH_STATE_BACKEND=memory python -m unittest -v backend.tests.runtime.test_api_edge_guard backend.tests.runtime.test_analysis_observability backend.tests.runtime.test_label_429_policy backend.tests.runtime.test_cost_guardrail backend.tests.contracts.test_analysis_contract_snapshot`
-  - 증적 로그: `/tmp/phase4-backend-validation.log`
+    - `AUTH_STATE_BACKEND=memory python -m unittest backend.tests.runtime.test_analysis_retry_policy backend.tests.runtime.test_analysis_observability backend.tests.runtime.test_label_429_policy backend.tests.runtime.test_cost_guardrail backend.tests.runtime.test_barcode_clients_resilience backend.tests.runtime.test_phase4_operational_config backend.tests.contracts.test_analysis_contract_snapshot backend.tests.contracts.test_barcode_contract_snapshot backend.tests.runtime.test_analysis_jobs backend.tests.runtime.test_analyze_max_tokens_retry`
   - 확인 포인트:
-    - request_id 전달/추적
+    - 서버 retry 상한(3회) + timeout(15초) 정책
     - 429 표준 응답(`Retry-After`, `UPSTREAM_RATE_LIMITED`)
-    - cost guardrail degrade/fallback 동작
-- Mobile aiCore suite: PASS (4 suites, 18 tests)
+    - cost guardrail 활성 상태와 degrade/fallback 동작
+    - barcode upstream timeout/retry/backoff 정책
+    - `/analyze`, `/lookup/barcode`, `/analyze/jobs` 응답 메타(`request_id`, `used_model`, `prompt_version`, `latency_ms*`)
+- Backend validation suite B: PASS (9 tests)
+  - 실행 명령:
+    - `AUTH_STATE_BACKEND=memory python -m unittest backend.tests.runtime.test_api_edge_guard`
+  - 확인 포인트:
+    - CORS allowlist / LAN regex
+    - endpoint별 rate limit 기본값
+    - inflight admission 기본값
+- Mobile aiCore suite: PASS (7 suites, 35 tests)
   - 실행 명령:
     - `npm test -- aiCore --runInBand`
-  - 증적 로그: `/tmp/phase4-mobile-validation.log`
   - 확인 포인트:
     - 429 `Retry-After` 우선 재시도
+    - `/analyze`, `/analyze/jobs`, `/lookup/barcode` 15초/3회 기준
     - on-device cache hit 로그
+    - request_id / prompt_version / used_model / latency 메타 보존
 - Render runtime rehearsal (burst 429): 환경 제한으로 미완료
-  - 실행 결과: DNS resolution failure (`status=000`)
-  - 증적 로그: `/tmp/phase4-runtime-429.log`
   - 필요 후속: Render Live Logs에서 429/latency/request_id/fallback 라인 캡처
 
 ---
 
-문서 버전: v1.1  
+문서 버전: v1.2  
 연결 문서: [Master Plan](./master-plan.md), [Phase 3 실행표](./phase-3-sync-conflict-execution.md), [API 계약 기준서](../contracts/api-contracts.md)  
-최종 수정: 2026-03-02
+최종 수정: 2026-03-28

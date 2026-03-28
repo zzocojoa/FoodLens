@@ -10,6 +10,8 @@
   - `request_id`: 요청 추적 번호 (문제 추적용)
   - `used_model`: 실제 사용한 AI 모델명 (분석 API)
   - `prompt_version`: 적용 프롬프트 버전 (분석 API)
+  - `latency_ms`: 동기 API의 총/단계별 지연시간
+  - `latency_ms_by_stage`: 비동기 분석 단계별 지연시간 (job status API)
 - 실패 응답도 사람이 이해 가능한 메시지를 제공합니다.
 - 하위 호환(Backward Compatibility) 원칙:
   - 기존 필드 삭제 금지
@@ -29,7 +31,7 @@
   - `ingredients[]`
   - `nutrition`
   - `raw_result`, `raw_result_en`, `raw_result_ko`
-  - `request_id`, `prompt_version`, `used_model`
+  - `request_id`, `prompt_version`, `used_model`, `latency_ms`
 - 비개발자 설명:
   - 이 API는 "제품 라벨 사진을 읽고", 성분/영양/알레르기 위험을 정리해 주는 기능입니다.
 
@@ -39,6 +41,7 @@
   - 음식 이미지, 사용자 알레르기/로케일 컨텍스트
 - 출력(핵심):
   - 음식명, 성분 추정, 안전도, 요약 문장
+  - `request_id`, `used_model`, `prompt_version`, `latency_ms`
 - 비개발자 설명:
   - 일반 음식 사진 기반으로 위험도를 알려주는 기능입니다.
 
@@ -49,9 +52,21 @@
   - locale, allergy context
 - 출력(핵심):
   - 상품명/성분/안전도/요약
-  - `request_id`
+  - `request_id`, `latency_ms`
+  - 알러지 분석이 실제 수행된 경우 `used_model`, `prompt_version`
 - 비개발자 설명:
   - 바코드 번호로 공공/사내 데이터와 AI를 조합해 결과를 반환합니다.
+
+### D. 비동기 분석 작업 상태
+- Endpoint:
+  - `POST /analyze/jobs`
+  - `GET /analyze/jobs/{job_id}`
+- 출력(핵심):
+  - `job_id`, `request_id`, `status`, `accepted_at`, `updated_at`, `poll_after_ms`
+  - 완료 시 결과 payload 일부 또는 전체
+  - 가능하면 `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
+- 비개발자 설명:
+  - 사진 분석이 오래 걸릴 때 앱은 job을 만들고, 상태 API를 반복 조회해 완료 결과를 받습니다.
 
 ## 4) Phase 1 인증/세션 API 계약 (활성화)
 
@@ -202,6 +217,6 @@
 
 ---
 
-문서 버전: v1.4  
+문서 버전: v1.5  
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-03-04
+최종 수정: 2026-03-28

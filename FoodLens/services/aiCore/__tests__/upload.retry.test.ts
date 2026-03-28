@@ -1,7 +1,10 @@
 import * as FileSystem from 'expo-file-system/legacy';
-
 import { uploadWithRetry } from '../upload';
 import { runWithAnalysisTimeout, sleep } from '../internal/retryUtils';
+
+jest.mock('@/services/auth/currentUser', () => ({
+  getCurrentUserId: jest.fn(() => 'user-1'),
+}));
 
 jest.mock('expo-file-system/legacy', () => ({
   __esModule: true,
@@ -91,7 +94,7 @@ describe('uploadWithRetry', () => {
   });
 
   it('does not retry when client timeout is reached', async () => {
-    const timeoutError = new Error('Operation timed out after 45000 ms');
+    const timeoutError = new Error('Operation timed out after 15000 ms');
     mockedCreateUploadTask.mockImplementation(
       () =>
         ({
@@ -106,7 +109,7 @@ describe('uploadWithRetry', () => {
     (runWithAnalysisTimeout as jest.Mock).mockRejectedValueOnce(timeoutError);
 
     await expect(uploadWithRetry('https://example.com/analyze', 'file://test.jpg', {}, 3)).rejects.toThrow(
-      'Operation timed out after 45000 ms'
+      'Operation timed out after 15000 ms'
     );
     expect(runWithAnalysisTimeout).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();

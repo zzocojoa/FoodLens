@@ -1,4 +1,4 @@
-import { AnalyzedData, NutritionData, TranslationCard } from './types';
+import { AnalyzedData, LatencyMsBreakdown, LatencyMsByStage, NutritionData, TranslationCard } from './types';
 import { getI18nSnapshot } from '@/features/i18n/services/i18nStore';
 
 export const clampConfidence = (confidence: unknown) =>
@@ -15,6 +15,24 @@ const getOptionalString = (value: unknown): string | undefined =>
 
 const getNumberOrNull = (value: unknown): number | null =>
     typeof value === 'number' ? value : null;
+
+const parseLatencyMsByStage = (value: unknown): LatencyMsByStage | undefined => {
+    if (!isRecord(value)) return undefined;
+
+    const entries = Object.entries(value).filter(([, itemValue]) => typeof itemValue === 'number');
+    if (entries.length === 0) return undefined;
+
+    return Object.fromEntries(entries) as LatencyMsByStage;
+};
+
+const parseLatencyMs = (value: unknown): LatencyMsBreakdown | undefined => {
+    if (!isRecord(value)) return undefined;
+
+    const entries = Object.entries(value).filter(([, itemValue]) => typeof itemValue === 'number');
+    if (entries.length === 0) return undefined;
+
+    return Object.fromEntries(entries) as LatencyMsBreakdown;
+};
 
 const parseNutrition = (value: unknown): NutritionData | undefined => {
     if (!isRecord(value)) return undefined;
@@ -142,6 +160,11 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
                 ? safetyStatus
                 : 'CAUTION',
         confidence: clampConfidence(data['confidence']),
+        request_id: getOptionalString(data['request_id']),
+        prompt_version: getOptionalString(data['prompt_version']),
+        used_model: getOptionalString(data['used_model']),
+        latency_ms: parseLatencyMs(data['latency_ms']),
+        latency_ms_by_stage: parseLatencyMsByStage(data['latency_ms_by_stage']),
         ingredients: ingredients as AnalyzedData['ingredients'],
         nutrition: parseNutrition(data['nutrition']),
         translationCard,
@@ -149,10 +172,20 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
         raw_result_en: getOptionalString(data['raw_result_en']),
         raw_result_ko: getOptionalString(data['raw_result_ko']),
         raw_data: data,
+        fallback_reason: getOptionalString(data['fallback_reason']),
     };
 };
 
-export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
+export const mapBarcodeToAnalyzedData = (
+    input: unknown,
+    metadata: {
+        requestId: string | undefined;
+        promptVersion: string | undefined;
+        usedModel: string | undefined;
+        latencyMs: LatencyMsBreakdown | undefined;
+        latencyMsByStage: LatencyMsByStage | undefined;
+    }
+): AnalyzedData => {
     const data = isRecord(input) ? input : {};
     const nutrition: NutritionData | undefined = {
         calories: getNumberOrNull(data['calories']),
@@ -199,6 +232,12 @@ export const mapBarcodeToAnalyzedData = (input: unknown): AnalyzedData => {
         raw_result: resolveSummaryText(data),
         raw_result_en: getOptionalString(data['raw_result_en']),
         raw_result_ko: getOptionalString(data['raw_result_ko']),
+        request_id: metadata.requestId ?? getOptionalString(data['request_id']),
+        prompt_version: metadata.promptVersion ?? getOptionalString(data['prompt_version']),
+        used_model: metadata.usedModel ?? getOptionalString(data['used_model']),
+        latency_ms: metadata.latencyMs ?? parseLatencyMs(data['latency_ms']),
+        latency_ms_by_stage: metadata.latencyMsByStage ?? parseLatencyMsByStage(data['latency_ms_by_stage']),
         raw_data: data,
+        fallback_reason: getOptionalString(data['fallback_reason']),
     };
 };
