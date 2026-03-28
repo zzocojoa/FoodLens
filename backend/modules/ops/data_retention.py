@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-from typing import Protocol
+from pathlib import Path
+from typing import Callable, Protocol
+
+
+class RetentionStoreError(Exception):
+    pass
 
 
 class RetentionDataClass(StrEnum):
@@ -56,7 +61,13 @@ class RetentionRecord:
 
 
 class RetentionStore(Protocol):
+    def add(self, record: RetentionRecord) -> None:
+        ...
+
     def list_records(self, data_class: RetentionDataClass, limit: int) -> list[RetentionRecord]:
+        ...
+
+    def remove(self, record_id: str) -> None:
         ...
 
 
@@ -71,6 +82,9 @@ class InMemoryRetentionStore:
         filtered = [r for r in self._records if r.data_class == data_class]
         filtered.sort(key=lambda item: item.created_at)
         return filtered[: max(0, limit)]
+
+    def remove(self, record_id: str) -> None:
+        self._records = [record for record in self._records if record.record_id != record_id]
 
 
 class JsonFileRetentionStore:
@@ -131,6 +145,106 @@ class JsonFileRetentionStore:
         records.sort(key=lambda item: item.created_at)
         return records[: max(0, limit)]
 
+    def remove(self, record_id: str) -> None:
+        records = [record for record in self._load() if record.record_id != record_id]
+        self._save(records)
+
+
+@dataclass(slots=True)
+class PostgresRetentionStore:
+    database_url: str
+    table_name: str = "retention_records"
+
+    def __post_init__(self) -> None:
+        if not self.database_url.strip():
+            raise RetentionStoreError("DATABASE_URL is required for postgres retention backend.")
+        self.table_name = _sanitize_table_name(self.table_name, fallback="retention_records")
+
+    def add(self, record: RetentionRecord) -> None:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            f"INSERT INTO {self.table_name} "
+                            "(record_id,data_class,created_at,user_id,request_id,storage_key,updated_at) "
+                            "VALUES (%s,%s,%s::timestamptz,%s,%s,%s,NOW()) "
+                            "ON CONFLICT (record_id) DO UPDATE SET "
+                            "data_class=EXCLUDED.data_class,"
+                            "created_at=EXCLUDED.created_at,"
+                            "user_id=EXCLUDED.user_id,"
+                            "request_id=EXCLUDED.request_id,"
+                            "storage_key=EXCLUDED.storage_key,"
+                            "updated_at=NOW()"
+                        ),
+                        (
+                            record.record_id,
+                            record.data_class.value,
+                            record.created_at.isoformat(),
+                            record.user_id,
+                            record.request_id,
+                            record.storage_key,
+                        ),
+                    )
+        except Exception as error:
+            raise RetentionStoreError(f"Failed to add retention record to postgres: {error}") from error
+
+    def list_records(self, data_class: RetentionDataClass, limit: int) -> list[RetentionRecord]:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            f"SELECT record_id,data_class,created_at,user_id,request_id,storage_key "
+                            f"FROM {self.table_name} "
+                            "WHERE data_class = %s "
+                            "ORDER BY created_at ASC "
+                            "LIMIT %s"
+                        ),
+                        (data_class.value, max(0, limit)),
+                    )
+                    rows = cursor.fetchall()
+            return [_row_to_retention_record(row) for row in rows]
+        except Exception as error:
+            raise RetentionStoreError(f"Failed to list retention records from postgres: {error}") from error
+
+    def remove(self, record_id: str) -> None:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        f"DELETE FROM {self.table_name} WHERE record_id = %s",
+                        (record_id,),
+                    )
+        except Exception as error:
+            raise RetentionStoreError(f"Failed to remove retention record from postgres: {error}") from error
+
+    def _ensure_table(self, conn: object) -> None:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                (
+                    f"CREATE TABLE IF NOT EXISTS {self.table_name} ("
+                    "record_id TEXT PRIMARY KEY,"
+                    "data_class TEXT NOT NULL,"
+                    "created_at TIMESTAMPTZ NOT NULL,"
+                    "user_id TEXT NULL,"
+                    "request_id TEXT NULL,"
+                    "storage_key TEXT NULL,"
+                    "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+                    ")"
+                )
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.table_name}_class_created_idx "
+                f"ON {self.table_name} (data_class, created_at)"
+            )
+
 
 class RetentionCleanupAdapter(Protocol):
     def delete_record(self, record: RetentionRecord) -> bool:
@@ -144,6 +258,18 @@ class NoOpRetentionCleanupAdapter:
     def delete_record(self, record: RetentionRecord) -> bool:
         self.deleted_ids.append(record.record_id)
         return True
+
+
+class CallbackRetentionCleanupAdapter:
+    def __init__(self, delete_callback: Callable[[RetentionRecord], bool]) -> None:
+        self._delete_callback = delete_callback
+        self.deleted_ids: list[str] = []
+
+    def delete_record(self, record: RetentionRecord) -> bool:
+        deleted = self._delete_callback(record)
+        if deleted:
+            self.deleted_ids.append(record.record_id)
+        return deleted
 
 
 class LocalFileRetentionCleanupAdapter:
@@ -223,6 +349,7 @@ class RetentionCleanupJob:
         deleted = 0
         for record in expired:
             if self.adapter.delete_record(record):
+                self.store.remove(record.record_id)
                 deleted += 1
 
         return CleanupJobResult(
@@ -231,3 +358,37 @@ class RetentionCleanupJob:
             deleted_count=deleted,
             data_class=data_class,
         )
+
+
+def _row_to_retention_record(row: tuple[object, ...]) -> RetentionRecord:
+    return RetentionRecord(
+        record_id=str(row[0]),
+        data_class=RetentionDataClass(str(row[1])),
+        created_at=_coerce_datetime(row[2]),
+        user_id=str(row[3]) if row[3] is not None else None,
+        request_id=str(row[4]) if row[4] is not None else None,
+        storage_key=str(row[5]) if row[5] is not None else None,
+    )
+
+
+def _coerce_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return datetime.fromisoformat(str(value))
+
+
+def _load_connect():
+    try:
+        from psycopg import connect  # type: ignore
+    except Exception as error:
+        raise RetentionStoreError(
+            "psycopg is required for postgres retention backend. Install backend/requirements.txt."
+        ) from error
+    return connect
+
+
+def _sanitize_table_name(raw: str, *, fallback: str) -> str:
+    candidate = (raw or "").strip() or fallback
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", candidate):
+        raise RetentionStoreError("Retention table name has invalid format.")
+    return candidate

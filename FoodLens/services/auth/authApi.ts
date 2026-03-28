@@ -39,6 +39,19 @@ export type AuthPasswordResetChallenge = {
   debugCode?: string;
 };
 
+export type AuthDeletionRequestTarget = 'account' | 'data';
+export type AuthDeletionRequestStatus = 'pending' | 'in_progress' | 'done' | 'failed';
+
+export type AuthDeletionRequest = {
+  queueId: string;
+  target: AuthDeletionRequestTarget;
+  status: AuthDeletionRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  reason: string;
+  error?: string | null;
+};
+
 type AuthPayload = {
   access_token?: string;
   refresh_token?: string;
@@ -59,6 +72,21 @@ type AuthPayload = {
   reset_debug_code?: string;
   password_reset?: boolean;
   sessions_revoked?: number;
+};
+
+type AuthDeletionRequestPayload = {
+  queue_id?: string;
+  target?: AuthDeletionRequestTarget;
+  status?: AuthDeletionRequestStatus;
+  created_at?: string;
+  updated_at?: string;
+  reason?: string;
+  error?: string | null;
+};
+
+type AuthDeletionRequestEnvelope = {
+  deletion_request?: AuthDeletionRequestPayload | null;
+  request_id?: string;
 };
 
 type ApiErrorShape = {
@@ -145,6 +173,41 @@ const toPasswordResetChallenge = (payload: AuthPayload): AuthPasswordResetChalle
   };
 };
 
+const toDeletionRequest = (
+  payload: AuthDeletionRequestPayload | null | undefined,
+  requestId?: string
+): AuthDeletionRequest | null => {
+  if (!payload) {
+    return null;
+  }
+
+  if (
+    !payload.queue_id ||
+    !payload.target ||
+    !payload.status ||
+    !payload.created_at ||
+    !payload.updated_at ||
+    !payload.reason
+  ) {
+    throw new AuthApiError(
+      'Deletion request response is missing required fields.',
+      'AUTH_INVALID_RESPONSE',
+      502,
+      requestId
+    );
+  }
+
+  return {
+    queueId: payload.queue_id,
+    target: payload.target,
+    status: payload.status,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+    reason: payload.reason,
+    error: payload.error ?? null,
+  };
+};
+
 const parseErrorResponse = async (response: Response): Promise<AuthApiError> => {
   let parsed: ApiErrorShape | null = null;
 
@@ -181,6 +244,52 @@ const postJson = async <T>(
         ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw await parseErrorResponse(response);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof AuthApiError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AuthApiError('Auth request timed out.', 'AUTH_TIMEOUT', 408, requestId);
+    }
+
+    throw new AuthApiError(
+      error instanceof Error ? error.message : 'Unknown auth error',
+      'AUTH_NETWORK_ERROR',
+      0,
+      requestId
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getJson = async <T>(
+  path: string,
+  options: { accessToken?: string } = {}
+): Promise<T> => {
+  const baseUrl = await ServerConfig.getServerUrl();
+  const endpoint = `${baseUrl}${path}`;
+  const requestId = createRequestId();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-Id': requestId,
+        ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {}),
+      },
       signal: controller.signal,
     });
 
@@ -353,5 +462,33 @@ export const AuthApi = {
 
   async logout(input: { accessToken?: string; refreshToken?: string }): Promise<void> {
     await postJson<{ ok: boolean }>('/auth/logout', { refresh_token: input.refreshToken }, { accessToken: input.accessToken });
+  },
+
+  async getLatestDeletionRequest(input: { accessToken: string }): Promise<AuthDeletionRequest | null> {
+    const payload = await getJson<AuthDeletionRequestEnvelope>('/me/deletion-requests/latest', {
+      accessToken: input.accessToken,
+    });
+    return toDeletionRequest(payload.deletion_request, payload.request_id);
+  },
+
+  async createDeletionRequest(input: {
+    accessToken: string;
+    target: AuthDeletionRequestTarget;
+  }): Promise<AuthDeletionRequest> {
+    const payload = await postJson<AuthDeletionRequestEnvelope>(
+      '/me/deletion-requests',
+      { target: input.target },
+      { accessToken: input.accessToken }
+    );
+    const deletionRequest = toDeletionRequest(payload.deletion_request, payload.request_id);
+    if (!deletionRequest) {
+      throw new AuthApiError(
+        'Deletion request response is missing required fields.',
+        'AUTH_INVALID_RESPONSE',
+        502,
+        payload.request_id
+      );
+    }
+    return deletionRequest;
   },
 };

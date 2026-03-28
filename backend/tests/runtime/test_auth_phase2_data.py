@@ -8,9 +8,12 @@ from fastapi.testclient import TestClient
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
+os.environ["AUTH_STATE_BACKEND"] = "memory"
+os.environ["AUTH_NORMALIZED_PROJECTION_ENABLED"] = "0"
 os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
+os.environ.pop("DATABASE_URL", None)
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 from backend.server import app  # noqa: E402
 
@@ -307,6 +310,154 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             history = client.get("/me/history", headers=headers)
             self.assertEqual(history.status_code, 200)
             self.assertEqual(history.json()["history"], [])
+
+    def test_latest_deletion_request_is_null_before_request(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase5-latest-empty"))
+            headers = _auth_headers(session["access_token"])
+
+            latest = client.get("/me/deletion-requests/latest", headers=headers)
+
+            self.assertEqual(latest.status_code, 200)
+            latest_body = latest.json()
+            self.assertIn("request_id", latest_body)
+            self.assertIsNone(latest_body["deletion_request"])
+
+    def test_data_deletion_request_clears_user_data_and_updates_latest_status(self):
+        with TestClient(app) as client:
+            email = self._unique_email("phase5-data-delete")
+            password = "Passw0rd!"
+            session = self._signup_and_verify(client, email=email, password=password)
+            headers = _auth_headers(session["access_token"])
+
+            put_profile = client.put(
+                "/me/profile",
+                json={
+                    "display_name": "Delete Me",
+                    "profile_image_url": "https://cdn.example.com/profile/delete.png",
+                    "gender": "female",
+                    "birth_year": 1994,
+                    "disliked_ingredients": ["celery"],
+                    "current_trip_location": "Busan, KR",
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_profile.status_code, 200)
+
+            put_allergies = client.put(
+                "/me/allergies",
+                json={
+                    "allergies": ["soy"],
+                    "dietary_restrictions": ["vegan"],
+                    "severity_map": {"soy": "high"},
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_allergies.status_code, 200)
+
+            put_settings = client.put(
+                "/me/settings",
+                json={
+                    "language": "en-US",
+                    "target_language": "ja-JP",
+                    "auto_play_audio": True,
+                    "selected_emoji": "🍎",
+                    "client_state": {"home": {"selected_date": "2026-03-03"}},
+                },
+                headers=headers,
+            )
+            self.assertEqual(put_settings.status_code, 200)
+
+            post_history = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "phase5-data-history",
+                        "foodName": "Delete Target",
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    },
+                    "idempotency_key": "phase5-data-delete-history",
+                },
+                headers=headers,
+            )
+            self.assertEqual(post_history.status_code, 200)
+
+            deletion = client.post(
+                "/me/deletion-requests",
+                json={"target": "data"},
+                headers=headers,
+            )
+            self.assertEqual(deletion.status_code, 200)
+            deletion_body = deletion.json()
+            self.assertIn("request_id", deletion_body)
+            self.assertEqual(deletion_body["deletion_request"]["target"], "data")
+            self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+
+            latest = client.get("/me/deletion-requests/latest", headers=headers)
+            self.assertEqual(latest.status_code, 401)
+            self.assertEqual(latest.json()["detail"]["code"], "AUTH_TOKEN_INVALID")
+
+            login = client.post(
+                "/auth/email/login",
+                json={"email": email, "password": password},
+            )
+            self.assertEqual(login.status_code, 200)
+            latest_headers = _auth_headers(login.json()["access_token"])
+
+            latest = client.get("/me/deletion-requests/latest", headers=latest_headers)
+            self.assertEqual(latest.status_code, 200)
+            latest_body = latest.json()
+            self.assertEqual(latest_body["deletion_request"]["queue_id"], deletion_body["deletion_request"]["queue_id"])
+            self.assertEqual(latest_body["deletion_request"]["status"], "done")
+
+            profile = client.get("/me/profile", headers=latest_headers)
+            self.assertEqual(profile.status_code, 200)
+            profile_payload = profile.json()["profile"]
+            self.assertIsNone(profile_payload["display_name"])
+            self.assertIsNone(profile_payload["profile_image_url"])
+            self.assertIsNone(profile_payload["gender"])
+            self.assertIsNone(profile_payload["birth_year"])
+            self.assertEqual(profile_payload["disliked_ingredients"], [])
+            self.assertIsNone(profile_payload["current_trip_location"])
+
+            allergies = client.get("/me/allergies", headers=latest_headers)
+            self.assertEqual(allergies.status_code, 200)
+            allergies_payload = allergies.json()["allergies"]
+            self.assertEqual(allergies_payload["allergies"], [])
+            self.assertEqual(allergies_payload["dietary_restrictions"], [])
+            self.assertEqual(allergies_payload["severity_map"], {})
+
+            settings = client.get("/me/settings", headers=latest_headers)
+            self.assertEqual(settings.status_code, 200)
+            settings_payload = settings.json()["settings"]
+            self.assertEqual(settings_payload["language"], "auto")
+            self.assertIsNone(settings_payload["target_language"])
+            self.assertFalse(settings_payload["auto_play_audio"])
+            self.assertIsNone(settings_payload["selected_emoji"])
+            self.assertEqual(settings_payload["client_state"], {})
+
+            history = client.get("/me/history", headers=latest_headers)
+            self.assertEqual(history.status_code, 200)
+            self.assertEqual(history.json()["history"], [])
+
+    def test_account_deletion_request_blocks_followup_reads(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase5-account-delete"))
+            headers = _auth_headers(session["access_token"])
+
+            deletion = client.post(
+                "/me/deletion-requests",
+                json={"target": "account"},
+                headers=headers,
+            )
+            self.assertEqual(deletion.status_code, 200)
+            deletion_body = deletion.json()
+            self.assertEqual(deletion_body["deletion_request"]["target"], "account")
+            self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+
+            profile = client.get("/me/profile", headers=headers)
+            self.assertEqual(profile.status_code, 401)
+            self.assertEqual(profile.json()["detail"]["code"], "AUTH_TOKEN_INVALID")
 
     def test_me_update_conflict_returns_409_with_server_payload(self):
         with TestClient(app) as client:

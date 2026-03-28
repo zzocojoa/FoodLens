@@ -127,6 +127,9 @@ class PostgresAuthProjectionStore:
             settings = self._as_list(payload.get("settings"))
             history = self._as_list(payload.get("history"))
             media_assets = self._as_list(payload.get("media_assets"))
+            user_ids = [str(row.get("user_id")) for row in users if row.get("user_id")]
+            history_ids = [str(row.get("id")) for row in history if row.get("id")]
+            asset_ids = [str(row.get("asset_id")) for row in media_assets if row.get("asset_id")]
 
             with connect(self.database_url, autocommit=True) as conn:
                 self._ensure_tables(conn)
@@ -298,8 +301,45 @@ class PostgresAuthProjectionStore:
                                 row.get("last_accessed_at"),
                             ),
                         )
+                    self._delete_missing_projection_rows(
+                        cursor=cursor,
+                        user_ids=user_ids,
+                        history_ids=history_ids,
+                        asset_ids=asset_ids,
+                    )
         except Exception as error:  # pragma: no cover - defensive integration guard
             raise AuthStateStoreError(f"Failed to save auth projection to postgres: {error}") from error
+
+    def _delete_missing_projection_rows(
+        self,
+        *,
+        cursor: object,
+        user_ids: list[str],
+        history_ids: list[str],
+        asset_ids: list[str],
+    ) -> None:
+        self._delete_missing_by_column(cursor=cursor, table=self._table("users"), column="user_id", values=user_ids)
+        self._delete_missing_by_column(cursor=cursor, table=self._table("profiles"), column="user_id", values=user_ids)
+        self._delete_missing_by_column(cursor=cursor, table=self._table("allergies"), column="user_id", values=user_ids)
+        self._delete_missing_by_column(cursor=cursor, table=self._table("settings"), column="user_id", values=user_ids)
+        self._delete_missing_by_column(cursor=cursor, table=self._table("history"), column="history_id", values=history_ids)
+        self._delete_missing_by_column(cursor=cursor, table=self._table("media_assets"), column="asset_id", values=asset_ids)
+
+    def _delete_missing_by_column(
+        self,
+        *,
+        cursor: object,
+        table: str,
+        column: str,
+        values: list[str],
+    ) -> None:
+        if values:
+            cursor.execute(
+                f"DELETE FROM {table} WHERE {column} <> ALL(%s)",
+                (values,),
+            )
+            return
+        cursor.execute(f"DELETE FROM {table}")
 
     def _ensure_tables(self, conn: object) -> None:
         users = self._table("users")

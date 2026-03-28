@@ -199,6 +199,32 @@ services:
         value: "2"
       - key: BARCODE_DATAGO_UNHEALTHY_COOLDOWN_SECONDS
         value: "120"
+      - key: RETENTION_STORE_BACKEND
+        value: postgres
+      - key: RETENTION_STORE_TABLE
+        value: retention_records
+      - key: RETENTION_DELETE_BACKEND
+        value: media_asset
+      - key: RETENTION_CLEANUP_INTERVAL_SECONDS
+        value: "3600"
+      - key: RETENTION_ORIGINAL_TTL_DAYS
+        value: "30"
+      - key: RETENTION_DERIVED_TTL_DAYS
+        value: "90"
+      - key: RETENTION_LOG_TTL_DAYS
+        value: "14"
+      - key: DELETION_QUEUE_BACKEND
+        value: postgres
+      - key: DELETION_QUEUE_TABLE
+        value: deletion_queue
+      - key: DELETION_STATUS_TABLE
+        value: deletion_statuses
+      - key: DELETION_HANDLER_BACKEND
+        value: user
+      - key: DELETION_QUEUE_INTERVAL_SECONDS
+        value: "30"
+      - key: DELETION_QUEUE_MAX_BATCH
+        value: "20"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

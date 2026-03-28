@@ -84,12 +84,12 @@ class LoggingEmailVerificationSender(EmailVerificationSender):
         masked_email = _mask_email(email)
         if self.include_code_in_logs:
             logger.info(
-                "[AuthEmail] verification code prepared mode=%s user_id=%s email=%s expires_in=%s code=%s",
+                "[AuthEmail] verification delivery prepared mode=%s user_id=%s email=%s expires_in=%s debug_code_logging_enabled=%s",
                 self.mode,
                 user_id,
                 masked_email,
                 expires_in_seconds,
-                code,
+                True,
             )
             return
         logger.info(
@@ -111,12 +111,12 @@ class LoggingEmailVerificationSender(EmailVerificationSender):
         masked_email = _mask_email(email)
         if self.include_code_in_logs:
             logger.info(
-                "[AuthEmail] password reset code prepared mode=%s user_id=%s email=%s expires_in=%s code=%s",
+                "[AuthEmail] password reset delivery prepared mode=%s user_id=%s email=%s expires_in=%s debug_code_logging_enabled=%s",
                 self.mode,
                 user_id,
                 masked_email,
                 expires_in_seconds,
-                code,
+                True,
             )
             return
         logger.info(

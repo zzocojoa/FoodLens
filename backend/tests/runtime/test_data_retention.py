@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from backend.modules.ops.data_retention import (
+    CallbackRetentionCleanupAdapter,
     InMemoryRetentionStore,
     JsonFileRetentionStore,
     LocalFileRetentionCleanupAdapter,
@@ -81,6 +82,31 @@ class DataRetentionTests(unittest.TestCase):
         self.assertEqual(result.expired_count, 1)
         self.assertEqual(result.deleted_count, 1)
         self.assertEqual(adapter.deleted_ids, ["expired-derived"])
+        remaining = store.list_records(RetentionDataClass.DERIVED, 10)
+        self.assertEqual([item.record_id for item in remaining], ["fresh-derived"])
+
+    def test_cleanup_keeps_record_when_delete_callback_returns_false(self) -> None:
+        now = datetime(2026, 2, 14, tzinfo=timezone.utc)
+        store = InMemoryRetentionStore(
+            [
+                RetentionRecord(
+                    record_id="expired-original",
+                    data_class=RetentionDataClass.ORIGINAL,
+                    created_at=now - timedelta(days=31),
+                ),
+            ]
+        )
+        adapter = CallbackRetentionCleanupAdapter(lambda _record: False)
+        job = RetentionCleanupJob(
+            store=store,
+            policy=RetentionPolicyConfig(original_ttl_days=30, derived_ttl_days=90, log_ttl_days=14),
+            adapter=adapter,
+        )
+
+        result = job.run_once(data_class=RetentionDataClass.ORIGINAL, now=now)
+
+        self.assertEqual(result.deleted_count, 0)
+        self.assertEqual([item.record_id for item in store.list_records(RetentionDataClass.ORIGINAL, 10)], ["expired-original"])
 
     def test_json_file_retention_store_persists_records(self) -> None:
         now = datetime(2026, 2, 14, tzinfo=timezone.utc)
@@ -98,6 +124,33 @@ class DataRetentionTests(unittest.TestCase):
             records = reopened.list_records(RetentionDataClass.LOG, 10)
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0].record_id, "rec-1")
+
+    def test_json_file_retention_store_remove_persists(self) -> None:
+        now = datetime(2026, 2, 14, tzinfo=timezone.utc)
+        with TemporaryDirectory() as tmp:
+            store = JsonFileRetentionStore(str(Path(tmp) / "retention.json"))
+            store.add(
+                RetentionRecord(
+                    record_id="rec-1",
+                    data_class=RetentionDataClass.LOG,
+                    created_at=now,
+                    request_id="req-1",
+                )
+            )
+            store.add(
+                RetentionRecord(
+                    record_id="rec-2",
+                    data_class=RetentionDataClass.LOG,
+                    created_at=now,
+                    request_id="req-2",
+                )
+            )
+
+            store.remove("rec-1")
+
+            reopened = JsonFileRetentionStore(str(Path(tmp) / "retention.json"))
+            records = reopened.list_records(RetentionDataClass.LOG, 10)
+            self.assertEqual([item.record_id for item in records], ["rec-2"])
 
     def test_local_file_cleanup_adapter_deletes_only_under_allowed_root(self) -> None:
         now = datetime(2026, 2, 14, tzinfo=timezone.utc)

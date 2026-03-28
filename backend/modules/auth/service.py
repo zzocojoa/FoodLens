@@ -1871,6 +1871,128 @@ class InMemoryAuthSessionService:
             self._persist_state_unlocked()
             return payload
 
+    def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, object]]:
+        with self._lock:
+            if user_id not in self._users_by_id:
+                raise AuthServiceError(
+                    code="AUTH_USER_NOT_FOUND",
+                    message="User not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+            assets = [item for item in self._media_assets_by_id.values() if item.user_id == user_id]
+            assets.sort(key=lambda item: item.created_at)
+            return [self._serialize_media_asset(item) for item in assets]
+
+    def delete_media_asset(self, *, asset_id: str) -> bool:
+        with self._lock:
+            deleted = self._delete_media_asset_unlocked(asset_id.strip())
+            if deleted:
+                self._persist_state_unlocked()
+            return deleted
+
+    def reset_user_data(self, *, user_id: str) -> dict[str, int]:
+        with self._lock:
+            if user_id not in self._users_by_id:
+                raise AuthServiceError(
+                    code="AUTH_USER_NOT_FOUND",
+                    message="User not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            media_asset_ids = [asset.asset_id for asset in self._media_assets_by_id.values() if asset.user_id == user_id]
+            deleted_media = 0
+            for asset_id in media_asset_ids:
+                if self._delete_media_asset_unlocked(asset_id):
+                    deleted_media += 1
+
+            history_records = self._history_by_user_id.get(user_id, [])
+            deleted_history = len(history_records)
+            self._history_by_user_id[user_id] = []
+            self._history_idempotency_by_user_id[user_id] = {}
+
+            user = self._users_by_id[user_id]
+            user.display_name = None
+            user.updated_at = _utc_now()
+
+            profile = self._profiles_by_user_id.get(user_id)
+            if profile is not None:
+                profile.display_name = None
+                profile.profile_image_url = None
+                profile.profile_image_asset_id = None
+                profile.gender = None
+                profile.birth_year = None
+                profile.disliked_ingredients = []
+                profile.current_trip_start = None
+                profile.current_trip_location = None
+                profile.current_trip_coordinates = None
+                profile.updated_at = user.updated_at
+
+            allergies = self._allergies_by_user_id.get(user_id)
+            if allergies is not None:
+                allergies.allergies = []
+                allergies.dietary_restrictions = []
+                allergies.severity_map = {}
+                allergies.updated_at = _utc_now()
+
+            settings = self._settings_by_user_id.get(user_id)
+            if settings is not None:
+                settings.language = "auto"
+                settings.target_language = None
+                settings.auto_play_audio = False
+                settings.selected_emoji = None
+                settings.client_state = {}
+                settings.updated_at = _utc_now()
+
+            revoked_sessions = self._purge_user_sessions_unlocked(user_id=user_id)
+            self._persist_state_unlocked()
+            return {
+                "deleted_history_count": deleted_history,
+                "deleted_media_count": deleted_media,
+                "revoked_sessions_count": revoked_sessions,
+            }
+
+    def delete_user_account(self, *, user_id: str) -> dict[str, int]:
+        with self._lock:
+            user = self._users_by_id.get(user_id)
+            if user is None:
+                raise AuthServiceError(
+                    code="AUTH_USER_NOT_FOUND",
+                    message="User not found.",
+                    status_code=404,
+                    user_id=user_id,
+                )
+
+            media_asset_ids = [asset.asset_id for asset in self._media_assets_by_id.values() if asset.user_id == user_id]
+            deleted_media = 0
+            for asset_id in media_asset_ids:
+                if self._delete_media_asset_unlocked(asset_id):
+                    deleted_media += 1
+
+            deleted_history = len(self._history_by_user_id.get(user_id, []))
+            self._history_by_user_id.pop(user_id, None)
+            self._history_idempotency_by_user_id.pop(user_id, None)
+            self._profiles_by_user_id.pop(user_id, None)
+            self._allergies_by_user_id.pop(user_id, None)
+            self._settings_by_user_id.pop(user_id, None)
+            self._email_verifications_by_user_id.pop(user_id, None)
+            self._password_resets_by_user_id.pop(user_id, None)
+
+            revoked_sessions = self._purge_user_sessions_unlocked(user_id=user_id)
+            self._users_by_id.pop(user_id, None)
+            if self._user_id_by_email.get(user.email) == user_id:
+                self._user_id_by_email.pop(user.email, None)
+            if user.provider_subject:
+                self._provider_subject_to_user_id.pop(f"{user.provider}:{user.provider_subject}", None)
+
+            self._persist_state_unlocked()
+            return {
+                "deleted_history_count": deleted_history,
+                "deleted_media_count": deleted_media,
+                "revoked_sessions_count": revoked_sessions,
+            }
+
     def patch_history_image(
         self,
         *,
@@ -1937,6 +2059,55 @@ class InMemoryAuthSessionService:
             payload = self._serialize_history_item(target)
             self._persist_state_unlocked()
             return payload
+
+    def _delete_media_asset_unlocked(self, asset_id: str) -> bool:
+        record = self._media_assets_by_id.pop(asset_id, None)
+        if record is None:
+            return False
+
+        profile = self._profiles_by_user_id.get(record.user_id)
+        if profile is not None and profile.profile_image_asset_id == asset_id:
+            profile.profile_image_asset_id = None
+            profile.profile_image_url = None
+            profile.updated_at = _utc_now()
+
+        records = self._history_by_user_id.get(record.user_id, [])
+        for history in records:
+            entry = dict(history.entry)
+            if entry.get("image_asset_id") != asset_id:
+                continue
+            entry.pop("image_asset_id", None)
+            entry.pop("imageUri", None)
+            entry.pop("image_render_url", None)
+            history.entry = entry
+            history.updated_at = _utc_now()
+
+        return True
+
+    def _purge_user_sessions_unlocked(self, *, user_id: str) -> int:
+        session_ids = [session_id for session_id, session in self._sessions.items() if session.user_id == user_id]
+        revoked_count = len(session_ids)
+        for session_id in session_ids:
+            self._purge_session_unlocked(session_id=session_id)
+        return revoked_count
+
+    def _purge_session_unlocked(self, *, session_id: str) -> None:
+        session = self._sessions.pop(session_id, None)
+        family_id = session.family_id if session is not None else None
+        if family_id is not None:
+            family_sessions = self._session_ids_by_family.get(family_id)
+            if family_sessions is not None:
+                family_sessions.discard(session_id)
+                if not family_sessions:
+                    self._session_ids_by_family.pop(family_id, None)
+
+        access_tokens = set(self._access_tokens_by_session.pop(session_id, set()))
+        for token in access_tokens:
+            self._access_tokens.pop(token, None)
+
+        refresh_tokens = set(self._refresh_tokens_by_session.pop(session_id, set()))
+        for token in refresh_tokens:
+            self._refresh_tokens.pop(token, None)
 
     def _create_user(
         self,
