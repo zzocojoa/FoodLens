@@ -18,12 +18,27 @@ export interface TranslationCard {
     audio_query?: string;
 }
 
+export interface LatencyMsBreakdown {
+    total?: number;
+    preprocess?: number;
+    extract?: number;
+    assess?: number;
+    source_lookup?: number;
+    allergen_analysis?: number;
+}
+
+export type LatencyMsByStage = Record<string, number>;
+
 export interface AnalyzedData {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
     safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
     confidence?: number;
+    request_id?: string;
+    prompt_version?: string;
+    latency_ms?: LatencyMsBreakdown;
+    latency_ms_by_stage?: LatencyMsByStage;
     ingredients: {
         name: string;
         name_en?: string;
@@ -41,6 +56,7 @@ export interface AnalyzedData {
     raw_result_ko?: string;
     raw_data?: Record<string, unknown>;
     used_model?: string;
+    fallback_reason?: string;
     isBarcode?: boolean;
 }
 
@@ -74,4 +90,8 @@ export type BarcodeLookupResult = {
     found: boolean;
     data?: AnalyzedData;
     error?: string;
+    request_id?: string;
+    used_model?: string;
+    prompt_version?: string;
+    latency_ms?: LatencyMsBreakdown;
 };

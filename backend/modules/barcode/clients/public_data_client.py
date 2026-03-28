@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import os
 import time
@@ -19,7 +20,9 @@ class PublicDataClient:
     DEFAULT_SERVING_SIZE: Final[str] = "100g"
     DEFAULT_DATA_SOURCE: Final[str] = "FoodNutritionDB_Unified"
     DEFAULT_AUTH_COOLDOWN_SECONDS: Final[int] = 900
-    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
+    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 15.0
+    DEFAULT_RETRY_COUNT: Final[int] = 3
+    DEFAULT_RETRY_BACKOFF_SECONDS: Final[float] = 1.0
 
     def __init__(self, api_key: str | None = None):
         raw_key = api_key or os.getenv("KOREAN_FDA_API_KEY")
@@ -29,11 +32,26 @@ class PublicDataClient:
             self.request_timeout_seconds = max(1.0, float(raw_timeout))
         except ValueError:
             self.request_timeout_seconds = self.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        raw_retry_count = os.getenv("BARCODE_UPSTREAM_RETRY_COUNT", str(self.DEFAULT_RETRY_COUNT))
+        try:
+            self.retry_count = max(0, int(raw_retry_count))
+        except ValueError:
+            self.retry_count = self.DEFAULT_RETRY_COUNT
+        raw_retry_backoff = os.getenv(
+            "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS",
+            str(self.DEFAULT_RETRY_BACKOFF_SECONDS),
+        )
+        try:
+            self.retry_backoff_seconds = max(0.0, float(raw_retry_backoff))
+        except ValueError:
+            self.retry_backoff_seconds = self.DEFAULT_RETRY_BACKOFF_SECONDS
         self._auth_disabled_until: float = 0.0
         self._auth_cooldown_seconds = max(
             60,
             int(os.getenv("PUBLIC_DATA_AUTH_COOLDOWN_SECONDS", str(self.DEFAULT_AUTH_COOLDOWN_SECONDS))),
         )
+        self.last_failure_kind: str | None = None
+        self.last_failure_message: str | None = None
 
     @staticmethod
     def _normalize_api_key(raw_key: str | None) -> str | None:
@@ -44,6 +62,14 @@ class PublicDataClient:
         # - encoded input: "abc%2Bdef%3D" -> "abc+def="
         # - decoded input: "abc+def="     -> "abc+def="
         return urllib.parse.unquote(raw_key.strip())
+
+    def _clear_failure(self) -> None:
+        self.last_failure_kind = None
+        self.last_failure_message = None
+
+    def _set_failure(self, *, kind: str, message: str) -> None:
+        self.last_failure_kind = kind
+        self.last_failure_message = message
 
     @staticmethod
     def _mask_api_key(url: str, api_key: str | None) -> str:
@@ -79,6 +105,9 @@ class PublicDataClient:
         print(f"[PublicData] ✓ Found {len(items)} items. Picking top result: {items[0].get('FOOD_NM_KR')}")
         return items[0]
 
+    def had_upstream_failure(self) -> bool:
+        return self.last_failure_kind is not None
+
     async def get_nutrition_by_name(self, food_name: str) -> JSONDict | None:
         """
         Search for nutrition info by food name using the unified 'Food Nutrition DB' service.
@@ -86,9 +115,11 @@ class PublicDataClient:
         if not self.api_key or not food_name:
             return None
 
+        self._clear_failure()
         now_ts = time.time()
         if self._auth_disabled_until > now_ts:
             remaining = int(self._auth_disabled_until - now_ts)
+            self._set_failure(kind="auth_cooldown", message=f"retry_in={remaining}s")
             print(
                 f"[PublicData] Skipping request due to previous auth failure. "
                 f"retry_in={remaining}s"
@@ -102,42 +133,71 @@ class PublicDataClient:
         # We manually construct the query string for the key to be safe.
         print(f"[PublicData] Requesting (Unified Service) for: {clean_name}")
 
-        try:
-            timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                # Manual URL construction to control serviceKey encoding exactly
-                full_url = self._build_request_url(clean_name)
-                safe_url = self._mask_api_key(full_url, self.api_key)
-                
-                async with session.get(full_url) as response:
-                    if response.status != 200:
-                        raw_text = await response.text()
-                        preview = self._safe_body_preview(raw_text)
-                        content_type = response.headers.get("Content-Type")
-                        if response.status in (401, 403):
-                            self._auth_disabled_until = time.time() + self._auth_cooldown_seconds
+        timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
+        full_url = self._build_request_url(clean_name)
+        safe_url = self._mask_api_key(full_url, self.api_key)
+        attempts = self.retry_count + 1
+
+        for attempt in range(1, attempts + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(full_url) as response:
+                        if response.status != 200:
+                            raw_text = await response.text()
+                            preview = self._safe_body_preview(raw_text)
+                            content_type = response.headers.get("Content-Type")
+                            if response.status in (401, 403):
+                                self._auth_disabled_until = time.time() + self._auth_cooldown_seconds
+                                self._set_failure(
+                                    kind=f"http_{response.status}",
+                                    message=f"content_type={content_type} body_preview={preview}",
+                                )
+                                print(
+                                    "[PublicData] API Error: Unauthorized. "
+                                    "Check KOREAN_FDA_API_KEY validity/permission. "
+                                    f"cooldown={self._auth_cooldown_seconds}s "
+                                    f"status={response.status} content_type={content_type} "
+                                    f"url={safe_url} body_preview={preview}"
+                                )
+                                return None
+
+                            self._set_failure(
+                                kind=f"http_{response.status}",
+                                message=f"content_type={content_type} body_preview={preview}",
+                            )
+                            if response.status == 429 or response.status >= 500:
+                                print(
+                                    f"[PublicData] API Retry: status={response.status} "
+                                    f"attempt={attempt}/{attempts} url={safe_url}"
+                                )
+                                if attempt < attempts:
+                                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                                    if delay > 0:
+                                        await asyncio.sleep(delay)
+                                    continue
                             print(
-                                "[PublicData] API Error: Unauthorized. "
-                                "Check KOREAN_FDA_API_KEY validity/permission. "
-                                f"cooldown={self._auth_cooldown_seconds}s "
-                                f"status={response.status} content_type={content_type} "
-                                f"url={safe_url} body_preview={preview}"
+                                f"[PublicData] API Error: status={response.status} "
+                                f"content_type={content_type} url={safe_url} body_preview={preview}"
                             )
                             return None
-                        print(
-                            f"[PublicData] API Error: status={response.status} "
-                            f"content_type={content_type} url={safe_url} body_preview={preview}"
-                        )
-                        return None
-                    
-                    data = await response.json(content_type=None)
-                    
-                    # Unified Service Response Structure: data['body']['items']
-                    return self._extract_first_item(data, clean_name)
 
-        except Exception as error:
-            print(f"[PublicData] Request Failed: {error}")
-            return None
+                        data = await response.json(content_type=None)
+
+                        # Unified Service Response Structure: data['body']['items']
+                        result = self._extract_first_item(data, clean_name)
+                        if result is not None:
+                            self._clear_failure()
+                        return result
+
+            except Exception as error:
+                self._set_failure(kind="network", message=f"{type(error).__name__}: {error}")
+                print(f"[PublicData] Request Failed: {error}")
+                if attempt < attempts:
+                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    continue
+                return None
 
     def normalize_response(self, item: JSONDict) -> JSONDict:
         """

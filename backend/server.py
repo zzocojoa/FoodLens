@@ -83,6 +83,7 @@ from backend.modules.contracts.analysis_job import (
     AnalysisJobSubmitResponseContract,
 )
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
+from backend.modules.contracts.observability import LatencyMsContract
 from backend.modules.analysis_jobs import (
     AnalysisJobWorker,
     build_analysis_job_store_from_env,
@@ -262,6 +263,14 @@ async def _startup() -> None:
     app.state.label_cost_guardrail = CostGuardrailService(
         InMemoryMonthlyUsageStorage(),
         monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+    )
+    logger.info(
+        "[LabelCostGuardrail] enabled=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
+        _is_label_cost_guardrail_enabled(),
+        _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+        0.70,
+        0.85,
+        1.00,
     )
     app.state.label_rollout_controller = LabelRolloutController(RolloutConfig.from_env())
     if _is_label_rollout_auto_enabled():
@@ -1203,6 +1212,25 @@ def _parent_request_id(request: Request) -> str | None:
         return None
     cleaned = parent.strip()
     return cleaned or None
+
+
+def _build_latency_ms_payload(
+    total_ms: int,
+    preprocess_ms: int | None,
+    extract_ms: int | None,
+    assess_ms: int | None,
+    source_lookup_ms: int | None,
+    allergen_analysis_ms: int | None,
+) -> dict[str, int]:
+    latency_ms = LatencyMsContract(
+        total=total_ms,
+        preprocess=preprocess_ms,
+        extract=extract_ms,
+        assess=assess_ms,
+        source_lookup=source_lookup_ms,
+        allergen_analysis=allergen_analysis_ms,
+    )
+    return latency_ms.model_dump(exclude_none=True)
 
 
 def _analysis_job_store():
@@ -2699,6 +2727,15 @@ async def analyze_food(
         if isinstance(result, dict):
             result["request_id"] = request_id
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        if isinstance(result, dict):
+            result["latency_ms"] = _build_latency_ms_payload(
+                total_ms=elapsed_ms,
+                preprocess_ms=None,
+                extract_ms=None,
+                assess_ms=None,
+                source_lookup_ms=None,
+                allergen_analysis_ms=None,
+            )
         logger.info(
             "[Server] Analyze completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
             request_id,
@@ -2763,6 +2800,14 @@ async def analyze_label(
             fallback["request_id"] = request_id
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["used_model"] = analyst.label_model_name
+            fallback["latency_ms"] = _build_latency_ms_payload(
+                total_ms=total_elapsed_ms,
+                preprocess_ms=preprocess_elapsed_ms,
+                extract_ms=0,
+                assess_ms=0,
+                source_lookup_ms=None,
+                allergen_analysis_ms=None,
+            )
             logger.info(
                 "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
                 request_id,
@@ -2827,6 +2872,14 @@ async def analyze_label(
                 fallback["request_id"] = request_id
                 fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
                 fallback["used_model"] = analyst.label_model_name
+                fallback["latency_ms"] = _build_latency_ms_payload(
+                    total_ms=total_elapsed_ms,
+                    preprocess_ms=preprocess_elapsed_ms,
+                    extract_ms=0,
+                    assess_ms=0,
+                    source_lookup_ms=None,
+                    allergen_analysis_ms=None,
+                )
                 logger.warning(
                     "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
                     request_id,
@@ -2855,6 +2908,14 @@ async def analyze_label(
         assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
         result["request_id"] = request_id
+        result["latency_ms"] = _build_latency_ms_payload(
+            total_ms=total_elapsed_ms,
+            preprocess_ms=preprocess_elapsed_ms,
+            extract_ms=extract_elapsed_ms,
+            assess_ms=assess_elapsed_ms,
+            source_lookup_ms=None,
+            allergen_analysis_ms=None,
+        )
 
         if label_error_type == "quota_exhausted_429":
             retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
@@ -2960,6 +3021,15 @@ async def analyze_smart(
         if isinstance(result, dict):
             result["request_id"] = request_id
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        if isinstance(result, dict):
+            result["latency_ms"] = _build_latency_ms_payload(
+                total_ms=elapsed_ms,
+                preprocess_ms=None,
+                extract_ms=None,
+                assess_ms=None,
+                source_lookup_ms=None,
+                allergen_analysis_ms=None,
+            )
         logger.info(
             "[Server] Smart analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms=%d",
             request_id,
@@ -2992,6 +3062,8 @@ async def lookup_barcode(
     try:
         try:
             barcode_service = _service("barcode_service")
+            source_lookup_elapsed_ms = 0
+            allergen_analysis_elapsed_ms: int | None = None
             logger.info(
                 "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_info=%s locale=%s",
                 request_id,
@@ -3002,22 +3074,59 @@ async def lookup_barcode(
             )
             lookup_started_at = time.perf_counter()
             result = await barcode_service.get_product_info(barcode)
+            source_lookup_elapsed_ms = int((time.perf_counter() - lookup_started_at) * 1000)
             logger.info(
                 "[Server] Barcode source lookup done request_id=%s elapsed_ms=%d found=%s",
                 request_id,
-                int((time.perf_counter() - lookup_started_at) * 1000),
+                source_lookup_elapsed_ms,
                 bool(result),
             )
 
             if not result:
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                upstream_failure_getter = getattr(barcode_service, "get_last_upstream_failure", None)
+                upstream_failure = (
+                    upstream_failure_getter()
+                    if callable(upstream_failure_getter)
+                    else None
+                )
+                if isinstance(upstream_failure, dict) and upstream_failure.get("kind") == "http_429":
+                    retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
+                    logger.warning(
+                        "[Server] Barcode lookup upstream-429 request_id=%s source=%s retry_after_seconds=%d elapsed_ms={source_lookup:%d,total:%d}",
+                        request_id,
+                        upstream_failure.get("source"),
+                        retry_after_seconds,
+                        source_lookup_elapsed_ms,
+                        elapsed_ms,
+                    )
+                    raise build_rate_limit_http_exception(
+                        request_id=request_id,
+                        retry_after_seconds=retry_after_seconds,
+                        code="UPSTREAM_RATE_LIMITED",
+                        message="Barcode upstream is rate limited. Please retry shortly.",
+                    )
                 logger.info(
                     "[Server] Lookup complete request_id=%s elapsed_ms=%d found=false",
                     request_id,
-                    int((time.perf_counter() - started_at) * 1000),
+                    elapsed_ms,
                 )
-                return {"found": False, "message": "Product not found in any database", "request_id": request_id}
+                return {
+                    "found": False,
+                    "message": "Product not found in any database",
+                    "request_id": request_id,
+                    "latency_ms": _build_latency_ms_payload(
+                        total_ms=elapsed_ms,
+                        preprocess_ms=None,
+                        extract_ms=None,
+                        assess_ms=None,
+                        source_lookup_ms=source_lookup_elapsed_ms,
+                        allergen_analysis_ms=None,
+                    ),
+                }
 
-            # Run allergen analysis if ingredients exist and user has allergies
+            used_model = None
+            prompt_version = None
             if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
                 logger.info(
                     "[Server] Running allergen analysis request_id=%s ingredient_count=%d",
@@ -3032,32 +3141,53 @@ async def lookup_barcode(
                     allergy_info,
                     locale,
                 )
+                allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+                used_model = allergen_result.get("used_model")
+                prompt_version = allergen_result.get("prompt_version")
                 logger.info(
-                    "[Server] Allergen analysis done request_id=%s elapsed_ms=%d",
+                    "[Server] Allergen analysis done request_id=%s elapsed_ms=%d used_model=%s prompt_version=%s",
                     request_id,
-                    int((time.perf_counter() - analysis_started_at) * 1000),
+                    allergen_analysis_elapsed_ms,
+                    used_model,
+                    prompt_version,
                 )
 
-                # Merge allergen analysis into result
                 result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
                 result["coachMessage"] = allergen_result.get("coachMessage", "")
-
-                # Replace simple string list with enriched ingredient objects
                 result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             logger.info(
-                "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true",
+                "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true used_model=%s prompt_version=%s",
                 request_id,
-                int((time.perf_counter() - started_at) * 1000),
+                elapsed_ms,
+                used_model,
+                prompt_version,
             )
-            return {"found": True, "data": result, "request_id": request_id}
+            return {
+                "found": True,
+                "data": result,
+                "request_id": request_id,
+                "used_model": used_model,
+                "prompt_version": prompt_version,
+                "latency_ms": _build_latency_ms_payload(
+                    total_ms=elapsed_ms,
+                    preprocess_ms=None,
+                    extract_ms=None,
+                    assess_ms=None,
+                    source_lookup_ms=source_lookup_elapsed_ms,
+                    allergen_analysis_ms=allergen_analysis_elapsed_ms,
+                ),
+            }
 
         except HTTPException:
             raise
         except Exception as e:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             logger.exception(
-                "[Server] Barcode Lookup Error request_id=%s code=%s error=%s",
+                "[Server] Barcode Lookup Error request_id=%s code=%s elapsed_ms=%d error=%s",
                 request_id,
                 ErrorCode.BARCODE_LOOKUP_FAILED,
+                elapsed_ms,
                 e,
             )
             raise HTTPException(

@@ -20,6 +20,19 @@ class BarcodeContractSnapshotTests(unittest.TestCase):
         if validated.found:
             self.assertIsNotNone(validated.data)
 
+    def test_barcode_observability_fields_are_backward_compatible(self):
+        payload = _load_json("barcode_lookup.snapshot.json")
+        payload["request_id"] = "req-barcode-001"
+        payload["used_model"] = "gemini-2.0-flash"
+        payload["prompt_version"] = "barcode-v1.0-allergen-analysis"
+        payload["latency_ms"] = {"total": 80, "source_lookup": 20, "allergen_analysis": 60}
+
+        validated = BarcodeLookupResponseContract.model_validate(payload)
+        self.assertEqual(validated.request_id, "req-barcode-001")
+        self.assertEqual(validated.used_model, "gemini-2.0-flash")
+        self.assertEqual(validated.prompt_version, "barcode-v1.0-allergen-analysis")
+        self.assertEqual(validated.latency_ms.total, 80)
+
 
 if __name__ == "__main__":
     unittest.main()

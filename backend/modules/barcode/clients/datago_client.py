@@ -24,9 +24,9 @@ class DatagoClient:
     BARCODE_SERVICE_ID: Final[str] = "C005"
     REPORT_SERVICE_ID: Final[str] = "I2790"
     RAW_MATERIAL_SERVICE_ID: Final[str] = "C002"
-    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 4.0
-    DEFAULT_RETRY_COUNT: Final[int] = 2
-    DEFAULT_RETRY_BACKOFF_SECONDS: Final[float] = 0.6
+    DEFAULT_REQUEST_TIMEOUT_SECONDS: Final[float] = 15.0
+    DEFAULT_RETRY_COUNT: Final[int] = 3
+    DEFAULT_RETRY_BACKOFF_SECONDS: Final[float] = 1.0
     DEFAULT_FAILURE_THRESHOLD: Final[int] = 2
     DEFAULT_UNHEALTHY_COOLDOWN_SECONDS: Final[int] = 120
     
@@ -149,12 +149,14 @@ class DatagoClient:
                         if response.status != 200:
                             self._set_failure(kind=f"http_{response.status}", message=f"status={response.status}")
                             print(f"[Datago] {log_prefix}Error: Status {response.status}")
-                            if response.status >= 500 and attempt < attempts:
-                                delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
-                                if delay > 0:
-                                    await asyncio.sleep(delay)
-                                continue
-                            self._mark_failure_for_health()
+                            if response.status in {429} or response.status >= 500:
+                                if attempt < attempts:
+                                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                                    if delay > 0:
+                                        await asyncio.sleep(delay)
+                                    continue
+                            if response.status >= 500 or response.status == 429:
+                                self._mark_failure_for_health()
                             return None
                         # Some FoodSafety endpoints return JSON payloads with text/html content-type.
                         # Parse text manually as a fallback before marking it as failure.

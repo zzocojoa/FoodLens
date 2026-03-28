@@ -55,6 +55,13 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
         self.assertEqual(normalized["prompt_version"], "food-v3.2-context-engineered")
         self.assertEqual(normalized["used_model"], "gemini-2.5-pro")
 
+    def test_analysis_latency_metadata_is_backward_compatible(self):
+        payload = _load_json("analyze_response.snapshot.json")
+        payload["latency_ms"] = {"total": 123}
+
+        normalized = self._validate_and_normalize(payload)
+        self.assertEqual(normalized["latency_ms"]["total"], 123)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,10 @@ describe('aiCore contracts', () => {
       foodName: 'Kimbap',
       safetyStatus: 'SAFE',
       ingredients: [{ name: 'rice', isAllergen: false }],
+      request_id: 'req-analyze-1',
+      prompt_version: 'food-v3.2-context-engineered',
+      used_model: 'gemini-2.5-pro',
+      latency_ms: { total: 1300 },
     };
 
     expect(assertAnalysisResponseContract(payload, '/analyze')).toEqual(payload);
@@ -32,6 +36,10 @@ describe('aiCore contracts', () => {
     const payload = {
       found: true,
       data: { food_name: 'Protein Bar' },
+      request_id: 'req-barcode-1',
+      used_model: 'gemini-2.5-pro',
+      prompt_version: 'label-v1.2-2pass-locale-country',
+      latency_ms: { total: 321, source_lookup: 120 },
     };
 
     expect(assertBarcodeLookupContract(payload)).toEqual(payload);
@@ -64,8 +72,33 @@ describe('aiCore contracts', () => {
       accepted_at: '2026-03-17T00:00:00Z',
       updated_at: '2026-03-17T00:00:10Z',
       poll_after_ms: 0,
+      used_model: 'gemini-2.5-pro',
+      prompt_version: 'food-v3.2-context-engineered',
+      fallback_reason: 'analysis_fallback',
+      latency_ms_by_stage: {
+        inference: 1100,
+        total: 1400,
+      },
     };
 
     expect(assertAnalysisJobStatusContract(payload)).toEqual(payload);
+  });
+
+  it('rejects invalid analysis job latency metadata', () => {
+    const payload = {
+      job_id: 'job_123',
+      request_id: 'req_123',
+      status: 'completed',
+      accepted_at: '2026-03-17T00:00:00Z',
+      updated_at: '2026-03-17T00:00:10Z',
+      poll_after_ms: 0,
+      latency_ms_by_stage: {
+        total: 'bad',
+      },
+    };
+
+    expect(() =>
+      assertAnalysisJobStatusContract(payload as unknown)
+    ).toThrow('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "latency_ms_by_stage"');
   });
 });

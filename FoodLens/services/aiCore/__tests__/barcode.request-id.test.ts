@@ -1,5 +1,13 @@
 import { lookupBarcodeWithAllergyContext } from '../internal/barcodeLookup';
 
+jest.mock('@/features/i18n/services/i18nStore', () => ({
+  getI18nSnapshot: jest.fn(() => ({
+    settings: { language: 'auto', targetLanguage: null },
+    locale: 'ko-KR',
+    ready: true,
+  })),
+}));
+
 jest.mock('../allergy', () => ({
   getAllergyString: jest.fn(async () => 'None'),
 }));
@@ -25,6 +33,7 @@ jest.mock('../cache', () => ({
 }));
 
 jest.mock('../constants', () => ({
+  AI_RETRY_BASE_DELAY_MS: 1000,
   BARCODE_LOOKUP_MAX_RETRIES: 3,
   BARCODE_LOOKUP_TIMEOUT_MS: 15000,
 }));
@@ -90,5 +99,42 @@ describe('lookupBarcodeWithAllergyContext request ids', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(resultA.found).toBe(false);
     expect(resultB.found).toBe(false);
+  });
+
+  it('propagates request_id into mapped barcode data', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      response(200, {
+        found: true,
+        request_id: 'req-barcode-1',
+        used_model: 'gemini-2.5-pro',
+        prompt_version: 'label-v1.2-2pass-locale-country',
+        latency_ms: {
+          total: 320,
+          source_lookup: 180,
+        },
+        data: {
+          food_name: 'Protein Bar',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          latency_ms_by_stage: {
+            total: 320,
+          },
+        },
+      })
+    ) as unknown as typeof fetch;
+
+    const result = await lookupBarcodeWithAllergyContext('8801043015981');
+
+    expect(result.request_id).toBe('req-barcode-1');
+    expect(result.data?.request_id).toBe('req-barcode-1');
+    expect(result.data?.used_model).toBe('gemini-2.5-pro');
+    expect(result.data?.prompt_version).toBe('label-v1.2-2pass-locale-country');
+    expect(result.data?.latency_ms).toEqual({
+      total: 320,
+      source_lookup: 180,
+    });
+    expect(result.data?.latency_ms_by_stage).toEqual({
+      total: 320,
+    });
   });
 });

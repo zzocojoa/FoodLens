@@ -33,12 +33,36 @@ class _ObservabilityAnalyst:
             "prompt_version": "food-v3.2-context-engineered",
         }
 
+    def analyze_barcode_ingredients(self, *_args, **_kwargs):
+        return {
+            "safetyStatus": "CAUTION",
+            "coachMessage": "contains milk",
+            "ingredients": [{"name": "milk", "isAllergen": True, "riskReason": "Contains milk"}],
+            "used_model": "gemini-2.0-flash",
+            "prompt_version": "barcode-v1.0-allergen-analysis",
+        }
+
 
 class _ObservabilityBarcodeService:
     async def get_product_info(self, barcode: str):
         return {
             "food_name": f"Product-{barcode}",
-            "ingredients": [],
+            "ingredients": ["milk"],
+        }
+
+    def get_last_upstream_failure(self):
+        return None
+
+
+class _RateLimitedBarcodeService:
+    async def get_product_info(self, _barcode: str):
+        return None
+
+    def get_last_upstream_failure(self):
+        return {
+            "source": "datago",
+            "kind": "http_429",
+            "message": "status=429",
         }
 
 
@@ -59,6 +83,7 @@ class AnalysisObservabilityTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["request_id"], "req-observe-analyze")
         self.assertEqual(payload["prompt_version"], "food-v3.2-context-engineered")
+        self.assertGreaterEqual(payload["latency_ms"]["total"], 0)
 
     def test_analyze_error_uses_supplied_request_id(self):
         with TestClient(app) as client:
@@ -90,6 +115,43 @@ class AnalysisObservabilityTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["request_id"], "req-observe-barcode")
         self.assertTrue(payload["found"])
+        self.assertGreaterEqual(payload["latency_ms"]["total"], 0)
+        self.assertGreaterEqual(payload["latency_ms"]["source_lookup"], 0)
+
+    def test_lookup_barcode_response_contains_analysis_metadata_when_allergy_analysis_runs(self):
+        with TestClient(app) as client:
+            app.state.analyst = _ObservabilityAnalyst()
+            app.state.barcode_service = _ObservabilityBarcodeService()
+            app.state.smart_router = object()
+            response = client.post(
+                "/lookup/barcode",
+                data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                headers={"X-Request-Id": "req-observe-barcode-metadata"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["request_id"], "req-observe-barcode-metadata")
+        self.assertEqual(payload["used_model"], "gemini-2.0-flash")
+        self.assertEqual(payload["prompt_version"], "barcode-v1.0-allergen-analysis")
+        self.assertGreaterEqual(payload["latency_ms"]["allergen_analysis"], 0)
+
+    def test_lookup_barcode_returns_standard_429_when_upstream_is_rate_limited(self):
+        with TestClient(app) as client:
+            app.state.analyst = _ObservabilityAnalyst()
+            app.state.barcode_service = _RateLimitedBarcodeService()
+            app.state.smart_router = object()
+            response = client.post(
+                "/lookup/barcode",
+                data={"barcode": "12345", "allergy_info": "None", "locale": "en-US"},
+                headers={"X-Request-Id": "req-observe-barcode-429"},
+            )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers.get("Retry-After"), "15")
+        payload = response.json()
+        self.assertEqual(payload["detail"]["code"], "UPSTREAM_RATE_LIMITED")
+        self.assertEqual(payload["detail"]["request_id"], "req-observe-barcode-429")
 
 
 if __name__ == "__main__":

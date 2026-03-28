@@ -2,6 +2,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import {
   AI_ASYNC_ANALYZE_ENABLED,
+  AI_REQUEST_MAX_RETRIES,
+  AI_RETRY_BASE_DELAY_MS,
   ANALYSIS_POLL_TIMEOUT_MS,
   ANALYSIS_SUBMIT_TIMEOUT_MS,
 } from '../constants';
@@ -21,6 +23,7 @@ import {
 } from '../contracts';
 import { mapAnalyzedData } from '../mappers';
 import { logger } from '@/services/logger';
+import { sleep } from './retryUtils';
 import {
   buildImageCacheKey,
   buildImageContentHash,
@@ -62,6 +65,10 @@ type RunAsyncAnalysisJobParams = {
 
 type AnalysisJobSubmitResponse = ReturnType<typeof assertAnalysisJobSubmitContract>;
 type AnalysisJobStatusResponse = ReturnType<typeof assertAnalysisJobStatusContract> & Record<string, unknown>;
+type RetryableJobStatusError = Error & {
+  retryAfterMs?: number;
+  nonRetryable?: boolean;
+};
 
 const createRequestId = (mode: AnalysisJobMode): string => {
   const suffix = Math.random().toString(16).slice(2, 10);
@@ -137,15 +144,85 @@ const readRetryAfterMs = (response: Response): number | null => {
   return seconds * 1000;
 };
 
-const buildJobStatusError = async (response: Response): Promise<Error> => {
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && (error.name === 'AbortError' || error.message.includes('timed out'));
+
+const buildJobStatusError = async (response: Response): Promise<RetryableJobStatusError> => {
   const bodyText = await response.text();
   const message = `[AI Job] ${response.status} ${bodyText}`.trim();
-  const error = new Error(message) as Error & { retryAfterMs?: number };
+  const error = new Error(message) as RetryableJobStatusError;
   const retryAfterMs = readRetryAfterMs(response);
   if (retryAfterMs) {
     error.retryAfterMs = retryAfterMs;
   }
+  if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+    error.nonRetryable = true;
+  }
   return error;
+};
+
+const getRetryDelayMs = ({
+  attempt,
+  retryAfterMs,
+}: {
+  attempt: number;
+  retryAfterMs?: number;
+}): number => {
+  if (typeof retryAfterMs === 'number' && retryAfterMs > 0) {
+    return retryAfterMs;
+  }
+  return Math.pow(2, attempt - 1) * AI_RETRY_BASE_DELAY_MS;
+};
+
+const fetchJobStatusWithRetry = async ({
+  url,
+  headers,
+  timeoutMs,
+}: {
+  url: string;
+  headers: Record<string, string>;
+  timeoutMs: number;
+}): Promise<Response> => {
+  let lastError: RetryableJobStatusError | null = null;
+
+  for (let attempt = 1; attempt <= AI_REQUEST_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchJsonWithTimeout({
+        url,
+        headers,
+        timeoutMs,
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      throw await buildJobStatusError(response);
+    } catch (error) {
+      const normalizedError = (
+        isAbortError(error)
+          ? new Error(`[AI Job] status poll timed out after ${timeoutMs} ms`)
+          : error instanceof Error
+            ? error
+            : new Error('Analysis job status request failed')
+      ) as RetryableJobStatusError;
+
+      lastError = normalizedError;
+
+      if (normalizedError.nonRetryable || attempt === AI_REQUEST_MAX_RETRIES) {
+        throw normalizedError;
+      }
+
+      await sleep(
+        getRetryDelayMs({
+          attempt,
+          retryAfterMs: normalizedError.retryAfterMs,
+        })
+      );
+    }
+  }
+
+  throw lastError || new Error('Analysis job status request failed');
 };
 
 const submitAnalysisJob = async ({
@@ -178,7 +255,7 @@ const submitAnalysisJob = async ({
       },
     },
     [202],
-    3,
+    AI_REQUEST_MAX_RETRIES,
     ANALYSIS_SUBMIT_TIMEOUT_MS,
     onUploadProgress,
   );
@@ -200,7 +277,7 @@ const pollAnalysisJobUntilTerminal = async ({
       throw new Error('Analysis polling cancelled.');
     }
 
-    const response = await fetchJsonWithTimeout({
+    const response = await fetchJobStatusWithRetry({
       url: `${activeServerUrl}/analyze/jobs/${jobId}`,
       headers: {
         'X-Request-Id': `${requestId}-poll-${attempt + 1}`,
@@ -208,10 +285,6 @@ const pollAnalysisJobUntilTerminal = async ({
       },
       timeoutMs: ANALYSIS_POLL_TIMEOUT_MS,
     });
-
-    if (!response.ok) {
-      throw await buildJobStatusError(response);
-    }
 
     const parsed = assertAnalysisJobStatusContract((await response.json()) as unknown) as AnalysisJobStatusResponse;
     onStageChange?.(parsed.status);
@@ -229,7 +302,7 @@ const pollAnalysisJobUntilTerminal = async ({
       pollAfterMs: parsed.poll_after_ms,
     });
     attempt += 1;
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await sleep(delayMs);
   }
 };
 

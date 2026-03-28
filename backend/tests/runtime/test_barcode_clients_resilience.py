@@ -1,9 +1,11 @@
 import unittest
 import os
+import json
 from unittest.mock import patch
 
 from backend.modules.barcode.clients.datago_client import DatagoClient
 from backend.modules.barcode.clients.public_data_client import PublicDataClient
+from backend.modules.barcode.clients.openfoodfacts_client import OpenFoodFactsClient
 
 
 class _FakeResponse:
@@ -14,6 +16,9 @@ class _FakeResponse:
 
     async def text(self) -> str:
         return self._text
+
+    async def json(self, content_type=None):
+        return json.loads(self._text)
 
     async def __aenter__(self):
         return self
@@ -26,7 +31,7 @@ class _FakeSession:
     def __init__(self, response: _FakeResponse):
         self._response = response
 
-    def get(self, _url: str):
+    def get(self, _url: str, **_kwargs):
         return self._response
 
     async def __aenter__(self):
@@ -40,7 +45,7 @@ class _FlakySession:
     def __init__(self, responses):
         self._responses = list(responses)
 
-    def get(self, _url: str):
+    def get(self, _url: str, **_kwargs):
         if not self._responses:
             raise RuntimeError("no more responses")
         next_item = self._responses.pop(0)
@@ -122,6 +127,75 @@ class BarcodeClientResilienceTests(unittest.IsolatedAsyncioTestCase):
             result = await client._request_service("http://example.com", "C005", log_prefix="")
         self.assertIsNotNone(result)
         self.assertEqual(result.get("PRDLST_NM"), "A")
+
+    async def test_datago_retries_on_429_then_succeeds(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BARCODE_UPSTREAM_RETRY_COUNT": "1",
+                "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS": "0",
+            },
+        ):
+            client = DatagoClient()
+
+        retry_response = _FakeResponse(status=429, text="{}", content_type="application/json")
+        success_payload = '{"C005":{"RESULT":{"CODE":"INFO-000","MSG":"ok"},"row":[{"PRDLST_NM":"B"}]}}'
+        success_response = _FakeResponse(status=200, text=success_payload, content_type="application/json")
+        with patch(
+            "backend.modules.barcode.clients.datago_client.aiohttp.ClientSession",
+            side_effect=[_FakeSession(retry_response), _FakeSession(success_response)],
+        ), patch("backend.modules.barcode.clients.datago_client.asyncio.sleep", return_value=None):
+            result = await client._request_service("http://example.com", "C005", log_prefix="")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("PRDLST_NM"), "B")
+
+    async def test_public_data_retries_on_429_then_succeeds(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BARCODE_UPSTREAM_RETRY_COUNT": "1",
+                "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS": "0",
+            },
+        ):
+            client = PublicDataClient(api_key="dummy")
+
+        retry_response = _FakeResponse(status=429, text="{}", content_type="application/json")
+        success_response = _FakeResponse(
+            status=200,
+            text='{"body":{"items":[{"FOOD_NM_KR":"신라면"}]}}',
+            content_type="application/json",
+        )
+        with patch(
+            "backend.modules.barcode.clients.public_data_client.aiohttp.ClientSession",
+            side_effect=[_FakeSession(retry_response), _FakeSession(success_response)],
+        ), patch("backend.modules.barcode.clients.public_data_client.asyncio.sleep", return_value=None):
+            result = await client.get_nutrition_by_name("신라면")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("FOOD_NM_KR"), "신라면")
+
+    async def test_openfoodfacts_retries_on_429_then_succeeds(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BARCODE_UPSTREAM_RETRY_COUNT": "1",
+                "BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS": "0",
+            },
+        ):
+            client = OpenFoodFactsClient()
+
+        retry_response = _FakeResponse(status=429, text="{}", content_type="application/json")
+        success_response = _FakeResponse(
+            status=200,
+            text='{"status":1,"product":{"product_name":"Sample"}}',
+            content_type="application/json",
+        )
+        with patch(
+            "backend.modules.barcode.clients.openfoodfacts_client.aiohttp.ClientSession",
+            side_effect=[_FakeSession(retry_response), _FakeSession(success_response)],
+        ), patch("backend.modules.barcode.clients.openfoodfacts_client.asyncio.sleep", return_value=None):
+            result = await client.get_product_by_barcode("12345")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.get("product_name"), "Sample")
 
     async def test_public_data_build_url_accepts_decoded_service_key(self):
         client = PublicDataClient(api_key="abc+def=")

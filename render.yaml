@@ -81,6 +81,20 @@ services:
         value: "15"
       - key: GEMINI_RETRY_TIMEOUT_SECONDS
         value: "15"
+      - key: GEMINI_RETRY_MAX_ATTEMPTS
+        value: "3"
+      - key: LABEL_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: LABEL_MONTHLY_BUDGET_USD
+        value: "10"
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.02"
+      - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST
+        value: "1500"
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE
+        value: "0.012"
+      - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
+        value: "900"
       - key: AUTH_PUBLIC_BASE_URL
         sync: false
       - key: MEDIA_PUBLIC_BASE_URL
@@ -176,11 +190,11 @@ services:
       - key: BARCODE_LOOKUP_CACHE_PATH
         value: "/tmp/foodlens_barcode_lookup_cache.json"
       - key: BARCODE_UPSTREAM_TIMEOUT_SECONDS
-        value: "10"
+        value: "15"
       - key: BARCODE_UPSTREAM_RETRY_COUNT
-        value: "2"
+        value: "3"
       - key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS
-        value: "0.6"
+        value: "1.0"
       - key: BARCODE_DATAGO_FAILURE_THRESHOLD
         value: "2"
       - key: BARCODE_DATAGO_UNHEALTHY_COOLDOWN_SECONDS

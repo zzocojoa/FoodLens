@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { ANALYSIS_IMAGE_TIMEOUT_MS, ANALYSIS_TIMEOUT_MS } from '../constants';
+import { AI_REQUEST_MAX_RETRIES, ANALYSIS_TIMEOUT_MS } from '../constants';
 import { getAllergyString } from '../allergy';
 import { uploadWithRetry } from '../upload';
 import { ServerConfig } from '../serverConfig';
@@ -82,10 +82,8 @@ export const performMultipartAnalysisUpload = async ({
         locale,
       },
     },
-    3,
-    endpointPath === '/analyze' || endpointPath === '/analyze/smart'
-      ? ANALYSIS_IMAGE_TIMEOUT_MS
-      : ANALYSIS_TIMEOUT_MS,
+    AI_REQUEST_MAX_RETRIES,
+    ANALYSIS_TIMEOUT_MS,
     onProgress,
   );
 

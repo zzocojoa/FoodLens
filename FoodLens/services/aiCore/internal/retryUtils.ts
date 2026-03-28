@@ -1,5 +1,3 @@
-import { ANALYSIS_TIMEOUT_MS } from '../constants';
-
 export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeoutId: any;
   const timeout = new Promise<T>((_, reject) => {
@@ -17,7 +15,7 @@ export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve
 
 export const runWithAnalysisTimeout = <T>(
   promise: Promise<T>,
-  timeoutMs: number = ANALYSIS_TIMEOUT_MS
+  timeoutMs: number
 ): Promise<T> => {
   return withTimeout(promise, timeoutMs);
 };
