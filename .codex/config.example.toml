@@ -1,0 +1,10 @@
+# FoodLens 프로젝트용 Codex 설정 예시
+# 실제 적용은 ~/.codex/config.toml 에 필요한 부분만 병합해서 사용한다.
+
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 4
+max_depth = 1
+job_max_runtime_seconds = 2700

@@ -73,20 +73,17 @@ export default function ProfileIdentitySection({
                     <HapticPressable
                         onPress={() => {
                             Keyboard.dismiss();
-                            requestAnimationFrame(() => {
-                                onClearName();
-                            });
+                            onClearName();
                         }}
+                        testID="display-name-clear-button"
                         style={{
                             position: 'absolute',
                             right: 10,
-                            width: 36,
-                            height: 36,
-                            borderRadius: 18,
+                            top: 0,
+                            bottom: 0,
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 2,
-                            elevation: 3,
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"
