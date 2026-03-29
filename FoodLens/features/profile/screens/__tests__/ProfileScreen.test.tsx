@@ -39,6 +39,7 @@ jest.mock('@/contexts/ThemeContext', () => ({
 
 jest.mock('@/features/i18n', () => ({
     useI18n: () => ({
+        locale: 'en-US',
         t: (_key: string, fallback?: string) => fallback ?? _key,
     }),
 }));

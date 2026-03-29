@@ -141,7 +141,7 @@ const formatDeletionTimestamp = (
 export default function ProfileScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ fromProfileSheet?: string }>();
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
     const { colorScheme } = useTheme();
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
@@ -586,7 +586,7 @@ export default function ProfileScreen() {
                                     {deletionStatusCopy.title}
                                 </Text>
                                 <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
-                                    {t('profile.deletion.updatedAt', 'Last updated')}: {formatDeletionTimestamp(deletionRequest.updatedAt, 'ko-KR')}
+                                    {t('profile.deletion.updatedAt', 'Last updated')}: {formatDeletionTimestamp(deletionRequest.updatedAt, locale)}
                                 </Text>
                                 {deletionRequest.error ? (
                                     <Text style={{ color: deletionStatusColors.textColor, fontSize: 13, lineHeight: 18 }}>
