@@ -11,7 +11,13 @@ const mockClearSession = jest.fn();
 const mockProviderLogout = jest.fn();
 const mockDispatchPhase2SyncQueue = jest.fn();
 
-let capturedProps: { onPressLogout: () => void } | null = null;
+let capturedProps: {
+  onPressManageProfile: () => void;
+  onPressHelpCenter: () => void;
+  onPressSupportContact: () => void;
+  onPressAccountData: () => void;
+  onPressLogout: () => void;
+} | null = null;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -87,17 +93,27 @@ jest.mock('../profileSheet/hooks/useProfileSheetController', () => ({
 }));
 
 jest.mock('../profileSheet/components/ProfileSheetView', () => {
-  const MockProfileSheetView = (props: { onPressLogout: () => void }) => {
+  const MockProfileSheetView = (props: {
+    onPressManageProfile: () => void;
+    onPressHelpCenter: () => void;
+    onPressSupportContact: () => void;
+    onPressAccountData: () => void;
+    onPressLogout: () => void;
+  }) => {
     capturedProps = props;
     return null;
   };
   return MockProfileSheetView;
 });
 
-describe('ProfileSheet logout', () => {
+describe('ProfileSheet', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedProps = null;
+    global.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    }) as typeof requestAnimationFrame;
     mockReadSession.mockResolvedValue({
       accessToken: 'atk_profile',
       refreshToken: 'rtk_profile',
@@ -145,5 +161,34 @@ describe('ProfileSheet logout', () => {
     expect(mockProviderLogout).toHaveBeenCalledWith('google');
 
     alertSpy.mockRestore();
+  });
+
+  it('routes to health, help, support, and account-data screens from the sheet', () => {
+    render(
+      <ProfileSheet
+        isOpen
+        onClose={jest.fn()}
+        userId="usr_profile"
+        onUpdate={jest.fn()}
+      />
+    );
+
+    expect(capturedProps).not.toBeNull();
+
+    capturedProps?.onPressManageProfile();
+    capturedProps?.onPressHelpCenter();
+    capturedProps?.onPressSupportContact();
+    capturedProps?.onPressAccountData();
+
+    expect(mockPush).toHaveBeenNthCalledWith(1, {
+      pathname: '/profile',
+      params: { fromProfileSheet: '1' },
+    });
+    expect(mockPush).toHaveBeenNthCalledWith(2, '/help/faq');
+    expect(mockPush).toHaveBeenNthCalledWith(3, '/help/contact');
+    expect(mockPush).toHaveBeenNthCalledWith(4, {
+      pathname: '/account-data',
+      params: { fromProfileSheet: '1' },
+    });
   });
 });
