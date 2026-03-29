@@ -28,36 +28,10 @@ Food Lens는 해외 여행 중 낯선 음식을 만났을 때, 카메라 촬영 
 
 ## 🚀 시작하기
 
-### 1. 백엔드 서버 실행
-
-````bash
-아래 순서로 실행하면 됩니다.
-
-1. Postgres 실행(로컬 URL 사용할 때 필수)
-```bash
-cd /Users/beatlefeed/Documents/FoodLens-project
-docker compose -f docker-compose.postgres.yml up -d foodlens-postgres
-````
-
-2. 백엔드 실행 경로/명령어
-
-```bash
-cd /Users/beatlefeed/Documents/FoodLens-project
-source .venv/bin/activate
-python -m backend.server
-```
-
-3. 정상 확인
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-참고:
-
-- 지금 앱 `.env`가 `http://192.168.219.102:8000`을 보도록 되어 있으면, 위 백엔드가 떠 있어야 OAuth 시작이 됩니다.
-
-````
+> **📢 개발 환경 접속 안내 (Render 연동)**
+> 현재 프론트엔드 앱은 라이브 프로덕션(Render) 서버와 자동 통신하도록 구성되어 있습니다.
+> 클라이언트(앱) 개발이나 UI/UX 테스트를 진행할 때는 **Docker 컨테이너나 로컬 Python 백엔드를 구동할 필요가 전혀 없습니다.**
+> 과거 로컬 환경 구동 시 쓰였던 백엔드 구동 방법은 이 문서 최하단의 "[선택] 로컬 전용 백엔드 디버깅" 섹션으로 이동되었습니다.
 
 ### 2. 모바일 앱 실행
 
@@ -111,4 +85,37 @@ iOS 빌드 실패 시 (인증서 만료, Hermes 에러 등) 아래 가이드를 
 ## 📜 라이선스
 
 개인 학습 및 테스트 목적으로 제작된 프로젝트입니다.
-````
+
+`````
+
+---
+
+### [선택] 로컬 전용 백엔드 디버깅 가이드
+(이하 과정은 오로지 Python 백엔드 코드를 로컬 환경에서 직접 수정하고 테스트할 때만 필요합니다. 평소 모바일 앱/UI 개발 시엔 무시하세요.)
+
+````bash
+아래 순서로 실행하면 됩니다.
+
+1. Postgres 실행 (Docker)
+```bash
+cd /Users/beatlefeed/Documents/FoodLens-project
+docker compose -f docker-compose.postgres.yml up -d foodlens-postgres
+`````
+
+2. 백엔드 실행 경로/명령어
+
+```bash
+cd /Users/beatlefeed/Documents/FoodLens-project
+source .venv/bin/activate
+python -m backend.server
+```
+
+3. 정상 상태 확인
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+```
+
+```
