@@ -30,7 +30,8 @@ export const navigateToStoredResult = (
     record,
     record.location ?? null,
     resolveImageUri(record.imageUri),
-    normalizeTimestamp(record.timestamp)
+    normalizeTimestamp(record.timestamp),
+    record.id || null
   );
 
   const route = buildResultRoute({ isBarcode: options.isBarcode ?? !!record.isBarcode });

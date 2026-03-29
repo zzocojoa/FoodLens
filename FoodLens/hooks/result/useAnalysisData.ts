@@ -30,6 +30,7 @@ export function useAnalysisData() {
   // Stored image reference (filename only — for persistence)
   // This is separate from imageSource.uri which is the resolved absolute path for display
   const [storedImageRef, setStoredImageRef] = useState<string | undefined>();
+  const [recordId, setRecordId] = useState<string | null>(null);
 
   // Trigger re-calc
   const [loaded, setLoaded] = useState(false);
@@ -58,6 +59,7 @@ export function useAnalysisData() {
       setStoredImageRef(loadedData.storedImageRef);
       setImageSource(loadedData.imageSource);
       setImageDimensions(loadedData.imageDimensions);
+      setRecordId(loadedData.recordId);
       setLoaded(true);
     }
     
@@ -93,6 +95,7 @@ export function useAnalysisData() {
     rawImageUri: storedImageRef,    // Filename only — for AnalysisService persistence
     displayImageUri: toDisplayImageUri(imageSource),
     timestamp,
-    updateTimestamp
+    updateTimestamp,
+    recordId,
   };
 }

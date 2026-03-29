@@ -7,6 +7,7 @@ import type { LoadedAnalysisData } from '@/hooks/result/analysisDataService';
 type ResultActionTextResolver = (key: string, fallback?: string) => string;
 
 type ResultActionData = NonNullable<LoadedAnalysisData['result']>;
+type ResultActionDataWithId = ResultActionData & { id?: string };
 
 type BuildResultActionInput = {
     result: ResultActionData;
@@ -64,6 +65,28 @@ const buildCommonResultLines = (
     };
 };
 
+const resolveResultRecordId = (
+    result: ResultActionData,
+    savedRecordId: string | null
+): string | null => {
+    if (typeof savedRecordId === 'string' && savedRecordId.trim().length > 0) {
+        return savedRecordId;
+    }
+
+    const resultId = (result as ResultActionDataWithId).id;
+    if (typeof resultId !== 'string') {
+        return null;
+    }
+
+    const trimmedResultId = resultId.trim();
+    return trimmedResultId.length > 0 ? trimmedResultId : null;
+};
+
+export const isResultReportPendingSave = (
+    isNewResult: boolean,
+    savedRecordId: string | null
+): boolean => isNewResult && savedRecordId === null;
+
 export const buildResultShareMessage = (input: BuildResultActionInput): string => {
     const { resultLines } = buildCommonResultLines(input);
     return [
@@ -81,6 +104,7 @@ export const buildResultReportMailtoUrl = (
     }
 ): string => {
     const common = buildCommonResultLines(input);
+    const recordId = resolveResultRecordId(input.result, input.savedRecordId);
     const intro = input.t(
         'result.report.intro',
         'I want to report an incorrect analysis result.'
@@ -99,7 +123,7 @@ export const buildResultReportMailtoUrl = (
         '',
         ...reportLines,
         `${input.t('result.report.requestIdLabel', 'Request ID')}: ${input.result.request_id ?? input.t('common.na', 'N/A')}`,
-        `${input.t('result.report.recordIdLabel', 'History record')}: ${input.savedRecordId ?? input.t('common.na', 'N/A')}`,
+        `${input.t('result.report.recordIdLabel', 'History record')}: ${recordId ?? input.t('common.na', 'N/A')}`,
         `${input.t('result.report.modelLabel', 'Model')}: ${input.result.used_model ?? input.t('common.na', 'N/A')}`,
         `${input.t('result.report.promptVersionLabel', 'Prompt version')}: ${input.result.prompt_version ?? input.t('common.na', 'N/A')}`,
         '',

@@ -142,6 +142,8 @@
   "result.report.modelLabel": "Model",
   "result.report.promptVersionLabel": "Prompt version",
   "result.report.bodyPrompt": "Please describe the issue:",
+  "result.report.pendingTitle": "Saving analysis",
+  "result.report.pendingMessage": "We are still saving this result. Please try reporting again in a moment.",
   "result.report.errorTitle": "Support unavailable",
   "result.report.contactFallback": "Unable to open your email app. Please contact support manually.",
   "result.breakdown.title": "Molecular Breakdown",

@@ -1,4 +1,8 @@
-import { buildResultReportMailtoUrl, buildResultShareMessage } from '../resultActionUtils';
+import {
+    buildResultReportMailtoUrl,
+    buildResultShareMessage,
+    isResultReportPendingSave,
+} from '../resultActionUtils';
 import type { ResultLocationData } from '@/components/result/resultContent/types';
 import type { LoadedAnalysisData } from '@/hooks/result/analysisDataService';
 
@@ -26,6 +30,11 @@ const LOCATION: ResultLocationData = {
     formattedAddress: 'Seoul, South Korea',
     isoCountryCode: 'KR',
 };
+
+const RESULT_WITH_RECORD_ID = {
+    ...RESULT,
+    id: 'record-embedded-42',
+} as NonNullable<LoadedAnalysisData['result']> & { id: string };
 
 describe('resultActionUtils', () => {
     it('builds a share message with localized food and safety labels', () => {
@@ -62,5 +71,25 @@ describe('resultActionUtils', () => {
         expect(decoded).toContain('History record: record-99');
         expect(decoded).toContain('Model: gemini-2.5-pro');
         expect(decoded).toContain('Prompt version: food-v3.2');
+    });
+
+    it('falls back to embedded result id when savedRecordId is not set', () => {
+        const url = buildResultReportMailtoUrl({
+            result: RESULT_WITH_RECORD_ID,
+            locationData: LOCATION,
+            timestamp: '2026-03-29T10:15:00.000Z',
+            locale: 'en-US',
+            savedRecordId: null,
+            t,
+        });
+
+        const decoded = decodeURIComponent(url);
+        expect(decoded).toContain('History record: record-embedded-42');
+    });
+
+    it('marks only unsaved new results as pending', () => {
+        expect(isResultReportPendingSave(true, null)).toBe(true);
+        expect(isResultReportPendingSave(true, 'record-99')).toBe(false);
+        expect(isResultReportPendingSave(false, null)).toBe(false);
     });
 });

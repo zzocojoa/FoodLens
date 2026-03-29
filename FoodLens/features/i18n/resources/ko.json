@@ -142,6 +142,8 @@
   "result.report.modelLabel": "모델",
   "result.report.promptVersionLabel": "프롬프트 버전",
   "result.report.bodyPrompt": "문제를 자세히 적어주세요:",
+  "result.report.pendingTitle": "분석 저장 중",
+  "result.report.pendingMessage": "이 분석 결과를 아직 저장하고 있습니다. 잠시 후 다시 신고해 주세요.",
   "result.report.errorTitle": "지원 불가",
   "result.report.contactFallback": "이메일 앱을 열 수 없습니다. 지원팀에 직접 문의해 주세요.",
   "result.breakdown.title": "분자 단위 분석",

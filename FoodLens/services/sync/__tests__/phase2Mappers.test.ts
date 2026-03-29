@@ -139,6 +139,9 @@ describe('phase2Mappers', () => {
       id: 'rec_1',
       foodName: 'Kimchi',
       safetyStatus: 'SAFE',
+      request_id: 'req-1',
+      prompt_version: 'food-v3.2',
+      used_model: 'gemini-2.5-pro',
       ingredients: [],
       timestamp: new Date('2026-02-25T01:00:00Z'),
     });
@@ -152,6 +155,9 @@ describe('phase2Mappers', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.id).toBe('rec_1');
     expect(parsed?.foodName).toBe('Kimchi');
+    expect(parsed?.request_id).toBe('req-1');
+    expect(parsed?.prompt_version).toBe('food-v3.2');
+    expect(parsed?.used_model).toBe('gemini-2.5-pro');
     expect(parsed?.timestamp.toISOString()).toBe('2026-02-25T01:00:00.000Z');
   });
 

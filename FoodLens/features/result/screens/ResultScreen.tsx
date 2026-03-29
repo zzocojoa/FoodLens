@@ -35,6 +35,7 @@ export default function ResultScreen() {
         imageSource,
         timestamp,
         savedRecordId,
+        isReportPendingSave,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
@@ -78,6 +79,17 @@ export default function ResultScreen() {
 
     const handleReportIncorrectResult = async () => {
         if (!result) {
+            return;
+        }
+
+        if (isReportPendingSave) {
+            Alert.alert(
+                t('result.report.pendingTitle', 'Saving analysis'),
+                t(
+                    'result.report.pendingMessage',
+                    'We are still saving this result. Please try reporting again in a moment.'
+                )
+            );
             return;
         }
 

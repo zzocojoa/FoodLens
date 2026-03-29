@@ -469,6 +469,8 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
     raw_result_en: toStringOrNull(entry['raw_result_en']) ?? undefined,
     raw_result_ko: toStringOrNull(entry['raw_result_ko']) ?? undefined,
     raw_data: (entry['raw_data'] as Record<string, unknown>) || undefined,
+    request_id: toStringOrNull(entry['request_id']) ?? undefined,
+    prompt_version: toStringOrNull(entry['prompt_version']) ?? undefined,
     used_model: toStringOrNull(entry['used_model']) ?? undefined,
     isBarcode: typeof entry['isBarcode'] === 'boolean' ? entry['isBarcode'] : undefined,
     imageUri:
