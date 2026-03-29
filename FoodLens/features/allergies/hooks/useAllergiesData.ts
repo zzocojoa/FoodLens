@@ -2,25 +2,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { UserService } from '../../../services/userService';
 import { getAllergiesUserId } from '../constants/allergies.constants';
-import { mergeAllergyTerms } from '../utils/mergeAllergyTerms';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { AllergiesState } from '../types/allergies.types';
+import { AllergySeverity } from '@/features/profile/types/profile.types';
 
 const ALLERGIES_REFRESH_INTERVAL_MS = 5000;
 const ALLERGIES_REFRESH_DEBOUNCE_MS = 250;
 
 export const useAllergiesData = (): AllergiesState => {
     const [allergies, setAllergies] = useState<string[]>([]);
+    const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
+    const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
     const [loading, setLoading] = useState(true);
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
 
-    const loadAllergies = useCallback(async (options: { silent?: boolean } = {}) => {
+    const loadAllergies = useCallback(async (options: { silent: boolean }) => {
         if (loadInFlightRef.current) {
             return;
         }
         loadInFlightRef.current = true;
-        const silent = options.silent === true;
+        const silent = options.silent;
         if (!silent) {
             setLoading(true);
         }
@@ -30,11 +32,9 @@ export const useAllergiesData = (): AllergiesState => {
             });
             if (!profile) return;
 
-            const combined = mergeAllergyTerms(
-                profile.safetyProfile.allergies,
-                profile.safetyProfile.dietaryRestrictions
-            );
-            setAllergies(combined);
+            setAllergies(profile.safetyProfile.allergies);
+            setDietaryRestrictions(profile.safetyProfile.dietaryRestrictions);
+            setSeverityMap(profile.safetyProfile.severityMap ?? {});
         } catch (e) {
             console.error('Failed to load allergies', e);
         } finally {
@@ -46,7 +46,7 @@ export const useAllergiesData = (): AllergiesState => {
     }, []);
 
     useEffect(() => {
-        loadAllergies();
+        void loadAllergies({ silent: false });
 
         return () => {
             if (refreshTimerRef.current) {
@@ -88,5 +88,5 @@ export const useAllergiesData = (): AllergiesState => {
         };
     }, [loadAllergies]);
 
-    return { allergies, loading };
+    return { allergies, dietaryRestrictions, severityMap, loading };
 };

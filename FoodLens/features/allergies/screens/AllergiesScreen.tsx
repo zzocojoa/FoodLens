@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -28,8 +28,11 @@ export default function AllergiesScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const { t, locale } = useI18n();
-    const { allergies, loading } = useAllergiesData();
+    const { allergies, dietaryRestrictions, severityMap, loading } = useAllergiesData();
     const previewCountryCode = toTravelerPreviewCountryCode(locale);
+    const handleEditProfile = React.useCallback(() => {
+        router.push('/profile');
+    }, [router]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -48,7 +51,24 @@ export default function AllergiesScreen() {
                         {t(ALLERGIES_COPY.description.key, ALLERGIES_COPY.description.fallback)}
                     </Text>
 
-                    <AllergyListSection loading={loading} allergies={allergies} theme={theme} />
+                    <TouchableOpacity
+                        style={[styles.editButton, { backgroundColor: theme.primary }]}
+                        onPress={handleEditProfile}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={styles.editButtonText}>
+                            {t('allergies.action.edit', 'Edit Health Profile')}
+                        </Text>
+                    </TouchableOpacity>
+
+                    <AllergyListSection
+                        loading={loading}
+                        allergies={allergies}
+                        dietaryRestrictions={dietaryRestrictions}
+                        severityMap={severityMap}
+                        theme={theme}
+                        onPressEdit={handleEditProfile}
+                    />
 
                     {!loading && (
                         <>
