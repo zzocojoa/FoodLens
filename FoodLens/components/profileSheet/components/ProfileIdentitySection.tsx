@@ -83,10 +83,12 @@ export default function ProfileIdentitySection({
                             width: 36,
                             height: 36,
                             borderRadius: 18,
+                            backgroundColor: theme.background,
+                            borderWidth: 1,
+                            borderColor: theme.border,
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 2,
-                            elevation: 3,
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         hapticType="selection"
