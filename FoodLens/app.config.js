@@ -79,6 +79,7 @@ export default {
     },
     plugins: [
       "expo-router",
+      "./plugins/withResultShareModule",
       "expo-secure-store",
       "@sentry/react-native",
       [

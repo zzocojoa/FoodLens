@@ -4,6 +4,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import ResultScreen from '../ResultScreen';
 import { openMailtoUrl } from '@/features/support/supportMail';
 import { useResultScreen } from '../../hooks/useResultScreen';
+import { shareResultCard } from '../../components/resultShareTransport';
 
 jest.mock('@/services/storage', () => ({
     SafeStorage: {
@@ -20,6 +21,10 @@ jest.mock('../../hooks/useResultScreen', () => ({
 
 jest.mock('@/features/support/supportMail', () => ({
     openMailtoUrl: jest.fn(),
+}));
+
+jest.mock('../../components/resultShareTransport', () => ({
+    shareResultCard: jest.fn(),
 }));
 
 jest.mock('@/hooks/use-app-navigation', () => ({
@@ -63,6 +68,7 @@ jest.mock('@/components/result/ResultHeader', () => ({
 }));
 jest.mock('../../components/ResultErrorState', () => () => null);
 jest.mock('../../components/ResultLoadingState', () => () => null);
+jest.mock('../../components/ResultShareCard', () => () => null);
 jest.mock('../../components/ResultNavBar', () => ({
     __esModule: true,
     default: ({
@@ -92,6 +98,7 @@ jest.mock('../../components/ResultNavBar', () => ({
 
 const mockUseResultScreen = useResultScreen as jest.MockedFunction<typeof useResultScreen>;
 const mockOpenMailtoUrl = openMailtoUrl as jest.MockedFunction<typeof openMailtoUrl>;
+const mockShareResultCard = shareResultCard as jest.MockedFunction<typeof shareResultCard>;
 
 const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>): ReturnType<typeof useResultScreen> => ({
     isRestoring: false,
@@ -173,5 +180,15 @@ describe('ResultScreen', () => {
         fireEvent.press(getByLabelText('Report'));
 
         expect(mockOpenMailtoUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares the generated result card when the share action is pressed', () => {
+        mockUseResultScreen.mockReturnValue(buildHookState());
+        mockShareResultCard.mockResolvedValue(undefined);
+
+        const { getByLabelText } = render(<ResultScreen />);
+        fireEvent.press(getByLabelText('Share'));
+
+        expect(mockShareResultCard).toHaveBeenCalledTimes(1);
     });
 });
