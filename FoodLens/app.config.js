@@ -28,10 +28,12 @@ const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
 const GOOGLE_ADS_ANALYSIS_ENABLED = ["1", "true"].includes(
   (process.env.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED || "").trim()
 );
-const ADMOB_ANDROID_APP_ID = (process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "").trim();
-const ADMOB_IOS_APP_ID = (process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "").trim();
-const GOOGLE_ADS_PLUGIN_ENABLED =
-  GOOGLE_ADS_ANALYSIS_ENABLED && ADMOB_ANDROID_APP_ID && ADMOB_IOS_APP_ID;
+const ADMOB_ANDROID_APP_ID =
+  (process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "").trim() ||
+  "ca-app-pub-3940256099942544~3347511713";
+const ADMOB_IOS_APP_ID =
+  (process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "").trim() ||
+  "ca-app-pub-3940256099942544~1458002511";
 
 if (!ANDROID_GOOGLE_MAPS_API_KEY) {
   // Keep Android map metadata present even when env wiring is broken.
@@ -89,20 +91,16 @@ export default {
       "./plugins/withResultShareModule",
       "expo-secure-store",
       "@sentry/react-native",
-      ...(GOOGLE_ADS_PLUGIN_ENABLED
-        ? [
-            [
-              "react-native-google-mobile-ads",
-              {
-                androidAppId: ADMOB_ANDROID_APP_ID,
-                iosAppId: ADMOB_IOS_APP_ID,
-                delayAppMeasurementInit: true,
-                optimizeInitialization: true,
-                optimizeAdLoading: true,
-              },
-            ],
-          ]
-        : []),
+      [
+        "react-native-google-mobile-ads",
+        {
+          androidAppId: ADMOB_ANDROID_APP_ID,
+          iosAppId: ADMOB_IOS_APP_ID,
+          delayAppMeasurementInit: true,
+          optimizeInitialization: true,
+          optimizeAdLoading: true,
+        },
+      ],
       [
         "expo-splash-screen",
         {
