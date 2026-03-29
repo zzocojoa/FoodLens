@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
     CameraView,
     CameraType,
@@ -8,7 +8,7 @@ import {
 import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
-import { analyzeImage, analyzeLabel, analyzeSmart } from '../../../services/ai';
+import { analyzeImage, analyzeLabel, analyzeSmart, loadPendingAnalysisJob } from '../../../services/ai';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
@@ -21,11 +21,11 @@ import { useScanPermissionFlow } from './useScanPermissionFlow';
 import { useScanBarcodeFlow } from './useScanBarcodeFlow';
 import { useScanCaptureFlow } from './useScanCaptureFlow';
 import { useScanGalleryFlow } from './useScanGalleryFlow';
-import { loadPendingAnalysisJob } from '@/services/ai';
+import { useScanAnalysisAdGate } from './useScanAnalysisAdGate';
 
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
-    const { navigate, replace, back } = useAppNavigation();
+    const { replace, back } = useAppNavigation();
     const isFocused = useIsFocused();
     const cameraRef = useRef<CameraView>(null);
 
@@ -48,6 +48,7 @@ export const useScanCameraGateway = () => {
 
     const { isConnected } = useNetworkStatus();
     const isConnectedRef = useRef(true);
+    const { ensureAnalysisAccess } = useScanAnalysisAdGate({ t });
 
     useEffect(() => {
         isConnectedRef.current = isConnected;
@@ -170,9 +171,10 @@ export const useScanCameraGateway = () => {
                 replace,
                 resetState,
                 handleError,
+                ensureAnalysisAccess,
             });
         },
-        [handleError, resetState, replace, t]
+        [ensureAnalysisAccess, handleError, resetState, replace, t]
     );
 
     const processImage = useCallback(
@@ -279,6 +281,7 @@ export const useScanCameraGateway = () => {
         setIsAnalyzing,
         setActiveStep,
         setMode,
+        ensureAnalysisAccess,
         t,
     });
     const handleCapture = useScanCaptureFlow({

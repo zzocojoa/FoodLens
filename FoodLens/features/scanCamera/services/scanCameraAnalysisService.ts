@@ -53,6 +53,7 @@ type RunAnalysisFlowParams = {
   replace: (route: Href) => void;
   resetState: () => void;
   handleError: (error: unknown) => void;
+  ensureAnalysisAccess: () => Promise<boolean>;
 };
 
 type ResumeAnalysisFlowParams = Pick<
@@ -103,17 +104,10 @@ export const runAnalysisFlow = async ({
   replace,
   resetState,
   handleError,
+  ensureAnalysisAccess,
 }: RunAnalysisFlowParams) => {
   try {
     isCancelled.current = false;
-    beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
-
-    const locationData = await resolveLocationForAnalysis({
-      customLocation,
-      cachedLocation,
-    });
-
-    if (isCancelled.current) return;
 
     if (
       showOfflineAlertAndReset({
@@ -125,6 +119,20 @@ export const runAnalysisFlow = async ({
     ) {
       return;
     }
+
+    const hasAnalysisAccess = await ensureAnalysisAccess();
+    if (!hasAnalysisAccess) {
+      return;
+    }
+
+    beginAnalysis({ uri, setIsAnalyzing, setCapturedImage, setActiveStep });
+
+    const locationData = await resolveLocationForAnalysis({
+      customLocation,
+      cachedLocation,
+    });
+
+    if (isCancelled.current) return;
 
     let fallbackIsoCode = 'US';
     try {

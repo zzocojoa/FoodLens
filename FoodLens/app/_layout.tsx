@@ -18,6 +18,7 @@ import { hasCompletedOnboarding } from '../services/onboardingGateService';
 import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore';
 import { AnalysisService } from '../services/analysisService';
 import { UserService } from '../services/userService';
+import { initializeGoogleAdsRuntime } from '../services/ads/googleAdsRuntime';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -170,6 +171,10 @@ function LayoutContent() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    void initializeGoogleAdsRuntime();
   }, []);
 
   return (
