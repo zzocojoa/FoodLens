@@ -8,10 +8,12 @@ import { useI18n } from '@/features/i18n';
 type ProfileHeaderProps = {
     theme: ProfileTheme;
     onBack: () => void;
+    title?: string;
 };
 
-export default function ProfileHeader({ theme, onBack }: ProfileHeaderProps) {
+export default function ProfileHeader({ theme, onBack, title }: ProfileHeaderProps) {
     const { t } = useI18n();
+    const resolvedTitle = title ?? t('profile.header.title', 'Health Profile');
 
     return (
         <View style={styles.navBar}>
@@ -19,7 +21,7 @@ export default function ProfileHeader({ theme, onBack }: ProfileHeaderProps) {
                 <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
             </TouchableOpacity>
             <Text style={[styles.navTitle, { color: theme.textPrimary }]}>
-                {t('profile.header.title', 'Health Profile')}
+                {resolvedTitle}
             </Text>
             <View style={{ width: 28 }} />
         </View>

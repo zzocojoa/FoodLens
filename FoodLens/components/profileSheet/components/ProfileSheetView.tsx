@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Globe, LogOut, User, Zap } from 'lucide-react-native';
+import { Database, FileText, Globe, LifeBuoy, LogOut, Mail, Shield, User, Zap } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import AnimatedThemeToggle from './AnimatedThemeToggle';
 import LanguageSelectorModal from './LanguageSelectorModal';
@@ -23,6 +23,11 @@ type ProfileSheetViewProps = {
   isOpen: boolean;
   closeProfile: () => void;
   onPressManageProfile: () => void;
+  onPressHelpCenter: () => void;
+  onPressSupportContact: () => void;
+  onPressPrivacyPolicy: () => void;
+  onPressTermsOfService: () => void;
+  onPressAccountData: () => void;
   onPressUpdate: () => void;
   onPressLogout: () => void;
   logoutLoading: boolean;
@@ -65,6 +70,11 @@ export default function ProfileSheetView({
   isOpen,
   closeProfile,
   onPressManageProfile,
+  onPressHelpCenter,
+  onPressSupportContact,
+  onPressPrivacyPolicy,
+  onPressTermsOfService,
+  onPressAccountData,
   onPressUpdate,
   onPressLogout,
   logoutLoading,
@@ -157,10 +167,46 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<User size={20} color="#2563EB" />}
-              title={t('profileSheet.menu.manageProfile.title', 'Manage Profile')}
-              subtitle={t('profileSheet.menu.manageProfile.subtitle', 'Account settings & details')}
+              title={t('profileSheet.menu.manageProfile.title', 'Health Profile')}
+              subtitle={t('profileSheet.menu.manageProfile.subtitle', 'Allergies, severity & dietary restrictions')}
               iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
               onPress={onPressManageProfile}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<LifeBuoy size={20} color="#7C3AED" />}
+              title={t('profileSheet.menu.help.title', 'Help Center')}
+              subtitle={t('profileSheet.menu.help.subtitle', 'Browse answers and support guidance')}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(124, 58, 237, 0.2)' : '#F5F3FF'}
+              onPress={onPressHelpCenter}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<Mail size={20} color="#059669" />}
+              title={t('profileSheet.menu.contact.title', 'Contact Support')}
+              subtitle={t('profileSheet.menu.contact.subtitle', 'Send a support email from the app')}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
+              onPress={onPressSupportContact}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<Shield size={20} color="#2563EB" />}
+              title={t('profileSheet.menu.privacy.title', 'Privacy Policy')}
+              subtitle={t('profileSheet.menu.privacy.subtitle', 'Review how FoodLens handles your data')}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
+              onPress={onPressPrivacyPolicy}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<FileText size={20} color="#D97706" />}
+              title={t('profileSheet.menu.terms.title', 'Terms of Service')}
+              subtitle={t('profileSheet.menu.terms.subtitle', 'Read the service terms and conditions')}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
+              onPress={onPressTermsOfService}
               theme={theme}
             />
 
@@ -182,6 +228,15 @@ export default function ProfileSheetView({
               subtitle={uiLanguageLabel}
               iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
               onPress={() => state.setUiLangModalVisible(true)}
+              theme={theme}
+            />
+
+            <ProfileMenuItem
+              icon={<Database size={20} color="#DC2626" />}
+              title={t('profileSheet.menu.accountData.title', 'Account & Data')}
+              subtitle={t('profileSheet.menu.accountData.subtitle', 'Deletion requests and account cleanup')}
+              iconBgColor={colorScheme === 'dark' ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2'}
+              onPress={onPressAccountData}
               theme={theme}
             />
 
