@@ -63,7 +63,11 @@ export default function ResultErrorState({
                     <Text style={styles.retryText}>{t('result.error.retry', 'Retry')}</Text>
                 </HapticTouchableOpacity>
 
-                <HapticTouchableOpacity style={styles.homeButton} hapticType="light" onPress={() => router.replace('/')}>
+                <HapticTouchableOpacity
+                    style={styles.homeButton}
+                    hapticType="light"
+                    onPress={() => router.replace('/(tabs)')}
+                >
                     <Text style={styles.homeText}>{t('result.error.backHome', 'Back to Home')}</Text>
                 </HapticTouchableOpacity>
             </View>
