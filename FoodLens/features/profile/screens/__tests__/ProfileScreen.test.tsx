@@ -5,6 +5,7 @@ import ProfileScreen from '../ProfileScreen';
 
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
+const mockPush = jest.fn();
 const mockGetLatestDeletionRequest = jest.fn();
 const mockCreateDeletionRequest = jest.fn();
 const mockClearLocalDeletionFootprint = jest.fn();
@@ -16,6 +17,7 @@ jest.mock('expo-router', () => ({
     useRouter: () => ({
         replace: mockReplace,
         back: mockBack,
+        push: mockPush,
     }),
     useLocalSearchParams: () => ({}),
 }));
@@ -245,6 +247,18 @@ describe('ProfileScreen deletion requests', () => {
 
         expect(await findByText('Failed')).toBeTruthy();
         expect(await findByText('Deletion queue failed.')).toBeTruthy();
+    });
+
+    it('navigates to support screens from the help section', async () => {
+        const { getByText } = render(<ProfileScreen />);
+
+        await act(async () => {
+            fireEvent.press(getByText('FAQ'));
+            fireEvent.press(getByText('Contact Support'));
+        });
+
+        expect(mockPush).toHaveBeenNthCalledWith(1, '/help/faq');
+        expect(mockPush).toHaveBeenNthCalledWith(2, '/help/contact');
     });
 
     it('does not clear the device when an older completed deletion request is loaded on mount', async () => {

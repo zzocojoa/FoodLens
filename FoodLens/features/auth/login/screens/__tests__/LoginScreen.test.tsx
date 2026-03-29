@@ -7,13 +7,21 @@ import { useLoginScreen } from '../../hooks/useLoginScreen';
 import { LoginAuthCopy, LoginFormValues } from '../../types/login.types';
 import { LOGIN_COPY } from '../../constants/login.constants';
 
+const mockPush = jest.fn();
+
 jest.mock('../../hooks/useLoginScreen', () => ({
   useLoginScreen: jest.fn(),
 }));
 
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
+
 jest.mock('@expo/vector-icons', () => {
-  const ReactModule = require('react');
-  const { Text } = require('react-native');
+  const ReactModule = jest.requireActual<typeof import('react')>('react');
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Feather: ({ name }: { name: string }) =>
       ReactModule.createElement(Text, null, `icon-${name}`),
