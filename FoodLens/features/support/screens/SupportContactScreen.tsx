@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
@@ -12,6 +12,7 @@ import {
   SUPPORT_FAQ_CATEGORIES,
   type SupportFaqTopicId,
 } from '../supportContent';
+import { openMailtoUrl } from '../supportMail';
 
 type SupportContactParams = {
   topic?: string;
@@ -87,12 +88,7 @@ export default function SupportContactScreen() {
     const mailtoUrl = buildSupportMailtoUrl(trimmedSubject, body);
 
     try {
-      const canOpen = await Linking.canOpenURL('mailto:');
-      if (!canOpen) {
-        throw new Error('MAILTO_UNAVAILABLE');
-      }
-
-      await Linking.openURL(mailtoUrl);
+      await openMailtoUrl(mailtoUrl);
     } catch {
       Alert.alert(
         t('support.contact.openFailed.title', 'Unable to open email app'),
