@@ -13,9 +13,7 @@ const mockDispatchPhase2SyncQueue = jest.fn();
 
 let capturedProps: {
   onPressManageProfile: () => void;
-  onPressHelpCenter: () => void;
-  onPressSupportContact: () => void;
-  onPressAccountData: () => void;
+  onPressSupportHub: () => void;
   onPressLogout: () => void;
 } | null = null;
 
@@ -95,9 +93,7 @@ jest.mock('../profileSheet/hooks/useProfileSheetController', () => ({
 jest.mock('../profileSheet/components/ProfileSheetView', () => {
   const MockProfileSheetView = (props: {
     onPressManageProfile: () => void;
-    onPressHelpCenter: () => void;
-    onPressSupportContact: () => void;
-    onPressAccountData: () => void;
+    onPressSupportHub: () => void;
     onPressLogout: () => void;
   }) => {
     capturedProps = props;
@@ -163,7 +159,7 @@ describe('ProfileSheet', () => {
     alertSpy.mockRestore();
   });
 
-  it('routes to health, help, support, and account-data screens from the sheet', () => {
+  it('routes to health and support hub screens from the sheet', () => {
     render(
       <ProfileSheet
         isOpen
@@ -176,18 +172,14 @@ describe('ProfileSheet', () => {
     expect(capturedProps).not.toBeNull();
 
     capturedProps?.onPressManageProfile();
-    capturedProps?.onPressHelpCenter();
-    capturedProps?.onPressSupportContact();
-    capturedProps?.onPressAccountData();
+    capturedProps?.onPressSupportHub();
 
     expect(mockPush).toHaveBeenNthCalledWith(1, {
       pathname: '/profile',
       params: { fromProfileSheet: '1' },
     });
-    expect(mockPush).toHaveBeenNthCalledWith(2, '/help/faq');
-    expect(mockPush).toHaveBeenNthCalledWith(3, '/help/contact');
-    expect(mockPush).toHaveBeenNthCalledWith(4, {
-      pathname: '/account-data',
+    expect(mockPush).toHaveBeenNthCalledWith(2, {
+      pathname: '/support-policies',
       params: { fromProfileSheet: '1' },
     });
   });
