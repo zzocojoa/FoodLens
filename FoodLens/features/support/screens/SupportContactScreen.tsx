@@ -13,6 +13,7 @@ import {
   type SupportFaqTopicId,
 } from '../supportContent';
 import { openMailtoUrl } from '../supportMail';
+import { getSupportAccentTextColor } from '../supportTheme';
 
 type SupportContactParams = {
   topic?: string;
@@ -32,6 +33,7 @@ export default function SupportContactScreen() {
   const { t, locale } = useI18n();
   const { colorScheme } = useTheme();
   const theme = Colors[colorScheme];
+  const accentTextColor = getSupportAccentTextColor({ colorScheme, theme });
   const params = useLocalSearchParams<SupportContactParams>();
   const initialTopic = normalizeTopic(params.topic);
   const [topic, setTopic] = React.useState<SupportFaqTopicId>(initialTopic);
@@ -161,7 +163,7 @@ export default function SupportContactScreen() {
                 >
                   <Text
                     style={{
-                      color: isActive ? '#FFFFFF' : theme.textPrimary,
+                      color: isActive ? accentTextColor : theme.textPrimary,
                       fontSize: 13,
                       fontWeight: '700',
                     }}
@@ -262,7 +264,7 @@ export default function SupportContactScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
+          <Text style={{ color: accentTextColor, fontSize: 15, fontWeight: '800' }}>
             {t('support.contact.sendButton', 'Open Mail App')}
           </Text>
         </Pressable>
