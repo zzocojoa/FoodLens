@@ -1,5 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
-import { MutableRefObject } from 'react';
+import { MutableRefObject, useCallback, useRef, useState } from 'react';
 import { BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Href } from 'expo-router';
@@ -28,6 +27,7 @@ type UseScanBarcodeFlowParams = {
   setIsAnalyzing: (value: boolean) => void;
   setActiveStep: (value: number | undefined) => void;
   setMode: (mode: 'LABEL' | 'FOOD' | 'BARCODE') => void;
+  ensureAnalysisAccess: () => Promise<boolean>;
   t: Translate;
 };
 
@@ -51,6 +51,7 @@ export const useScanBarcodeFlow = ({
   setIsAnalyzing,
   setActiveStep,
   setMode,
+  ensureAnalysisAccess,
   t,
 }: UseScanBarcodeFlowParams) => {
   const [consecutiveScans, setConsecutiveScans] = useState(0);
@@ -60,9 +61,6 @@ export const useScanBarcodeFlow = ({
   const processBarcode = useCallback(
     async (barcode: string) => {
       try {
-        setIsAnalyzing(true);
-        setActiveStep(0);
-
         if (!isConnectedRef.current) {
           showTranslatedAlert(t, {
             titleKey: 'camera.alert.offlineTitle',
@@ -73,6 +71,18 @@ export const useScanBarcodeFlow = ({
           resetState();
           return;
         }
+
+        const hasAnalysisAccess = await ensureAnalysisAccess();
+        if (!hasAnalysisAccess) {
+          setScanned(false);
+          isProcessingRef.current = false;
+          setConsecutiveScans(0);
+          lastAcceptedBarcodeRef.current = null;
+          return;
+        }
+
+        setIsAnalyzing(true);
+        setActiveStep(0);
 
         const result = await lookupBarcodeWithCache(barcode);
 
@@ -132,7 +142,7 @@ export const useScanBarcodeFlow = ({
             },
           ],
         });
-      } catch (error) {
+      } catch {
         showTranslatedAlert(t, {
           titleKey: 'camera.alert.errorTitle',
           titleFallback: 'Error',
@@ -144,6 +154,7 @@ export const useScanBarcodeFlow = ({
     },
     [
       cachedLocation,
+      ensureAnalysisAccess,
       isConnectedRef,
       isProcessingRef,
       replace,

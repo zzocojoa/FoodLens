@@ -28,16 +28,38 @@ export const allergiesStyles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingBottom: 40,
     },
+    editButton: {
+        borderRadius: 16,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 24,
+    },
+    editButtonText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '700',
+    },
     description: {
         fontSize: 14,
         color: '#64748B',
         lineHeight: 22,
-        marginBottom: 32,
+        marginBottom: 20,
         textAlign: 'center',
     },
     listContainer: {
-        gap: 12,
         marginBottom: 40,
+    },
+    sectionGroup: {
+        gap: 12,
+        marginBottom: 28,
+    },
+    sectionLabel: {
+        fontSize: 13,
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
     },
     allergyItem: {
         flexDirection: 'row',
@@ -46,6 +68,9 @@ export const allergiesStyles = StyleSheet.create({
         borderRadius: 20,
         borderWidth: 1,
         gap: 16,
+    },
+    itemContent: {
+        flex: 1,
     },
     iconBox: {
         width: 40,
@@ -81,6 +106,18 @@ export const allergiesStyles = StyleSheet.create({
     },
     emptyDesc: {
         color: '#64748B',
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    severityBadge: {
+        borderRadius: 999,
+        borderWidth: 1,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    severityBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
     },
     sectionHeader: {
         marginBottom: 16,
@@ -91,4 +128,3 @@ export const allergiesStyles = StyleSheet.create({
         color: '#0F172A',
     },
 });
-

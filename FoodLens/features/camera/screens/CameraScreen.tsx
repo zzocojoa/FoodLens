@@ -20,7 +20,7 @@ export default function CameraScreen() {
     const camera = useCameraGateway({
         params,
         isConnected: !!isConnected,
-        onExit: () => router.replace('/'),
+        onExit: () => router.replace('/(tabs)'),
         onSuccess: () => router.replace(buildResultRoute({ isNew: true, sourceType: 'camera' })),
     });
 

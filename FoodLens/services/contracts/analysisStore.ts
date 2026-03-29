@@ -21,6 +21,7 @@ export type AnalysisStoreSnapshot = {
   location: AnalysisStoreLocation | null;
   imageUri: string | null;
   timestamp: string | null;
+  recordId: string | null;
 };
 
 export type AnalysisStoreBackup = {
@@ -29,9 +30,11 @@ export type AnalysisStoreBackup = {
   imageUri: string | null;
   timestamp: number;
   originalTimestamp: string | null;
+  recordId?: string | null;
 };
 
 export type AnalysisStoreNavigableRecord = AnalysisStoreResult & {
+  id?: string;
   imageUri?: string;
   location?: AnalysisStoreLocation | null;
   timestamp?: string | Date;

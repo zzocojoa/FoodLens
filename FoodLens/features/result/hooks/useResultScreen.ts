@@ -10,6 +10,7 @@ import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contr
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 import { HEADER_HEIGHT } from '../constants/result.constants';
+import { isResultReportPendingSave as computeIsResultReportPendingSave } from '../components/resultActionUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CONTENT_OVERLAY_OFFSET = 160;
@@ -59,6 +60,7 @@ export function useResultScreen() {
         timestamp,
         updateTimestamp,
         imageDimensions,
+        recordId,
     } = useAnalysisData();
 
     const [savedRecordId, setSavedRecordId] = React.useState<string | null>(null);
@@ -68,7 +70,10 @@ export function useResultScreen() {
         setSavedRecordId(savedRecord.id);
     });
 
-    const handleDateUpdate = useDateUpdateAction(savedRecordId, updateTimestamp, () => {
+    const effectiveSavedRecordId = savedRecordId ?? recordId ?? null;
+    const isReportPendingSave = computeIsResultReportPendingSave(routeFlags.isNew, effectiveSavedRecordId);
+
+    const handleDateUpdate = useDateUpdateAction(effectiveSavedRecordId, updateTimestamp, () => {
         setIsDateEditOpen(false);
     });
 
@@ -138,7 +143,8 @@ export function useResultScreen() {
         rawImageUri,
         displayImageUri,
         timestamp,
-        savedRecordId,
+        savedRecordId: effectiveSavedRecordId,
+        isReportPendingSave,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,

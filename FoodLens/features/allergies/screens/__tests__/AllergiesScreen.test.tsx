@@ -1,16 +1,20 @@
 /// <reference types="jest" />
 
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import AllergiesScreen from '../AllergiesScreen';
 import { useAllergiesData } from '../../hooks/useAllergiesData';
+
+const mockedBack = jest.fn();
+const mockedPush = jest.fn();
 
 jest.mock('expo-router', () => ({
     Stack: {
         Screen: () => null,
     },
     useRouter: () => ({
-        back: jest.fn(),
+        back: mockedBack,
+        push: mockedPush,
     }),
 }));
 
@@ -69,16 +73,27 @@ describe('AllergiesScreen', () => {
     });
 
     test('renders header and description', () => {
-        mockedUseAllergiesData.mockReturnValue({ loading: true, allergies: [] });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: true,
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+        });
 
         const { getByText } = render(<AllergiesScreen />);
 
         expect(getByText('My Allergies')).toBeTruthy();
         expect(getByText(/등록된 알레르기 및 식단 제한 정보입니다/)).toBeTruthy();
+        expect(getByText('Edit Health Profile')).toBeTruthy();
     });
 
     test('does not render traveler card section while loading', () => {
-        mockedUseAllergiesData.mockReturnValue({ loading: true, allergies: [] });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: true,
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+        });
 
         const { queryByText } = render(<AllergiesScreen />);
 
@@ -87,11 +102,31 @@ describe('AllergiesScreen', () => {
     });
 
     test('renders traveler card section after loading', () => {
-        mockedUseAllergiesData.mockReturnValue({ loading: false, allergies: ['Peanuts'] });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['Peanuts'],
+            dietaryRestrictions: [],
+            severityMap: { Peanuts: 'moderate' },
+        });
 
         const { getByText } = render(<AllergiesScreen />);
 
         expect(getByText('Traveler Card Preview')).toBeTruthy();
         expect(getByText('MOCK_TRAVELER_CARD')).toBeTruthy();
+    });
+
+    test('navigates to profile when edit CTA is pressed', () => {
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['Peanuts'],
+            dietaryRestrictions: [],
+            severityMap: { Peanuts: 'moderate' },
+        });
+
+        const { getByText } = render(<AllergiesScreen />);
+
+        fireEvent.press(getByText('Edit Health Profile'));
+
+        expect(mockedPush).toHaveBeenCalledWith('/profile');
     });
 });

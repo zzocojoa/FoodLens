@@ -1,8 +1,9 @@
 import React from 'react';
-import { Alert, Linking, Share, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { useI18n } from '@/features/i18n';
+import { openMailtoUrl } from '@/features/support/supportMail';
 import { StatusBar } from 'expo-status-bar';
 import Animated from 'react-native-reanimated';
 import BreakdownOverlay from '@/components/BreakdownOverlay';
@@ -16,15 +17,19 @@ import { resultStyles as styles } from '../styles/resultStyles';
 import ResultErrorState from '../components/ResultErrorState';
 import ResultLoadingState from '../components/ResultLoadingState';
 import ResultNavBar from '../components/ResultNavBar';
+import ResultShareCard from '../components/ResultShareCard';
 import {
     buildResultReportMailtoUrl,
-    buildResultShareMessage,
+    buildResultShareCardData,
+    buildResultShareMessageData,
 } from '../components/resultActionUtils';
+import { shareResultCard } from '../components/resultShareTransport';
 
 export default function ResultScreen() {
     const router = useRouter();
     const { back } = useAppNavigation();
     const { t, locale } = useI18n();
+    const shareCardRef = React.useRef<View>(null);
 
     const {
         isRestoring,
@@ -34,6 +39,7 @@ export default function ResultScreen() {
         imageSource,
         timestamp,
         savedRecordId,
+        isReportPendingSave,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
@@ -53,7 +59,7 @@ export default function ResultScreen() {
             return;
         }
 
-        const message = buildResultShareMessage({
+        const shareMessageData = buildResultShareMessageData({
             result,
             locationData,
             timestamp,
@@ -62,9 +68,11 @@ export default function ResultScreen() {
         });
 
         try {
-            await Share.share({
-                message,
-                title: t('result.share.title', 'FoodLens analysis result'),
+            await shareResultCard({
+                viewRef: shareCardRef,
+                dialogTitle: shareMessageData.title,
+                message: shareMessageData.message,
+                shareTitle: shareMessageData.title,
             });
         } catch (error) {
             const messageText =
@@ -80,6 +88,17 @@ export default function ResultScreen() {
             return;
         }
 
+        if (isReportPendingSave) {
+            Alert.alert(
+                t('result.report.pendingTitle', 'Saving analysis'),
+                t(
+                    'result.report.pendingMessage',
+                    'We are still saving this result. Please try reporting again in a moment.'
+                )
+            );
+            return;
+        }
+
         const mailtoUrl = buildResultReportMailtoUrl({
             result,
             locationData,
@@ -90,19 +109,7 @@ export default function ResultScreen() {
         });
 
         try {
-            const canOpen = await Linking.canOpenURL(mailtoUrl);
-            if (!canOpen) {
-                Alert.alert(
-                    t('result.report.errorTitle', 'Support unavailable'),
-                    t(
-                        'result.report.contactFallback',
-                        'Unable to open your email app. Please contact support manually.',
-                    ),
-                );
-                return;
-            }
-
-            await Linking.openURL(mailtoUrl);
+            await openMailtoUrl(mailtoUrl);
         } catch (error) {
             const messageText =
                 error instanceof Error
@@ -166,6 +173,14 @@ export default function ResultScreen() {
         );
     }
 
+    const shareCardData = buildResultShareCardData({
+        result,
+        locationData,
+        timestamp,
+        locale,
+        t,
+    });
+
     return (
         <View style={styles.container}>
             <Stack.Screen options={{ headerShown: false }} />
@@ -222,6 +237,25 @@ export default function ResultScreen() {
             />
 
             <ActionButtons t={t} />
+
+            <View pointerEvents="none" style={styles.shareCardCaptureContainer}>
+                <View ref={shareCardRef} collapsable={false} style={styles.shareCardCaptureFrame}>
+                    <ResultShareCard
+                        brandLabel={shareCardData.brandLabel}
+                        foodName={shareCardData.foodName}
+                        safetyLabel={shareCardData.safetyLabel}
+                        reasonTitle={shareCardData.reasonTitle}
+                        actionTitle={shareCardData.actionTitle}
+                        reasons={shareCardData.reasons}
+                        actionLine={shareCardData.actionLine}
+                        disclaimer={shareCardData.disclaimer}
+                        imageSource={imageSource}
+                        locationLabel={shareCardData.locationLabel}
+                        placeholderLabel={shareCardData.placeholderLabel}
+                        themeVariant={shareCardData.themeVariant}
+                    />
+                </View>
+            </View>
         </View>
     );
 }

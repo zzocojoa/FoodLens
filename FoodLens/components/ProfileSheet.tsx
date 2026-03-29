@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Alert, Linking } from 'react-native';
+import { Alert } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AuthApi } from '@/services/auth/authApi';
@@ -111,54 +111,22 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     });
   }, [onClose, router]);
 
-  const handleOpenHelpCenter = React.useCallback(() => {
-    onClose();
-    requestAnimationFrame(() => {
-      router.push('/help/faq');
-    });
-  }, [onClose, router]);
-
-  const handleOpenSupportContact = React.useCallback(() => {
-    onClose();
-    requestAnimationFrame(() => {
-      router.push('/help/contact');
-    });
-  }, [onClose, router]);
-
-  const handleOpenAccountData = React.useCallback(() => {
+  const handleOpenSupportHub = React.useCallback(() => {
     onClose();
     requestAnimationFrame(() => {
       router.push({
-        pathname: '/account-data',
+        pathname: '/support-policies',
         params: { fromProfileSheet: '1' },
       });
     });
   }, [onClose, router]);
-
-  const handleOpenPrivacyPolicy = React.useCallback(() => {
-    onClose();
-    requestAnimationFrame(() => {
-      void Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/privacy-policy/');
-    });
-  }, [onClose]);
-
-  const handleOpenTermsOfService = React.useCallback(() => {
-    onClose();
-    requestAnimationFrame(() => {
-      void Linking.openURL('https://zzocojoa.github.io/FoodLens/docs/terms-of-service/');
-    });
-  }, [onClose]);
 
   return (
     <ProfileSheetView
       isOpen={isOpen}
       closeProfile={profileSheet.closeSheet}
       onPressManageProfile={handleManageProfile}
-      onPressHelpCenter={handleOpenHelpCenter}
-      onPressSupportContact={handleOpenSupportContact}
-      onPressPrivacyPolicy={handleOpenPrivacyPolicy}
-      onPressTermsOfService={handleOpenTermsOfService}
-      onPressAccountData={handleOpenAccountData}
+      onPressSupportHub={handleOpenSupportHub}
       onPressUpdate={() => void state.handleUpdate(onUpdate, onClose)}
       onPressLogout={() => void handleLogout()}
       logoutLoading={logoutLoading}

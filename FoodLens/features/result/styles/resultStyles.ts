@@ -97,4 +97,16 @@ export const resultStyles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
+    shareCardCaptureContainer: {
+        position: 'absolute',
+        left: -10000,
+        top: 0,
+        width: 360,
+        opacity: 1,
+    },
+    shareCardCaptureFrame: {
+        width: 360,
+        padding: 16,
+        backgroundColor: '#FFFFFF',
+    },
 });

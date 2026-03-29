@@ -24,6 +24,7 @@ export type LoadedAnalysisData = {
   storedImageRef: string | undefined;
   imageSource: ImageSourcePropType | null;
   imageDimensions: { width: number; height: number } | null;
+  recordId: string | null;
 };
 
 const EMPTY_LOADED_ANALYSIS_DATA: LoadedAnalysisData = {
@@ -33,6 +34,7 @@ const EMPTY_LOADED_ANALYSIS_DATA: LoadedAnalysisData = {
   storedImageRef: undefined,
   imageSource: null,
   imageDimensions: null,
+  recordId: null,
 };
 
 const normalizeBarcodeResult = (
@@ -61,11 +63,13 @@ const buildLoadedAnalysisData = ({
   locationData,
   storedImageRef,
   barcodeParam,
+  recordId,
 }: {
   resultData: AnalysisResultData;
   locationData: AnalysisLocationData;
   storedImageRef: string | null | undefined;
   barcodeParam: string | string[] | undefined;
+  recordId: string | null;
 }): LoadedAnalysisData => {
   const normalizedResult = normalizeBarcodeResult(resultData, barcodeParam);
   const image = resolveImage(normalizedResult, storedImageRef, barcodeParam);
@@ -77,6 +81,7 @@ const buildLoadedAnalysisData = ({
     storedImageRef: storedImageRef || undefined,
     imageSource: image.imageSource,
     imageDimensions: image.imageDimensions,
+    recordId,
   };
 };
 
@@ -113,6 +118,7 @@ export const analysisDataService = {
           locationData: toLocationData(stored.location),
           storedImageRef: stored.imageUri,
           barcodeParam: params.isBarcode,
+          recordId: stored.recordId,
         });
       }
 
@@ -126,6 +132,7 @@ export const analysisDataService = {
         locationData: toLocationData(stored.location),
         storedImageRef: stored.imageUri,
         barcodeParam: params.isBarcode,
+        recordId: stored.recordId,
       });
     }
 
@@ -138,6 +145,7 @@ export const analysisDataService = {
       locationData: toLocationData(parsedLocation),
       storedImageRef: storedData.imageUri,
       barcodeParam: params.isBarcode,
+      recordId: storedData.recordId,
     });
   },
 };

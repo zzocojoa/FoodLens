@@ -17,6 +17,7 @@ class AnalysisDataStore {
   private currentLocation: AnalysisStoreLocation | null = null;
   private currentImageUri: string | null = null;
   private currentTimestamp: string | null = null;
+  private currentRecordId: string | null = null;
 
   private constructor() {}
 
@@ -31,12 +32,14 @@ class AnalysisDataStore {
     result: AnalysisStoreResult,
     location: AnalysisStoreLocation,
     imageUri: string,
-    timestamp?: string
+    timestamp?: string,
+    recordId?: string | null
   ): void {
     this.currentResult = result;
     this.currentLocation = location;
     this.currentImageUri = imageUri;
     this.currentTimestamp = timestamp || nowIso();
+    this.currentRecordId = recordId || null;
     
     // Fire-and-forget backup
     this.saveBackup().catch((error) => console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to backup analysis data`, error));
@@ -47,7 +50,8 @@ class AnalysisDataStore {
       result: this.currentResult,
       location: this.currentLocation,
       imageUri: this.currentImageUri,
-      timestamp: this.currentTimestamp
+      timestamp: this.currentTimestamp,
+      recordId: this.currentRecordId,
     };
   }
 
@@ -59,6 +63,7 @@ class AnalysisDataStore {
       imageUri: this.currentImageUri,
       timestamp: Date.now(),
       originalTimestamp: this.currentTimestamp,
+      recordId: this.currentRecordId,
     };
   }
 
@@ -73,6 +78,7 @@ class AnalysisDataStore {
       this.currentLocation = backup.location;
       this.currentImageUri = backup.imageUri;
       this.currentTimestamp = backup.originalTimestamp || nowIso();
+      this.currentRecordId = backup.recordId || null;
   }
 
   public async restoreBackup(): Promise<boolean> {
@@ -103,6 +109,7 @@ class AnalysisDataStore {
     this.currentLocation = null;
     this.currentImageUri = null;
     this.currentTimestamp = null;
+    this.currentRecordId = null;
     await SafeStorage.remove(DATA_STORE_BACKUP_KEY);
   }
 }

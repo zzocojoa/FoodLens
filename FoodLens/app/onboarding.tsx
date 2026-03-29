@@ -1,5 +1,6 @@
 import React from 'react';
-import { View } from 'react-native';
+import { BackHandler, Platform, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
@@ -26,6 +27,30 @@ export default function OnboardingScreen() {
   const flow = useOnboardingFlow({
     onCompleted: () => router.replace('/(tabs)'),
   });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (Platform.OS !== 'android') {
+        return undefined;
+      }
+
+      const onBackPress = () => {
+        if (flow.step > 1) {
+          flow.goBack();
+          return true;
+        }
+        if (router.canGoBack()) {
+          router.back();
+        }
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => {
+        subscription.remove();
+      };
+    }, [flow, router])
+  );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>

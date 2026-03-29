@@ -2,13 +2,16 @@ import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import {
   Animated,
+  BackHandler,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -77,6 +80,24 @@ export default function HomeScreen() {
     setActiveModal('PROFILE');
     router.setParams({ openProfile: undefined });
   }, [params.openProfile, router, setActiveModal]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (Platform.OS !== 'android' || activeModal !== 'PROFILE') {
+        return undefined;
+      }
+
+      const onBackPress = () => {
+        setActiveModal('NONE');
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => {
+        subscription.remove();
+      };
+    }, [activeModal, setActiveModal])
+  );
 
   const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
 

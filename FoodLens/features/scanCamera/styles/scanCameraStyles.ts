@@ -136,7 +136,6 @@ export const scanCameraStyles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        paddingBottom: 40,
         paddingTop: 40,
         alignItems: 'center',
         gap: 20,

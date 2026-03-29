@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
@@ -12,6 +12,8 @@ import {
   SUPPORT_FAQ_CATEGORIES,
   type SupportFaqTopicId,
 } from '../supportContent';
+import { openMailtoUrl } from '../supportMail';
+import { getSupportAccentTextColor } from '../supportTheme';
 
 type SupportContactParams = {
   topic?: string;
@@ -31,6 +33,7 @@ export default function SupportContactScreen() {
   const { t, locale } = useI18n();
   const { colorScheme } = useTheme();
   const theme = Colors[colorScheme];
+  const accentTextColor = getSupportAccentTextColor({ colorScheme, theme });
   const params = useLocalSearchParams<SupportContactParams>();
   const initialTopic = normalizeTopic(params.topic);
   const [topic, setTopic] = React.useState<SupportFaqTopicId>(initialTopic);
@@ -87,12 +90,7 @@ export default function SupportContactScreen() {
     const mailtoUrl = buildSupportMailtoUrl(trimmedSubject, body);
 
     try {
-      const canOpen = await Linking.canOpenURL('mailto:');
-      if (!canOpen) {
-        throw new Error('MAILTO_UNAVAILABLE');
-      }
-
-      await Linking.openURL(mailtoUrl);
+      await openMailtoUrl(mailtoUrl);
     } catch {
       Alert.alert(
         t('support.contact.openFailed.title', 'Unable to open email app'),
@@ -165,7 +163,7 @@ export default function SupportContactScreen() {
                 >
                   <Text
                     style={{
-                      color: isActive ? '#FFFFFF' : theme.textPrimary,
+                      color: isActive ? accentTextColor : theme.textPrimary,
                       fontSize: 13,
                       fontWeight: '700',
                     }}
@@ -266,7 +264,7 @@ export default function SupportContactScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
+          <Text style={{ color: accentTextColor, fontSize: 15, fontWeight: '800' }}>
             {t('support.contact.sendButton', 'Open Mail App')}
           </Text>
         </Pressable>

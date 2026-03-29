@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
 import { SUPPORT_FAQ_CATEGORIES, SUPPORT_FAQ_ITEMS, type SupportFaqCategoryId } from '../supportContent';
+import { getSupportAccentTextColor } from '../supportTheme';
 
 const includesQuery = (value: string, query: string): boolean => value.toLowerCase().includes(query.toLowerCase());
 
@@ -15,6 +16,7 @@ export default function SupportFaqScreen() {
   const { t } = useI18n();
   const { colorScheme } = useTheme();
   const theme = Colors[colorScheme];
+  const accentTextColor = getSupportAccentTextColor({ colorScheme, theme });
   const [searchText, setSearchText] = React.useState('');
   const [selectedCategory, setSelectedCategory] = React.useState<SupportFaqCategoryId>('all');
   const [activeItemId, setActiveItemId] = React.useState<string | null>(null);
@@ -134,7 +136,7 @@ export default function SupportFaqScreen() {
               >
                 <Text
                   style={{
-                    color: isActive ? '#FFFFFF' : theme.textPrimary,
+                    color: isActive ? accentTextColor : theme.textPrimary,
                     fontSize: 13,
                     fontWeight: '700',
                   }}
@@ -212,7 +214,7 @@ export default function SupportFaqScreen() {
                   borderRadius: 999,
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>
+                <Text style={{ color: accentTextColor, fontSize: 13, fontWeight: '800' }}>
                   {t('support.faq.contact.button', 'Contact Support')}
                 </Text>
               </Pressable>
@@ -250,7 +252,7 @@ export default function SupportFaqScreen() {
               borderRadius: 999,
             }}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>
+            <Text style={{ color: accentTextColor, fontSize: 13, fontWeight: '800' }}>
               {t('support.faq.moreHelp.button', 'Contact Support')}
             </Text>
           </Pressable>

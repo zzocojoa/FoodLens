@@ -1,6 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import type { PermissionResponse } from 'expo-camera';
-import type { CameraView } from 'expo-camera';
+import type { CameraView, PermissionResponse } from 'expo-camera';
 import { PermissionStatus } from 'expo-modules-core';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '@/services/sync/phase2SyncQueue';

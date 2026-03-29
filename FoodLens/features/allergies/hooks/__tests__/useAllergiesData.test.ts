@@ -53,7 +53,9 @@ describe('useAllergiesData', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        expect(result.current.allergies).toEqual(['Peanuts', 'Vegan']);
+        expect(result.current.allergies).toEqual(['Peanuts']);
+        expect(result.current.dietaryRestrictions).toEqual(['Vegan']);
+        expect(result.current.severityMap).toEqual({});
         expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1', {
             allowBackgroundRefresh: false,
         });
@@ -70,6 +72,8 @@ describe('useAllergiesData', () => {
         });
 
         expect(result.current.allergies).toEqual([]);
+        expect(result.current.dietaryRestrictions).toEqual([]);
+        expect(result.current.severityMap).toEqual({});
         expect(errorSpy).toHaveBeenCalled();
 
         errorSpy.mockRestore();

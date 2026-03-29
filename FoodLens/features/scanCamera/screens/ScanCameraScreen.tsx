@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -15,6 +15,7 @@ import { useI18n } from '@/features/i18n';
 
 export default function ScanCameraScreen() {
     const { t } = useI18n();
+    const insets = useSafeAreaInsets();
     const camera = useScanCameraGateway();
 
     if (!camera.permission) return <View style={styles.container} />;
@@ -150,7 +151,15 @@ export default function ScanCameraScreen() {
                 </Text>
             </View>
 
-            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)', 'black']} style={styles.bottomBar}>
+            <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.8)', 'black']}
+                style={[
+                    styles.bottomBar,
+                    {
+                        paddingBottom: Math.max(40, insets.bottom + 20),
+                    },
+                ]}
+            >
                 <View style={styles.contextControls}>
                     <TouchableOpacity onPress={camera.toggleZoom} style={styles.zoomButton}>
                         <ZoomIn size={20} color="white" />
