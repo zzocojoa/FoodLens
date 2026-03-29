@@ -531,6 +531,80 @@ export default function ProfileScreen() {
 
                     <View style={{ marginTop: 12, paddingBottom: 20 }}>
                         <Text style={[styles.sectionHeader, { color: theme.textPrimary, marginBottom: 8 }]}>
+                            {t('profile.support.title', 'Help & Support')}
+                        </Text>
+                        <Text style={[styles.heroSubtitle, { color: theme.textSecondary, fontSize: 14, marginBottom: 12 }]}>
+                            {t(
+                                'profile.support.subtitle',
+                                'Find answers, contact support, or report a problem.',
+                            )}
+                        </Text>
+
+                        <View style={{ gap: 10 }}>
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    backgroundColor: theme.surface,
+                                    borderColor: theme.border,
+                                    borderWidth: 1,
+                                    borderRadius: 16,
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 14,
+                                }}
+                                onPress={() => router.push('/help/faq')}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('profile.support.faq.button', 'FAQ')}
+                            >
+                                <View style={{ flex: 1, paddingRight: 12 }}>
+                                    <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }}>
+                                        {t('profile.support.faq.button', 'FAQ')}
+                                    </Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2, lineHeight: 18 }}>
+                                        {t(
+                                            'profile.support.faq.subtitle',
+                                            'Browse common questions and quick answers.',
+                                        )}
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    backgroundColor: theme.surface,
+                                    borderColor: theme.border,
+                                    borderWidth: 1,
+                                    borderRadius: 16,
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 14,
+                                }}
+                                onPress={() => router.push('/help/contact')}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('profile.support.contact.button', 'Contact Support')}
+                            >
+                                <View style={{ flex: 1, paddingRight: 12 }}>
+                                    <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }}>
+                                        {t('profile.support.contact.button', 'Contact Support')}
+                                    </Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2, lineHeight: 18 }}>
+                                        {t(
+                                            'profile.support.contact.subtitle',
+                                            'Ask a question or report an issue by email.',
+                                        )}
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <View style={{ marginTop: 12, paddingBottom: 20 }}>
+                        <Text style={[styles.sectionHeader, { color: theme.textPrimary, marginBottom: 8 }]}>
                             {t('profile.section.accountAndData', 'Account & Data')}
                         </Text>
                         <Text style={[styles.heroSubtitle, { color: theme.textSecondary, fontSize: 14, marginBottom: 16 }]}>

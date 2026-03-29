@@ -6,9 +6,17 @@ import LoginAuthScreen from '../LoginAuthScreen';
 import { LoginAuthCopy, LoginFormValues } from '../../types/login.types';
 import { LOGIN_COPY } from '../../constants/login.constants';
 
+const mockPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
+
 jest.mock('@expo/vector-icons', () => {
-  const ReactModule = require('react');
-  const { Text } = require('react-native');
+  const ReactModule = jest.requireActual<typeof import('react')>('react');
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Feather: ({ name }: { name: string }) =>
       ReactModule.createElement(Text, null, `icon-${name}`),
@@ -71,6 +79,10 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof LoginAuthSc
 });
 
 describe('LoginAuthScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('matches snapshot in login mode', () => {
     const { toJSON } = render(<LoginAuthScreen {...createProps()} />);
 
@@ -129,6 +141,16 @@ describe('LoginAuthScreen', () => {
     expect(onOAuthLogin).toHaveBeenNthCalledWith(1, 'google');
     expect(onOAuthLogin).toHaveBeenNthCalledWith(2, 'kakao');
     expect(onOAuthLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it('navigates to support screens from the footer links', () => {
+    const { getByText } = render(<LoginAuthScreen {...createProps()} />);
+
+    fireEvent.press(getByText('Help Center'));
+    fireEvent.press(getByText('Contact Support'));
+
+    expect(mockPush).toHaveBeenNthCalledWith(1, '/help/faq');
+    expect(mockPush).toHaveBeenNthCalledWith(2, '/help/contact');
   });
 
   it('renders password reset view when reset step is active', () => {

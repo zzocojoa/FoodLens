@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { LOGIN_COLORS, LoginCopy } from '../constants/login.constants';
 import { GoogleIcon, KakaoIcon } from './OAuthProviderIcons';
 import {
@@ -177,6 +178,7 @@ export default function LoginAuthScreen({
   onSubmit,
   onOAuthLogin,
 }: LoginAuthScreenProps) {
+  const router = useRouter();
   const displayedMessage = errorMessage ?? infoMessage;
   const displayedMessageType: 'error' | 'info' | null = errorMessage
     ? 'error'
@@ -277,6 +279,19 @@ export default function LoginAuthScreen({
             <Pressable onPress={() => onSwitchMode(authCopy.nextMode)}>
               <Text style={loginStyles.switchAuthAction}>{authCopy.switchActionText}</Text>
             </Pressable>
+          </View>
+
+          <View style={loginStyles.supportPanel}>
+            <Text style={loginStyles.supportHint}>{copy.supportHint}</Text>
+            <View style={loginStyles.supportLinksRow}>
+              <Pressable onPress={() => router.push('/help/faq')}>
+                <Text style={loginStyles.supportLink}>{copy.supportHelp}</Text>
+              </Pressable>
+              <Text style={loginStyles.supportSeparator}>•</Text>
+              <Pressable onPress={() => router.push('/help/contact')}>
+                <Text style={loginStyles.supportLink}>{copy.supportContact}</Text>
+              </Pressable>
+            </View>
           </View>
         </>
       ) : (

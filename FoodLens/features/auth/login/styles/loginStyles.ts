@@ -381,4 +381,31 @@ export const loginStyles = StyleSheet.create({
     color: LOGIN_COLORS.accent,
     fontWeight: '700',
   },
+  supportPanel: {
+    marginTop: 14,
+    alignItems: 'center',
+    gap: 8,
+  },
+  supportHint: {
+    color: LOGIN_COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  supportLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  supportLink: {
+    color: LOGIN_COLORS.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  supportSeparator: {
+    color: LOGIN_COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

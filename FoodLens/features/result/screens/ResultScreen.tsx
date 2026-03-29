@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Share, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { useI18n } from '@/features/i18n';
@@ -16,6 +16,10 @@ import { resultStyles as styles } from '../styles/resultStyles';
 import ResultErrorState from '../components/ResultErrorState';
 import ResultLoadingState from '../components/ResultLoadingState';
 import ResultNavBar from '../components/ResultNavBar';
+import {
+    buildResultReportMailtoUrl,
+    buildResultShareMessage,
+} from '../components/resultActionUtils';
 
 export default function ResultScreen() {
     const router = useRouter();
@@ -29,6 +33,7 @@ export default function ResultScreen() {
         locationData,
         imageSource,
         timestamp,
+        savedRecordId,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
@@ -42,6 +47,73 @@ export default function ResultScreen() {
         isError,
         errorInfo,
     } = useResultScreen();
+
+    const handleShareResult = async () => {
+        if (!result) {
+            return;
+        }
+
+        const message = buildResultShareMessage({
+            result,
+            locationData,
+            timestamp,
+            locale,
+            t,
+        });
+
+        try {
+            await Share.share({
+                message,
+                title: t('result.share.title', 'FoodLens analysis result'),
+            });
+        } catch (error) {
+            const messageText =
+                error instanceof Error
+                    ? error.message
+                    : t('result.share.error', 'Could not open the share sheet.');
+            Alert.alert(t('result.share.errorTitle', 'Share failed'), messageText);
+        }
+    };
+
+    const handleReportIncorrectResult = async () => {
+        if (!result) {
+            return;
+        }
+
+        const mailtoUrl = buildResultReportMailtoUrl({
+            result,
+            locationData,
+            timestamp,
+            locale,
+            t,
+            savedRecordId,
+        });
+
+        try {
+            const canOpen = await Linking.canOpenURL(mailtoUrl);
+            if (!canOpen) {
+                Alert.alert(
+                    t('result.report.errorTitle', 'Support unavailable'),
+                    t(
+                        'result.report.contactFallback',
+                        'Unable to open your email app. Please contact support manually.',
+                    ),
+                );
+                return;
+            }
+
+            await Linking.openURL(mailtoUrl);
+        } catch (error) {
+            const messageText =
+                error instanceof Error
+                    ? error.message
+                    : t(
+                          'result.report.contactFallback',
+                          'Unable to open your email app. Please contact support manually.',
+                      );
+            Alert.alert(t('result.report.errorTitle', 'Support unavailable'), messageText);
+        }
+    };
 
     React.useEffect(() => {
         if (!__DEV__) return;
@@ -107,7 +179,13 @@ export default function ResultScreen() {
                 isBarcode={result?.isBarcode}
             />
 
-            <ResultNavBar onBack={back} />
+            <ResultNavBar
+                onBack={back}
+                onShare={handleShareResult}
+                onReport={handleReportIncorrectResult}
+                shareAccessibilityLabel={t('result.action.share', 'Share')}
+                reportAccessibilityLabel={t('result.action.reportIncorrect', 'Report')}
+            />
 
             <Animated.ScrollView
                 onScroll={scrollHandler}
