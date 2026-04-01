@@ -25,9 +25,6 @@ const IOS_BUNDLE_IDENTIFIER = IS_DEV ? IOS_BUNDLE_ID_DEV : IOS_BUNDLE_ID;
 const ANDROID_APP_PACKAGE = IS_DEV ? ANDROID_PACKAGE_DEV : ANDROID_PACKAGE;
 const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
-const GOOGLE_ADS_ANALYSIS_ENABLED = ["1", "true"].includes(
-  (process.env.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED || "").trim()
-);
 const ADMOB_ANDROID_APP_ID =
   (process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "").trim() ||
   "ca-app-pub-3940256099942544~3347511713";
@@ -88,6 +85,7 @@ export default {
     },
     plugins: [
       "expo-router",
+      "./plugins/withGradlePluginPortal",
       "./plugins/withResultShareModule",
       "expo-secure-store",
       "@sentry/react-native",
