@@ -19,6 +19,10 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('@expo/vector-icons', () => {
   const ReactModule = jest.requireActual<typeof import('react')>('react');
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native');

@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "FoodLens",
+    "slug": "FoodLens"
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-1081733063310756~4375445655",
+    "ios_app_id": "ca-app-pub-1081733063310756~1458002511",
+    "delay_app_measurement_init": true,
+    "optimize_initialization": true,
+    "optimize_ad_loading": true
+  }
+}
