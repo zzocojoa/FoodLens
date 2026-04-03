@@ -14,12 +14,13 @@ from backend.modules.ops.rollout_control import (
     RolloutConfig,
     RolloutRuntimeState,
     evaluate_kpi_gate,
+    normalize_rollout_stage,
 )
 
 
 class RolloutControlTests(unittest.TestCase):
     def test_same_request_id_is_stable(self) -> None:
-        controller = LabelRolloutController(RolloutConfig(stage="canary-25", percentage=25, enabled=True))
+        controller = LabelRolloutController(RolloutConfig(stage="canary-5", percentage=5, enabled=True))
         d1 = controller.decide("same-request-id", kpi_gate_passed=True)
         d2 = controller.decide("same-request-id", kpi_gate_passed=True)
         self.assertEqual(d1.bucket, d2.bucket)
@@ -28,8 +29,8 @@ class RolloutControlTests(unittest.TestCase):
     def test_stage_percentage_distribution_changes(self) -> None:
         keys = [f"req-{i}" for i in range(5000)]
 
-        c10 = LabelRolloutController(RolloutConfig(stage="shadow-10", percentage=10, enabled=True))
-        c50 = LabelRolloutController(RolloutConfig(stage="canary-50", percentage=50, enabled=True))
+        c10 = LabelRolloutController(RolloutConfig(stage="shadow-1", percentage=1, enabled=True))
+        c50 = LabelRolloutController(RolloutConfig(stage="canary-20", percentage=20, enabled=True))
 
         routed10 = sum(1 for key in keys if c10.decide(key, kpi_gate_passed=True).route_to_new)
         routed50 = sum(1 for key in keys if c50.decide(key, kpi_gate_passed=True).route_to_new)
@@ -37,8 +38,8 @@ class RolloutControlTests(unittest.TestCase):
         ratio10 = routed10 / len(keys)
         ratio50 = routed50 / len(keys)
 
-        self.assertTrue(0.07 <= ratio10 <= 0.13)
-        self.assertTrue(0.45 <= ratio50 <= 0.55)
+        self.assertTrue(0.0 <= ratio10 <= 0.03)
+        self.assertTrue(0.17 <= ratio50 <= 0.23)
         self.assertGreater(ratio50, ratio10)
 
     def test_rollback_zero_percent_routes_none(self) -> None:
@@ -59,7 +60,7 @@ class RolloutControlTests(unittest.TestCase):
             os.environ,
             {
                 "LABEL_ROLLOUT_ENABLED": "1",
-                "LABEL_ROLLOUT_STAGE": "canary-50",
+                "LABEL_ROLLOUT_STAGE": "canary-20",
                 "LABEL_ROLLOUT_PERCENTAGE": "0",
             },
             clear=False,
@@ -72,22 +73,22 @@ class RolloutControlTests(unittest.TestCase):
 
     def test_auto_manager_promotes_stage_after_passes(self) -> None:
         store = InMemoryRolloutStateStore()
-        store.put(RolloutRuntimeState(stage="shadow-10", consecutive_passes=0))
+        store.put(RolloutRuntimeState(stage="shadow-1", consecutive_passes=0))
         manager = LabelRolloutAutoManager(store, promote_after_passes=2, rollback_stage="rollback-0")
-        base = RolloutConfig(stage="shadow-10", percentage=10, enabled=True)
+        base = RolloutConfig(stage="shadow-1", percentage=1, enabled=True)
 
         c1 = manager.reconcile(base, kpi_gate_passed=True)
         c2 = manager.reconcile(c1, kpi_gate_passed=True)
 
-        self.assertEqual(c1.stage, "shadow-10")
-        self.assertEqual(c2.stage, "canary-25")
-        self.assertEqual(c2.percentage, 25)
+        self.assertEqual(c1.stage, "shadow-1")
+        self.assertEqual(c2.stage, "canary-5")
+        self.assertEqual(c2.percentage, 5)
 
     def test_auto_manager_rolls_back_on_kpi_failure(self) -> None:
         store = InMemoryRolloutStateStore()
-        store.put(RolloutRuntimeState(stage="canary-50", consecutive_passes=1))
+        store.put(RolloutRuntimeState(stage="canary-20", consecutive_passes=1))
         manager = LabelRolloutAutoManager(store, promote_after_passes=2, rollback_stage="rollback-0")
-        base = RolloutConfig(stage="canary-50", percentage=50, enabled=True)
+        base = RolloutConfig(stage="canary-20", percentage=20, enabled=True)
 
         cfg = manager.reconcile(base, kpi_gate_passed=False)
 
@@ -99,12 +100,17 @@ class RolloutControlTests(unittest.TestCase):
             path = str(Path(tmp) / "rollout_state.json")
             store = JsonFileRolloutStateStore(path)
             manager = LabelRolloutAutoManager(store, promote_after_passes=1, rollback_stage="rollback-0")
-            cfg = manager.reconcile(RolloutConfig(stage="shadow-10", percentage=10, enabled=True), kpi_gate_passed=True)
-            self.assertEqual(cfg.stage, "canary-25")
+            cfg = manager.reconcile(RolloutConfig(stage="shadow-1", percentage=1, enabled=True), kpi_gate_passed=True)
+            self.assertEqual(cfg.stage, "canary-5")
 
             reopened = JsonFileRolloutStateStore(path)
-            state = reopened.get("shadow-10")
-            self.assertEqual(state.stage, "canary-25")
+            state = reopened.get("shadow-1")
+            self.assertEqual(state.stage, "canary-5")
+
+    def test_legacy_stage_aliases_normalize_to_canonical_stages(self) -> None:
+        self.assertEqual(normalize_rollout_stage("shadow-10", "general-100"), "shadow-1")
+        self.assertEqual(normalize_rollout_stage("canary-25", "general-100"), "canary-5")
+        self.assertEqual(normalize_rollout_stage("canary-50", "general-100"), "canary-20")
 
 
 if __name__ == "__main__":

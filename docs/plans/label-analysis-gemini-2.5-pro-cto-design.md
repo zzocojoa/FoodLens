@@ -304,7 +304,7 @@
 - `DELETION_QUEUE_BACKEND` (`memory`|`file`, default: `memory`)
 - `DELETION_QUEUE_PATH` (default: `/tmp/foodlens_deletion_queue.json`, when `file`)
 - `LABEL_ROLLOUT_ENABLED` (`1`|`0`, default: `1`)
-- `LABEL_ROLLOUT_STAGE` (`shadow-10`|`canary-25`|`canary-50`|`general-100`|`rollback-0`, default: `general-100`)
+- `LABEL_ROLLOUT_STAGE` (`shadow-1`|`canary-5`|`canary-20`|`general-100`|`rollback-0`, default: `general-100`)
 - `LABEL_ROLLOUT_PERCENTAGE` (0..100, optional override)
 - `LABEL_ROLLOUT_KPI_PARSE_SUCCESS` (default: `100.0`)
 - `LABEL_ROLLOUT_KPI_P95_MS` (default: `0`)
