@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, BackHandler } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import ResultScreen from '../ResultScreen';
 import { openMailtoUrl } from '@/features/support/supportMail';
@@ -29,8 +29,14 @@ jest.mock('../../components/resultShareTransport', () => ({
 
 jest.mock('@/hooks/use-app-navigation', () => ({
     useAppNavigation: () => ({
-        back: jest.fn(),
+        back: mockedBack,
     }),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+    useFocusEffect: (effect: () => void | (() => void)) => {
+        effect();
+    },
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -45,7 +51,7 @@ jest.mock('expo-router', () => ({
         Screen: () => null,
     },
     useRouter: () => ({
-        replace: jest.fn(),
+        replace: mockedReplace,
     }),
 }));
 
@@ -72,11 +78,13 @@ jest.mock('../../components/ResultShareCard', () => () => null);
 jest.mock('../../components/ResultNavBar', () => ({
     __esModule: true,
     default: ({
+        onBack,
         onReport,
         onShare,
         reportAccessibilityLabel,
         shareAccessibilityLabel,
     }: {
+        onBack: () => void;
         onReport: () => void;
         onShare: () => void;
         reportAccessibilityLabel: string;
@@ -85,6 +93,9 @@ jest.mock('../../components/ResultNavBar', () => ({
         const ReactNative = jest.requireActual('react-native');
         return (
             <>
+                <ReactNative.TouchableOpacity onPress={onBack}>
+                    <ReactNative.Text>back</ReactNative.Text>
+                </ReactNative.TouchableOpacity>
                 <ReactNative.TouchableOpacity accessibilityLabel={reportAccessibilityLabel} onPress={onReport}>
                     <ReactNative.Text>report</ReactNative.Text>
                 </ReactNative.TouchableOpacity>
@@ -99,6 +110,9 @@ jest.mock('../../components/ResultNavBar', () => ({
 const mockUseResultScreen = useResultScreen as jest.MockedFunction<typeof useResultScreen>;
 const mockOpenMailtoUrl = openMailtoUrl as jest.MockedFunction<typeof openMailtoUrl>;
 const mockShareResultCard = shareResultCard as jest.MockedFunction<typeof shareResultCard>;
+const mockedBack = jest.fn();
+const mockedReplace = jest.fn();
+const mockedAddEventListener = jest.spyOn(BackHandler, 'addEventListener');
 
 const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>): ReturnType<typeof useResultScreen> => ({
     isRestoring: false,
@@ -147,12 +161,16 @@ const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>)
     closeBreakdown: jest.fn(),
     isError: false,
     errorInfo: null,
+    backTarget: null,
     ...overrides,
 });
 
 describe('ResultScreen', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockedAddEventListener.mockImplementation((_eventName, _handler) => ({
+            remove: jest.fn(),
+        }));
     });
 
     it('blocks report while a new result is still saving', () => {
@@ -190,5 +208,17 @@ describe('ResultScreen', () => {
         fireEvent.press(getByLabelText('Share'));
 
         expect(mockShareResultCard).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the scan camera fallback instead of router back for new results', () => {
+        mockUseResultScreen.mockReturnValue(buildHookState({
+            backTarget: '/scan/camera',
+        }));
+
+        const { getByText } = render(<ResultScreen />);
+        fireEvent.press(getByText('back'));
+
+        expect(mockedReplace).toHaveBeenCalledWith('/scan/camera');
+        expect(mockedBack).not.toHaveBeenCalled();
     });
 });
