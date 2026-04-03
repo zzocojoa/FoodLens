@@ -10,7 +10,9 @@ import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contr
 import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 import { HEADER_HEIGHT } from '../constants/result.constants';
-import { isResultReportPendingSave as computeIsResultReportPendingSave } from '../components/resultActionUtils';
+import type { AnalysisRecord } from '@/services/analysis/types';
+
+type ResultReportSaveState = 'ready' | 'saving' | 'failed';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CONTENT_OVERLAY_OFFSET = 160;
@@ -66,12 +68,19 @@ export function useResultScreen() {
     const [savedRecordId, setSavedRecordId] = React.useState<string | null>(null);
     const [isDateEditOpen, setIsDateEditOpen] = React.useState(false);
 
-    useAutoSave(result, locationData, rawImageUri, timestamp, (savedRecord) => {
+    const handleSavedRecord = React.useCallback((savedRecord: AnalysisRecord) => {
         setSavedRecordId(savedRecord.id);
-    });
+    }, []);
+
+    const { saveStatus, retrySave } = useAutoSave(result, locationData, rawImageUri, timestamp, handleSavedRecord);
 
     const effectiveSavedRecordId = savedRecordId ?? recordId ?? null;
-    const isReportPendingSave = computeIsResultReportPendingSave(routeFlags.isNew, effectiveSavedRecordId);
+    const reportSaveState: ResultReportSaveState =
+        !routeFlags.isNew || effectiveSavedRecordId
+            ? 'ready'
+            : saveStatus === 'failed'
+                ? 'failed'
+                : 'saving';
 
     const handleDateUpdate = useDateUpdateAction(effectiveSavedRecordId, updateTimestamp, () => {
         setIsDateEditOpen(false);
@@ -144,7 +153,8 @@ export function useResultScreen() {
         displayImageUri,
         timestamp,
         savedRecordId: effectiveSavedRecordId,
-        isReportPendingSave,
+        reportSaveState,
+        retryReportSave: retrySave,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
