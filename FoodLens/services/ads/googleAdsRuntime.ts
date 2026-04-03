@@ -1,4 +1,4 @@
-import mobileAds, { AdsConsent } from 'react-native-google-mobile-ads';
+import mobileAds, { AdsConsent, type AdsConsentInfo } from 'react-native-google-mobile-ads';
 import { logger } from '@/services/logger';
 import { getGoogleAdsConfig } from './googleAdsConfig';
 
@@ -8,16 +8,13 @@ const createGoogleAdsInitRequestId = (): string => {
   return `ads-init-${Date.now().toString(36)}`;
 };
 
-const gatherConsentSafely = async (): Promise<void> => {
+const gatherConsentSafely = async (): Promise<AdsConsentInfo | null> => {
   try {
-    await AdsConsent.gatherConsent();
+    return await AdsConsent.gatherConsent();
   } catch (error) {
-    // Consent form may not be configured in AdMob dashboard yet.
-    // This is expected during early development / testing.
-    // We log the warning but do NOT block SDK initialization.
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn(
-      'Google Ads consent gathering failed, proceeding with SDK init',
+    logger.error(
+      'Google Ads consent gathering failed',
       {
         request_id: createGoogleAdsInitRequestId(),
         user_id: 'unknown',
@@ -25,6 +22,7 @@ const gatherConsentSafely = async (): Promise<void> => {
       },
       'Ads'
     );
+    return null;
   }
 };
 
@@ -35,7 +33,21 @@ const initializeAdsInternal = async (): Promise<boolean> => {
   }
 
   try {
-    await gatherConsentSafely();
+    const consentInfo = await gatherConsentSafely();
+    if (!consentInfo?.canRequestAds) {
+      logger.warn(
+        'Google Ads request blocked by consent state',
+        {
+          request_id: createGoogleAdsInitRequestId(),
+          user_id: 'unknown',
+          consent_status: consentInfo?.status ?? 'unknown',
+          can_request_ads: consentInfo?.canRequestAds ?? false,
+        },
+        'Ads'
+      );
+      return false;
+    }
+
     await mobileAds().initialize();
     return true;
   } catch (error) {

@@ -31,6 +31,8 @@ const ADMOB_ANDROID_APP_ID =
 const ADMOB_IOS_APP_ID =
   (process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "").trim() ||
   "ca-app-pub-3940256099942544~1458002511";
+const ADMOB_IOS_TRACKING_USAGE_DESCRIPTION =
+  "Allow $(PRODUCT_NAME) to request tracking permission so rewarded ads can be shown before starting an analysis.";
 
 if (!ANDROID_GOOGLE_MAPS_API_KEY) {
   // Keep Android map metadata present even when env wiring is broken.
@@ -97,6 +99,7 @@ export default {
           delayAppMeasurementInit: true,
           optimizeInitialization: true,
           optimizeAdLoading: true,
+          userTrackingUsageDescription: ADMOB_IOS_TRACKING_USAGE_DESCRIPTION,
         },
       ],
       [
