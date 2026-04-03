@@ -1,0 +1,58 @@
+name: Phase6 Postdeploy Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_label:
+        description: "Release label or rollout target"
+        required: true
+        type: string
+      postdeploy_base_url:
+        description: "Deployed backend public base URL"
+        required: true
+        type: string
+      rollback_rehearsal_reference:
+        description: "Latest rollback rehearsal evidence reference"
+        required: true
+        type: string
+      rollback_rehearsal_verdict:
+        description: "Rollback rehearsal readiness verdict"
+        required: true
+        default: pass
+        type: choice
+        options:
+          - pass
+          - fail
+      rollback_rehearsal_summary:
+        description: "One-line rollback rehearsal summary"
+        required: true
+        type: string
+
+jobs:
+  postdeploy-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run postdeploy smoke gate
+        env:
+          PHASE6_RELEASE_LABEL: ${{ inputs.release_label }}
+          PHASE6_POSTDEPLOY_BASE_URL: ${{ inputs.postdeploy_base_url }}
+          PHASE6_POSTDEPLOY_AUTH_BEARER_TOKEN: ${{ secrets.PHASE6_POSTDEPLOY_AUTH_BEARER_TOKEN }}
+          PHASE6_POSTDEPLOY_MEDIA_RENDER_URL: ${{ secrets.PHASE6_POSTDEPLOY_MEDIA_RENDER_URL }}
+          PHASE6_ROLLBACK_REHEARSAL_REFERENCE: ${{ inputs.rollback_rehearsal_reference }}
+          PHASE6_ROLLBACK_REHEARSAL_VERDICT: ${{ inputs.rollback_rehearsal_verdict }}
+          PHASE6_ROLLBACK_REHEARSAL_SUMMARY: ${{ inputs.rollback_rehearsal_summary }}
+        run: |
+          set -o pipefail
+          bash backend/scripts/ci_phase6_postdeploy_smoke.sh
+
+      - name: Upload postdeploy smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-postdeploy-smoke-${{ github.run_id }}
+          path: FoodLens/artifacts/phase6/postdeploy-smoke
+          if-no-files-found: error
+          retention-days: 14

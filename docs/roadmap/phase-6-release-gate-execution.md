@@ -63,6 +63,20 @@
     - 이후는 `eas submit` 자동 제출 + 재시도 절차 사용
 - Backend Lead
   - 배포 전/후 스모크 스크립트 표준화
+  - 운영 workflow: `.github/workflows/phase6-postdeploy-smoke.yml`
+  - 증적 아티팩트: `FoodLens/artifacts/phase6/postdeploy-smoke/<timestamp>/`
+  - 최소 점검 범위 고정:
+    - `GET /`
+    - Google/Kakao live provider redirect smoke
+    - `GET /me/profile`
+    - `GET /me/allergies`
+    - `GET /me/settings`
+    - `GET /me/history`
+    - signed media render 1건
+  - 롤백 리허설 증적 입력 필수:
+    - 최근 리허설 참조값
+    - readiness verdict
+    - 한 줄 요약
   - 주요 알림 기준 설정(에러율/지연/429)
 - 완료 체크
   - [ ] CI에서 실패 시 배포 차단
@@ -105,6 +119,8 @@
   - 문제 발생 시 담당자/연락 경로 명확
   - 내부 테스트 트랙 배포 증적(AAB/IPA, 로그/스크린샷/아티팩트) 보관
   - `eas submit` 자동 제출/재시도 로그 보관(최초 수동 제출 예외 사유 포함)
+  - 배포 후 live smoke 증적(`summary.md`, endpoint logs, media render headers) 보관
+  - 최근 rollback rehearsal 참조값과 readiness verdict 보관
   - MMKV 경고 재확인 결과(발생/미발생 + 영향도) 기록
 
 ## 7) 리스크와 대응 (쉽게 설명)
