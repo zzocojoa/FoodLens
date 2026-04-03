@@ -129,7 +129,8 @@ const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>)
     displayImageUri: undefined,
     timestamp: '2026-03-29T10:15:00.000Z',
     savedRecordId: 'record-99',
-    isReportPendingSave: false,
+    reportSaveState: 'ready',
+    retryReportSave: jest.fn(),
     isDateEditOpen: false,
     setIsDateEditOpen: jest.fn(),
     handleDateUpdate: jest.fn(),
@@ -159,7 +160,7 @@ describe('ResultScreen', () => {
         const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
         mockUseResultScreen.mockReturnValue(buildHookState({
             savedRecordId: null,
-            isReportPendingSave: true,
+            reportSaveState: 'saving',
         }));
 
         const { getByLabelText } = render(<ResultScreen />);
@@ -168,6 +169,26 @@ describe('ResultScreen', () => {
         expect(alertSpy).toHaveBeenCalledWith(
             'Saving analysis',
             'We are still saving this result. Please try reporting again in a moment.'
+        );
+        expect(mockOpenMailtoUrl).not.toHaveBeenCalled();
+    });
+
+    it('retries save before reporting when autosave previously failed', () => {
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
+        const retryReportSave = jest.fn();
+        mockUseResultScreen.mockReturnValue(buildHookState({
+            savedRecordId: null,
+            reportSaveState: 'failed',
+            retryReportSave,
+        }));
+
+        const { getByLabelText } = render(<ResultScreen />);
+        fireEvent.press(getByLabelText('Report'));
+
+        expect(retryReportSave).toHaveBeenCalledTimes(1);
+        expect(alertSpy).toHaveBeenCalledWith(
+            'Save failed',
+            'We could not finish saving this result. We are trying again now. Please report again in a moment.'
         );
         expect(mockOpenMailtoUrl).not.toHaveBeenCalled();
     });

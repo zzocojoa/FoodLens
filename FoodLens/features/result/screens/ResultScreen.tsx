@@ -39,7 +39,8 @@ export default function ResultScreen() {
         imageSource,
         timestamp,
         savedRecordId,
-        isReportPendingSave,
+        reportSaveState,
+        retryReportSave,
         isDateEditOpen,
         setIsDateEditOpen,
         handleDateUpdate,
@@ -88,12 +89,24 @@ export default function ResultScreen() {
             return;
         }
 
-        if (isReportPendingSave) {
+        if (reportSaveState === 'saving') {
             Alert.alert(
                 t('result.report.pendingTitle', 'Saving analysis'),
                 t(
                     'result.report.pendingMessage',
                     'We are still saving this result. Please try reporting again in a moment.'
+                )
+            );
+            return;
+        }
+
+        if (reportSaveState === 'failed') {
+            retryReportSave();
+            Alert.alert(
+                t('result.report.retryTitle', 'Save failed'),
+                t(
+                    'result.report.retryMessage',
+                    'We could not finish saving this result. We are trying again now. Please report again in a moment.'
                 )
             );
             return;
