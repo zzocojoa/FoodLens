@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, BackHandler, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { useI18n } from '@/features/i18n';
 import { openMailtoUrl } from '@/features/support/supportMail';
@@ -52,7 +53,36 @@ export default function ResultScreen() {
         closeBreakdown,
         isError,
         errorInfo,
+        backTarget,
     } = useResultScreen();
+
+    const handleBack = React.useCallback(() => {
+        if (backTarget) {
+            router.replace(backTarget);
+            return;
+        }
+
+        back();
+    }, [back, backTarget, router]);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            if (Platform.OS !== 'android' || !backTarget) {
+                return undefined;
+            }
+
+            const onBackPress = () => {
+                router.replace(backTarget);
+                return true;
+            };
+
+            const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+            return () => {
+                subscription.remove();
+            };
+        }, [backTarget, router])
+    );
 
     const handleShareResult = async () => {
         if (!result) {
@@ -195,7 +225,7 @@ export default function ResultScreen() {
             />
 
             <ResultNavBar
-                onBack={back}
+                onBack={handleBack}
                 onShare={handleShareResult}
                 onReport={handleReportIncorrectResult}
                 shareAccessibilityLabel={t('result.action.share', 'Share')}

@@ -11,6 +11,7 @@ import { getResultErrorInfo, isResultError } from '../utils/resultError';
 import { useDateUpdateAction, useNewResultHaptic, usePhotoLibraryAutoSave } from './useResultSideEffects';
 import { HEADER_HEIGHT } from '../constants/result.constants';
 import { isResultReportPendingSave as computeIsResultReportPendingSave } from '../components/resultActionUtils';
+import { resolveResultBackTarget } from '../utils/resultNavigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CONTENT_OVERLAY_OFFSET = 160;
@@ -133,6 +134,7 @@ export function useResultScreen() {
 
     const isError = isResultError(result?.foodName);
     const errorInfo = result ? getResultErrorInfo(result.foodName, result.raw_result || '', t) : null;
+    const backTarget = resolveResultBackTarget({ isNew: routeFlags.isNew });
 
     return {
         isRestoring,
@@ -157,5 +159,6 @@ export function useResultScreen() {
         closeBreakdown,
         isError,
         errorInfo,
+        backTarget,
     };
 }
