@@ -34,8 +34,8 @@
   - 필수 게이트 명시:
     - 타입 검사 (TypeScript/Lint)
     - 계약 테스트 (Pact/Schema Validation)
-    - **Automated Regression**: 주요 플로우(로그인/검색) E2E 테스트 (Detox/Appium)
-    - 스모크 테스트 (배포 직후 자동 실행)
+    - **Automated Regression**: 주요 플로우(로그인/스캔/결과/히스토리) 모바일 smoke 테스트
+    - 스모크 테스트 (배포 직후 workflow_dispatch 실행)
 - QA
   - 릴리스 전수 시나리오 체크리스트 확정
 - 완료 체크
@@ -51,6 +51,9 @@
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
+  - GitHub Actions 운영 기준 고정:
+    - `Phase6 Mobile Release Build` 실행 후 빌드 로그/아티팩트 보관
+    - `Phase6 Postdeploy Smoke` 실행 후 배포 직후/롤백 리허설 증적 보관
 - Mobile Lead
   - 릴리스 브랜치 전략 정리 (Git Flow/Trunk Based)
   - **Staged Rollout**: 1% -> 5% -> 20% -> 100% 점진적 배포 계획 수립
@@ -75,6 +78,7 @@
 - PM/PO + Tech Leads
   - Go/No-Go 회의 템플릿 운영
   - 롤백 리허설 1회 실행
+    - `Phase6 Postdeploy Smoke` 를 `rollback-rehearsal` 모드로 재실행
 - DevOps
   - 운영 대시보드/런북 정리
   - 실디바이스 런타임 로그 재확인:
@@ -102,6 +106,8 @@
   - 모니터링/알림/런북 상시 운영
   - 문제 발생 시 담당자/연락 경로 명확
   - 내부 테스트 트랙 배포 증적(AAB/IPA, 로그/스크린샷/아티팩트) 보관
+  - `Phase6 Mobile Release Build` 실행 로그와 빌드 아티팩트 보관
+  - `Phase6 Postdeploy Smoke` 배포 직후/롤백 리허설 로그 보관
   - `eas submit` 자동 제출/재시도 로그 보관(최초 수동 제출 예외 사유 포함)
   - MMKV 경고 재확인 결과(발생/미발생 + 영향도) 기록
 

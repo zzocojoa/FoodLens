@@ -1,6 +1,6 @@
 import { AnalysisService } from '../analysisService';
 import { getStoredAnalyses, saveAnalyses } from '../analysis/storage';
-import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue';
+import { enqueueHistoryDelete, enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue';
 import { queryClient } from '../queryClient';
 
 jest.mock('../analysis/storage', () => ({
@@ -10,6 +10,7 @@ jest.mock('../analysis/storage', () => ({
 
 jest.mock('../sync/phase2SyncQueue', () => ({
   dispatchPhase2SyncQueue: jest.fn(async () => undefined),
+  enqueueHistoryDelete: jest.fn(async () => undefined),
   enqueueHistorySync: jest.fn(async () => undefined),
   getPhase2SyncQueueSnapshot: jest.fn(async () => []),
   startPhase2SyncRuntime: jest.fn(),
@@ -49,6 +50,7 @@ jest.mock('../sync/phase2Api', () => ({
 const mockedGetStoredAnalyses = getStoredAnalyses as jest.MockedFunction<typeof getStoredAnalyses>;
 const mockedSaveAnalyses = saveAnalyses as jest.MockedFunction<typeof saveAnalyses>;
 const mockedEnqueueHistorySync = enqueueHistorySync as jest.MockedFunction<typeof enqueueHistorySync>;
+const mockedEnqueueHistoryDelete = enqueueHistoryDelete as jest.MockedFunction<typeof enqueueHistoryDelete>;
 const mockedDispatchPhase2SyncQueue = dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
 
 describe('AnalysisService barcode dedupe', () => {
@@ -122,5 +124,28 @@ describe('AnalysisService barcode dedupe', () => {
     expect(cached?.length).toBe(1);
     expect(cached?.[0]?.id).toBe(saved.id);
     expect(cached?.[0]?.foodName).toBe('Test cereal');
+  });
+
+  it('queues history deletes instead of calling remote delete directly', async () => {
+    mockedGetStoredAnalyses.mockResolvedValue([
+      {
+        id: 'analysis_1',
+        foodName: 'Soup',
+        safetyStatus: 'SAFE',
+        ingredients: [],
+        timestamp: new Date('2026-03-02T14:05:09.000Z'),
+        imageUri: 'file:///tmp/test.jpg',
+        raw_data: {},
+      } as any,
+    ]);
+
+    await AnalysisService.deleteAnalysis('usr_test', 'analysis_1');
+
+    expect(mockedSaveAnalyses).toHaveBeenCalled();
+    expect(mockedEnqueueHistoryDelete).toHaveBeenCalledWith('usr_test', {
+      kind: 'delete',
+      history_item_id: 'analysis_1',
+    });
+    expect(mockedDispatchPhase2SyncQueue).toHaveBeenCalled();
   });
 });

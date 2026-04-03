@@ -46,6 +46,11 @@ jest.mock('../../constants/allergies.constants', () => ({
             key: 'allergies.description',
             fallback: '등록된 알레르기 및 식단 제한 정보입니다.',
         },
+        errorTitle: { key: 'allergies.error.title', fallback: 'Unable to load allergy info' },
+        errorDescription: {
+            key: 'allergies.error.description',
+            fallback: 'We could not load your allergy information. Please try again.',
+        },
         emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
         emptyDescription: { key: 'allergies.empty.description', fallback: '등록된 알레르기 정보가 없습니다.' },
         travelerCardPreviewTitle: {
@@ -75,9 +80,11 @@ describe('AllergiesScreen', () => {
     test('renders header and description', () => {
         mockedUseAllergiesData.mockReturnValue({
             loading: true,
+            loadError: false,
             allergies: [],
             dietaryRestrictions: [],
             severityMap: {},
+            reload: jest.fn(),
         });
 
         const { getByText } = render(<AllergiesScreen />);
@@ -90,9 +97,11 @@ describe('AllergiesScreen', () => {
     test('does not render traveler card section while loading', () => {
         mockedUseAllergiesData.mockReturnValue({
             loading: true,
+            loadError: false,
             allergies: [],
             dietaryRestrictions: [],
             severityMap: {},
+            reload: jest.fn(),
         });
 
         const { queryByText } = render(<AllergiesScreen />);
@@ -104,9 +113,11 @@ describe('AllergiesScreen', () => {
     test('renders traveler card section after loading', () => {
         mockedUseAllergiesData.mockReturnValue({
             loading: false,
+            loadError: false,
             allergies: ['Peanuts'],
             dietaryRestrictions: [],
             severityMap: { Peanuts: 'moderate' },
+            reload: jest.fn(),
         });
 
         const { getByText } = render(<AllergiesScreen />);
@@ -118,9 +129,11 @@ describe('AllergiesScreen', () => {
     test('navigates to profile when edit CTA is pressed', () => {
         mockedUseAllergiesData.mockReturnValue({
             loading: false,
+            loadError: false,
             allergies: ['Peanuts'],
             dietaryRestrictions: [],
             severityMap: { Peanuts: 'moderate' },
+            reload: jest.fn(),
         });
 
         const { getByText } = render(<AllergiesScreen />);
@@ -128,5 +141,22 @@ describe('AllergiesScreen', () => {
         fireEvent.press(getByText('Edit Health Profile'));
 
         expect(mockedPush).toHaveBeenCalledWith('/profile');
+    });
+
+    test('does not render traveler card section when load error is active', () => {
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            loadError: true,
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            reload: jest.fn(),
+        });
+
+        const { getByText, queryByText } = render(<AllergiesScreen />);
+
+        expect(getByText('Unable to load allergy info')).toBeTruthy();
+        expect(queryByText('Traveler Card Preview')).toBeNull();
+        expect(queryByText('MOCK_TRAVELER_CARD')).toBeNull();
     });
 });

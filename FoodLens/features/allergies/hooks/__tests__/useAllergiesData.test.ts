@@ -22,6 +22,12 @@ jest.mock('../../../../services/userService', () => ({
     },
 }));
 
+jest.mock('@/services/logger', () => ({
+    logger: {
+        error: jest.fn(),
+    },
+}));
+
 describe('useAllergiesData', () => {
     const mockedGetUserProfile = UserService.getUserProfile as jest.MockedFunction<
         typeof UserService.getUserProfile
@@ -56,14 +62,14 @@ describe('useAllergiesData', () => {
         expect(result.current.allergies).toEqual(['Peanuts']);
         expect(result.current.dietaryRestrictions).toEqual(['Vegan']);
         expect(result.current.severityMap).toEqual({});
+        expect(result.current.loadError).toBe(false);
         expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1', {
             allowBackgroundRefresh: false,
         });
     });
 
-    test('returns empty list when loading fails', async () => {
+    test('marks load error when loading fails', async () => {
         mockedGetUserProfile.mockRejectedValue(new Error('storage failed'));
-        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
         const { result } = renderHook(() => useAllergiesData());
 
@@ -74,8 +80,6 @@ describe('useAllergiesData', () => {
         expect(result.current.allergies).toEqual([]);
         expect(result.current.dietaryRestrictions).toEqual([]);
         expect(result.current.severityMap).toEqual({});
-        expect(errorSpy).toHaveBeenCalled();
-
-        errorSpy.mockRestore();
+        expect(result.current.loadError).toBe(true);
     });
 });

@@ -205,10 +205,48 @@ def _analysis_job_allowed_content_types() -> set[str]:
     return {part.strip().lower() for part in raw.split(",") if part.strip()}
 
 
+def _is_production_runtime() -> bool:
+    values = (
+        _env_str("SENTRY_ENVIRONMENT", "").lower(),
+        _env_str("ENVIRONMENT", "").lower(),
+        _env_str("APP_ENV", "").lower(),
+        _env_str("RENDER_ENVIRONMENT", "").lower(),
+    )
+    return any(value in {"prod", "production"} for value in values)
+
+
+def _validate_phase5_runtime_config(
+    *,
+    retention_store_backend: str,
+    retention_delete_backend: str,
+    deletion_queue_backend: str,
+    deletion_handler_backend: str,
+) -> None:
+    if not _is_production_runtime():
+        return
+    if retention_store_backend == "memory":
+        raise RuntimeError("RETENTION_STORE_BACKEND must not be memory in production.")
+    if retention_delete_backend == "noop":
+        raise RuntimeError("RETENTION_DELETE_BACKEND must not be noop in production.")
+    if deletion_queue_backend == "memory":
+        raise RuntimeError("DELETION_QUEUE_BACKEND must not be memory in production.")
+    if deletion_handler_backend == "noop":
+        raise RuntimeError("DELETION_HANDLER_BACKEND must not be noop in production.")
+
+
 def _initialize_phase5_runtime() -> None:
     app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
     database_url = _env_str("DATABASE_URL", "")
     retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
+    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
+    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
+    deletion_handler_backend = _env_str("DELETION_HANDLER_BACKEND", "user").lower()
+    _validate_phase5_runtime_config(
+        retention_store_backend=retention_store_backend,
+        retention_delete_backend=retention_delete_backend,
+        deletion_queue_backend=deletion_queue_backend,
+        deletion_handler_backend=deletion_handler_backend,
+    )
     if retention_store_backend == "file":
         retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
     elif retention_store_backend == "postgres":
@@ -220,7 +258,6 @@ def _initialize_phase5_runtime() -> None:
         retention_store = InMemoryRetentionStore()
     app.state.retention_store = retention_store
 
-    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
     if retention_delete_backend == "local_file":
         delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
         cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
@@ -235,7 +272,6 @@ def _initialize_phase5_runtime() -> None:
         adapter=cleanup_adapter,
     )
 
-    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
     if deletion_queue_backend == "file":
         deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
     elif deletion_queue_backend == "postgres":
@@ -249,7 +285,6 @@ def _initialize_phase5_runtime() -> None:
     app.state.deletion_queue_storage = deletion_storage
     app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
 
-    deletion_handler_backend = _env_str("DELETION_HANDLER_BACKEND", "user").lower()
     if deletion_handler_backend == "noop":
         deletion_handler = NoOpDeletionHandler()
     else:
@@ -595,6 +630,37 @@ async def _media_render_cache_set(
         cache.move_to_end(variant_key)
         while len(cache) > max_items:
             cache.popitem(last=False)
+
+
+async def _media_render_cache_delete(variant_key: str) -> None:
+    if not bool(getattr(app.state, "media_render_cache_enabled", False)):
+        return
+    cache = getattr(app.state, "media_render_cache", None)
+    lock = getattr(app.state, "media_render_cache_lock", None)
+    if cache is None or lock is None:
+        return
+    async with lock:
+        cache.pop(variant_key, None)
+
+
+async def _media_render_cache_get_verified(
+    *,
+    asset_id: str,
+    variant_key: str,
+    now_ts: int,
+    auth_service: Any,
+) -> tuple[bytes, str] | None:
+    cached = await _media_render_cache_get(variant_key, now_ts)
+    if cached is None:
+        return None
+    try:
+        auth_service.get_media_asset(asset_id=asset_id)
+    except AuthServiceError as error:
+        if error.code == "AUTH_MEDIA_NOT_FOUND":
+            await _media_render_cache_delete(variant_key)
+            return None
+        raise
+    return cached
 
 
 async def _run_media_render_singleflight(
@@ -2387,7 +2453,12 @@ async def get_media_render(
             quality=final_quality,
             target_format=final_fmt,
         )
-        cached = await _media_render_cache_get(variant_key, now_ts)
+        cached = await _media_render_cache_get_verified(
+            asset_id=asset_id,
+            variant_key=variant_key,
+            now_ts=now_ts,
+            auth_service=auth_service,
+        )
         if cached is not None:
             rendered_bytes, content_type = cached
             remaining_ttl = max(1, exp - now_ts)

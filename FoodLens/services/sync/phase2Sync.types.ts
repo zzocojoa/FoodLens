@@ -107,9 +107,15 @@ export type Phase2HistoryTimestampPatchPayload = {
   expected_updated_at?: string;
 };
 
+export type Phase2HistoryDeletePayload = {
+  kind: 'delete';
+  history_item_id: string;
+};
+
 export type Phase2HistoryPayload =
   | Phase2HistoryCreatePayload
-  | Phase2HistoryTimestampPatchPayload;
+  | Phase2HistoryTimestampPatchPayload
+  | Phase2HistoryDeletePayload;
 
 export type MediaUploadScope = 'profile' | 'history';
 

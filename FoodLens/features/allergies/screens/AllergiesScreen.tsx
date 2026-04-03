@@ -28,7 +28,7 @@ export default function AllergiesScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const { t, locale } = useI18n();
-    const { allergies, dietaryRestrictions, severityMap, loading } = useAllergiesData();
+    const { allergies, dietaryRestrictions, severityMap, loading, loadError, reload } = useAllergiesData();
     const previewCountryCode = toTravelerPreviewCountryCode(locale);
     const handleEditProfile = React.useCallback(() => {
         router.push('/profile');
@@ -63,14 +63,18 @@ export default function AllergiesScreen() {
 
                     <AllergyListSection
                         loading={loading}
+                        loadError={loadError}
                         allergies={allergies}
                         dietaryRestrictions={dietaryRestrictions}
                         severityMap={severityMap}
                         theme={theme}
                         onPressEdit={handleEditProfile}
+                        onPressRetry={() => {
+                            void reload();
+                        }}
                     />
 
-                    {!loading && (
+                    {!loading && !loadError && (
                         <>
                             <View style={styles.sectionHeader}>
                                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>

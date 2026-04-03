@@ -1,0 +1,47 @@
+name: Phase6 Postdeploy Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      auth_public_base_url:
+        description: "Backend public base URL (e.g. https://foodlens.example.com)"
+        required: true
+        type: string
+      mode:
+        description: "Smoke mode"
+        required: true
+        type: choice
+        default: postdeploy
+        options:
+          - postdeploy
+          - rollback-rehearsal
+      release_label:
+        description: "Release label for artifacts"
+        required: true
+        type: string
+
+jobs:
+  postdeploy-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run postdeploy smoke checks
+        env:
+          AUTH_PUBLIC_BASE_URL: ${{ inputs.auth_public_base_url }}
+          RELEASE_GATE_MODE: ${{ inputs.mode }}
+          RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          bash backend/scripts/ci_phase6_postdeploy_smoke.sh 2>&1 | tee artifacts/phase6-postdeploy-smoke.log
+
+      - name: Upload smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-${{ inputs.mode }}-smoke-log
+          path: artifacts/phase6-postdeploy-smoke.log
+          if-no-files-found: error
+          retention-days: 14

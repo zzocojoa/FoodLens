@@ -21,6 +21,7 @@ import type {
   MeSettingsClientState,
   MeSettingsResponse,
   Phase2ConflictResolution,
+  Phase2HistoryDeletePayload,
   Phase2HistoryCreatePayload,
   Phase2HistoryPayload,
   Phase2HistoryTimestampPatchPayload,
@@ -68,6 +69,12 @@ const isHistoryTimestampPatchPayload = (
   payload['kind'] === 'timestamp_patch' &&
   typeof payload['history_item_id'] === 'string' &&
   typeof payload['timestamp'] === 'string';
+
+const isHistoryDeletePayload = (
+  payload: Record<string, unknown>
+): payload is Phase2HistoryDeletePayload =>
+  payload['kind'] === 'delete' &&
+  typeof payload['history_item_id'] === 'string';
 
 export const __resetPhase2SettingsDispatchDedupeForTests = (): void => {
   settingsDispatchDedupeCache.clear();
@@ -963,6 +970,13 @@ const dispatchOperation = async (operation: Phase2SyncOperation): Promise<Dispat
     }
   }
 
+  if (isHistoryDeletePayload(historyPayload)) {
+    const historyResult = await Phase2Api.deleteHistory(historyPayload.history_item_id);
+    return {
+      requestId: historyResult.requestId,
+    };
+  }
+
   throw new Error('PHASE2_HISTORY_PAYLOAD_INVALID');
 };
 
@@ -1258,6 +1272,57 @@ export const enqueueHistoryTimestampPatch = async (
   } else {
     queue.push(nextItem);
   }
+  await saveQueue(pruneQueue(queue));
+  void dispatchPhase2SyncQueue();
+  return nextItem.id;
+};
+
+export const enqueueHistoryDelete = async (
+  userId: string,
+  payload: Phase2HistoryDeletePayload
+): Promise<string> => {
+  const queue = await loadQueue();
+  const sendingDuplicate = queue.find((item) => {
+    if (item.userId !== userId || item.entity !== 'history') return false;
+    if (item.state !== 'sending') return false;
+    if (!isHistoryDeletePayload(item.payload)) return false;
+    return item.payload.history_item_id === payload.history_item_id;
+  });
+  if (sendingDuplicate) {
+    return sendingDuplicate.id;
+  }
+
+  let existingIndex = -1;
+  for (let index = queue.length - 1; index >= 0; index -= 1) {
+    const item = queue[index];
+    if (item.userId !== userId || item.entity !== 'history') continue;
+    if (!MUTABLE_ENTITY_STATES.has(item.state as MutableEntityState)) continue;
+    if (item.state === 'sending') continue;
+    if (!isHistoryDeletePayload(item.payload)) continue;
+    if (item.payload.history_item_id !== payload.history_item_id) continue;
+    existingIndex = index;
+    break;
+  }
+
+  const nextItem: Phase2SyncOperation = {
+    id: existingIndex >= 0 ? queue[existingIndex].id : generateOperationId(),
+    userId,
+    entity: 'history',
+    payload,
+    attempts: 0,
+    state: 'pending',
+    nextAttemptAt: now(),
+    createdAt: existingIndex >= 0 ? queue[existingIndex].createdAt : now(),
+    updatedAt: now(),
+    conflict: undefined,
+  };
+
+  if (existingIndex >= 0) {
+    queue[existingIndex] = nextItem;
+  } else {
+    queue.push(nextItem);
+  }
+
   await saveQueue(pruneQueue(queue));
   void dispatchPhase2SyncQueue();
   return nextItem.id;

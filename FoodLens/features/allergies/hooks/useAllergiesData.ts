@@ -5,6 +5,7 @@ import { getAllergiesUserId } from '../constants/allergies.constants';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { AllergiesState } from '../types/allergies.types';
 import { AllergySeverity } from '@/features/profile/types/profile.types';
+import { logger } from '@/services/logger';
 
 const ALLERGIES_REFRESH_INTERVAL_MS = 5000;
 const ALLERGIES_REFRESH_DEBOUNCE_MS = 250;
@@ -14,6 +15,7 @@ export const useAllergiesData = (): AllergiesState => {
     const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
 
@@ -30,13 +32,27 @@ export const useAllergiesData = (): AllergiesState => {
             const profile = await UserService.getUserProfile(getAllergiesUserId(), {
                 allowBackgroundRefresh: false,
             });
-            if (!profile) return;
+            if (!profile) {
+                throw new Error('ALLERGIES_PROFILE_NOT_FOUND');
+            }
 
             setAllergies(profile.safetyProfile.allergies);
             setDietaryRestrictions(profile.safetyProfile.dietaryRestrictions);
             setSeverityMap(profile.safetyProfile.severityMap ?? {});
+            setLoadError(false);
         } catch (e) {
-            console.error('Failed to load allergies', e);
+            logger.error(
+                'Failed to load allergies',
+                {
+                    error: e instanceof Error ? e.message : String(e),
+                    silent,
+                    user_id: getAllergiesUserId(),
+                },
+                'Allergies'
+            );
+            if (!silent) {
+                setLoadError(true);
+            }
         } finally {
             loadInFlightRef.current = false;
             if (!silent) {
@@ -88,5 +104,9 @@ export const useAllergiesData = (): AllergiesState => {
         };
     }, [loadAllergies]);
 
-    return { allergies, dietaryRestrictions, severityMap, loading };
+    const reload = useCallback(async (): Promise<void> => {
+        await loadAllergies({ silent: false });
+    }, [loadAllergies]);
+
+    return { allergies, dietaryRestrictions, severityMap, loading, loadError, reload };
 };

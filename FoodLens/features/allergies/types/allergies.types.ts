@@ -8,4 +8,6 @@ export type AllergiesState = {
     dietaryRestrictions: string[];
     severityMap: Record<string, AllergySeverity>;
     loading: boolean;
+    loadError: boolean;
+    reload: () => Promise<void>;
 };

@@ -11,11 +11,13 @@ import { AllergySeverity } from '@/features/profile/types/profile.types';
 
 type AllergyListSectionProps = {
     loading: boolean;
+    loadError: boolean;
     allergies: string[];
     dietaryRestrictions: string[];
     severityMap: Record<string, AllergySeverity>;
     theme: AllergiesTheme;
     onPressEdit: () => void;
+    onPressRetry: () => void;
 };
 
 const renderDisplayName = (item: string): string => translateAllergenToKorean(item, ALLERGEN_TERMS);
@@ -53,16 +55,41 @@ const getSeverityTone = (
 
 export default function AllergyListSection({
     loading,
+    loadError,
     allergies,
     dietaryRestrictions,
     severityMap,
     theme,
     onPressEdit,
+    onPressRetry,
 }: AllergyListSectionProps) {
     const { t } = useI18n();
 
     if (loading) {
         return <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 40 }} />;
+    }
+
+    if (loadError) {
+        return (
+            <View style={[styles.emptyState, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <ShieldAlert size={48} color="#EF4444" />
+                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
+                    {t(ALLERGIES_COPY.errorTitle.key, ALLERGIES_COPY.errorTitle.fallback)}
+                </Text>
+                <Text style={[styles.emptyDesc, { color: theme.textSecondary }]}>
+                    {t(ALLERGIES_COPY.errorDescription.key, ALLERGIES_COPY.errorDescription.fallback)}
+                </Text>
+                <TouchableOpacity
+                    style={[styles.editButton, { backgroundColor: theme.primary }]}
+                    onPress={onPressRetry}
+                    activeOpacity={0.85}
+                >
+                    <Text style={styles.editButtonText}>
+                        {t('allergies.error.action', 'Try again')}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        );
     }
 
     if (allergies.length === 0 && dietaryRestrictions.length === 0) {

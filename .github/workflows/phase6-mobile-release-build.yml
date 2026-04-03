@@ -1,0 +1,117 @@
+name: Phase6 Mobile Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - android
+          - ios
+
+jobs:
+  android-release-build:
+    if: ${{ inputs.platform == 'both' || inputs.platform == 'android' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Validate release token
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN is required."
+            exit 1
+          fi
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run mobile release smoke
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          bash scripts/ci_phase6_mobile_release_smoke.sh 2>&1 | tee artifacts/phase6-mobile-release-smoke.log
+
+      - name: Run Android production build
+        run: |
+          set -o pipefail
+          npx eas-cli@latest build --platform android --profile production --non-interactive --wait 2>&1 | tee artifacts/phase6-android-release-build.log
+
+      - name: Upload Android release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-android-release-artifacts
+          path: |
+            FoodLens/artifacts/phase6-mobile-release-smoke.log
+            FoodLens/artifacts/phase6-android-release-build.log
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-release-build:
+    if: ${{ inputs.platform == 'both' || inputs.platform == 'ios' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Validate release token
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN is required."
+            exit 1
+          fi
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run mobile release smoke
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          bash scripts/ci_phase6_mobile_release_smoke.sh 2>&1 | tee artifacts/phase6-mobile-release-smoke.log
+
+      - name: Run iOS production build
+        run: |
+          set -o pipefail
+          npx eas-cli@latest build --platform ios --profile production --non-interactive --wait 2>&1 | tee artifacts/phase6-ios-release-build.log
+
+      - name: Upload iOS release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-ios-release-artifacts
+          path: |
+            FoodLens/artifacts/phase6-mobile-release-smoke.log
+            FoodLens/artifacts/phase6-ios-release-build.log
+          if-no-files-found: error
+          retention-days: 14
