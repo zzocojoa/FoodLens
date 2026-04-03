@@ -51,6 +51,8 @@
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
+    - 운영 workflow: `.github/workflows/phase6-mobile-store-evidence.yml`
+    - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-store-evidence/<timestamp>/`
 - Mobile Lead
   - 릴리스 브랜치 전략 정리 (Git Flow/Trunk Based)
   - **Staged Rollout**: 1% -> 5% -> 20% -> 100% 점진적 배포 계획 수립

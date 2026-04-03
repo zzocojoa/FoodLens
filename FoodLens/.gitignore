@@ -35,6 +35,7 @@ yarn-error.*
 .env.*
 .env*.local
 artifacts/phase2/
+artifacts/phase6/
 
 # typescript
 *.tsbuildinfo
