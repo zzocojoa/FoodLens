@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Globe, LogOut, Shield, User, Zap } from 'lucide-react-native';
+import { Globe, LogOut, Shield, User } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import AnimatedThemeToggle from './AnimatedThemeToggle';
 import LanguageSelectorModal from './LanguageSelectorModal';
@@ -193,14 +193,6 @@ export default function ProfileSheetView({
               subtitle={uiLanguageLabel}
               iconBgColor={colorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
               onPress={() => state.setUiLangModalVisible(true)}
-              theme={theme}
-            />
-
-            <ProfileMenuItem
-              icon={<Zap size={20} color="#D97706" fill="#D97706" />}
-              title={t('profileSheet.menu.removeAds.title', 'Remove Ads')}
-              subtitle={t('profileSheet.menu.removeAds.subtitle', 'Premium benefits')}
-              iconBgColor={colorScheme === 'dark' ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB'}
               theme={theme}
             />
 
