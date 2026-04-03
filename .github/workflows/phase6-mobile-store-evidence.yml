@@ -1,0 +1,94 @@
+name: Phase6 Mobile Store Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Build target platform"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+      build_profile:
+        description: "EAS build profile"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+      submit_enabled:
+        description: "Submit latest build to store/test track"
+        required: true
+        default: false
+        type: boolean
+      submit_profile:
+        description: "EAS submit profile"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+      submit_justification:
+        description: "Required when submit is disabled"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  mobile-store-evidence:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Validate submit justification
+        env:
+          SUBMIT_ENABLED: ${{ inputs.submit_enabled }}
+          SUBMIT_JUSTIFICATION: ${{ inputs.submit_justification }}
+        run: |
+          if [ "${SUBMIT_ENABLED}" = "false" ] && [ -z "${SUBMIT_JUSTIFICATION}" ]; then
+            echo "submit_justification is required when submit_enabled=false"
+            exit 1
+          fi
+
+      - name: Run mobile store evidence gate
+        env:
+          PHASE6_PLATFORM: ${{ inputs.platform }}
+          PHASE6_BUILD_PROFILE: ${{ inputs.build_profile }}
+          PHASE6_SUBMIT_ENABLED: ${{ inputs.submit_enabled }}
+          PHASE6_SUBMIT_PROFILE: ${{ inputs.submit_profile }}
+          PHASE6_SUBMIT_JUSTIFICATION: ${{ inputs.submit_justification }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npm run phase6:mobile-store-evidence
+
+      - name: Upload store evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-mobile-store-evidence-${{ github.run_id }}
+          path: FoodLens/artifacts/phase6/mobile-store-evidence
+          if-no-files-found: error
+          retention-days: 14
