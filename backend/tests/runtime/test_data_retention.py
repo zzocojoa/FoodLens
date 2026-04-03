@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import backend.server as server
 from backend.modules.ops.data_retention import (
     CallbackRetentionCleanupAdapter,
     InMemoryRetentionStore,
@@ -177,6 +178,37 @@ class DataRetentionTests(unittest.TestCase):
             self.assertTrue(adapter.delete_record(ok_record))
             self.assertFalse(target.exists())
             self.assertFalse(adapter.delete_record(blocked_record))
+
+    def test_phase5_runtime_config_rejects_unsafe_production_defaults(self) -> None:
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "SENTRY_ENVIRONMENT": "production",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(RuntimeError):
+                server._validate_phase5_runtime_config(
+                    retention_store_backend="memory",
+                    retention_delete_backend="noop",
+                    deletion_queue_backend="memory",
+                    deletion_handler_backend="user",
+                )
+
+    def test_phase5_runtime_config_allows_non_production_defaults(self) -> None:
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "SENTRY_ENVIRONMENT": "development",
+            },
+            clear=False,
+        ):
+            server._validate_phase5_runtime_config(
+                retention_store_backend="memory",
+                retention_delete_backend="noop",
+                deletion_queue_backend="memory",
+                deletion_handler_backend="user",
+            )
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 import {
   __resetPhase2SettingsDispatchDedupeForTests,
   dispatchPhase2SyncQueue,
+  enqueueHistoryDelete,
   enqueueHistoryTimestampPatch,
   enqueuePhase2Sync,
   getPhase2ConflictedOperations,
@@ -204,6 +205,10 @@ beforeEach(() => {
       entry: {},
     },
     requestId: 'req-history-image-a',
+  });
+  mockedPhase2Api.deleteHistory.mockResolvedValue({
+    deleted: true,
+    requestId: 'req-delete',
   });
 });
 
@@ -627,6 +632,20 @@ describe('phase2SyncQueue', () => {
       expected_updated_at: '2026-03-20T00:00:05Z',
     });
     expect(queueState[0].state).toBe('synced');
+  });
+
+  it('dispatches queued history delete operations', async () => {
+    const operationId = await enqueueHistoryDelete('usr_a', {
+      kind: 'delete',
+      history_item_id: 'analysis_9',
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.deleteHistory).toHaveBeenCalledWith('analysis_9');
+    const queuedDelete = queueState.find((item) => item.id === operationId);
+    expect(queuedDelete?.state).toBe('synced');
+    expect(queuedDelete?.requestId).toBe('req-delete');
   });
 
   it('preserves newer timestamp patch queued while previous patch is sending', async () => {

@@ -9,6 +9,7 @@ import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
 import { mergeRemoteHistory, serializeHistoryRecord } from './sync/phase2Mappers';
 import {
   dispatchPhase2SyncQueue,
+  enqueueHistoryDelete,
   enqueueHistorySync,
   enqueueHistoryTimestampPatch,
   getPhase2SyncQueueSnapshot,
@@ -169,42 +170,6 @@ const flushHistoryWrites = async (userId: string): Promise<void> => {
       user_id: userId,
       code: error instanceof Error ? error.message : 'PHASE2_HISTORY_FLUSH_FAILED',
     });
-  }
-};
-
-const deleteHistoryItemsFromServer = async (
-  userId: string,
-  analysisIds: string[]
-): Promise<void> => {
-  const logHistoryDeleteSyncFailure = (code: string, failedCount?: number): void => {
-    logger.warn('[Phase2Sync] history delete remote sync failed', {
-      request_id: 'unknown',
-      user_id: userId,
-      code,
-      ...(typeof failedCount === 'number' ? { failed_count: failedCount } : {}),
-    });
-  };
-
-  if (analysisIds.length === 0) return;
-  try {
-    startPhase2SyncRuntime();
-    const results = await Promise.allSettled(
-      analysisIds.map((analysisId) => Phase2Api.deleteHistory(analysisId))
-    );
-    const failed = results.filter((result) => result.status === 'rejected');
-    if (failed.length === 0) return;
-
-    const authRequiredOnly = failed.every((result) => {
-      const reason = (result as PromiseRejectedResult).reason;
-      return reason instanceof Phase2SyncApiError && reason.code === 'AUTH_SESSION_REQUIRED';
-    });
-    if (authRequiredOnly) return;
-
-    logHistoryDeleteSyncFailure('PHASE2_HISTORY_DELETE_SYNC_FAILED', failed.length);
-  } catch (error) {
-    logHistoryDeleteSyncFailure(
-      error instanceof Error ? error.message : 'PHASE2_HISTORY_DELETE_SYNC_FAILED'
-    );
   }
 };
 
@@ -407,7 +372,13 @@ export const AnalysisService = {
                 const deleteSet = await getHistoryDeleteSet(userId);
                 analysisIds.forEach((id) => deleteSet.add(id));
                 await saveHistoryDeleteSet(userId, deleteSet);
-                await deleteHistoryItemsFromServer(userId, deleted.map((item) => item.id));
+                for (const item of deleted) {
+                    await enqueueHistoryDelete(userId, {
+                        kind: 'delete',
+                        history_item_id: item.id,
+                    });
+                }
+                await flushHistoryWrites(userId);
                 logger.info(
                   `[DELETE] Batch Success: ${analysisIds.length} items requested, ${analyses.length - filtered.length} deleted`,
                   undefined,

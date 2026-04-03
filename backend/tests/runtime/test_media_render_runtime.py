@@ -3,9 +3,10 @@ import unittest
 from collections import OrderedDict
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import backend.server as server
+from backend.modules.auth.service import AuthServiceError
 
 
 class _FakeRequest:
@@ -111,6 +112,33 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertEqual(miss_b, (b"b", "image/jpeg"))
             self.assertEqual(hit_c, (b"c", "image/jpeg"))
             self.assertIsNone(miss_a)
+
+        asyncio.run(_scenario())
+
+    def test_media_render_cache_verified_drops_deleted_assets(self):
+        async def _scenario():
+            await server._media_render_cache_set(
+                "asset_1:512:75:image/jpeg",
+                bytes_data=b"a",
+                content_type="image/jpeg",
+                now_ts=1000,
+            )
+            auth_service = Mock()
+            auth_service.get_media_asset.side_effect = AuthServiceError(
+                code="AUTH_MEDIA_NOT_FOUND",
+                message="Media asset not found.",
+                status_code=404,
+            )
+
+            cached = await server._media_render_cache_get_verified(
+                asset_id="asset_1",
+                variant_key="asset_1:512:75:image/jpeg",
+                now_ts=1001,
+                auth_service=auth_service,
+            )
+
+            self.assertIsNone(cached)
+            self.assertIsNone(await server._media_render_cache_get("asset_1:512:75:image/jpeg", 1001))
 
         asyncio.run(_scenario())
 

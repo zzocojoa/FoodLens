@@ -21,6 +21,7 @@
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --runInBand",
     "test:sync-regression": "jest --runInBand services/sync/__tests__/phase2Mappers.test.ts services/sync/__tests__/phase2SyncQueue.test.ts features/home/hooks/__tests__/useHomeDashboard.test.ts components/profileSheet/hooks/__tests__/useProfileSheetState.test.ts",
+    "test:release-smoke": "jest --runInBand features/auth/login/hooks/__tests__/useLoginScreen.test.ts features/auth/login/screens/__tests__/LoginScreen.test.tsx features/scanCamera/hooks/__tests__/useScanLocalOnlyFlows.test.ts features/result/screens/__tests__/ResultScreen.test.tsx features/result/components/__tests__/ResultNavBar.test.tsx features/result/hooks/__tests__/useResultSideEffects.test.ts features/history/hooks/__tests__/useHistoryScreen.test.ts hooks/__tests__/useHistoryData.test.ts components/historyMap/hooks/__tests__/useHistoryMapState.test.ts services/navigation/__tests__/resultEntryNavigation.test.ts",
     "i18n:release-gate": "npm run i18n:verify && npx tsc --noEmit && npm run lint"
   },
   "dependencies": {
