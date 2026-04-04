@@ -348,9 +348,9 @@ export const loginStyles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: Platform.OS === 'android' ? 0 : 0.08,
+    shadowRadius: Platform.OS === 'android' ? 0 : 4,
+    elevation: Platform.OS === 'android' ? 0 : 2,
   },
   oauthGoogleButton: {
     backgroundColor: LOGIN_COLORS.white,
