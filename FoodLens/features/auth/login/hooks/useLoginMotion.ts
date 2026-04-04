@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOGIN_ANIMATION, LOGIN_LAYOUT } from '../constants/login.constants';
 import { LoginAuthMode } from '../types/login.types';
@@ -190,6 +190,39 @@ export const useLoginMotion = () => {
     ],
   );
 
+  const goBackToWelcome = useCallback(() => {
+    clearEntranceTimer();
+    authInteractiveRef.current = false;
+    setAuthInteractive(false);
+    setWelcomeInteractive(true);
+    phoneStateProgress.stopAnimation();
+    phoneStateProgress.setValue(0);
+    signupProgress.stopAnimation();
+    signupProgress.setValue(0);
+    authScreenOpacity.stopAnimation();
+    authScreenOpacity.setValue(0);
+    authFooterProgress.stopAnimation();
+    authFooterProgress.setValue(0);
+    welcomeScreenOpacity.stopAnimation();
+    welcomeScreenOpacity.setValue(1);
+    welcomeTitleProgress.stopAnimation();
+    welcomeTitleProgress.setValue(1);
+    welcomeDescriptionProgress.stopAnimation();
+    welcomeDescriptionProgress.setValue(1);
+    welcomeContinueProgress.stopAnimation();
+    welcomeContinueProgress.setValue(1);
+  }, [
+    authFooterProgress,
+    authScreenOpacity,
+    clearEntranceTimer,
+    phoneStateProgress,
+    signupProgress,
+    welcomeContinueProgress,
+    welcomeDescriptionProgress,
+    welcomeScreenOpacity,
+    welcomeTitleProgress,
+  ]);
+
   useEffect(() => {
     entranceTimerRef.current = setTimeout(() => {
       entranceTimerRef.current = null;
@@ -285,17 +318,22 @@ export const useLoginMotion = () => {
       ],
     };
 
-    const authFooterStyle = {
-      opacity: authFooterProgress,
-      transform: [
-        {
-          translateY: authFooterProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [20, 0],
-          }),
-        },
-      ],
-    };
+    const authFooterStyle =
+      Platform.OS === 'android'
+        ? {
+            opacity: authFooterProgress,
+          }
+        : {
+            opacity: authFooterProgress,
+            transform: [
+              {
+                translateY: authFooterProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0],
+                }),
+              },
+            ],
+          };
 
     const signupFieldStyle = createCollapsibleFieldStyle(signupProgress);
 
@@ -341,6 +379,7 @@ export const useLoginMotion = () => {
     authInteractive,
     motion,
     goToAuth,
+    goBackToWelcome,
     setAuthMode,
   };
 };

@@ -577,6 +577,51 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             profile_call_kwargs = mocked_get.call_args.kwargs
             self.assertEqual(profile_call_kwargs["headers"]["Authorization"], "Bearer kakao-access-token")
 
+    def test_kakao_oauth_verifies_identity_when_callback_has_no_identity_fields(self):
+        mocked_token_response = Mock()
+        mocked_token_response.status_code = 200
+        mocked_token_response.json.return_value = {
+            "access_token": "kakao-access-token",
+            "token_type": "bearer",
+        }
+
+        mocked_profile_response = Mock()
+        mocked_profile_response.status_code = 200
+        mocked_profile_response.json.return_value = {
+            "id": "kakao-user-bridge",
+            "kakao_account": {"email": "bridge-kakao@example.com"},
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server.requests.post", return_value=mocked_token_response) as mocked_post,
+            patch("backend.server.requests.get", return_value=mocked_profile_response) as mocked_get,
+            TestClient(app) as client,
+        ):
+            kakao_success = client.post(
+                "/auth/kakao",
+                json={
+                    "code": "kakao-code-bridge-live",
+                    "state": "state-bridge-live",
+                    "redirect_uri": "foodlens://oauth/kakao-callback",
+                },
+            )
+
+            self.assertEqual(kakao_success.status_code, 200)
+            body = kakao_success.json()
+            self.assertEqual(body["user"]["provider"], "kakao")
+            self.assertEqual(body["user"]["email"], "bridge-kakao@example.com")
+            self.assertEqual(mocked_post.call_count, 1)
+            self.assertEqual(mocked_get.call_count, 1)
+
     def test_kakao_oauth_live_verification_invalid_grant_maps_error(self):
         mocked_token_response = Mock()
         mocked_token_response.status_code = 400
