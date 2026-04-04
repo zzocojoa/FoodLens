@@ -114,6 +114,39 @@ resolve_ios_udid() {
   echo "${line}" | sed -E 's/.*\(([0-9A-F-]+)\)$/\1/'
 }
 
+resolve_react_native_version() {
+  node --print "require('${PROJECT_DIR}/node_modules/react-native/package.json').version"
+}
+
+restore_ios_release_rncore_prebuilt() {
+  if [[ "${PLATFORM}" != "ios" || "${BUILD_TYPE}" != "release" ]]; then
+    return
+  fi
+
+  local rncore_dir="${PROJECT_DIR}/ios/Pods/React-Core-prebuilt"
+  local rncore_binary="${rncore_dir}/React.xcframework/ios-arm64/React.framework/React"
+
+  if [[ -f "${rncore_binary}" ]]; then
+    return
+  fi
+
+  local react_native_version
+  react_native_version="$(resolve_react_native_version)"
+  local release_tarball="${PROJECT_DIR}/ios/Pods/ReactNativeCore-artifacts/reactnative-core-${react_native_version}-release.tar.gz"
+
+  if [[ ! -f "${release_tarball}" ]]; then
+    echo "[run-with-logs] ERROR: Missing React Native release prebuilt tarball."
+    echo "[run-with-logs] Expected: ${release_tarball}"
+    exit 1
+  fi
+
+  echo "[run-with-logs] Restoring React-Core-prebuilt release slice from ${release_tarball}"
+  rm -rf "${rncore_dir}"
+  mkdir -p "${rncore_dir}"
+  tar -xf "${release_tarball}" -C "${rncore_dir}"
+  printf 'Release' > "${rncore_dir}/.last_build_configuration"
+}
+
 start_ios_logs() {
   mkdir -p "${PROJECT_DIR}/artifacts/phase2/ios/logs"
   LOG_FILE="${PROJECT_DIR}/artifacts/phase2/ios/logs/ios-${BUILD_TYPE}-${TIMESTAMP}.log"
@@ -183,12 +216,22 @@ build_expo_command() {
   local build="$2"
   shift 2
 
+  local ios_device=""
+  if [[ "${platform}" == "ios" ]]; then
+    ios_device="$(resolve_ios_udid || true)"
+  fi
+
   case "${platform}" in
     ios)
       if [[ "${build}" == "release" ]]; then
-        EXPO_CMD=(npx expo run:ios --configuration Release --device)
+        EXPO_CMD=(npx expo run:ios --configuration Release --no-bundler)
       else
-        EXPO_CMD=(npx expo run:ios --device)
+        EXPO_CMD=(npx expo run:ios)
+      fi
+      if [[ -n "${ios_device}" ]]; then
+        EXPO_CMD+=(-d "${ios_device}")
+      else
+        EXPO_CMD+=(--device)
       fi
       ;;
     android)
@@ -316,6 +359,7 @@ if [[ "${PLATFORM}" == "android" ]]; then
 fi
 
 if [[ "${PLATFORM}" == "ios" ]]; then
+  restore_ios_release_rncore_prebuilt
   start_ios_logs
 else
   start_android_logs
