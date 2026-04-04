@@ -234,6 +234,166 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 "2026-02-26T00:00:00Z",
             )
 
+    def test_local_media_references_are_sanitized_while_remote_and_asset_urls_remain(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase2-media-sanitize"))
+            headers = _auth_headers(session["access_token"])
+            user_id = session["user"]["id"]
+
+            remote_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_url": "https://cdn.example.com/profile/remote.png",
+                },
+                headers=headers,
+            )
+            self.assertEqual(remote_profile.status_code, 200)
+            self.assertEqual(
+                remote_profile.json()["profile"]["profile_image_url"],
+                "https://cdn.example.com/profile/remote.png",
+            )
+
+            local_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_url": "avatar.png",
+                },
+                headers=headers,
+            )
+            self.assertEqual(local_profile.status_code, 200)
+            self.assertIsNone(local_profile.json()["profile"]["profile_image_url"])
+
+            app.state.auth_service.update_profile(
+                user_id=user_id,
+                profile_image_url="legacy-avatar.png",
+            )
+            legacy_profile = client.get("/me/profile", headers=headers)
+            self.assertEqual(legacy_profile.status_code, 200)
+            self.assertIsNone(legacy_profile.json()["profile"]["profile_image_url"])
+
+            asset_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_url": "avatar.png",
+                    "profile_image_asset_id": "asset_profile_1",
+                },
+                headers=headers,
+            )
+            self.assertEqual(asset_profile.status_code, 200)
+            asset_profile_body = asset_profile.json()["profile"]
+            self.assertTrue(
+                asset_profile_body["profile_image_render_url"].startswith(
+                    "http://testserver/media/render/asset_profile_1"
+                )
+            )
+            self.assertEqual(
+                asset_profile_body["profile_image_url"],
+                asset_profile_body["profile_image_render_url"],
+            )
+
+            remote_history = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "history-remote",
+                        "foodName": "Remote",
+                        "imageUri": "https://cdn.example.com/history/remote.png",
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    },
+                    "idempotency_key": "idem-history-remote",
+                },
+                headers=headers,
+            )
+            self.assertEqual(remote_history.status_code, 200)
+            self.assertEqual(
+                remote_history.json()["history_item"]["entry"]["imageUri"],
+                "https://cdn.example.com/history/remote.png",
+            )
+
+            local_history = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "history-local",
+                        "foodName": "Local",
+                        "imageUri": "avatar.png",
+                        "timestamp": "2026-03-02T00:00:00Z",
+                    },
+                    "idempotency_key": "idem-history-local",
+                },
+                headers=headers,
+            )
+            self.assertEqual(local_history.status_code, 200)
+            self.assertIsNone(local_history.json()["history_item"]["entry"].get("imageUri"))
+
+            app.state.auth_service.register_media_asset(
+                user_id=user_id,
+                scope="history",
+                mime_type="image/jpeg",
+                size_bytes=1234,
+                sha256="a" * 64,
+                object_key="media/usr_test/history/asset_history_1/original.jpg",
+                asset_id="asset_history_1",
+            )
+            asset_history = client.post(
+                "/me/history",
+                json={
+                    "entry": {
+                        "id": "history-asset",
+                        "foodName": "Asset",
+                        "imageUri": "avatar.png",
+                        "image_asset_id": "asset_history_1",
+                        "timestamp": "2026-03-02T12:00:00Z",
+                    },
+                    "idempotency_key": "idem-history-asset",
+                },
+                headers=headers,
+            )
+            self.assertEqual(asset_history.status_code, 200)
+            asset_history_entry = asset_history.json()["history_item"]["entry"]
+            self.assertTrue(
+                asset_history_entry["image_render_url"].startswith(
+                    "http://testserver/media/render/asset_history_1"
+                )
+            )
+            self.assertEqual(
+                asset_history_entry["imageUri"],
+                asset_history_entry["image_render_url"],
+            )
+
+            app.state.auth_service.append_history(
+                user_id=user_id,
+                entry={
+                    "id": "history-legacy-local",
+                    "foodName": "Legacy",
+                    "imageUri": "file:///tmp/history.png",
+                    "timestamp": "2026-03-03T00:00:00Z",
+                },
+                idempotency_key=None,
+            )
+            history = client.get("/me/history?limit=10", headers=headers)
+            self.assertEqual(history.status_code, 200)
+            history_entries = {
+                item["entry"]["id"]: item["entry"]
+                for item in history.json()["history"]
+                if isinstance(item.get("entry"), dict) and isinstance(item["entry"].get("id"), str)
+            }
+            self.assertEqual(
+                history_entries["history-remote"]["imageUri"],
+                "https://cdn.example.com/history/remote.png",
+            )
+            self.assertIsNone(history_entries["history-local"].get("imageUri"))
+            self.assertTrue(
+                history_entries["history-asset"]["image_render_url"].startswith(
+                    "http://testserver/media/render/asset_history_1"
+                )
+            )
+            self.assertEqual(
+                history_entries["history-asset"]["imageUri"],
+                history_entries["history-asset"]["image_render_url"],
+            )
+            self.assertIsNone(history_entries["history-legacy-local"].get("imageUri"))
+
     def test_history_idempotency_isolated_by_user(self):
         with TestClient(app) as client:
             session_a = self._signup_and_verify(client, email=self._unique_email("phase2-a"))

@@ -151,6 +151,13 @@ const isRemoteHistoryImageUri = (value: string | undefined): boolean => {
   return lower.startsWith('http://') || lower.startsWith('https://');
 };
 
+const normalizeRemoteHistoryImageUri = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return isRemoteHistoryImageUri(trimmed) ? trimmed : undefined;
+};
+
 const extractRenderAssetId = (value: string | undefined): string | null => {
   if (!value) return null;
   try {
@@ -474,11 +481,10 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
     used_model: toStringOrNull(entry['used_model']) ?? undefined,
     isBarcode: typeof entry['isBarcode'] === 'boolean' ? entry['isBarcode'] : undefined,
     imageUri:
-      toStringOrNull(entry['image_render_url']) ??
-      toStringOrNull(entry['imageUri']) ??
-      undefined,
+      normalizeRemoteHistoryImageUri(entry['image_render_url']) ??
+      normalizeRemoteHistoryImageUri(entry['imageUri']),
     imageAssetId: toStringOrNull(entry['image_asset_id']) ?? undefined,
-    imageRenderUrl: toStringOrNull(entry['image_render_url']) ?? undefined,
+    imageRenderUrl: normalizeRemoteHistoryImageUri(entry['image_render_url']),
     location: normalizeLocation(entry['location']),
     timestamp: parseTimestamp(entry['timestamp']),
     updatedAt: item.updated_at || undefined,

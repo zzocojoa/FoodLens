@@ -154,6 +154,7 @@ resolve_media_render_url() {
   python3 - "$profile_body_path" "$history_body_path" <<'PY'
 import json
 import sys
+from urllib.parse import parse_qs, urlparse
 
 profile_path = sys.argv[1]
 history_path = sys.argv[2]
@@ -161,6 +162,21 @@ history_path = sys.argv[2]
 def read_json(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as handle:
         return json.load(handle)
+
+def is_signed_remote_render_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if not parsed.netloc:
+        return False
+    if "/media/render/" not in parsed.path:
+        return False
+    query = parse_qs(parsed.query)
+    exp = str((query.get("exp") or [""])[0]).strip()
+    sig = str((query.get("sig") or [""])[0]).strip()
+    if not exp or not sig:
+        return False
+    return True
 
 profile_payload = read_json(profile_path)
 history_payload = read_json(history_path)
@@ -172,19 +188,23 @@ for item in history_items:
     entry = item.get("entry") or {}
     if not isinstance(entry, dict):
         continue
-    image_render_url = str(entry.get("image_render_url") or entry.get("imageUri") or "").strip()
-    if image_render_url:
-        print(image_render_url)
+    image_render_url = str(entry.get("image_render_url") or "").strip()
+    if is_signed_remote_render_url(image_render_url):
+        print(f"history.image_render_url\t{image_render_url}")
         raise SystemExit(0)
 
 profile = profile_payload.get("profile") or {}
 if isinstance(profile, dict):
-    profile_render_url = str(profile.get("profile_image_render_url") or profile.get("profile_image_url") or "").strip()
-    if profile_render_url:
-        print(profile_render_url)
+    profile_render_url = str(profile.get("profile_image_render_url") or "").strip()
+    if is_signed_remote_render_url(profile_render_url):
+        print(f"profile.profile_image_render_url\t{profile_render_url}")
         raise SystemExit(0)
 
-raise SystemExit("Smoke account is missing usable media render URL in /me/history and /me/profile.")
+raise SystemExit(
+    "Smoke account is missing a usable signed remote render URL. "
+    "Accepted sources: history.entry.image_render_url, profile.profile_image_render_url. "
+    "Required format: absolute http(s) /media/render/ URL with exp and sig query params."
+)
 PY
 }
 
@@ -275,7 +295,9 @@ CURRENT_STEP="me-history"
 assert_status "me-history" "${BASE_URL}/me/history" "200" "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
 
 CURRENT_STEP="media-render"
-MEDIA_RENDER_URL="$(resolve_media_render_url "${ARTIFACT_DIR}/me-profile.body" "${ARTIFACT_DIR}/me-history.body")"
+MEDIA_RENDER_RESOLUTION="$(resolve_media_render_url "${ARTIFACT_DIR}/me-profile.body" "${ARTIFACT_DIR}/me-history.body")"
+IFS=$'\t' read -r MEDIA_RENDER_SOURCE MEDIA_RENDER_URL <<< "${MEDIA_RENDER_RESOLUTION}"
+record_result "media-render-source" "PASS" "${MEDIA_RENDER_SOURCE}"
 assert_status "media-render" "${MEDIA_RENDER_URL}" "200" ""
 assert_header_contains "media-render" "content-type" "image/"
 record_result "media-render-header" "PASS" "content-type=image/*"

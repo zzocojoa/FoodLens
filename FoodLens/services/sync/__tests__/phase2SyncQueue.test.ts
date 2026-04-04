@@ -833,6 +833,53 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].state).toBe('synced');
   });
 
+  it('treats bare managed history filenames as local upload candidates without sending them as render urls', async () => {
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-bare-filename',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        kind: 'create',
+        entry: {
+          id: 'analysis_1',
+          foodName: 'Bibimbap',
+          imageUri: 'photo_1720000000000_abcd.jpg',
+        },
+      },
+      idempotencyKey: 'analysis_1',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledWith({
+      fileUri: 'file:///tmp/foodlens_images/photo_1720000000000_abcd.jpg',
+      contentType: 'image/jpeg',
+      fileName: 'foodlens-history.jpg',
+      scope: 'history',
+      linkedEntryId: 'analysis_1',
+    });
+    expect(mockedPhase2Api.postHistory).toHaveBeenCalledTimes(1);
+    const sent = mockedPhase2Api.postHistory.mock.calls[0][0] as {
+      entry: Record<string, unknown>;
+      idempotency_key?: string;
+    };
+    expect(sent.idempotency_key).toBe('analysis_1');
+    expect(sent.entry['id']).toBe('analysis_1');
+    expect(sent.entry['foodName']).toBe('Bibimbap');
+    expect(sent.entry['imageUri']).toBeUndefined();
+    expect(sent.entry['image_asset_id']).toBe('asset_history_1');
+    expect(sent.entry['image_render_url']).toBe('https://cdn.example.com/media/render/asset_history_1');
+    expect(sent.entry['image_render_url']).not.toBe('photo_1720000000000_abcd.jpg');
+    expect(queueState[0].state).toBe('synced');
+  });
+
   it('continues profile sync without image when media upload is non-blocking failure', async () => {
     queueState = [
       {
