@@ -85,6 +85,10 @@
     - `GET /me/settings`
     - `GET /me/history`
     - signed media render 1건
+  - smoke 인증 입력 고정:
+    - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_EMAIL`
+    - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`
+    - workflow가 실행 시점에 자동 로그인 후 access token / signed media render URL을 동적으로 확보
   - 롤백 리허설 증적 입력 필수:
     - 최근 리허설 참조값
     - readiness verdict

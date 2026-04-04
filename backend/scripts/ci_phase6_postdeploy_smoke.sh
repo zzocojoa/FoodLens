@@ -9,8 +9,8 @@ SUMMARY_PATH="${ARTIFACT_DIR}/summary.md"
 RESULTS_PATH="${ARTIFACT_DIR}/results.tsv"
 
 BASE_URL="${PHASE6_POSTDEPLOY_BASE_URL:-}"
-AUTH_BEARER_TOKEN="${PHASE6_POSTDEPLOY_AUTH_BEARER_TOKEN:-}"
-MEDIA_RENDER_URL="${PHASE6_POSTDEPLOY_MEDIA_RENDER_URL:-}"
+SMOKE_EMAIL="${PHASE6_POSTDEPLOY_SMOKE_EMAIL:-}"
+SMOKE_PASSWORD="${PHASE6_POSTDEPLOY_SMOKE_PASSWORD:-}"
 RELEASE_LABEL="${PHASE6_RELEASE_LABEL:-}"
 ROLLBACK_REFERENCE="${PHASE6_ROLLBACK_REHEARSAL_REFERENCE:-}"
 ROLLBACK_VERDICT="${PHASE6_ROLLBACK_REHEARSAL_VERDICT:-}"
@@ -88,6 +88,106 @@ assert_header_contains() {
   fi
 }
 
+post_json_status() {
+  local label="$1"
+  local url="$2"
+  local body_json="$3"
+  local authorization_header="$4"
+  local headers_path="${ARTIFACT_DIR}/${label}.headers"
+  local body_path="${ARTIFACT_DIR}/${label}.body"
+  local status_code=""
+
+  if [[ -n "${authorization_header}" ]]; then
+    status_code="$(
+      curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -H "${authorization_header}" \
+        -D "${headers_path}" \
+        -o "${body_path}" \
+        -w '%{http_code}' \
+        --data "${body_json}" \
+        "${url}"
+    )"
+  else
+    status_code="$(
+      curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -D "${headers_path}" \
+        -o "${body_path}" \
+        -w '%{http_code}' \
+        --data "${body_json}" \
+        "${url}"
+    )"
+  fi
+
+  printf '%s\n' "${status_code}"
+}
+
+extract_access_token() {
+  local body_path="$1"
+
+  python3 - "$body_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+token = str(payload.get("access_token") or "").strip()
+if not token:
+    verification_required = payload.get("verification_required")
+    if verification_required:
+        raise SystemExit("Smoke login requires a verified email account.")
+    raise SystemExit("Login response is missing access_token.")
+
+print(token)
+PY
+}
+
+resolve_media_render_url() {
+  local profile_body_path="$1"
+  local history_body_path="$2"
+
+  python3 - "$profile_body_path" "$history_body_path" <<'PY'
+import json
+import sys
+
+profile_path = sys.argv[1]
+history_path = sys.argv[2]
+
+def read_json(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+profile_payload = read_json(profile_path)
+history_payload = read_json(history_path)
+
+history_items = history_payload.get("history") or []
+for item in history_items:
+    if not isinstance(item, dict):
+        continue
+    entry = item.get("entry") or {}
+    if not isinstance(entry, dict):
+        continue
+    image_render_url = str(entry.get("image_render_url") or entry.get("imageUri") or "").strip()
+    if image_render_url:
+        print(image_render_url)
+        raise SystemExit(0)
+
+profile = profile_payload.get("profile") or {}
+if isinstance(profile, dict):
+    profile_render_url = str(profile.get("profile_image_render_url") or profile.get("profile_image_url") or "").strip()
+    if profile_render_url:
+        print(profile_render_url)
+        raise SystemExit(0)
+
+raise SystemExit("Smoke account is missing usable media render URL in /me/history and /me/profile.")
+PY
+}
+
 write_summary() {
   mkdir -p "${ARTIFACT_DIR}"
   {
@@ -129,14 +229,30 @@ mkdir -p "${ARTIFACT_DIR}"
 trap 'on_exit $?' EXIT
 
 require_env "PHASE6_POSTDEPLOY_BASE_URL" "${BASE_URL}"
-require_env "PHASE6_POSTDEPLOY_AUTH_BEARER_TOKEN" "${AUTH_BEARER_TOKEN}"
-require_env "PHASE6_POSTDEPLOY_MEDIA_RENDER_URL" "${MEDIA_RENDER_URL}"
+require_env "PHASE6_POSTDEPLOY_SMOKE_EMAIL" "${SMOKE_EMAIL}"
+require_env "PHASE6_POSTDEPLOY_SMOKE_PASSWORD" "${SMOKE_PASSWORD}"
 require_env "PHASE6_RELEASE_LABEL" "${RELEASE_LABEL}"
 require_env "PHASE6_ROLLBACK_REHEARSAL_REFERENCE" "${ROLLBACK_REFERENCE}"
 require_env "PHASE6_ROLLBACK_REHEARSAL_VERDICT" "${ROLLBACK_VERDICT}"
 require_env "PHASE6_ROLLBACK_REHEARSAL_SUMMARY" "${ROLLBACK_SUMMARY}"
 
 BASE_URL="${BASE_URL%/}"
+
+CURRENT_STEP="auth-login"
+AUTH_LOGIN_REQUEST="$(python3 - "${SMOKE_EMAIL}" "${SMOKE_PASSWORD}" <<'PY'
+import json
+import sys
+
+print(json.dumps({"email": sys.argv[1], "password": sys.argv[2]}))
+PY
+)"
+AUTH_LOGIN_STATUS="$(post_json_status "auth-login" "${BASE_URL}/auth/email/login" "${AUTH_LOGIN_REQUEST}" "")"
+if [[ "${AUTH_LOGIN_STATUS}" != "200" ]]; then
+  echo "[Phase6 Postdeploy Smoke] auth-login expected 200, got ${AUTH_LOGIN_STATUS}"
+  exit 1
+fi
+AUTH_BEARER_TOKEN="$(extract_access_token "${ARTIFACT_DIR}/auth-login.body")"
+record_result "auth-login" "PASS" "200"
 
 CURRENT_STEP="root-health"
 assert_status "root-health" "${BASE_URL}/" "200" ""
@@ -159,6 +275,7 @@ CURRENT_STEP="me-history"
 assert_status "me-history" "${BASE_URL}/me/history" "200" "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
 
 CURRENT_STEP="media-render"
+MEDIA_RENDER_URL="$(resolve_media_render_url "${ARTIFACT_DIR}/me-profile.body" "${ARTIFACT_DIR}/me-history.body")"
 assert_status "media-render" "${MEDIA_RENDER_URL}" "200" ""
 assert_header_contains "media-render" "content-type" "image/"
 record_result "media-render-header" "PASS" "content-type=image/*"
