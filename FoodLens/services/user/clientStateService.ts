@@ -21,7 +21,7 @@ import {
 } from '@/services/sync/clientState';
 import { publishUserProfileUpdated } from './userProfileStore';
 import { buildDefaultProfile } from './profileFactory';
-import { getUserStorageKey, USER_STORAGE_KEY } from './constants';
+import { getUserStorageKey } from './constants';
 
 const DEFAULT_HISTORY_MODE: SyncedHistoryMode = 'list';
 const DEFAULT_HISTORY_FILTER: SyncedHistoryFilter = 'all';
@@ -29,24 +29,17 @@ const DEFAULT_HISTORY_FILTER: SyncedHistoryFilter = 'all';
 const loadProfileSnapshotSync = (userId: string): UserProfile => {
   const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
   if (scoped) return scoped;
-  const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
-  if (legacy) return legacy;
   return buildDefaultProfile(userId);
 };
 
 const loadProfileSnapshot = async (userId: string): Promise<UserProfile> => {
   const scoped = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
   if (scoped) return scoped;
-  const legacy = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
-  if (legacy) return legacy;
   return buildDefaultProfile(userId);
 };
 
 const saveProfileSnapshot = async (userId: string, profile: UserProfile): Promise<void> => {
-  await Promise.all([
-    SafeStorage.set(getUserStorageKey(userId), profile),
-    SafeStorage.set(USER_STORAGE_KEY, profile),
-  ]);
+  await SafeStorage.set(getUserStorageKey(userId), profile);
 };
 
 export const readUserClientStateSnapshot = (userId: string): SyncedClientState => {
