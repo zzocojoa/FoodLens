@@ -2,6 +2,8 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 import { AuthSecureSessionStore } from './secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser';
 import { queryClient } from '../queryClient';
+import { SafeStorage } from '../storage';
+import { USER_STORAGE_KEY } from '../user/constants';
 
 const REFRESH_SKEW_MS = 30_000;
 const BOOTSTRAP_REQUEST_ID = `auth-bootstrap-${Date.now().toString(36)}`;
@@ -13,6 +15,10 @@ const isAccessTokenExpired = (session: AuthSessionTokens): boolean => {
 
 const clearSessionScopedCaches = (): void => {
   queryClient.clear();
+};
+
+const clearLegacyProfileSnapshot = async (): Promise<void> => {
+  await SafeStorage.remove(USER_STORAGE_KEY);
 };
 
 type PersistSessionOptions = {
@@ -53,6 +59,7 @@ export const persistSession = async (
   const persist = options.rememberMe !== false;
   if (hasAuthenticatedUser() && getCurrentUserId() !== session.user.id) {
     clearSessionScopedCaches();
+    await clearLegacyProfileSnapshot();
   }
   if (persist) {
     await AuthSecureSessionStore.write(session);
@@ -65,6 +72,7 @@ export const persistSession = async (
 export const clearSession = async (): Promise<void> => {
   await AuthSecureSessionStore.clear();
   await clearCurrentUserId();
+  await clearLegacyProfileSnapshot();
   clearSessionScopedCaches();
 };
 

@@ -196,7 +196,7 @@ describe('useProfileSheetState conflict handling', () => {
     expect(result.current.image).toBe(firstImage);
   });
 
-  it('hydrates from global profile snapshot when scoped snapshot is missing', async () => {
+  it('does not hydrate from global profile snapshot when scoped snapshot is missing', async () => {
     const globalProfile = {
       uid: 'usr_profile',
       name: 'Global Snapshot',
@@ -223,7 +223,7 @@ describe('useProfileSheetState conflict handling', () => {
       await Promise.resolve();
     });
 
-    expect(result.current.image).toBe(globalProfile.profileImage);
+    expect(result.current.image).toBeUndefined();
   });
 
   it('applies selected settings language to global i18n store immediately', async () => {

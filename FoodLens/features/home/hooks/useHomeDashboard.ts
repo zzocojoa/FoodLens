@@ -13,7 +13,7 @@ import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { SafeStorage } from '@/services/storage';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { getUserStorageKey } from '@/services/user/constants';
 import {
   buildHomeSelectedDatePatch,
   readHomeSelectedDateSnapshot,
@@ -66,9 +66,7 @@ type UseHomeDashboardReturn = {
 
 const readInitialProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
-  const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
-  if (scoped) return scoped;
-  return SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+  return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
 };
 
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
@@ -153,10 +151,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     profileHydrationInFlightRef.current = true;
     try {
       const userId = getCurrentUserIdSnapshot();
-      let profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
-      if (!profile) {
-        profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
-      }
+      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
       if (!profile) return;
       setUserProfile((previous) => {
         if (!shouldKeepExistingProfileImage(previous, profile)) {

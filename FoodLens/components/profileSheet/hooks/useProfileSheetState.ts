@@ -14,7 +14,7 @@ import {
 } from '@/services/sync/phase2ConflictResolution';
 import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types';
 import { SafeStorage } from '@/services/storage';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { getUserStorageKey } from '@/services/user/constants';
 import type { UserProfile } from '@/models/User';
 
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
@@ -46,8 +46,7 @@ const shouldKeepExistingProfileImage = (
 };
 
 const readInitialProfileSnapshot = (userId: string): UserProfile | null =>
-    SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null) ||
-    SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+    SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
 
 export const useProfileSheetState = (userId: string) => {
     const { t } = useI18n();
@@ -81,10 +80,7 @@ export const useProfileSheetState = (userId: string) => {
     useEffect(() => {
         let cancelled = false;
         const loadLocalSnapshot = async () => {
-            let profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
-            if (!profile) {
-                profile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
-            }
+            const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
             if (cancelled || !profile) return;
 
             const localImage = profile.profileImage?.trim() || undefined;
