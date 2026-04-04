@@ -13,7 +13,7 @@ import os
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Literal
 import requests
 from pydantic import BaseModel
@@ -459,17 +459,23 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _normalize_remote_media_reference(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    parsed = urlparse(normalized)
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"}:
+        return None
+    if not parsed.netloc:
+        return None
+    return normalized
+
+
 def _is_local_media_reference(value: str | None) -> bool:
-    if not value:
-        return False
-    normalized = value.strip().lower()
-    return (
-        normalized.startswith("file://")
-        or normalized.startswith("ph://")
-        or normalized.startswith("content://")
-        or normalized.startswith("assets-library://")
-        or normalized.startswith("/")
-    )
+    return _normalize_remote_media_reference(value) is None
 
 
 def _resolve_media_public_base_url(request: Request) -> str:
@@ -1821,6 +1827,10 @@ def _decorate_profile_media(profile: dict[str, Any], request: Request) -> dict[s
     payload = dict(profile)
     asset_id = str(payload.get("profile_image_asset_id") or "").strip()
     if not asset_id:
+        if "profile_image_url" in payload:
+            payload["profile_image_url"] = _normalize_remote_media_reference(
+                payload.get("profile_image_url") if isinstance(payload.get("profile_image_url"), str) else None
+            )
         return payload
     render_url = _build_media_render_url(request, asset_id=asset_id)
     payload["profile_image_render_url"] = render_url
@@ -1833,6 +1843,11 @@ def _decorate_history_media_entry(entry: dict[str, Any], request: Request) -> di
     payload = dict(entry)
     asset_id = str(payload.get("image_asset_id") or "").strip()
     if not asset_id:
+        for key in ("imageUri", "image_render_url"):
+            if key in payload:
+                payload[key] = _normalize_remote_media_reference(
+                    payload.get(key) if isinstance(payload.get(key), str) else None
+                )
         return payload
     render_url = _build_media_render_url(request, asset_id=asset_id)
     payload["image_render_url"] = render_url
@@ -1843,12 +1858,16 @@ def _decorate_history_media_entry(entry: dict[str, Any], request: Request) -> di
 
 def _sanitize_history_entry_for_persistence(entry: dict[str, Any]) -> dict[str, Any]:
     payload = dict(entry)
-    image_uri = payload.get("imageUri")
-    if isinstance(image_uri, str) and _is_local_media_reference(image_uri):
-        payload.pop("imageUri", None)
-    image_asset_id = payload.get("image_asset_id")
-    if isinstance(image_asset_id, str) and image_asset_id.strip():
-        payload.pop("imageUri", None)
+    for key in ("imageUri", "image_render_url"):
+        if key not in payload:
+            continue
+        normalized = _normalize_remote_media_reference(
+            payload.get(key) if isinstance(payload.get(key), str) else None
+        )
+        if normalized is None:
+            payload.pop(key, None)
+        else:
+            payload[key] = normalized
     return payload
 
 
@@ -2568,6 +2587,7 @@ async def get_me_profile(request: Request):
 @app.put("/me/profile")
 async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
     def _action(auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+        fields_set = set(getattr(payload, "model_fields_set", set()))
         current_trip_coordinates = None
         if payload.current_trip_coordinates is not None:
             if hasattr(payload.current_trip_coordinates, "model_dump"):
@@ -2575,9 +2595,11 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             else:  # pragma: no cover - pydantic v1 compatibility
                 current_trip_coordinates = payload.current_trip_coordinates.dict()
 
-        sanitized_profile_image_url = payload.profile_image_url
-        if _is_local_media_reference(sanitized_profile_image_url):
-            sanitized_profile_image_url = None
+        sanitized_profile_image_url = None
+        if "profile_image_url" in fields_set:
+            sanitized_profile_image_url = _normalize_remote_media_reference(payload.profile_image_url)
+            if sanitized_profile_image_url is None:
+                sanitized_profile_image_url = ""
 
         profile = auth_service.update_profile(
             user_id=user.user_id,

@@ -161,6 +161,44 @@ describe('phase2Mappers', () => {
     expect(parsed?.timestamp.toISOString()).toBe('2026-02-25T01:00:00.000Z');
   });
 
+  it('ignores bare filename history imageUri values from server payloads', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        ingredients: [],
+        imageUri: 'photo_1720000000000_abcd.jpg',
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.imageUri).toBeUndefined();
+    expect(parsed?.imageRenderUrl).toBeUndefined();
+  });
+
+  it('accepts remote history imageUri urls when render url is missing', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        ingredients: [],
+        imageUri: 'https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto',
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.imageUri).toBe('https://cdn.example.com/media/render/asset_1?w=512&q=75&fmt=auto');
+    expect(parsed?.imageRenderUrl).toBeUndefined();
+  });
+
   it('deduplicates merged history by id and sorts by latest timestamp', () => {
     const current = [
       {
@@ -235,6 +273,41 @@ describe('phase2Mappers', () => {
     const merged = mergeRemoteHistory(current, remote);
     expect(merged).toHaveLength(1);
     expect(merged[0].id).toBe('rec_1');
+    expect(merged[0].imageUri).toBe('photo_1720000000000_abcd.jpg');
+    expect(merged[0].imageAssetId).toBe('asset_1');
+  });
+
+  it('keeps stable local history image when server payload only sends a bare filename', () => {
+    const current = [
+      {
+        id: 'rec_1',
+        foodName: 'Local',
+        safetyStatus: 'SAFE' as const,
+        ingredients: [],
+        imageUri: 'photo_1720000000000_abcd.jpg',
+        imageAssetId: 'asset_1',
+        timestamp: new Date('2026-02-24T00:00:00Z'),
+      },
+    ];
+
+    const remote = [
+      {
+        id: 'his_1',
+        user_id: 'usr_1',
+        entry: {
+          id: 'rec_1',
+          foodName: 'Remote',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          imageUri: 'photo_1720000000000_efgh.jpg',
+          image_asset_id: 'asset_1',
+          timestamp: '2026-02-25T03:00:00Z',
+        },
+      },
+    ];
+
+    const merged = mergeRemoteHistory(current, remote);
+    expect(merged).toHaveLength(1);
     expect(merged[0].imageUri).toBe('photo_1720000000000_abcd.jpg');
     expect(merged[0].imageAssetId).toBe('asset_1');
   });
