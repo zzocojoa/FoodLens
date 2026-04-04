@@ -94,6 +94,7 @@ from backend.modules.contracts.barcode_response import BarcodeLookupResponseCont
 from backend.modules.contracts.observability import LatencyMsContract
 from backend.modules.auth.email_sender import _mask_email
 from backend.modules.analysis_jobs import (
+    AnalysisJobStoreError,
     AnalysisJobWorker,
     build_analysis_job_store_from_env,
     build_nutrition_cache_store_from_env,
@@ -1445,6 +1446,17 @@ def _build_latency_ms_payload(
 
 def _analysis_job_store():
     return _service("analysis_job_store")
+
+
+def _analysis_job_store_http_exception(*, request_id: str, action: str) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "message": f"Analysis queue is unavailable during {action}.",
+            "code": ErrorCode.ANALYZE_FAILED,
+            "request_id": request_id,
+        },
+    )
 
 
 def _analysis_job_status_payload(record: dict[str, Any]) -> dict[str, Any]:
@@ -2906,20 +2918,31 @@ async def submit_analysis_job(
             poll_after_ms=_analysis_job_poll_after_ms(),
         )
         store = _analysis_job_store()
-        await run_in_threadpool(
-            store.create_job,
-            job_id=job_payload.job_id,
-            request_id=job_payload.request_id,
-            mode=job_payload.mode,
-            allergy_info=job_payload.allergy_info,
-            iso_country_code=job_payload.iso_country_code,
-            locale=job_payload.locale,
-            content_type=job_payload.content_type,
-            image_base64=job_payload.image_base64,
-            image_sha256=job_payload.image_sha256,
-            accepted_at=job_payload.accepted_at,
-            poll_after_ms=job_payload.poll_after_ms,
-        )
+        try:
+            await run_in_threadpool(
+                store.create_job,
+                job_id=job_payload.job_id,
+                request_id=job_payload.request_id,
+                mode=job_payload.mode,
+                allergy_info=job_payload.allergy_info,
+                iso_country_code=job_payload.iso_country_code,
+                locale=job_payload.locale,
+                content_type=job_payload.content_type,
+                image_base64=job_payload.image_base64,
+                image_sha256=job_payload.image_sha256,
+                accepted_at=job_payload.accepted_at,
+                poll_after_ms=job_payload.poll_after_ms,
+            )
+        except AnalysisJobStoreError as error:
+            logger.exception(
+                "[AnalysisJob] submit failed request_id=%s mode=%s bytes=%d backend=%s error=%s",
+                request_id,
+                normalized_mode,
+                len(contents),
+                type(store).__name__,
+                str(error),
+            )
+            raise _analysis_job_store_http_exception(request_id=request_id, action="submit") from error
         accepted_record = {
             "job_id": job_payload.job_id,
             "request_id": job_payload.request_id,
@@ -2947,7 +2970,18 @@ async def submit_analysis_job(
 async def get_analysis_job_status(request: Request, job_id: str):
     request_id = _request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs/status", request_id=request_id)
-    record = await run_in_threadpool(_analysis_job_store().get_job, job_id=job_id)
+    store = _analysis_job_store()
+    try:
+        record = await run_in_threadpool(store.get_job, job_id=job_id)
+    except AnalysisJobStoreError as error:
+        logger.exception(
+            "[AnalysisJob] poll failed request_id=%s job_id=%s backend=%s error=%s",
+            request_id,
+            job_id,
+            type(store).__name__,
+            str(error),
+        )
+        raise _analysis_job_store_http_exception(request_id=request_id, action="poll") from error
     if record is None:
         raise HTTPException(
             status_code=404,
