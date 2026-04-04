@@ -4,6 +4,7 @@ import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentU
 import { queryClient } from '../../queryClient';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '../../sync/phase2SyncQueue';
 import { clearSession, persistSession, refreshSessionNow, restoreSession } from '../sessionManager';
+import { SafeStorage } from '../../storage';
 
 jest.mock('../authApi', () => ({
   AuthApi: {
@@ -44,6 +45,12 @@ jest.mock('../../queryClient', () => ({
   },
 }));
 
+jest.mock('../../storage', () => ({
+  SafeStorage: {
+    remove: jest.fn(),
+  },
+}));
+
 jest.mock('../../sync/phase2SyncQueue', () => ({
   enqueuePhase2Sync: jest.fn(),
   dispatchPhase2SyncQueue: jest.fn(),
@@ -59,6 +66,7 @@ const mockedQueryClient = queryClient as unknown as { clear: jest.Mock };
 const mockedEnqueuePhase2Sync = enqueuePhase2Sync as jest.MockedFunction<typeof enqueuePhase2Sync>;
 const mockedDispatchPhase2SyncQueue =
   dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
+const mockedSafeStorage = SafeStorage as jest.Mocked<typeof SafeStorage>;
 
 const now = Date.now();
 const activeSession: AuthSessionTokens = {
@@ -112,6 +120,7 @@ describe('sessionManager', () => {
     await persistSession(activeSession);
 
     expect(mockedQueryClient.clear).toHaveBeenCalledTimes(1);
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
     expect(mockedSetCurrentUserId).toHaveBeenCalledWith('usr_1');
   });
 
@@ -209,6 +218,7 @@ describe('sessionManager', () => {
 
     expect(mockedStore.clear).toHaveBeenCalledTimes(1);
     expect(mockedClearCurrentUserId).toHaveBeenCalledTimes(1);
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
     expect(mockedQueryClient.clear).toHaveBeenCalledTimes(1);
   });
 });

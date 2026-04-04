@@ -499,6 +499,71 @@ describe('phase2SyncQueue', () => {
     expect(queueState[1].state).toBe('synced');
   });
 
+  it('writes merged settings only to the scoped profile snapshot', async () => {
+    queueState = [
+      {
+        id: 'op-settings-scoped-write',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          language: 'ko-KR',
+          target_language: 'ja-JP',
+          auto_play_audio: false,
+          selected_emoji: null,
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        return queueState as unknown;
+      }
+      if (key === '@foodlens_user_profile:usr_a') {
+        return {
+          uid: 'usr_a',
+          email: 'a@example.com',
+          name: 'A',
+          profileImage: '',
+          safetyProfile: {
+            allergies: [],
+            dietaryRestrictions: [],
+            severityMap: {},
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'en-US',
+            targetLanguage: undefined,
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        } as unknown;
+      }
+      return fallback;
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.putSettings).toHaveBeenCalledTimes(1);
+    expect(mockedSafeStorage.set).toHaveBeenCalledWith(
+      '@foodlens_user_profile:usr_a',
+      expect.objectContaining({
+        uid: 'usr_a',
+        settings: expect.objectContaining({
+          language: 'ko-KR',
+        }),
+      })
+    );
+    expect(mockedSafeStorage.set).not.toHaveBeenCalledWith(
+      '@foodlens_user_profile',
+      expect.anything()
+    );
+  });
+
   it('auto-merges settings client_state conflict and retries once', async () => {
     queueState = [
       {

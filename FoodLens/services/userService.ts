@@ -42,8 +42,23 @@ const normalizeUserId = (value: string | null | undefined): string | null => {
   return normalized;
 };
 
+const normalizeEmail = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) return null;
+  return normalized;
+};
+
 const isUsableUserId = (value: string | null): value is string =>
   typeof value === 'string' && value.length > 0 && value !== UNAUTHENTICATED_USER_ID;
+
+type LegacyProfileMigrationDecision = {
+  canMigrate: boolean;
+  reason: 'match' | 'legacy_uid_mismatch' | 'legacy_email_mismatch' | 'missing_identity';
+  sessionEmail: string | null;
+  legacyEmail: string | null;
+  legacyUserId: string | null;
+};
 
 const resolveScopedUserId = async (uid: string): Promise<string> => {
   const session = await restoreSession({
@@ -82,10 +97,67 @@ const loadScopedProfile = async (uid: string): Promise<UserProfile | null> => {
 };
 
 const saveScopedProfile = async (uid: string, profile: UserProfile): Promise<void> => {
-  await Promise.all([
-    SafeStorage.set(getUserStorageKey(uid), profile),
-    SafeStorage.set(USER_STORAGE_KEY, profile),
-  ]);
+  await SafeStorage.set(getUserStorageKey(uid), profile);
+};
+
+const resolveLegacyProfileMigrationDecision = async (
+  uid: string,
+  legacy: UserProfile
+): Promise<LegacyProfileMigrationDecision> => {
+  const legacyUserId = normalizeUserId(legacy.uid);
+  if (isUsableUserId(legacyUserId) && legacyUserId !== uid) {
+    return {
+      canMigrate: false,
+      reason: 'legacy_uid_mismatch',
+      sessionEmail: null,
+      legacyEmail: normalizeEmail(legacy.email),
+      legacyUserId,
+    };
+  }
+
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+  });
+  const sessionEmail = normalizeEmail(session?.user?.email);
+  const legacyEmail = normalizeEmail(legacy.email);
+
+  if (!legacyUserId) {
+    if (!sessionEmail || !legacyEmail) {
+      return {
+        canMigrate: false,
+        reason: 'missing_identity',
+        sessionEmail,
+        legacyEmail,
+        legacyUserId,
+      };
+    }
+    return {
+      canMigrate: sessionEmail === legacyEmail,
+      reason: sessionEmail === legacyEmail ? 'match' : 'legacy_email_mismatch',
+      sessionEmail,
+      legacyEmail,
+      legacyUserId,
+    };
+  }
+
+  if (sessionEmail && legacyEmail && sessionEmail !== legacyEmail) {
+    return {
+      canMigrate: false,
+      reason: 'legacy_email_mismatch',
+      sessionEmail,
+      legacyEmail,
+      legacyUserId,
+    };
+  }
+
+  return {
+    canMigrate: true,
+    reason: 'match',
+    sessionEmail,
+    legacyEmail,
+    legacyUserId,
+  };
 };
 
 const migrateLegacyProfileIfNeeded = async (uid: string): Promise<UserProfile | null> => {
@@ -101,6 +173,20 @@ const migrateLegacyProfileIfNeeded = async (uid: string): Promise<UserProfile | 
 
   const legacy = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
   if (!legacy) {
+    await SafeStorage.set(profileMigrationMarkerKey(uid), true);
+    return null;
+  }
+
+  const decision = await resolveLegacyProfileMigrationDecision(uid, legacy);
+  if (!decision.canMigrate) {
+    logger.warn('[Auth] skipped legacy profile migration due to identity mismatch', {
+      request_id: 'auth-legacy-profile-migration-skipped',
+      user_id: uid,
+      legacy_user_id: decision.legacyUserId || 'unknown',
+      session_email: decision.sessionEmail || 'unknown',
+      legacy_email: decision.legacyEmail || 'unknown',
+      reason: decision.reason,
+    });
     await SafeStorage.set(profileMigrationMarkerKey(uid), true);
     return null;
   }

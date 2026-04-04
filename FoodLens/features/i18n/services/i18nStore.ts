@@ -4,7 +4,7 @@ import { CanonicalLocale, I18nState, LanguageSettings } from '../types';
 import type { UserProfile } from '@/models/User';
 import { SafeStorage } from '@/services/storage';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { getUserStorageKey } from '@/services/user/constants';
 import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
 import { logger } from '@/services/logger';
 import { getQueuedPhase2EntityPayload } from '@/services/sync/phase2SyncQueue';
@@ -57,13 +57,9 @@ const normalizeProfileLanguageSettings = (
 const readProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
   if (userId && userId !== 'auth-required') {
-    const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
-    if (scoped) {
-      return scoped;
-    }
+    return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
   }
-
-  return SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
+  return null;
 };
 
 const readProfileLanguageSettingsSnapshot = (): LanguageSettings | null => {
@@ -104,8 +100,7 @@ const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSe
 
   const scopedKey = getUserStorageKey(userId);
   const scoped = SafeStorage.getSync<UserProfile | null>(scopedKey, null);
-  const legacy = SafeStorage.getSync<UserProfile | null>(USER_STORAGE_KEY, null);
-  const baseProfile = scoped || legacy;
+  const baseProfile = scoped;
   const currentSettings = normalizeProfileLanguageSettings(baseProfile);
   if (!baseProfile?.settings || !currentSettings) {
     return;
@@ -124,10 +119,7 @@ const persistLanguageSettingsToProfileSnapshot = async (nextSettings: LanguageSe
     },
   };
 
-  await Promise.all([
-    SafeStorage.set(scopedKey, nextProfile),
-    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
-  ]);
+  await SafeStorage.set(scopedKey, nextProfile);
   publishUserProfileUpdated(userId, 'server_pull');
 };
 

@@ -5,7 +5,7 @@ import { SafeStorage } from '@/services/storage';
 import { logger } from '@/services/logger';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
-import { getUserStorageKey, USER_STORAGE_KEY } from '@/services/user/constants';
+import { getUserStorageKey } from '@/services/user/constants';
 import { resolveImageUri } from '@/services/imageStorage';
 import { IMAGE_DIR } from '@/services/imageStorage.helpers';
 import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage';
@@ -262,10 +262,7 @@ const applyServerVersionToLocalProfile = async (
     updatedAt: nextUpdatedAt,
     syncVersions: nextSyncVersions,
   };
-  await Promise.all([
-    SafeStorage.set(storageKey, nextProfile),
-    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
-  ]);
+  await SafeStorage.set(storageKey, nextProfile);
 };
 
 const applyServerSettingsToLocalProfile = async (
@@ -303,10 +300,7 @@ const applyServerSettingsToLocalProfile = async (
       ),
     },
   };
-  await Promise.all([
-    SafeStorage.set(storageKey, nextProfile),
-    SafeStorage.set(USER_STORAGE_KEY, nextProfile),
-  ]);
+  await SafeStorage.set(storageKey, nextProfile);
 };
 
 const applyServerHistoryItemToLocalAnalyses = async (

@@ -140,6 +140,30 @@ describe('i18nStore initialization', () => {
     });
   });
 
+  it('ignores global profile snapshot when scoped profile is missing', async () => {
+    mockSafeStorageGetSync.mockImplementation((key: string) => {
+      if (key === '@foodlens_user_profile') {
+        return {
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: 'ja-JP',
+          },
+        };
+      }
+      return null;
+    });
+
+    const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
+
+    await store.initializeI18nStore();
+
+    expect(store.getI18nSnapshot().settings).toEqual({
+      language: 'en-US',
+      targetLanguage: null,
+    });
+    expect(mockSaveLanguageSettings).not.toHaveBeenCalled();
+  });
+
   it('treats omitted traveler target from server settings as auto mode', async () => {
     const store = require('../services/i18nStore') as typeof import('../services/i18nStore');
 

@@ -280,7 +280,7 @@ describe('useHomeDashboard profile update subscription', () => {
     });
   });
 
-  it('falls back to global profile snapshot when scoped profile is missing', async () => {
+  it('does not fall back to global profile snapshot when scoped profile is missing', async () => {
     const globalProfile = {
       uid: 'usr_home',
       name: 'Global Snapshot',
@@ -304,9 +304,11 @@ describe('useHomeDashboard profile update subscription', () => {
     );
 
     const { result } = renderHook(() => useHomeDashboard());
-    await waitFor(() => {
-      expect(result.current.userProfile?.profileImage).toBe(globalProfile.profileImage);
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(result.current.userProfile).toBeNull();
   });
 
   it('hydrates selected date from synced client_state home.selectedDate on initial load', async () => {

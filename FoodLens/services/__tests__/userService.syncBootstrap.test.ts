@@ -202,6 +202,51 @@ describe('UserService bootstrap sync guard', () => {
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
   });
 
+  it('skips legacy profile migration when legacy identity belongs to another user', async () => {
+    mockedRestoreSession.mockResolvedValue({
+      user: { id: 'usr_a', email: 'current@example.com' },
+    } as never);
+    mockedPhase2Api.getProfile.mockRejectedValue(new Error('network down'));
+    mockedPhase2Api.getAllergies.mockRejectedValue(new Error('network down'));
+    mockedPhase2Api.getSettings.mockRejectedValue(new Error('network down'));
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) return null as unknown;
+      if (key === migrationMarkerKey) return false as unknown;
+      if (key === '@foodlens_user_profile') {
+        return {
+          uid: 'usr_other',
+          email: 'other@example.com',
+          name: 'Wrong Legacy Name',
+          profileImage: '',
+          safetyProfile: {
+            allergies: ['milk'],
+            dietaryRestrictions: [],
+            severityMap: { milk: 'severe' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === serverSyncMarkerKey) return false as unknown;
+      return fallback as unknown;
+    });
+
+    const profile = await UserService.getUserProfile('usr_a', {
+      allowBackgroundRefresh: false,
+    });
+
+    expect(profile.uid).toBe('usr_a');
+    expect(profile.name).not.toBe('Wrong Legacy Name');
+    expect(mockedSafeStorage.remove).not.toHaveBeenCalledWith('@foodlens_user_profile');
+    expect(mockedSafeStorage.set).toHaveBeenCalledWith(migrationMarkerKey, true);
+    expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
+  });
+
   it('returns remote snapshot on background refresh when already server-synced', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(9_999_999_999_999);
     mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
@@ -566,6 +611,10 @@ describe('UserService bootstrap sync guard', () => {
       expect.objectContaining({
         target_language: 'ja-JP',
       })
+    );
+    expect(mockedSafeStorage.set).not.toHaveBeenCalledWith(
+      '@foodlens_user_profile',
+      expect.anything()
     );
   });
 
