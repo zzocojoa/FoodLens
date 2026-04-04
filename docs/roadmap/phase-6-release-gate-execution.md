@@ -57,6 +57,18 @@
   - 릴리스 브랜치 전략 정리 (Git Flow/Trunk Based)
   - **Staged Rollout**: 1% -> 5% -> 20% -> 100% 점진적 배포 계획 수립
   - **Feature Flag** 도입: 문제 발생 시 앱 배포 없이 기능 원격 OFF
+  - 운영값 고정:
+    - `LABEL_ROLLOUT_ENABLED=1`
+    - `LABEL_ROLLOUT_STAGE=general-100` (정상 운영 기본값)
+    - 위험 기능 릴리스 시 단계값은 `shadow-1 -> canary-5 -> canary-20 -> general-100`
+    - `LABEL_ROLLOUT_AUTO_ENABLED=0` (자동 승격 기본 비활성)
+    - `LABEL_ROLLOUT_ROLLBACK_STAGE=rollback-0`
+    - `LABEL_ROLLOUT_STATE_BACKEND=file`
+    - `LABEL_ROLLOUT_STATE_PATH=/tmp/foodlens_rollout_state.json`
+  - Kill switch 절차 고정:
+    - 1차: `LABEL_ROLLOUT_ENABLED=0`
+    - 2차: `LABEL_ROLLOUT_STAGE=rollback-0`
+    - 3차: 적용 후 `phase6-postdeploy-smoke` 재실행으로 증적 보관
   - 앱 버전/빌드 넘버 규칙 고정
   - Android 제출 운영 원칙 고정:
     - 최초 1회는 Play Console 수동 제출 허용(예외)
@@ -81,6 +93,7 @@
 - 완료 체크
   - [ ] CI에서 실패 시 배포 차단
   - [ ] 배포 후 스모크 자동/반자동 확인
+  - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
   - [ ] 알림 채널 정상 동작
 
 ### Week 3 (리허설/내재화)

@@ -175,6 +175,26 @@ services:
         sync: false
       - key: AUTH_EMAIL_SENDER_NAME
         value: FoodLens
+      - key: LABEL_ROLLOUT_ENABLED
+        value: "1"
+      - key: LABEL_ROLLOUT_STAGE
+        value: general-100
+      - key: LABEL_ROLLOUT_KPI_PARSE_SUCCESS
+        value: "97.0"
+      - key: LABEL_ROLLOUT_KPI_P95_MS
+        value: "8000"
+      - key: LABEL_ROLLOUT_KPI_5XX_RATE
+        value: "1.0"
+      - key: LABEL_ROLLOUT_AUTO_ENABLED
+        value: "0"
+      - key: LABEL_ROLLOUT_PROMOTE_AFTER_PASSES
+        value: "3"
+      - key: LABEL_ROLLOUT_ROLLBACK_STAGE
+        value: rollback-0
+      - key: LABEL_ROLLOUT_STATE_BACKEND
+        value: file
+      - key: LABEL_ROLLOUT_STATE_PATH
+        value: /tmp/foodlens_rollout_state.json
       - key: DATAGO_API_KEY
         sync: false
       - key: DATAGO_I2790_API_KEY

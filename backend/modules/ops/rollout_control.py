@@ -8,13 +8,25 @@ from pathlib import Path
 
 
 STAGE_PERCENTAGE_MAP: dict[str, int] = {
-    "shadow-10": 10,
-    "canary-25": 25,
-    "canary-50": 50,
+    "shadow-1": 1,
+    "canary-5": 5,
+    "canary-20": 20,
     "general-100": 100,
     "rollback-0": 0,
 }
-STAGE_PROMOTION_ORDER = ["shadow-10", "canary-25", "canary-50", "general-100"]
+LEGACY_STAGE_ALIAS_MAP: dict[str, str] = {
+    "shadow-10": "shadow-1",
+    "canary-25": "canary-5",
+    "canary-50": "canary-20",
+}
+STAGE_PROMOTION_ORDER = ["shadow-1", "canary-5", "canary-20", "general-100"]
+
+
+def normalize_rollout_stage(stage: str, fallback_stage: str) -> str:
+    normalized_stage = LEGACY_STAGE_ALIAS_MAP.get(stage.strip().lower(), stage.strip().lower())
+    if normalized_stage in STAGE_PERCENTAGE_MAP:
+        return normalized_stage
+    return fallback_stage
 
 
 @dataclass(frozen=True)
@@ -25,7 +37,10 @@ class RolloutConfig:
 
     @classmethod
     def from_env(cls) -> "RolloutConfig":
-        stage = os.environ.get("LABEL_ROLLOUT_STAGE", "general-100").strip().lower()
+        stage = normalize_rollout_stage(
+            os.environ.get("LABEL_ROLLOUT_STAGE", "general-100"),
+            "general-100",
+        )
         percentage = STAGE_PERCENTAGE_MAP.get(stage, 100)
 
         raw_override = os.environ.get("LABEL_ROLLOUT_PERCENTAGE")
@@ -90,9 +105,7 @@ class JsonFileRolloutStateStore(RolloutStateStore):
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             payload = {}
-        stage = str(payload.get("stage", default_stage)).lower()
-        if stage not in STAGE_PERCENTAGE_MAP:
-            stage = default_stage
+        stage = normalize_rollout_stage(str(payload.get("stage", default_stage)), default_stage)
         consecutive_passes = int(payload.get("consecutive_passes", 0))
         if consecutive_passes < 0:
             consecutive_passes = 0
@@ -108,8 +121,9 @@ class InMemoryRolloutStateStore(RolloutStateStore):
         self._state = RolloutRuntimeState(stage="general-100", consecutive_passes=0)
 
     def get(self, default_stage: str) -> RolloutRuntimeState:
-        if self._state.stage not in STAGE_PERCENTAGE_MAP:
-            return RolloutRuntimeState(stage=default_stage, consecutive_passes=0)
+        normalized_stage = normalize_rollout_stage(self._state.stage, default_stage)
+        if normalized_stage != self._state.stage:
+            return RolloutRuntimeState(stage=normalized_stage, consecutive_passes=self._state.consecutive_passes)
         return self._state
 
     def put(self, state: RolloutRuntimeState) -> None:
@@ -154,7 +168,7 @@ class LabelRolloutAutoManager:
     ) -> None:
         self.state_store = state_store
         self.promote_after_passes = max(1, promote_after_passes)
-        self.rollback_stage = rollback_stage if rollback_stage in STAGE_PERCENTAGE_MAP else "rollback-0"
+        self.rollback_stage = normalize_rollout_stage(rollback_stage, "rollback-0")
 
     def reconcile(self, base_config: RolloutConfig, *, kpi_gate_passed: bool) -> RolloutConfig:
         state = self.state_store.get(base_config.stage)
