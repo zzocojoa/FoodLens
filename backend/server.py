@@ -852,6 +852,40 @@ def _is_google_code_verification_enabled() -> bool:
     return os.environ.get("AUTH_GOOGLE_CODE_VERIFY_ENABLED", "0").strip() == "1"
 
 
+def _provider_client_id(provider: str) -> str:
+    env_name = "AUTH_GOOGLE_CLIENT_ID" if provider == "google" else "AUTH_KAKAO_CLIENT_ID"
+    return os.environ.get(env_name, "").strip()
+
+
+def _has_client_supplied_provider_identity(*, provider_user_id: str | None, email: str | None) -> bool:
+    normalized_provider_user_id = (provider_user_id or "").strip()
+    normalized_email = (email or "").strip()
+    return bool(normalized_provider_user_id or normalized_email)
+
+
+def _should_verify_provider_identity(
+    *,
+    provider: str,
+    code: str | None,
+    error: str | None,
+    provider_user_id: str | None,
+    email: str | None,
+) -> bool:
+    if not code or error:
+        return False
+
+    if provider == "google" and _is_google_code_verification_enabled():
+        return True
+
+    if provider == "kakao" and _is_kakao_code_verification_enabled():
+        return True
+
+    if _has_client_supplied_provider_identity(provider_user_id=provider_user_id, email=email):
+        return False
+
+    return bool(_provider_client_id(provider))
+
+
 def _provider_timeout_seconds() -> float:
     raw_value = (os.environ.get("AUTH_PROVIDER_TIMEOUT_SECONDS") or "").strip()
     if not raw_value:
@@ -1753,12 +1787,18 @@ def _build_oauth_provider_login_result(
 ) -> dict[str, Any]:
     provider_user_id = payload.provider_user_id
     email = payload.email
-    if payload.code and not payload.error:
-        if provider == "google" and _is_google_code_verification_enabled():
+    if _should_verify_provider_identity(
+        provider=provider,
+        code=payload.code,
+        error=payload.error,
+        provider_user_id=provider_user_id,
+        email=email,
+    ):
+        if provider == "google":
             provider_user_id, verified_email = _verify_google_identity(request=request, code=payload.code)
             if verified_email:
                 email = verified_email
-        elif provider == "kakao" and _is_kakao_code_verification_enabled():
+        elif provider == "kakao":
             provider_user_id, verified_email = _verify_kakao_identity(request=request, code=payload.code)
             if verified_email:
                 email = verified_email
