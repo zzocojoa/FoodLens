@@ -16,6 +16,7 @@ const mockConfirmPasswordReset = jest.fn();
 const mockSubmitOAuthAuth = jest.fn();
 const mockResolveAuthErrorMessage = jest.fn();
 const mockGoToAuth = jest.fn();
+const mockGoBackToWelcome = jest.fn();
 const mockSetAuthMode = jest.fn();
 
 jest.mock('expo-router', () => ({
@@ -69,6 +70,7 @@ jest.mock('../useLoginMotion', () => ({
     welcomeInteractive: true,
     authInteractive: true,
     goToAuth: mockGoToAuth,
+    goBackToWelcome: mockGoBackToWelcome,
     setAuthMode: mockSetAuthMode,
   }),
 }));
@@ -116,6 +118,16 @@ describe('useLoginScreen', () => {
         email: 'alpha@example.com',
       },
     });
+  });
+
+  it('returns to welcome state on back when login auth screen is active', () => {
+    const { result } = renderHook(() => useLoginScreen());
+
+    act(() => {
+      result.current.handleBackNavigation();
+    });
+
+    expect(mockGoBackToWelcome).toHaveBeenCalledTimes(1);
   });
 
   it('exposes login copy translated by i18n hook', () => {

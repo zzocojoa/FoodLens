@@ -163,6 +163,7 @@ export const useLoginScreen = () => {
     welcomeInteractive,
     authInteractive,
     goToAuth,
+    goBackToWelcome,
     setAuthMode,
   } = useLoginMotion();
   const loginCopy = useMemo(() => createLoginCopy(t), [t]);
@@ -304,6 +305,30 @@ export const useLoginScreen = () => {
 
   const handleSwitchMode = (nextMode: LoginAuthMode) => {
     switchToMode(nextMode);
+  };
+
+  const handleBackNavigation = (): boolean => {
+    if (passwordResetStepActive) {
+      handleCancelPasswordReset();
+      return true;
+    }
+
+    if (emailVerificationStepActive) {
+      switchToMode('login');
+      return true;
+    }
+
+    if (mode === 'signup') {
+      switchToMode('login');
+      return true;
+    }
+
+    if (authInteractive) {
+      goBackToWelcome();
+      return true;
+    }
+
+    return true;
   };
 
   const handleForgotPassword = () => {
@@ -764,6 +789,7 @@ export const useLoginScreen = () => {
     setPasswordVisible,
     setConfirmPasswordVisible,
     handleContinue,
+    handleBackNavigation,
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,

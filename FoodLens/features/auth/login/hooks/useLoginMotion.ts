@@ -190,6 +190,39 @@ export const useLoginMotion = () => {
     ],
   );
 
+  const goBackToWelcome = useCallback(() => {
+    clearEntranceTimer();
+    authInteractiveRef.current = false;
+    setAuthInteractive(false);
+    setWelcomeInteractive(true);
+    phoneStateProgress.stopAnimation();
+    phoneStateProgress.setValue(0);
+    signupProgress.stopAnimation();
+    signupProgress.setValue(0);
+    authScreenOpacity.stopAnimation();
+    authScreenOpacity.setValue(0);
+    authFooterProgress.stopAnimation();
+    authFooterProgress.setValue(0);
+    welcomeScreenOpacity.stopAnimation();
+    welcomeScreenOpacity.setValue(1);
+    welcomeTitleProgress.stopAnimation();
+    welcomeTitleProgress.setValue(1);
+    welcomeDescriptionProgress.stopAnimation();
+    welcomeDescriptionProgress.setValue(1);
+    welcomeContinueProgress.stopAnimation();
+    welcomeContinueProgress.setValue(1);
+  }, [
+    authFooterProgress,
+    authScreenOpacity,
+    clearEntranceTimer,
+    phoneStateProgress,
+    signupProgress,
+    welcomeContinueProgress,
+    welcomeDescriptionProgress,
+    welcomeScreenOpacity,
+    welcomeTitleProgress,
+  ]);
+
   useEffect(() => {
     entranceTimerRef.current = setTimeout(() => {
       entranceTimerRef.current = null;
@@ -346,6 +379,7 @@ export const useLoginMotion = () => {
     authInteractive,
     motion,
     goToAuth,
+    goBackToWelcome,
     setAuthMode,
   };
 };

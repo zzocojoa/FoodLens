@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
 import { LOGIN_LAYOUT } from '../constants/login.constants';
 import { useLoginScreen } from '../hooks/useLoginScreen';
 import { loginStyles } from '../styles/loginStyles';
@@ -19,7 +18,6 @@ import LoginPinkHeader from '../components/LoginPinkHeader';
 import LoginWelcomeScreen from '../components/LoginWelcomeScreen';
 
 export default function LoginScreen() {
-  const router = useRouter();
   const { width, height } = useWindowDimensions();
   const isFramedViewport =
     Platform.OS === 'web' &&
@@ -49,6 +47,7 @@ export default function LoginScreen() {
     setPasswordVisible,
     setConfirmPasswordVisible,
     handleContinue,
+    handleBackNavigation,
     handleSwitchMode,
     handleForgotPassword,
     handleCancelPasswordReset,
@@ -65,17 +64,14 @@ export default function LoginScreen() {
       }
 
       const onBackPress = () => {
-        if (router.canGoBack()) {
-          router.back();
-        }
-        return true;
+        return handleBackNavigation();
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => {
         subscription.remove();
       };
-    }, [router])
+    }, [handleBackNavigation])
   );
 
   return (

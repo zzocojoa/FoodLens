@@ -55,4 +55,27 @@ describe('useLoginMotion', () => {
 
     unmount();
   });
+
+  it('returns to welcome interaction when goBackToWelcome is called', () => {
+    const { result, unmount } = renderHook(() => useLoginMotion());
+
+    act(() => {
+      jest.advanceTimersByTime(LOGIN_ANIMATION.welcomeDelayMs);
+    });
+
+    act(() => {
+      result.current.goToAuth('login');
+    });
+
+    expect(result.current.authInteractive).toBe(true);
+
+    act(() => {
+      result.current.goBackToWelcome();
+    });
+
+    expect(result.current.authInteractive).toBe(false);
+    expect(result.current.welcomeInteractive).toBe(true);
+
+    unmount();
+  });
 });

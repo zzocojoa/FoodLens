@@ -2,12 +2,14 @@
 
 import React from 'react';
 import { render } from '@testing-library/react-native';
+import { BackHandler, Platform } from 'react-native';
 import LoginScreen from '../LoginScreen';
 import { useLoginScreen } from '../../hooks/useLoginScreen';
 import { LoginAuthCopy, LoginFormValues } from '../../types/login.types';
 import { LOGIN_COPY } from '../../constants/login.constants';
 
-const mockPush = jest.fn();
+const mockBackHandlerRemove = jest.fn();
+let backPressHandler: null | (() => boolean) = null;
 
 jest.mock('../../hooks/useLoginScreen', () => ({
   useLoginScreen: jest.fn(),
@@ -15,12 +17,14 @@ jest.mock('../../hooks/useLoginScreen', () => ({
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    push: mockPush,
+    push: jest.fn(),
   }),
 }));
 
 jest.mock('@react-navigation/native', () => ({
-  useFocusEffect: jest.fn(),
+  useFocusEffect: (effect: () => void | (() => void)) => {
+    effect();
+  },
 }));
 
 jest.mock('@expo/vector-icons', () => {
@@ -93,6 +97,7 @@ const createHookValue = (overrides: Record<string, unknown> = {}) =>
     setPasswordVisible: jest.fn(),
     setConfirmPasswordVisible: jest.fn(),
     handleContinue: jest.fn(),
+    handleBackNavigation: jest.fn(() => true),
     handleSwitchMode: jest.fn(),
     handleForgotPassword: jest.fn(),
     handleCancelPasswordReset: jest.fn(),
@@ -104,8 +109,20 @@ const createHookValue = (overrides: Record<string, unknown> = {}) =>
   }) as unknown as ReturnType<typeof useLoginScreen>;
 
 describe('LoginScreen', () => {
+  beforeEach(() => {
+    backPressHandler = null;
+    mockBackHandlerRemove.mockClear();
+    jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation((_, handler) => {
+        backPressHandler = handler as () => boolean;
+        return { remove: mockBackHandlerRemove } as never;
+      });
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it('matches snapshot in login state', () => {
@@ -133,5 +150,25 @@ describe('LoginScreen', () => {
     const { toJSON } = render(<LoginScreen />);
 
     expect(toJSON()).toMatchSnapshot();
+  });
+
+  it('routes Android hardware back through login back navigation handler', () => {
+    const handleBackNavigation = jest.fn(() => true);
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    });
+    mockedUseLoginScreen.mockReturnValue(
+      createHookValue({
+        handleBackNavigation,
+      }),
+    );
+
+    render(<LoginScreen />);
+
+    expect(backPressHandler).not.toBeNull();
+    const handled = backPressHandler as () => boolean;
+    expect(handled()).toBe(true);
+    expect(handleBackNavigation).toHaveBeenCalledTimes(1);
   });
 });
