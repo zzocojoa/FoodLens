@@ -4,6 +4,7 @@ import os
 import time
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from PIL import Image
 
 import backend.modules.analysis_jobs as analysis_jobs
 from backend.modules.analysis_jobs import (
+    AnalysisJobStoreError,
     InMemoryAnalysisJobStore,
     InMemoryNutritionCacheStore,
     PostgresAnalysisJobStore,
@@ -198,6 +200,51 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
         self.assertIn("latency_ms_by_stage", terminal_payload)
         self.assertEqual(terminal_payload["nutrition"]["dataSource"], "TestCache")
+
+    def test_submit_job_returns_503_when_store_create_job_fails(self) -> None:
+        def raise_store_error(**_kwargs: object) -> None:
+            raise AnalysisJobStoreError("db unavailable")
+
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = SimpleNamespace(create_job=raise_store_error)
+            try:
+                with self.assertLogs("foodlens.api", level="ERROR") as captured:
+                    response = client.post(
+                        "/analyze/jobs",
+                        files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                        data={"allergy_info": "None", "locale": "ko-KR", "mode": "food"},
+                        headers={"X-Request-Id": "req-analysis-job-store-fail"},
+                    )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"]["request_id"], "req-analysis-job-store-fail")
+        self.assertEqual(response.json()["detail"]["code"], "ANALYZE_FAILED")
+        self.assertIn("submit failed", "\n".join(captured.output))
+
+    def test_get_job_status_returns_503_when_store_get_job_fails(self) -> None:
+        def raise_store_error(*, job_id: str) -> None:
+            del job_id
+            raise AnalysisJobStoreError("db unavailable")
+
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = SimpleNamespace(get_job=raise_store_error)
+            try:
+                with self.assertLogs("foodlens.api", level="ERROR") as captured:
+                    response = client.get(
+                        "/analyze/jobs/job_test_store_fail",
+                        headers={"X-Request-Id": "req-analysis-job-poll-store-fail"},
+                    )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"]["request_id"], "req-analysis-job-poll-store-fail")
+        self.assertEqual(response.json()["detail"]["code"], "ANALYZE_FAILED")
+        self.assertIn("poll failed", "\n".join(captured.output))
 
     def test_nutrition_service_returns_unavailable_when_budget_is_exceeded(self) -> None:
         service = NutritionEnrichmentService(
