@@ -300,6 +300,10 @@ async def _startup() -> None:
     )
     app.state.analysis_job_store = build_analysis_job_store_from_env(os.environ.get)
     app.state.analysis_nutrition_cache_store = build_nutrition_cache_store_from_env(os.environ.get)
+    for store in (app.state.analysis_job_store, app.state.analysis_nutrition_cache_store):
+        initialize_schema = getattr(store, "initialize_schema", None)
+        if callable(initialize_schema):
+            initialize_schema()
     app.state.analysis_nutrition_service = NutritionEnrichmentService(
         cache_store=app.state.analysis_nutrition_cache_store,
         lookup_func=lookup_nutrition,

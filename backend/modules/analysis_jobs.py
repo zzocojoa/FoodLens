@@ -564,11 +564,27 @@ class InMemoryNutritionCacheStore:
 class PostgresAnalysisJobStore:
     database_url: str
     table_name: str = "analysis_jobs"
+    _schema_ready: bool = field(default=False, init=False, repr=False)
+    _schema_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not self.database_url.strip():
             raise AnalysisJobStoreError("DATABASE_URL is required for postgres analysis jobs backend.")
         self.table_name = _sanitize_table_name(self.table_name, "analysis_jobs")
+
+    def initialize_schema(self) -> None:
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
+            connect = _load_connect()
+            try:
+                with connect(self.database_url, autocommit=True) as conn:
+                    self._ensure_table(conn)
+            except Exception as error:
+                raise AnalysisJobStoreError(f"Failed to initialize analysis jobs schema: {error}") from error
+            self._schema_ready = True
 
     def create_job(
         self,
@@ -585,10 +601,10 @@ class PostgresAnalysisJobStore:
         accepted_at: datetime,
         poll_after_ms: int,
     ) -> None:
+        self.initialize_schema()
         connect = _load_connect()
         try:
             with connect(self.database_url, autocommit=True) as conn:
-                self._ensure_table(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
@@ -618,10 +634,10 @@ class PostgresAnalysisJobStore:
             raise AnalysisJobStoreError(f"Failed to create analysis job: {error}") from error
 
     def get_job(self, *, job_id: str) -> dict[str, Any] | None:
+        self.initialize_schema()
         connect = _load_connect()
         try:
             with connect(self.database_url, autocommit=True) as conn:
-                self._ensure_table(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
@@ -640,10 +656,10 @@ class PostgresAnalysisJobStore:
             raise AnalysisJobStoreError(f"Failed to load analysis job: {error}") from error
 
     def claim_next_job(self, *, worker_id: str, lease_seconds: int, now: datetime) -> dict[str, Any] | None:
+        self.initialize_schema()
         connect = _load_connect()
         try:
             with connect(self.database_url) as conn:
-                self._ensure_table(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
@@ -685,6 +701,7 @@ class PostgresAnalysisJobStore:
             raise AnalysisJobStoreError(f"Failed to claim analysis job: {error}") from error
 
     def update_job(self, *, job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        self.initialize_schema()
         connect = _load_connect()
         fields: list[str] = []
         values: list[Any] = []
@@ -707,7 +724,6 @@ class PostgresAnalysisJobStore:
         values.append(job_id)
         try:
             with connect(self.database_url, autocommit=True) as conn:
-                self._ensure_table(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
@@ -776,11 +792,18 @@ class PostgresNutritionCacheStore:
             raise NutritionCacheStoreError("DATABASE_URL is required for postgres nutrition cache backend.")
         self.table_name = _sanitize_table_name(self.table_name, "analysis_nutrition_cache")
 
-    def get(self, *, cache_key: str) -> dict[str, Any] | None:
+    def initialize_schema(self) -> None:
         connect = _load_connect()
         try:
             with connect(self.database_url, autocommit=True) as conn:
                 self._ensure_table(conn)
+        except Exception as error:
+            raise NutritionCacheStoreError(f"Failed to initialize nutrition cache schema: {error}") from error
+
+    def get(self, *, cache_key: str) -> dict[str, Any] | None:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         f"SELECT payload_json FROM {self.table_name} WHERE cache_key = %s",
@@ -798,7 +821,6 @@ class PostgresNutritionCacheStore:
         connect = _load_connect()
         try:
             with connect(self.database_url, autocommit=True) as conn:
-                self._ensure_table(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
