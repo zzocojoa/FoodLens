@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOGIN_ANIMATION, LOGIN_LAYOUT } from '../constants/login.constants';
 import { LoginAuthMode } from '../types/login.types';
@@ -285,17 +285,22 @@ export const useLoginMotion = () => {
       ],
     };
 
-    const authFooterStyle = {
-      opacity: authFooterProgress,
-      transform: [
-        {
-          translateY: authFooterProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [20, 0],
-          }),
-        },
-      ],
-    };
+    const authFooterStyle =
+      Platform.OS === 'android'
+        ? {
+            opacity: authFooterProgress,
+          }
+        : {
+            opacity: authFooterProgress,
+            transform: [
+              {
+                translateY: authFooterProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0],
+                }),
+              },
+            ],
+          };
 
     const signupFieldStyle = createCollapsibleFieldStyle(signupProgress);
 
