@@ -612,7 +612,7 @@ class PostgresAnalysisJobStore:
                             "(job_id,request_id,mode,status,allergy_info,iso_country_code,locale,content_type,image_base64,image_sha256,"
                             "accepted_at,started_at,updated_at,lease_expires_at,worker_id,attempt_count,poll_after_ms,stage_latencies_ms,"
                             "used_model,prompt_version,fallback_reason,error_code,error_message,result_json) "
-                            "VALUES (%s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s::timestamptz,NULL,%s::timestamptz,NULL,NULL,0,%s,%s::jsonb,NULL,NULL,NULL,NULL,NULL)"
+                            "VALUES (%s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s::timestamptz,NULL,%s::timestamptz,NULL,NULL,0,%s,%s::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
                         ),
                         (
                             job_id,

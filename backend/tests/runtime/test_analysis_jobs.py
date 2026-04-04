@@ -365,9 +365,11 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         create_table_statements = [
             sql for sql in connection.executed_sql if "CREATE TABLE IF NOT EXISTS analysis_jobs" in sql
         ]
+        insert_statements = [sql for sql in connection.executed_sql if sql.startswith("INSERT INTO analysis_jobs")]
         self.assertEqual(len(create_table_statements), 1)
         self.assertEqual(connect.calls[0][1], {"autocommit": True})
-        self.assertTrue(any(sql.startswith("INSERT INTO analysis_jobs") for sql in connection.executed_sql))
+        self.assertEqual(len(insert_statements), 1)
+        self.assertIn("%s,%s::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)", insert_statements[0])
         self.assertTrue(any(sql.startswith("SELECT job_id") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("WITH candidate AS") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("UPDATE analysis_jobs SET") for sql in connection.executed_sql))
