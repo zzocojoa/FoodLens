@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "500080136118",
+    "project_id": "foodlens-prod-e5243",
+    "storage_bucket": "foodlens-prod-e5243.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:500080136118:android:463dbbe5c8df1fbfb67b17",
+        "android_client_info": {
+          "package_name": "com.hoihou.foodlens"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4imhNECEXxzwm6jVbMicxapMvZ9xIvHE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
