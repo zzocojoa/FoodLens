@@ -12,7 +12,16 @@
           "package_name": "com.hoihou.foodlens"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "500080136118-1vk1uai80rv2nh2712mbgifd48k3orpp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hoihou.foodlens",
+            "certificate_hash": "36c58673f1ffe8a8ee2ac172cc750a4d40db17c0"
+          }
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA4imhNECEXxzwm6jVbMicxapMvZ9xIvHE"
