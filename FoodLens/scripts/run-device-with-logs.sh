@@ -240,6 +240,51 @@ cleanup_stale_android_launcher_assets() {
   fi
 }
 
+remove_prebuilt_android_launcher_assets() {
+  local resource_root="${PROJECT_DIR}/android/app/src/main/res"
+  if [[ ! -d "${resource_root}" ]]; then
+    return
+  fi
+
+  local density_dir=""
+  local asset_name=""
+  local asset_extension=""
+  local asset_path=""
+  local removed_any="0"
+  local asset_names=(
+    "ic_launcher"
+    "ic_launcher_round"
+    "ic_launcher_foreground"
+    "ic_launcher_background"
+    "ic_launcher_monochrome"
+  )
+  local asset_extensions=(
+    "png"
+    "webp"
+  )
+
+  for density_dir in "${resource_root}"/mipmap-*; do
+    if [[ ! -d "${density_dir}" ]]; then
+      continue
+    fi
+
+    for asset_name in "${asset_names[@]}"; do
+      for asset_extension in "${asset_extensions[@]}"; do
+        asset_path="${density_dir}/${asset_name}.${asset_extension}"
+        if [[ -f "${asset_path}" ]]; then
+          rm -f "${asset_path}"
+          removed_any="1"
+          echo "[run-with-logs] Removed prebuilt Android launcher resource ${asset_path}"
+        fi
+      done
+    done
+  done
+
+  if [[ "${removed_any}" == "1" ]]; then
+    echo "[run-with-logs] Cleared Android launcher resources before Expo prebuild."
+  fi
+}
+
 start_ios_logs() {
   mkdir -p "${PROJECT_DIR}/artifacts/phase2/ios/logs"
   LOG_FILE="${PROJECT_DIR}/artifacts/phase2/ios/logs/ios-${BUILD_TYPE}-${TIMESTAMP}.log"
@@ -454,6 +499,7 @@ fi
 
 if [[ "${PLATFORM}" == "android" ]]; then
   echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
+  remove_prebuilt_android_launcher_assets
   npx expo prebuild --platform android --no-install
   cleanup_stale_android_launcher_assets
   if [[ -f "${ANDROID_MANIFEST_PATH}" ]]; then
