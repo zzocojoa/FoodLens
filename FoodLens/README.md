@@ -64,58 +64,15 @@ EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=0 IOS_DEVICE_UDID=00008140-000E5DAE1ABB001C
 EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=0 npm run android:release:device:logs
 ```
 
-### 3. 🚨 문제 해결 (Troubleshooting)
+### 1. Expo EAS Build를 이용한 방식 (추천)
 
-iOS 빌드 실패 시 (인증서 만료, Hermes 에러 등) 아래 가이드를 참고하세요:
-
-- [🔴 iOS 빌드 트러블슈팅 가이드](file:///Users/beatlefeed/Documents/FoodLens-project/docs/ios_troubleshooting.md)
-
----
-
-## 🌍 외부 사용 (배포)
-
-밖에서 혼자 사용하기 위한 상세 가이드는 아래 문서를 참고하세요:
-
-- [배포 전략 가이드(Korean)](file:///Users/beatlefeed/.gemini/antigravity/brain/7965f449-8d91-4265-bf73-2410d3d65c4d/deployment_strategy.md)
-- [로컬 서버 복구 가이드(Korean)](file:///Users/beatlefeed/.gemini/antigravity/brain/7965f449-8d91-4265-bf73-2410d3d65c4d/server_restoration_guide.md)
-- [iOS 개인 기기 무료 설치 가이드(Korean)](file:///Users/beatlefeed/Documents/FoodLens-project/FoodLens/.agent/workflows/free-ios-deployment.md)
-
----
-
-## 📜 라이선스
-
-개인 학습 및 테스트 목적으로 제작된 프로젝트입니다.
-
-`````
-
----
-
-### [선택] 로컬 전용 백엔드 디버깅 가이드
-(이하 과정은 오로지 Python 백엔드 코드를 로컬 환경에서 직접 수정하고 테스트할 때만 필요합니다. 평소 모바일 앱/UI 개발 시엔 무시하세요.)
-
-````bash
-아래 순서로 실행하면 됩니다.
-
-1. Postgres 실행 (Docker)
-```bash
-cd /Users/beatlefeed/Documents/FoodLens-project
-docker compose -f docker-compose.postgres.yml up -d foodlens-postgres
-`````
-
-2. 백엔드 실행 경로/명령어
+Expo 서버에서 빌드하여 AAB 파일을 생성합니다. 환경 설정이 가장 깔끔하며, 결과물 링크를 제공해 줍니다.
 
 ```bash
-cd /Users/beatlefeed/Documents/FoodLens-project
-source .venv/bin/activate
-python -m backend.server
+# production 프로필로 안드로이드 빌드 시작
+eas build --platform android --profile production
 ```
 
-3. 정상 상태 확인
+- **특징**: 서버에서 빌드되므로 내 컴퓨터의 리소스를 쓰지 않으며, 빌드가 완료되면 `.aab` 파일을 다운로드할 수 있는 URL을 줍니다.
 
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-```
-
-```
+---
