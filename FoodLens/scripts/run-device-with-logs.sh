@@ -200,6 +200,15 @@ restore_ios_release_rncore_prebuilt() {
   printf 'Release' > "${rncore_dir}/.last_build_configuration"
 }
 
+sync_ios_native_config() {
+  if [[ "${PLATFORM}" != "ios" ]]; then
+    return
+  fi
+
+  echo "[run-with-logs] Syncing native iOS config via Expo prebuild..."
+  npx expo prebuild --platform ios --no-install
+}
+
 cleanup_stale_android_launcher_assets() {
   local resource_root="${PROJECT_DIR}/android/app/src/main/res"
   if [[ ! -d "${resource_root}" ]]; then
@@ -512,6 +521,7 @@ if [[ "${PLATFORM}" == "android" ]]; then
 fi
 
 if [[ "${PLATFORM}" == "ios" ]]; then
+  sync_ios_native_config
   restore_ios_release_rncore_prebuilt
   start_ios_logs
 else
