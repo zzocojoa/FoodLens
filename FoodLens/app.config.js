@@ -103,10 +103,9 @@ export default {
         "expo-splash-screen",
         {
           image: SPLASH_IMAGE_PATH,
-          imageWidth: 1242,
+          imageWidth: 240,
           resizeMode: "contain",
           backgroundColor: "#010105",
-          imagePosition: "top",
           dark: {
             backgroundColor: "#010105",
           },
