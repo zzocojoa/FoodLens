@@ -114,6 +114,59 @@ resolve_ios_udid() {
   echo "${line}" | sed -E 's/.*\(([0-9A-F-]+)\)$/\1/'
 }
 
+resolve_android_device_serial() {
+  if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+    echo "${ANDROID_SERIAL}"
+    return 0
+  fi
+
+  if ! command -v adb >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local line=""
+  line="$(
+    adb devices -l 2>/dev/null \
+      | awk 'NR > 1 && $2 == "device" { print $1; exit }'
+  )"
+
+  if [[ -z "${line}" ]]; then
+    return 1
+  fi
+
+  echo "${line}"
+}
+
+resolve_android_device_name() {
+  if [[ -n "${ANDROID_DEVICE_NAME:-}" ]]; then
+    echo "${ANDROID_DEVICE_NAME}"
+    return 0
+  fi
+
+  if ! command -v adb >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local line=""
+  line="$(
+    adb devices -l 2>/dev/null \
+      | awk 'NR > 1 && $2 == "device" { print; exit }'
+  )"
+
+  if [[ -z "${line}" ]]; then
+    return 1
+  fi
+
+  local model_name=""
+  model_name="$(printf '%s' "${line}" | sed -nE 's/.*model:([^[:space:]]+).*/\1/p')"
+  if [[ -n "${model_name}" ]]; then
+    echo "${model_name}"
+    return 0
+  fi
+
+  printf '%s' "${line}" | awk '{ print $1 }'
+}
+
 resolve_react_native_version() {
   node --print "require('${PROJECT_DIR}/node_modules/react-native/package.json').version"
 }
@@ -145,6 +198,46 @@ restore_ios_release_rncore_prebuilt() {
   mkdir -p "${rncore_dir}"
   tar -xf "${release_tarball}" -C "${rncore_dir}"
   printf 'Release' > "${rncore_dir}/.last_build_configuration"
+}
+
+cleanup_stale_android_launcher_assets() {
+  local resource_root="${PROJECT_DIR}/android/app/src/main/res"
+  if [[ ! -d "${resource_root}" ]]; then
+    return
+  fi
+
+  local density_dir=""
+  local asset_name=""
+  local png_path=""
+  local webp_path=""
+  local removed_any="0"
+  local asset_names=(
+    "ic_launcher"
+    "ic_launcher_round"
+    "ic_launcher_foreground"
+    "ic_launcher_background"
+    "ic_launcher_monochrome"
+  )
+
+  for density_dir in "${resource_root}"/mipmap-*; do
+    if [[ ! -d "${density_dir}" ]]; then
+      continue
+    fi
+
+    for asset_name in "${asset_names[@]}"; do
+      png_path="${density_dir}/${asset_name}.png"
+      webp_path="${density_dir}/${asset_name}.webp"
+      if [[ -f "${png_path}" && -f "${webp_path}" ]]; then
+        rm -f "${webp_path}"
+        removed_any="1"
+        echo "[run-with-logs] Removed stale Android launcher resource ${webp_path}"
+      fi
+    done
+  done
+
+  if [[ "${removed_any}" == "1" ]]; then
+    echo "[run-with-logs] Cleared duplicate Android launcher resources before Gradle merge."
+  fi
 }
 
 start_ios_logs() {
@@ -217,8 +310,16 @@ build_expo_command() {
   shift 2
 
   local ios_device=""
+  local android_device_name=""
+  local android_device_serial=""
   if [[ "${platform}" == "ios" ]]; then
     ios_device="$(resolve_ios_udid || true)"
+  elif [[ "${platform}" == "android" ]]; then
+    android_device_serial="$(resolve_android_device_serial || true)"
+    android_device_name="$(resolve_android_device_name || true)"
+    if [[ -n "${android_device_serial}" ]]; then
+      export ANDROID_SERIAL="${android_device_serial}"
+    fi
   fi
 
   case "${platform}" in
@@ -236,9 +337,14 @@ build_expo_command() {
       ;;
     android)
       if [[ "${build}" == "release" ]]; then
-        EXPO_CMD=(npx expo run:android --variant release --device)
+        EXPO_CMD=(npx expo run:android --variant release)
       else
-        EXPO_CMD=(npx expo run:android --device)
+        EXPO_CMD=(npx expo run:android)
+      fi
+      if [[ -n "${android_device_name}" ]]; then
+        EXPO_CMD+=(--device "${android_device_name}")
+      else
+        EXPO_CMD+=(--device)
       fi
       ;;
     *)
@@ -349,6 +455,7 @@ fi
 if [[ "${PLATFORM}" == "android" ]]; then
   echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
   npx expo prebuild --platform android --no-install
+  cleanup_stale_android_launcher_assets
   if [[ -f "${ANDROID_MANIFEST_PATH}" ]]; then
     if ! grep -q "com.google.android.geo.API_KEY" "${ANDROID_MANIFEST_PATH}"; then
       echo "[run-with-logs] ERROR: AndroidManifest is missing com.google.android.geo.API_KEY meta-data."
