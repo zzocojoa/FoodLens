@@ -19,7 +19,7 @@
   - Render 배포
   - GitHub Actions release gate / store evidence / postdeploy smoke / rollback rehearsal
 
-## 2. Directory Tree (Current System Map)
+## 2. Directory Tree (Full System Map)
 
 ```tree
 FoodLens-project/
@@ -70,7 +70,17 @@ FoodLens-project/
 - auth state, analysis jobs, retention, deletion은 Postgres backend를 사용합니다.
 - 미디어는 GCS backend를 사용하며, public direct URL 대신 signed render endpoint를 거칩니다.
 
-## 5. Verification Entry Points
+## 5. Installation/Run Path Standard
+
+- Setup: `bash backend/setup.sh`
+- Virtual env: `source .venv/bin/activate`
+- Run backend: `python -m backend.server`
+- Mobile app run:
+  - `cd FoodLens && npm install`
+  - `npm run ios:release:device:logs`
+  - `npm run android:release:device:logs`
+
+## 6. Verification Entry Points
 
 - 제품/문서 인덱스: `docs/README.md`
 - API 계약: `docs/contracts/api-contracts.md`
@@ -81,14 +91,3 @@ FoodLens-project/
 - Release Gate workflow:
   - `.github/workflows/phase6-mobile-store-evidence.yml`
   - `.github/workflows/phase6-postdeploy-smoke.yml`
-
-## 6. Installation / Run Path Standard
-
-- Project root: `FoodLens-project/`
-- Backend setup: `bash backend/setup.sh`
-- Virtual env: `source .venv/bin/activate`
-- Backend run: `python -m backend.server`
-- Mobile app run:
-  - `cd FoodLens && npm install`
-  - `npm run ios:release:device:logs`
-  - `npm run android:release:device:logs`
