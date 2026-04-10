@@ -159,7 +159,7 @@ describe('aiCore mappers', () => {
         expect(mapped.fallback_reason).toBe('barcode_fallback');
     });
 
-    it('prefers top-level barcode observability metadata when payload data does not include it', () => {
+    it('does not synthesize barcode origin when payload data omits it', () => {
         const mapped = mapBarcodeToAnalyzedData({
             food_name: 'Noodles',
             safetyStatus: 'SAFE',
@@ -175,7 +175,7 @@ describe('aiCore mappers', () => {
         expect(mapped.request_id).toBe('req-barcode-top-level');
         expect(mapped.prompt_version).toBe('barcode-v1.0-allergen-analysis');
         expect(mapped.used_model).toBe('gemini-2.0-flash');
-        expect(mapped.analysisOrigin).toBe('barcode_lookup');
+        expect(mapped.analysisOrigin).toBeUndefined();
         expect(mapped.decisionStatus).toBeUndefined();
         expect(mapped.recommendedAction).toBeUndefined();
         expect(mapped.latency_ms).toEqual({ total: 120, source_lookup: 40 });

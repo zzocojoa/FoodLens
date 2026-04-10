@@ -83,7 +83,7 @@ describe('useScanBarcodeFlow', () => {
     mockedResolveRequestIsoCountryCode.mockResolvedValue('KR');
   });
 
-  it('preserves barcode_lookup origin on successful barcode scans', async () => {
+  it('does not synthesize barcode origin on successful barcode scans when lookup omits it', async () => {
     const replace = jest.fn();
     const setPendingAnalysisOrigin = jest.fn();
     const setDataSpy = jest.spyOn(dataStore, 'setData').mockImplementation(() => undefined);
@@ -124,23 +124,19 @@ describe('useScanBarcodeFlow', () => {
     });
 
     expect(setPendingAnalysisOrigin).toHaveBeenCalledWith(null);
-    expect(setDataSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        analysisOrigin: 'barcode_lookup',
-      }),
-      expect.anything(),
-      expect.any(String),
-      expect.any(String)
-    );
-    expect(replace).toHaveBeenCalledWith(
+    const storedResult = setDataSpy.mock.calls[0]?.[0];
+    expect(storedResult?.analysisOrigin).toBeUndefined();
+
+    const routeArg = replace.mock.calls[0]?.[0];
+    expect(routeArg).toEqual(
       expect.objectContaining({
         pathname: '/result',
         params: expect.objectContaining({
-          analysisOrigin: 'barcode_lookup',
           isBarcode: 'true',
         }),
       })
     );
+    expect(routeArg?.params).not.toHaveProperty('analysisOrigin');
 
     setDataSpy.mockRestore();
   });
