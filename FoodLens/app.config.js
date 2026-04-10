@@ -71,7 +71,7 @@ export default {
         },
       },
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
+        backgroundColor: "#FAFBF7",
         foregroundImage: "./assets/images/android-icon-foreground.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png",
       },
@@ -104,9 +104,9 @@ export default {
           image: SPLASH_IMAGE_PATH,
           imageWidth: 240,
           resizeMode: "contain",
-          backgroundColor: "#010105",
+          backgroundColor: "#FFFFFF",
           dark: {
-            backgroundColor: "#010105",
+            backgroundColor: "#FFFFFF",
           },
         },
       ],

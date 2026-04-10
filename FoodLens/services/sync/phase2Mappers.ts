@@ -1,5 +1,11 @@
 import type { UserProfile } from '@/models/User';
 import type { AnalysisRecord } from '@/services/analysis/types';
+import type {
+  AnalysisOrigin,
+  DecisionStatus,
+  RecommendedAction,
+  UncertaintyReason,
+} from '@/services/aiCore/types';
 import {
   normalizeCanonicalLocale,
   normalizeLanguageSettings,
@@ -258,6 +264,45 @@ const parseTimestamp = (value: unknown): Date => {
   return new Date();
 };
 
+const normalizeDecisionStatus = (value: unknown): DecisionStatus | undefined => {
+  if (value === 'OK' || value === 'ASK' || value === 'AVOID') {
+    return value;
+  }
+  return undefined;
+};
+
+const normalizeAnalysisOrigin = (value: unknown): AnalysisOrigin | undefined => {
+  if (
+    value === 'food_photo' ||
+    value === 'label_photo' ||
+    value === 'barcode_lookup' ||
+    value === 'barcode_to_label_fallback'
+  ) {
+    return value;
+  }
+  return undefined;
+};
+
+const normalizeRecommendedAction = (value: unknown): RecommendedAction | undefined => {
+  if (value === 'eat' || value === 'verify_label' || value === 'ask_staff' || value === 'avoid') {
+    return value;
+  }
+  return undefined;
+};
+
+const normalizeUncertaintyReason = (value: unknown): UncertaintyReason | undefined => {
+  if (
+    value === 'image_ambiguity' ||
+    value === 'missing_label_text' ||
+    value === 'barcode_not_found' ||
+    value === 'low_confidence' ||
+    value === 'unknown'
+  ) {
+    return value;
+  }
+  return undefined;
+};
+
 const normalizeLocation = (value: unknown): AnalysisRecord['location'] | undefined => {
   if (!value || typeof value !== 'object') return undefined;
   const payload = value as Record<string, unknown>;
@@ -468,6 +513,10 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
     foodName_en: toStringOrNull(entry['foodName_en']) ?? undefined,
     foodName_ko: toStringOrNull(entry['foodName_ko']) ?? undefined,
     safetyStatus: safetyStatus as AnalysisRecord['safetyStatus'],
+    decisionStatus: normalizeDecisionStatus(entry['decisionStatus']),
+    analysisOrigin: normalizeAnalysisOrigin(entry['analysisOrigin']),
+    recommendedAction: normalizeRecommendedAction(entry['recommendedAction']),
+    uncertaintyReason: normalizeUncertaintyReason(entry['uncertaintyReason']),
     confidence: typeof entry['confidence'] === 'number' ? entry['confidence'] : undefined,
     ingredients,
     nutrition: (entry['nutrition'] as AnalysisRecord['nutrition']) || undefined,

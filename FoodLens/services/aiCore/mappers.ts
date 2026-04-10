@@ -1,4 +1,16 @@
-import { AnalyzedData, LatencyMsBreakdown, LatencyMsByStage, NutritionData, TranslationCard } from './types';
+import {
+    AnalysisOrigin,
+    AnalyzedData,
+    DecisionConfidence,
+    DecisionStatus,
+    LatencyMsBreakdown,
+    LatencyMsByStage,
+    NutritionData,
+    RecommendedAction,
+    SafetyStatus,
+    TranslationCard,
+    UncertaintyReason,
+} from './types';
 import { getI18nSnapshot } from '@/features/i18n/services/i18nStore';
 
 export const clampConfidence = (confidence: unknown) =>
@@ -15,6 +27,59 @@ const getOptionalString = (value: unknown): string | undefined =>
 
 const getNumberOrNull = (value: unknown): number | null =>
     typeof value === 'number' ? value : null;
+
+const parseSafetyStatus = (value: unknown, fallback: SafetyStatus): SafetyStatus => {
+    if (value === 'SAFE' || value === 'CAUTION' || value === 'DANGER') {
+        return value;
+    }
+    return fallback;
+};
+
+const parseDecisionStatus = (value: unknown): DecisionStatus | undefined => {
+    if (value === 'OK' || value === 'ASK' || value === 'AVOID') {
+        return value;
+    }
+    return undefined;
+};
+
+const parseAnalysisOrigin = (value: unknown): AnalysisOrigin | undefined => {
+    if (
+        value === 'food_photo' ||
+        value === 'label_photo' ||
+        value === 'barcode_lookup' ||
+        value === 'barcode_to_label_fallback'
+    ) {
+        return value;
+    }
+    return undefined;
+};
+
+const parseRecommendedAction = (value: unknown): RecommendedAction | undefined => {
+    if (value === 'eat' || value === 'verify_label' || value === 'ask_staff' || value === 'avoid') {
+        return value;
+    }
+    return undefined;
+};
+
+const parseUncertaintyReason = (value: unknown): UncertaintyReason | undefined => {
+    if (
+        value === 'image_ambiguity' ||
+        value === 'missing_label_text' ||
+        value === 'barcode_not_found' ||
+        value === 'low_confidence' ||
+        value === 'unknown'
+    ) {
+        return value;
+    }
+    return undefined;
+};
+
+const parseDecisionConfidence = (value: unknown): DecisionConfidence | undefined => {
+    if (value === 'high' || value === 'medium' || value === 'low') {
+        return value;
+    }
+    return undefined;
+};
 
 const parseLatencyMsByStage = (value: unknown): LatencyMsByStage | undefined => {
     if (!isRecord(value)) return undefined;
@@ -148,17 +213,19 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
               };
           })
         : [];
-    const safetyStatus = data['safetyStatus'];
+    const safetyStatus = parseSafetyStatus(data['safetyStatus'], 'CAUTION');
     const translationCard = parseTranslationCardFromPayload(data);
 
     return {
         foodName: getString(data['foodName'], 'Analyzed Food'),
         foodName_en: getOptionalString(data['foodName_en']),
         foodName_ko: getOptionalString(data['foodName_ko']),
-        safetyStatus:
-            safetyStatus === 'SAFE' || safetyStatus === 'CAUTION' || safetyStatus === 'DANGER'
-                ? safetyStatus
-                : 'CAUTION',
+        safetyStatus,
+        decisionStatus: parseDecisionStatus(data['decision_status']),
+        analysisOrigin: parseAnalysisOrigin(data['analysis_origin']),
+        recommendedAction: parseRecommendedAction(data['recommended_action']),
+        uncertaintyReason: parseUncertaintyReason(data['uncertainty_reason']),
+        decisionConfidence: parseDecisionConfidence(data['decision_confidence']),
         confidence: clampConfidence(data['confidence']),
         request_id: getOptionalString(data['request_id']),
         prompt_version: getOptionalString(data['prompt_version']),
@@ -187,6 +254,7 @@ export const mapBarcodeToAnalyzedData = (
     }
 ): AnalyzedData => {
     const data = isRecord(input) ? input : {};
+    const safetyStatus = parseSafetyStatus(data['safetyStatus'], 'SAFE');
     const nutrition: NutritionData | undefined = {
         calories: getNumberOrNull(data['calories']),
         protein: getNumberOrNull(data['protein']),
@@ -222,10 +290,12 @@ export const mapBarcodeToAnalyzedData = (
         foodName: getString(data['food_name'], 'Unknown Product'),
         foodName_en: getOptionalString(data['food_name_en']),
         foodName_ko: getOptionalString(data['food_name_ko']),
-        safetyStatus:
-            data['safetyStatus'] === 'SAFE' || data['safetyStatus'] === 'CAUTION' || data['safetyStatus'] === 'DANGER'
-                ? data['safetyStatus']
-                : 'SAFE',
+        safetyStatus,
+        decisionStatus: parseDecisionStatus(data['decision_status']),
+        analysisOrigin: parseAnalysisOrigin(data['analysis_origin']) ?? 'barcode_lookup',
+        recommendedAction: parseRecommendedAction(data['recommended_action']),
+        uncertaintyReason: parseUncertaintyReason(data['uncertainty_reason']),
+        decisionConfidence: parseDecisionConfidence(data['decision_confidence']),
         confidence: 100,
         ingredients,
         nutrition,

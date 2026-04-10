@@ -1,5 +1,6 @@
 import { ImageSourcePropType } from 'react-native';
 import { Colors } from '@/constants/theme';
+import type { DecisionStatus, RecommendedAction, SafetyStatus } from '@/services/aiCore/types';
 
 export type ResultTheme = typeof Colors.light;
 
@@ -30,6 +31,9 @@ export type ResultContentData = {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
+    safetyStatus: SafetyStatus;
+    decisionStatus?: DecisionStatus;
+    recommendedAction?: RecommendedAction;
     confidence?: number;
     ingredients: ResultIngredient[];
     raw_result?: string;

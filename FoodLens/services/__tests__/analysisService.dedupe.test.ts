@@ -110,6 +110,10 @@ describe('AnalysisService barcode dedupe', () => {
       {
         foodName: 'Test cereal',
         safetyStatus: 'SAFE',
+        decisionStatus: 'OK',
+        analysisOrigin: 'food_photo',
+        recommendedAction: 'eat',
+        uncertaintyReason: 'unknown',
         ingredients: [],
         raw_data: {},
       } as any,
@@ -122,5 +126,19 @@ describe('AnalysisService barcode dedupe', () => {
     expect(cached?.length).toBe(1);
     expect(cached?.[0]?.id).toBe(saved.id);
     expect(cached?.[0]?.foodName).toBe('Test cereal');
+    expect(cached?.[0]?.decisionStatus).toBe('OK');
+    expect(cached?.[0]?.analysisOrigin).toBe('food_photo');
+    expect(cached?.[0]?.recommendedAction).toBe('eat');
+    expect(cached?.[0]?.uncertaintyReason).toBe('unknown');
+    expect(mockedEnqueueHistorySync).toHaveBeenCalledWith(
+      'usr_test',
+      expect.objectContaining({
+        decisionStatus: 'OK',
+        analysisOrigin: 'food_photo',
+        recommendedAction: 'eat',
+        uncertaintyReason: 'unknown',
+      }),
+      saved.id
+    );
   });
 });

@@ -31,7 +31,22 @@ jest.mock('../cache', () => ({
 }));
 
 jest.mock('../mappers', () => ({
-  mapAnalyzedData: jest.fn((value: unknown) => value),
+  mapAnalyzedData: jest.fn((value: unknown) => {
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+
+    const payload = value as Record<string, unknown>;
+
+    return {
+      ...payload,
+      decisionStatus: payload['decision_status'],
+      analysisOrigin: payload['analysis_origin'],
+      recommendedAction: payload['recommended_action'],
+      uncertaintyReason: payload['uncertainty_reason'],
+      decisionConfidence: payload['decision_confidence'],
+    };
+  }),
 }));
 
 jest.mock('./../pendingAnalysisStore', () => ({
@@ -144,6 +159,10 @@ describe('analysisJobs', () => {
           foodName_en: 'Bibimbap',
           foodName_ko: '비빔밥',
           safetyStatus: 'SAFE',
+          decision_status: 'OK',
+          analysis_origin: 'food_photo',
+          recommended_action: 'eat',
+          uncertainty_reason: 'unknown',
           ingredients: [],
         },
       }) as unknown as Response
@@ -165,6 +184,10 @@ describe('analysisJobs', () => {
     expect(result.foodName_en).toBe('Bibimbap');
     expect(result.foodName_ko).toBe('비빔밥');
     expect(result.request_id).toBe('req_123');
+    expect(result.decisionStatus).toBe('OK');
+    expect(result.analysisOrigin).toBe('food_photo');
+    expect(result.recommendedAction).toBe('eat');
+    expect(result.uncertaintyReason).toBe('unknown');
     expect(statuses).toEqual(['queued', 'queued', 'completed']);
     expect(pendingStoreModule.savePendingAnalysisJob).toHaveBeenCalled();
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
@@ -228,6 +251,10 @@ describe('analysisJobs', () => {
           foodName_en: 'Salad',
           foodName_ko: '샐러드',
           safetyStatus: 'SAFE',
+          decision_status: 'OK',
+          analysis_origin: 'food_photo',
+          recommended_action: 'eat',
+          uncertainty_reason: 'unknown',
           ingredients: [],
         },
       }) as unknown as Response
@@ -253,6 +280,63 @@ describe('analysisJobs', () => {
     expect(result.foodName_en).toBe('Salad');
     expect(result.foodName_ko).toBe('샐러드');
     expect(result.request_id).toBe('req_resume');
+    expect(result.decisionStatus).toBe('OK');
+    expect(result.analysisOrigin).toBe('food_photo');
+    expect(result.recommendedAction).toBe('eat');
+    expect(result.uncertaintyReason).toBe('unknown');
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats fallback_completed as a terminal success status', async () => {
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_fallback',
+        request_id: 'req_fallback',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_fallback',
+          request_id: 'req_fallback',
+          status: 'fallback_completed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          foodName: 'Soup',
+          safetyStatus: 'CAUTION',
+          decision_status: 'ASK',
+          analysis_origin: 'label_photo',
+          recommended_action: 'verify_label',
+          uncertainty_reason: 'missing_label_text',
+          ingredients: [],
+          fallback_reason: 'nutrition_unavailable',
+        },
+      }) as unknown as Response
+    );
+
+    const result = await runAsyncAnalysisJob({
+      flow: 'camera',
+      mode: 'food',
+      imageUri: 'file://food.jpg',
+      isoCountryCode: 'KR',
+      location: null,
+      timestamp: null,
+      sourceType: 'camera',
+    });
+
+    expect(result.foodName).toBe('Soup');
+    expect(result.decisionStatus).toBe('ASK');
+    expect(result.analysisOrigin).toBe('label_photo');
+    expect(result.recommendedAction).toBe('verify_label');
+    expect(result.uncertaintyReason).toBe('missing_label_text');
+    expect(result.fallback_reason).toBe('nutrition_unavailable');
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
   });
 

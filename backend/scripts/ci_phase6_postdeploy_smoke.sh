@@ -147,6 +147,144 @@ print(token)
 PY
 }
 
+write_smoke_image_fixture() {
+  local output_path="$1"
+
+  python3 - "$output_path" <<'PY'
+import base64
+import sys
+
+png_base64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+    "/x8AAusB9pJzi10AAAAASUVORK5CYII="
+)
+
+with open(sys.argv[1], "wb") as handle:
+    handle.write(base64.b64decode(png_base64))
+PY
+}
+
+post_multipart_status() {
+  local label="$1"
+  local url="$2"
+  local file_path="$3"
+  local file_content_type="$4"
+  local mode="$5"
+  local locale="$6"
+  local allergy_info="$7"
+  local authorization_header="$8"
+  local headers_path="${ARTIFACT_DIR}/${label}.headers"
+  local body_path="${ARTIFACT_DIR}/${label}.body"
+  local status_code=""
+
+  if [[ -n "${authorization_header}" ]]; then
+    status_code="$(
+      curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+        -X POST \
+        -H "${authorization_header}" \
+        -D "${headers_path}" \
+        -o "${body_path}" \
+        -w '%{http_code}' \
+        -F "file=@${file_path};type=${file_content_type}" \
+        -F "allergy_info=${allergy_info}" \
+        -F "locale=${locale}" \
+        -F "mode=${mode}" \
+        "${url}"
+    )"
+  else
+    status_code="$(
+      curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+        -X POST \
+        -D "${headers_path}" \
+        -o "${body_path}" \
+        -w '%{http_code}' \
+        -F "file=@${file_path};type=${file_content_type}" \
+        -F "allergy_info=${allergy_info}" \
+        -F "locale=${locale}" \
+        -F "mode=${mode}" \
+        "${url}"
+    )"
+  fi
+
+  printf '%s\n' "${status_code}"
+}
+
+extract_json_field() {
+  local body_path="$1"
+  local field_name="$2"
+
+  python3 - "$body_path" "$field_name" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+value = payload.get(sys.argv[2])
+if value is None:
+    raise SystemExit(f"Missing field: {sys.argv[2]}")
+
+print(str(value))
+PY
+}
+
+poll_analysis_job_until_terminal() {
+  local label_prefix="$1"
+  local job_id="$2"
+  local authorization_header="$3"
+  local attempt=1
+
+  while [[ "${attempt}" -le 30 ]]; do
+    local label="${label_prefix}-poll-${attempt}"
+    local headers_path="${ARTIFACT_DIR}/${label}.headers"
+    local body_path="${ARTIFACT_DIR}/${label}.body"
+    local status_code=""
+
+    if [[ -n "${authorization_header}" ]]; then
+      status_code="$(
+        curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+          -H "${authorization_header}" \
+          -D "${headers_path}" \
+          -o "${body_path}" \
+          -w '%{http_code}' \
+          "${BASE_URL}/analyze/jobs/${job_id}"
+      )"
+    else
+      status_code="$(
+        curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+          -D "${headers_path}" \
+          -o "${body_path}" \
+          -w '%{http_code}' \
+          "${BASE_URL}/analyze/jobs/${job_id}"
+      )"
+    fi
+
+    if [[ "${status_code}" != "200" ]]; then
+      echo "[Phase6 Postdeploy Smoke] ${label} expected 200, got ${status_code}"
+      exit 1
+    fi
+
+    local job_status=""
+    job_status="$(extract_json_field "${body_path}" "status")"
+
+    if [[ "${job_status}" == "completed" || "${job_status}" == "fallback_completed" ]]; then
+      record_result "${label_prefix}-terminal" "PASS" "${job_status}"
+      return 0
+    fi
+
+    if [[ "${job_status}" == "failed" ]]; then
+      echo "[Phase6 Postdeploy Smoke] ${label_prefix} failed"
+      exit 1
+    fi
+
+    sleep 1
+    attempt="$((attempt + 1))"
+  done
+
+  echo "[Phase6 Postdeploy Smoke] ${label_prefix} timed out"
+  exit 1
+}
+
 resolve_media_render_url() {
   local profile_body_path="$1"
   local history_body_path="$2"
@@ -301,6 +439,30 @@ record_result "media-render-source" "PASS" "${MEDIA_RENDER_SOURCE}"
 assert_status "media-render" "${MEDIA_RENDER_URL}" "200" ""
 assert_header_contains "media-render" "content-type" "image/"
 record_result "media-render-header" "PASS" "content-type=image/*"
+
+CURRENT_STEP="analyze-jobs-submit"
+SMOKE_ANALYZE_IMAGE_PATH="${ARTIFACT_DIR}/analyze-jobs-smoke.png"
+write_smoke_image_fixture "${SMOKE_ANALYZE_IMAGE_PATH}"
+ANALYZE_JOBS_SUBMIT_STATUS="$(
+  post_multipart_status \
+    "analyze-jobs-submit" \
+    "${BASE_URL}/analyze/jobs" \
+    "${SMOKE_ANALYZE_IMAGE_PATH}" \
+    "image/png" \
+    "food" \
+    "en-US" \
+    "None" \
+    "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
+)"
+if [[ "${ANALYZE_JOBS_SUBMIT_STATUS}" != "202" ]]; then
+  echo "[Phase6 Postdeploy Smoke] analyze-jobs-submit expected 202, got ${ANALYZE_JOBS_SUBMIT_STATUS}"
+  exit 1
+fi
+ANALYZE_JOBS_JOB_ID="$(extract_json_field "${ARTIFACT_DIR}/analyze-jobs-submit.body" "job_id")"
+record_result "analyze-jobs-submit" "PASS" "${ANALYZE_JOBS_JOB_ID}"
+
+CURRENT_STEP="analyze-jobs-poll"
+poll_analysis_job_until_terminal "analyze-jobs" "${ANALYZE_JOBS_JOB_ID}" "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
 
 CURRENT_STEP="rollback-rehearsal"
 if [[ "${ROLLBACK_VERDICT}" != "pass" ]]; then

@@ -35,7 +35,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run postdeploy smoke gate
+      - name: Run postdeploy smoke gate (auth, media, analyze jobs)
         env:
           PHASE6_RELEASE_LABEL: ${{ inputs.release_label }}
           PHASE6_POSTDEPLOY_BASE_URL: ${{ inputs.postdeploy_base_url }}
@@ -48,7 +48,7 @@ jobs:
           set -o pipefail
           bash backend/scripts/ci_phase6_postdeploy_smoke.sh
 
-      - name: Upload postdeploy smoke artifacts
+      - name: Upload postdeploy smoke artifacts (summary + analyze-jobs evidence)
         if: always()
         uses: actions/upload-artifact@v4
         with:

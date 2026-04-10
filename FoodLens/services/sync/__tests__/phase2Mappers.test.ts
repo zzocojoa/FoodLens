@@ -139,6 +139,10 @@ describe('phase2Mappers', () => {
       id: 'rec_1',
       foodName: 'Kimchi',
       safetyStatus: 'SAFE',
+      decisionStatus: 'OK',
+      analysisOrigin: 'food_photo',
+      recommendedAction: 'eat',
+      uncertaintyReason: 'unknown',
       request_id: 'req-1',
       prompt_version: 'food-v3.2',
       used_model: 'gemini-2.5-pro',
@@ -155,10 +159,38 @@ describe('phase2Mappers', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.id).toBe('rec_1');
     expect(parsed?.foodName).toBe('Kimchi');
+    expect(parsed?.decisionStatus).toBe('OK');
+    expect(parsed?.analysisOrigin).toBe('food_photo');
+    expect(parsed?.recommendedAction).toBe('eat');
+    expect(parsed?.uncertaintyReason).toBe('unknown');
     expect(parsed?.request_id).toBe('req-1');
     expect(parsed?.prompt_version).toBe('food-v3.2');
     expect(parsed?.used_model).toBe('gemini-2.5-pro');
     expect(parsed?.timestamp.toISOString()).toBe('2026-02-25T01:00:00.000Z');
+  });
+
+  it('ignores invalid decision metadata values from remote history payloads', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        decisionStatus: 'MAYBE',
+        analysisOrigin: 'unknown_origin',
+        recommendedAction: 'wait',
+        uncertaintyReason: 'mystery',
+        ingredients: [],
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.decisionStatus).toBeUndefined();
+    expect(parsed?.analysisOrigin).toBeUndefined();
+    expect(parsed?.recommendedAction).toBeUndefined();
+    expect(parsed?.uncertaintyReason).toBeUndefined();
   });
 
   it('ignores bare filename history imageUri values from server payloads', () => {

@@ -30,6 +30,8 @@ describe('aiCore mappers', () => {
         const mapped = mapAnalyzedData({});
         expect(mapped.foodName).toBe('Analyzed Food');
         expect(mapped.safetyStatus).toBe('CAUTION');
+        expect(mapped.decisionStatus).toBeUndefined();
+        expect(mapped.recommendedAction).toBeUndefined();
         expect(mapped.ingredients).toEqual([]);
         expect(typeof mapped.raw_result).toBe('string');
     });
@@ -38,6 +40,11 @@ describe('aiCore mappers', () => {
         const mapped = mapAnalyzedData({
             foodName: 'Soup',
             safetyStatus: 'SAFE',
+            decision_status: 'OK',
+            analysis_origin: 'food_photo',
+            recommended_action: 'eat',
+            uncertainty_reason: 'unknown',
+            decision_confidence: 'high',
             ingredients: [],
             request_id: 'req-1',
             prompt_version: 'food-v3.2-context-engineered',
@@ -49,6 +56,11 @@ describe('aiCore mappers', () => {
         expect(mapped.request_id).toBe('req-1');
         expect(mapped.prompt_version).toBe('food-v3.2-context-engineered');
         expect(mapped.used_model).toBe('gemini-2.5-pro');
+        expect(mapped.decisionStatus).toBe('OK');
+        expect(mapped.analysisOrigin).toBe('food_photo');
+        expect(mapped.recommendedAction).toBe('eat');
+        expect(mapped.uncertaintyReason).toBe('unknown');
+        expect(mapped.decisionConfidence).toBe('high');
         expect(mapped.latency_ms).toEqual({ total: 1234, preprocess: 100 });
         expect(mapped.latency_ms_by_stage).toEqual({ inference: 1200 });
     });
@@ -104,6 +116,11 @@ describe('aiCore mappers', () => {
         const mapped = mapBarcodeToAnalyzedData({
             food_name: 'Noodles',
             safetyStatus: 'SAFE',
+            decision_status: 'OK',
+            analysis_origin: 'barcode_lookup',
+            recommended_action: 'eat',
+            uncertainty_reason: 'unknown',
+            decision_confidence: 'high',
             calories: 200,
             protein: 10,
             carbs: 20,
@@ -126,6 +143,11 @@ describe('aiCore mappers', () => {
         });
 
         expect(mapped.foodName).toBe('Noodles');
+        expect(mapped.decisionStatus).toBe('OK');
+        expect(mapped.analysisOrigin).toBe('barcode_lookup');
+        expect(mapped.recommendedAction).toBe('eat');
+        expect(mapped.uncertaintyReason).toBe('unknown');
+        expect(mapped.decisionConfidence).toBe('high');
         expect(mapped.ingredients).toHaveLength(2);
         expect(mapped.ingredients[1].isAllergen).toBe(true);
         expect(mapped.nutrition?.calories).toBe(200);
@@ -153,6 +175,9 @@ describe('aiCore mappers', () => {
         expect(mapped.request_id).toBe('req-barcode-top-level');
         expect(mapped.prompt_version).toBe('barcode-v1.0-allergen-analysis');
         expect(mapped.used_model).toBe('gemini-2.0-flash');
+        expect(mapped.analysisOrigin).toBe('barcode_lookup');
+        expect(mapped.decisionStatus).toBeUndefined();
+        expect(mapped.recommendedAction).toBeUndefined();
         expect(mapped.latency_ms).toEqual({ total: 120, source_lookup: 40 });
         expect(mapped.latency_ms_by_stage).toEqual({ total: 120 });
     });

@@ -4,9 +4,20 @@
 
 ## 1. Architecture Summary
 
-- Mobile: Expo/React Native (`/FoodLens`)
-- Backend: FastAPI (`/backend`)
-- Docs/Contracts: `/docs`, `/backend/contracts`
+- Mobile App
+  - Expo Router + React Native (`/FoodLens`)
+  - Google / Kakao / Email auth UI, 분석 결과, 히스토리, 푸드 패스포트, Support & Policies
+- Backend API
+  - FastAPI (`/backend`)
+  - 인증, 분석, 바코드 조회, 미디어 업로드/렌더, 삭제 요청 처리
+- Runtime Stores
+  - Postgres 기반 auth state, analysis jobs, nutrition cache, retention, deletion queue
+- Media Path
+  - 업로드: `POST /me/media/upload`
+  - 표시: signed `GET /media/render/{asset_id}`
+- Delivery / Release Gate
+  - Render 배포
+  - GitHub Actions release gate / store evidence / postdeploy smoke / rollback rehearsal
 
 ## 2. Directory Tree (Full System Map)
 
@@ -14,39 +25,69 @@
 FoodLens-project/
 ├── FoodLens/
 │   ├── app/
+│   ├── components/
 │   ├── features/
 │   ├── services/
 │   ├── scripts/
+│   ├── assets/
 │   └── package.json
 ├── backend/
 │   ├── server.py
 │   ├── modules/
-│   ├── tests/
 │   ├── scripts/
+│   ├── tests/
 │   └── requirements.txt
 ├── docs/
 │   ├── contracts/
+│   ├── privacy-policy/
 │   ├── roadmap/
-│   ├── scripts/
-│   └── architecture/
+│   ├── terms-of-service/
+│   └── walkthroughs/
+├── .github/workflows/
 └── render.yaml
 ```
 
 ## 3. Runtime Boundaries
 
-- 인증/세션은 백엔드 `/auth/*` 및 모바일 secure storage 경로를 통해 관리합니다.
-- 사용자 데이터 소유권은 `user_id` 기준으로 서버에 귀속됩니다.
-- 모바일 로컬 저장소는 캐시/오프라인 보조 계층으로 동작합니다.
+- 인증/세션
+  - `/auth/*`는 백엔드가 소유하고, 모바일은 access/refresh token을 secure storage에 저장합니다.
+  - 계정 소유권은 항상 `user_id` 기준입니다.
+- 개인화/동기화
+  - `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history`가 서버 source of truth입니다.
+  - 모바일 로컬 저장소는 캐시/오프라인 보조 계층입니다.
+- 분석
+  - 동기 분석: `/analyze`, `/analyze/label`, `/analyze/smart`, `/lookup/barcode`
+  - 비동기 분석: `/analyze/jobs`, `/analyze/jobs/{job_id}`
+- 미디어
+  - 업로드 자산은 storage backend에 저장되고, 앱은 signed render URL로만 서버 자산을 다시 읽습니다.
+- 삭제/retention
+  - Delete My Data / Delete Account 요청은 별도 queue/status store를 통해 처리됩니다.
 
-## 4. Verification Entry Points
+## 4. Deployment Topology
 
-- API 계약: `docs/contracts/api-contracts.md`
-- OpenAPI 스냅샷: `backend/contracts/openapi.json`
-- 컷오버 리허설: `backend/scripts/phase2_cutover_rehearsal.sh`
+- 백엔드는 Render web service(`foodlens-api`)에서 Docker 기반으로 동작합니다.
+- 주요 운영 env는 `render.yaml`에 선언되어 있습니다.
+- auth state, analysis jobs, retention, deletion은 Postgres backend를 사용합니다.
+- 미디어는 GCS backend를 사용하며, public direct URL 대신 signed render endpoint를 거칩니다.
 
 ## 5. Installation/Run Path Standard
 
-- Project root: `FoodLens-project/`
 - Setup: `bash backend/setup.sh`
 - Virtual env: `source .venv/bin/activate`
 - Run backend: `python -m backend.server`
+- Mobile app run:
+  - `cd FoodLens && npm install`
+  - `npm run ios:release:device:logs`
+  - `npm run android:release:device:logs`
+
+## 6. Verification Entry Points
+
+- 제품/문서 인덱스: `docs/README.md`
+- API 계약: `docs/contracts/api-contracts.md`
+- OpenAPI 스냅샷: `backend/contracts/openapi.json`
+- Android/iOS 실기기 빌드:
+  - `FoodLens/scripts/run-android-device-release-with-logs.sh`
+  - `FoodLens/scripts/run-ios-device-release-with-logs.sh`
+- Release Gate workflow:
+  - `.github/workflows/phase6-mobile-store-evidence.yml`
+  - `.github/workflows/phase6-postdeploy-smoke.yml`

@@ -5,6 +5,7 @@ import {
     FlashMode,
     useCameraPermissions,
 } from 'expo-camera';
+import { Href } from 'expo-router';
 import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
@@ -22,6 +23,8 @@ import { useScanBarcodeFlow } from './useScanBarcodeFlow';
 import { useScanCaptureFlow } from './useScanCaptureFlow';
 import { useScanGalleryFlow } from './useScanGalleryFlow';
 import { useScanAnalysisAdGate } from './useScanAnalysisAdGate';
+import { dataStore } from '@/services/dataStore';
+import type { AnalysisOrigin } from '@/services/aiCore/types';
 
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
@@ -45,6 +48,7 @@ export const useScanCameraGateway = () => {
     const isProcessingRef = useRef(false);
     const cachedLocation = useRef<LocationData | null | undefined>(undefined);
     const hasResumedPendingRef = useRef(false);
+    const pendingResultAnalysisOriginRef = useRef<AnalysisOrigin | null>(null);
 
     const { isConnected } = useNetworkStatus();
     const isConnectedRef = useRef(true);
@@ -57,6 +61,12 @@ export const useScanCameraGateway = () => {
     useEffect(() => {
         setScanned(false);
         isProcessingRef.current = false;
+    }, [mode]);
+
+    useEffect(() => {
+        if (mode === 'LABEL') return;
+        pendingResultAnalysisOriginRef.current = null;
+        dataStore.setPendingAnalysisOrigin(null);
     }, [mode]);
 
     const laserAnim = useScanCameraLaserAnimation(mode);
@@ -89,10 +99,41 @@ export const useScanCameraGateway = () => {
         isProcessingRef.current = false;
     }, []);
 
+    const setPendingAnalysisOrigin = useCallback((analysisOrigin: AnalysisOrigin | null) => {
+        pendingResultAnalysisOriginRef.current = analysisOrigin;
+        dataStore.setPendingAnalysisOrigin(analysisOrigin);
+    }, []);
+
+    const replaceWithAnalysisOrigin = useCallback(
+        (href: Href) => {
+            const pendingAnalysisOrigin = pendingResultAnalysisOriginRef.current;
+            if (
+                !pendingAnalysisOrigin ||
+                typeof href === 'string' ||
+                !('pathname' in href) ||
+                href.pathname !== '/result'
+            ) {
+                replace(href);
+                return;
+            }
+
+            pendingResultAnalysisOriginRef.current = null;
+            replace({
+                ...href,
+                params: {
+                    ...(href.params || {}),
+                    analysisOrigin: pendingAnalysisOrigin,
+                },
+            });
+        },
+        [replace]
+    );
+
     const handleCancelAnalysis = useCallback(() => {
         isCancelled.current = true;
+        setPendingAnalysisOrigin(null);
         resetState();
-    }, [resetState]);
+    }, [resetState, setPendingAnalysisOrigin]);
 
     const handleClose = () => {
         if (isAnalyzing) {
@@ -168,13 +209,13 @@ export const useScanCameraGateway = () => {
                 setCapturedImage,
                 setActiveStep,
                 setUploadProgress,
-                replace,
+                replace: replaceWithAnalysisOrigin,
                 resetState,
                 handleError,
                 ensureAnalysisAccess,
             });
         },
-        [ensureAnalysisAccess, handleError, resetState, replace, t]
+        [ensureAnalysisAccess, handleError, replaceWithAnalysisOrigin, resetState, t]
     );
 
     const processImage = useCallback(
@@ -249,7 +290,7 @@ export const useScanCameraGateway = () => {
                 setCapturedImage,
                 setActiveStep,
                 setUploadProgress,
-                replace,
+                replace: replaceWithAnalysisOrigin,
                 resetState,
                 handleError,
             });
@@ -263,7 +304,7 @@ export const useScanCameraGateway = () => {
         return () => {
             isMounted = false;
         };
-    }, [handleError, replace, resetState]);
+    }, [handleError, replaceWithAnalysisOrigin, resetState]);
 
 
 
@@ -281,6 +322,7 @@ export const useScanCameraGateway = () => {
         setIsAnalyzing,
         setActiveStep,
         setMode,
+        setPendingAnalysisOrigin,
         ensureAnalysisAccess,
         t,
     });

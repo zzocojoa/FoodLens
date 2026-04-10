@@ -29,8 +29,30 @@ export const resultContentStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 150,
     },
+    decisionSection: {
+        marginBottom: 24,
+        gap: 14,
+    },
+    decisionStatusBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 999,
+        borderWidth: 1,
+    },
+    decisionStatusText: {
+        fontSize: 12,
+        fontWeight: '900',
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
+    },
+    decisionActionText: {
+        fontSize: 26,
+        fontWeight: '900',
+        lineHeight: 32,
+    },
     headerSection: {
-        marginBottom: 40,
+        marginBottom: 30,
     },
     subHeaderRow: {
         flexDirection: 'row',

@@ -8,6 +8,11 @@ from backend.modules.contracts.observability import LatencyMsContract
 
 
 SafetyStatus = Literal["SAFE", "CAUTION", "DANGER"]
+DecisionStatus = Literal["OK", "ASK", "AVOID"]
+AnalysisOrigin = Literal["food_photo", "label_photo", "barcode_lookup", "barcode_to_label_fallback"]
+RecommendedAction = Literal["eat", "verify_label", "ask_staff", "avoid"]
+UncertaintyReason = Literal["image_ambiguity", "missing_label_text", "barcode_not_found", "low_confidence", "unknown"]
+DecisionConfidence = Literal["high", "medium", "low"]
 
 
 class BarcodeIngredientContract(BaseModel):
@@ -34,6 +39,11 @@ class BarcodeDataContract(BaseModel):
     food_name_en: Optional[str] = None
     food_name_ko: Optional[str] = None
     safetyStatus: Optional[SafetyStatus] = None
+    decision_status: Optional[DecisionStatus] = None
+    analysis_origin: Optional[AnalysisOrigin] = None
+    recommended_action: Optional[RecommendedAction] = None
+    uncertainty_reason: Optional[UncertaintyReason] = None
+    decision_confidence: Optional[DecisionConfidence] = None
     coachMessage: Optional[str] = None
     raw_result: Optional[str] = None
     raw_result_en: Optional[str] = None

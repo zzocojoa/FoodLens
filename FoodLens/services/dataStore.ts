@@ -5,6 +5,7 @@ import type {
   AnalysisStoreResult,
   AnalysisStoreSnapshot,
 } from './contracts/analysisStore';
+import type { AnalysisOrigin } from './aiCore/types';
 
 const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
 const BACKUP_ERROR_LOG_PREFIX = '[AnalysisDataStore]';
@@ -18,6 +19,7 @@ class AnalysisDataStore {
   private currentImageUri: string | null = null;
   private currentTimestamp: string | null = null;
   private currentRecordId: string | null = null;
+  private pendingAnalysisOrigin: AnalysisOrigin | null = null;
 
   private constructor() {}
 
@@ -35,14 +37,28 @@ class AnalysisDataStore {
     timestamp?: string,
     recordId?: string | null
   ): void {
-    this.currentResult = result;
+    const finalResult =
+      this.pendingAnalysisOrigin && !result.analysisOrigin
+        ? { ...result, analysisOrigin: this.pendingAnalysisOrigin }
+        : result;
+
+    this.currentResult = finalResult;
     this.currentLocation = location;
     this.currentImageUri = imageUri;
     this.currentTimestamp = timestamp || nowIso();
     this.currentRecordId = recordId || null;
+    this.pendingAnalysisOrigin = null;
     
     // Fire-and-forget backup
     this.saveBackup().catch((error) => console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to backup analysis data`, error));
+  }
+
+  public setPendingAnalysisOrigin(analysisOrigin: AnalysisOrigin | null): void {
+    this.pendingAnalysisOrigin = analysisOrigin;
+  }
+
+  public getPendingAnalysisOrigin(): AnalysisOrigin | null {
+    return this.pendingAnalysisOrigin;
   }
 
   public getData(): AnalysisStoreSnapshot {
@@ -110,6 +126,7 @@ class AnalysisDataStore {
     this.currentImageUri = null;
     this.currentTimestamp = null;
     this.currentRecordId = null;
+    this.pendingAnalysisOrigin = null;
     await SafeStorage.remove(DATA_STORE_BACKUP_KEY);
   }
 }
