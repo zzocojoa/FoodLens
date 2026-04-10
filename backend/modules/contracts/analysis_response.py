@@ -7,6 +7,11 @@ from backend.modules.contracts.observability import LatencyMsContract
 
 
 SafetyStatus = Literal["SAFE", "CAUTION", "DANGER"]
+DecisionStatus = Literal["OK", "ASK", "AVOID"]
+AnalysisOrigin = Literal["food_photo", "label_photo", "barcode_lookup", "barcode_to_label_fallback"]
+RecommendedAction = Literal["eat", "verify_label", "ask_staff", "avoid"]
+UncertaintyReason = Literal["image_ambiguity", "missing_label_text", "barcode_not_found", "low_confidence", "unknown"]
+DecisionConfidence = Literal["high", "medium", "low"]
 
 
 class TranslationCardContract(BaseModel):
@@ -42,6 +47,11 @@ class AnalysisResponseContract(BaseModel):
     foodName: str
     safetyStatus: SafetyStatus
     ingredients: list[IngredientContract] = Field(default_factory=list)
+    decision_status: Optional[DecisionStatus] = None
+    analysis_origin: Optional[AnalysisOrigin] = None
+    recommended_action: Optional[RecommendedAction] = None
+    uncertainty_reason: Optional[UncertaintyReason] = None
+    decision_confidence: Optional[DecisionConfidence] = None
 
     foodName_en: Optional[str] = None
     foodName_ko: Optional[str] = None

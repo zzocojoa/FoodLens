@@ -28,12 +28,32 @@ export interface LatencyMsBreakdown {
 }
 
 export type LatencyMsByStage = Record<string, number>;
+export type SafetyStatus = 'SAFE' | 'CAUTION' | 'DANGER';
+export type DecisionStatus = 'OK' | 'ASK' | 'AVOID';
+export type AnalysisOrigin =
+    | 'food_photo'
+    | 'label_photo'
+    | 'barcode_lookup'
+    | 'barcode_to_label_fallback';
+export type RecommendedAction = 'eat' | 'verify_label' | 'ask_staff' | 'avoid';
+export type UncertaintyReason =
+    | 'image_ambiguity'
+    | 'missing_label_text'
+    | 'barcode_not_found'
+    | 'low_confidence'
+    | 'unknown';
+export type DecisionConfidence = 'high' | 'medium' | 'low';
 
 export interface AnalyzedData {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
-    safetyStatus: 'SAFE' | 'CAUTION' | 'DANGER';
+    safetyStatus: SafetyStatus;
+    decisionStatus?: DecisionStatus;
+    analysisOrigin?: AnalysisOrigin;
+    recommendedAction?: RecommendedAction;
+    uncertaintyReason?: UncertaintyReason;
+    decisionConfidence?: DecisionConfidence;
     confidence?: number;
     request_id?: string;
     prompt_version?: string;

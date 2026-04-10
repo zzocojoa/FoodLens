@@ -1,76 +1,103 @@
 # FoodLens API 계약 기준서 (비개발자 이해형)
 
 ## 1) 이 문서는 왜 필요한가?
-- 앱과 서버가 서로 다른 형식을 쓰면, 갑자기 화면이 깨지거나 저장이 실패합니다.
-- 이 문서는 "서로 약속한 데이터 형식"을 고정하는 문서입니다.
-- 한쪽에서 바꿀 때 반드시 이 문서를 같이 업데이트해야 합니다.
+
+- 앱과 서버가 서로 다른 형식을 쓰면 저장, 로그인, 분석 결과 표시가 깨질 수 있습니다.
+- 이 문서는 **현재 실제로 운영 중인 API 약속**을 고정하는 문서입니다.
+- 문서와 구현이 다르면 구현/배포 기준으로 문서를 즉시 갱신해야 합니다.
 
 ## 2) 공통 규칙
-- 모든 응답은 가능하면 다음 메타를 포함합니다.
-  - `request_id`: 요청 추적 번호 (문제 추적용)
-  - `used_model`: 실제 사용한 AI 모델명 (분석 API)
-  - `prompt_version`: 적용 프롬프트 버전 (분석 API)
-  - `latency_ms`: 동기 API의 총/단계별 지연시간
-  - `latency_ms_by_stage`: 비동기 분석 단계별 지연시간 (job status API)
-- 실패 응답도 사람이 이해 가능한 메시지를 제공합니다.
-- 하위 호환(Backward Compatibility) 원칙:
+
+- 주요 응답은 가능하면 다음 메타를 포함합니다.
+  - `request_id`: 요청 추적 번호
+  - `used_model`: 실제 사용한 AI 모델명
+  - `prompt_version`: 사용한 프롬프트 버전
+  - `latency_ms`: 동기 API 전체 지연시간
+  - `latency_ms_by_stage`: 비동기 분석 단계별 지연시간
+- 실패 응답은 사람이 이해 가능한 메시지와 코드(`detail.message`, `detail.code`)를 제공합니다.
+- 하위 호환 원칙:
   - 기존 필드 삭제 금지
-  - 필드 추가는 허용 (기존 앱이 무시 가능해야 함)
+  - 신규 필드 추가 허용
 
 ## 3) 현재 핵심 API 계약 (요약)
 
-### A. 라벨 분석
+### A. 헬스 체크
+
+- Endpoint: `GET /`
+- 목적:
+  - 서비스 기동 여부 확인
+  - 배포 직후 smoke / health check 진입점
+
+### B. 라벨 분석
+
 - Endpoint: `POST /analyze/label`
 - 입력:
   - `file` (이미지)
   - `allergy_info` (선택)
-  - `locale` (예: ko-KR, en-US)
+  - `locale`
 - 출력(핵심):
   - `foodName`, `foodName_en`, `foodName_ko`
-  - `safetyStatus` (`SAFE|CAUTION|DANGER`)
+  - `safetyStatus`
   - `ingredients[]`
   - `nutrition`
   - `raw_result`, `raw_result_en`, `raw_result_ko`
   - `request_id`, `prompt_version`, `used_model`, `latency_ms`
-- 비개발자 설명:
-  - 이 API는 "제품 라벨 사진을 읽고", 성분/영양/알레르기 위험을 정리해 주는 기능입니다.
 
-### B. 음식 사진 분석
+### C. 음식 사진 분석
+
 - Endpoint: `POST /analyze`
 - 입력:
-  - 음식 이미지, 사용자 알레르기/로케일 컨텍스트
+  - 음식 이미지
+  - 사용자 알레르기/로케일 컨텍스트
 - 출력(핵심):
-  - 음식명, 성분 추정, 안전도, 요약 문장
+  - 음식명, 성분 추정, 안전도, 요약
   - `request_id`, `used_model`, `prompt_version`, `latency_ms`
-- 비개발자 설명:
-  - 일반 음식 사진 기반으로 위험도를 알려주는 기능입니다.
 
-### C. 바코드 조회
+### D. 스마트 분석
+
+- Endpoint: `POST /analyze/smart`
+- 입력:
+  - 음식 이미지
+  - 알레르기/로케일 컨텍스트
+- 출력(핵심):
+  - 분석 전략에 따라 적절한 결과 payload
+  - `request_id`, `used_model`, `prompt_version`, `latency_ms`
+
+### E. 바코드 조회
+
 - Endpoint: `POST /lookup/barcode`
 - 입력:
-  - barcode 문자열
-  - locale, allergy context
+  - `barcode`
+  - `locale`, `allergy_info`
 - 출력(핵심):
   - 상품명/성분/안전도/요약
   - `request_id`, `latency_ms`
-  - 알러지 분석이 실제 수행된 경우 `used_model`, `prompt_version`
-- 비개발자 설명:
-  - 바코드 번호로 공공/사내 데이터와 AI를 조합해 결과를 반환합니다.
+  - 알레르기 분석이 실제 수행된 경우 `used_model`, `prompt_version`
 
-### D. 비동기 분석 작업 상태
+### F. 비동기 분석 작업
+
 - Endpoint:
   - `POST /analyze/jobs`
   - `GET /analyze/jobs/{job_id}`
 - 출력(핵심):
   - `job_id`, `request_id`, `status`, `accepted_at`, `updated_at`, `poll_after_ms`
-  - 완료 시 결과 payload 일부 또는 전체
+  - 완료 시 결과 payload
   - 가능하면 `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
-- 비개발자 설명:
-  - 사진 분석이 오래 걸릴 때 앱은 job을 만들고, 상태 API를 반복 조회해 완료 결과를 받습니다.
 
-## 4) Phase 1 인증/세션 API 계약 (활성화)
+비개발자 설명:
 
-### A. 인증(Auth)
+- 분석이 오래 걸릴 때 앱은 job을 만든 뒤 상태를 poll 하다가 완료 결과를 받습니다.
+
+## 4) 인증 / 세션 API
+
+### A. 활성화된 인증 엔드포인트
+
+- `POST /auth/email/signup`
+- `POST /auth/email/login`
+- `POST /auth/email/verify`
+- `POST /auth/email/verification/request`
+- `POST /auth/email/password/reset/request`
+- `POST /auth/email/password/reset/confirm`
 - `POST /auth/google`
 - `POST /auth/kakao`
 - `GET /auth/google/start`
@@ -81,41 +108,53 @@
 - `GET /auth/google/logout/callback`
 - `GET /auth/kakao/logout/start`
 - `GET /auth/kakao/logout/callback`
-- `POST /auth/email/login`
-- `POST /auth/email/signup`
-- `POST /auth/email/verify`
-- `POST /auth/email/password/reset/request`
-- `POST /auth/email/password/reset/confirm`
 - `POST /auth/refresh`
 - `POST /auth/logout`
 
-필수 출력(공통):
-- 인증 성공 시: `access_token`, `refresh_token`, `expires_in`, `user`
-- 이메일 가입 직후(인증 대기): `verification_required`, `verification_method`, `verification_channel`, `verification_expires_in`, `user`
-- 비밀번호 재설정 요청 수락 시: `reset_requested`, `reset_method`, `reset_channel`, `reset_expires_in`
-- 비밀번호 재설정 완료 시: `password_reset`, `sessions_revoked`
-- `request_id`
+### B. 공통 출력
 
-요청 요약:
-- `POST /auth/email/signup`: `email`, `password`, `display_name?`, `locale?`, `device_id?`
-- `POST /auth/email/login`: `email`, `password`, `device_id?`
-- `POST /auth/email/verify`: `email`, `code`, `device_id?`
-- `POST /auth/email/password/reset/request`: `email`
-- `POST /auth/email/password/reset/confirm`: `email`, `code`, `new_password`
-- `POST /auth/google|kakao`: `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
-- `GET /auth/google|kakao/start`: `redirect_uri?`(앱 콜백), `state?`(없으면 서버 생성)
-- `GET /auth/google|kakao/callback`: provider redirect 수신 후 앱 콜백 URI로 `code/state/error` 전달
-- `GET /auth/google|kakao/logout/start`: provider 계정 로그아웃 브라우저 리다이렉트 시작
-- `GET /auth/google|kakao/logout/callback`: provider 로그아웃 후 앱 콜백 URI로 완료/에러 전달
-- `POST /auth/refresh`: `refresh_token`
-- `POST /auth/logout`: `refresh_token?` + `Authorization: Bearer <access_token>`
+- 인증 성공: `access_token`, `refresh_token`, `expires_in`, `user`, `request_id`
+- 이메일 가입 직후(인증 대기):
+  - `verification_required`
+  - `verification_method`
+  - `verification_channel`
+  - `verification_expires_in`
+- 비밀번호 재설정 요청:
+  - `reset_requested`
+  - `reset_method`
+  - `reset_channel`
+  - `reset_expires_in`
+- 비밀번호 재설정 완료:
+  - `password_reset`
+  - `sessions_revoked`
 
-에러 코드(핵심):
+### C. 요청 요약
+
+- `POST /auth/email/signup`
+  - `email`, `password`, `display_name?`, `locale?`, `device_id?`
+- `POST /auth/email/login`
+  - `email`, `password`, `device_id?`
+- `POST /auth/email/verify`
+  - `email`, `code`, `device_id?`
+- `POST /auth/email/verification/request`
+  - `email`
+- `POST /auth/email/password/reset/request`
+  - `email`
+- `POST /auth/email/password/reset/confirm`
+  - `email`, `code`, `new_password`
+- `POST /auth/google|kakao`
+  - `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
+- `POST /auth/refresh`
+  - `refresh_token`
+- `POST /auth/logout`
+  - `refresh_token?` + `Authorization: Bearer <access_token>`
+
+### D. 주요 에러 코드
+
 - `AUTH_INVALID_CREDENTIALS`
 - `AUTH_TOKEN_EXPIRED`
 - `AUTH_REFRESH_EXPIRED`
-- `AUTH_REFRESH_REUSED` (재사용 탐지 시 세션 패밀리 전체 무효화)
-  - 운영 설정 `AUTH_REFRESH_REUSE_GRACE_SECONDS>0`인 경우, 짧은 경합 구간(예: 동시 갱신)에서 1회 완화 처리 가능
+- `AUTH_REFRESH_REUSED`
 - `AUTH_PROVIDER_CANCELLED`
 - `AUTH_PROVIDER_INVALID_CODE`
 - `AUTH_REDIRECT_URI_MISMATCH`
@@ -128,112 +167,128 @@
 - `AUTH_PASSWORD_RESET_LOCKED`
 - `AUTH_PASSWORD_RESET_DELIVERY_FAILED`
 
-비개발자 설명:
-- 로그인 성공 시 앱은 "사용자 본인 식별값(user_id)"을 받습니다.
-- 이후 모든 저장/조회는 이 user_id 소유 데이터로만 처리해야 합니다.
-- refresh token은 단일 사용(one-time)이며 재사용되면 보안 이벤트로 처리됩니다.
-- locale 정책:
-  - `settings.language`는 `auto | locale` 값을 저장합니다.
-  - `profile.locale`은 항상 resolved locale만 저장합니다(예: `ko-KR`, `en-US`).
-  - `profile.locale`에 `auto` 문자열 저장은 금지합니다.
-  - locale 미전달 시 우선순위는 `Accept-Language` > `en-US` fallback 입니다.
+## 5) 사용자 데이터 API
 
-### B. 사용자 데이터(Profile/Settings/History/Deletion)
-- `GET /me/profile`, `PUT /me/profile`
-- `GET /me/allergies`, `PUT /me/allergies`
-- `GET /me/history`, `POST /me/history`, `DELETE /me/history/{history_item_id}`
-- `GET /me/deletion-requests/latest`, `POST /me/deletion-requests`
+### A. Profile / Allergies / Settings
+
+- `GET /me/profile`
+- `PUT /me/profile`
+- `GET /me/allergies`
+- `PUT /me/allergies`
+- `GET /me/settings`
+- `PUT /me/settings`
+
+`PUT /me/profile` 주요 입력:
+
+- `display_name`
+- `profile_image_url`
+- `profile_image_asset_id`
+- `gender`
+- `birth_year`
+- `disliked_ingredients`
+- `locale`
+- `timezone`
+- `current_trip_start`
+- `current_trip_location`
+- `current_trip_coordinates`
+- `expected_updated_at`
+
+`PUT /me/settings` 주요 입력:
+
+- `language`
+- `target_language`
+- `auto_play_audio`
+- `selected_emoji`
+- `client_state`
+- `expected_updated_at`
+
+### B. History
+
+- `GET /me/history`
+- `POST /me/history`
+- `PATCH /me/history/{history_item_id}`
+- `PATCH /me/history/{history_item_id}/image`
+- `DELETE /me/history/{history_item_id}`
+
+설명:
+
+- `POST /me/history`는 새 기록을 추가합니다.
+- `PATCH /me/history/{history_item_id}`는 `timestamp` 및 버전 충돌 제어(`expected_updated_at`)를 처리합니다.
+- `PATCH /me/history/{history_item_id}/image`는 서버에 업로드된 `image_asset_id`를 연결합니다.
+
+### C. Media
+
 - `POST /me/media/upload` (multipart: `file`, `scope=profile|history`, `linked_entry_id?`)
 - `GET /media/render/{asset_id}?w=<preset>&q=<50~85>&fmt=auto`
-- media render 운영 env(추가):
-  - `MEDIA_RENDER_SIGN_BUCKET_SECONDS` (기본 `3600`, 버킷 단위 URL 안정화)
-  - `MEDIA_RENDER_CACHE_ENABLED` (기본 `1`)
-  - `MEDIA_RENDER_CACHE_MAX_ITEMS` (기본 `256`)
-  - `MEDIA_RENDER_CACHE_TTL_SECONDS` (기본 `300`)
-- `PATCH /me/history/{history_item_id}/image` (`image_asset_id`)
-- `GET /me/settings`, `PUT /me/settings`
-- `PUT /me/profile.profile_image_asset_id`:
-  - 서버 업로드 후 받은 `asset_id`를 우선 사용
-  - 응답은 `profile_image_asset_id`, `profile_image_render_url`를 포함
-- `PUT /me/profile` 동기화 필드(추가):
-  - `gender`, `birth_year`
-  - `disliked_ingredients`
-  - `current_trip_start`, `current_trip_location`, `current_trip_coordinates {latitude, longitude}`
-- `POST /me/history.entry.image_asset_id`:
-  - 히스토리 이미지는 `image_asset_id` 기반 동기화
-  - 응답/조회 시 `entry.image_render_url`(신규) + `entry.imageUri`(하위호환)를 함께 제공
-- 하위호환(과도기):
-  - 기존 `profile_image_url`, `entry.imageUri` 입력은 허용
-  - 서버는 가능하면 `*_asset_id` 기반으로 정규화
 
-동기화 충돌(Phase 3):
-- `PUT /me/profile|allergies|settings`는 `expected_updated_at`(선택) 지원
-- 서버 최신 `updated_at`와 불일치 시 `409 PHASE2_CONFLICT` 반환
-- 충돌 응답 detail 필드:
+설명:
+
+- 서버 자산은 signed render URL로 다시 읽습니다.
+- `/me/history` 응답의 `entry.image_render_url`, `/me/profile` 응답의 `profile_image_render_url`이 앱과 smoke에서 사용하는 정규 경로입니다.
+- bare filename, 로컬 파일 경로, 임시 device URI는 서버 측 원격 미디어 참조로 취급하지 않습니다.
+
+### D. 삭제 요청
+
+- `GET /me/deletion-requests/latest`
+- `POST /me/deletion-requests`
+
+입력:
+
+- `target` = `account | data`
+
+출력:
+
+- `deletion_request { queue_id, request_id, target, status, created_at, updated_at, reason, error }`
+
+상태값:
+
+- `pending -> in_progress -> done | failed`
+
+## 6) 충돌 / 동기화 규칙
+
+- `PUT /me/profile`, `PUT /me/allergies`, `PUT /me/settings`, `PATCH /me/history/{history_item_id}`는 `expected_updated_at`를 지원합니다.
+- 서버 최신값과 충돌하면 `409 PHASE2_CONFLICT`를 반환할 수 있습니다.
+- 충돌 응답 detail에는 다음이 포함될 수 있습니다.
   - `entity`
   - `expected_updated_at`
   - `server_updated_at`
-  - `server_payload` (서버 최신 스냅샷)
+  - `server_payload`
 
-비개발자 설명:
-- `me`는 "지금 로그인한 사용자"를 뜻합니다.
-- 타인의 데이터는 접근할 수 없어야 합니다.
-- `/me/history/{history_item_id}` 삭제는 idempotent입니다.
-  - 이미 삭제된 항목이거나 없는 항목이어도 `200` + `{"deleted": false}`를 반환할 수 있습니다.
-- Phase 5 삭제 요청 계약:
-  - `POST /me/deletion-requests`
-    - 입력: `target` (`account` | `data`)
-    - 출력: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error }`, `request_id`
-  - `GET /me/deletion-requests/latest`
-    - 출력: 최근 삭제 요청의 `deletion_request` 또는 `null`, `request_id`
-  - 상태값: `pending` -> `in_progress` -> `done | failed`
-  - `target=data`
-    - 로그인 계정은 유지하고, 히스토리/미디어/프로필 개인화/알레르기/설정/client_state를 초기화합니다.
-  - `target=account`
-    - 사용자 계정, 프로필, 알레르기, 설정, 히스토리, 미디어를 제거하고 세션을 무효화합니다.
-- Phase 5 TTL 정책(기본값):
-  - 원본(original): `30일`
-  - 파생(derived): `90일`
-  - 로그(log): `14일`
-  - 원본 미디어 업로드는 retention record로 등록되고, 정리 작업이 만료 데이터를 삭제합니다.
+## 7) 운영에서 꼭 보는 지표
 
-## 5) 버전/변경 정책
-- 계약 버전 표기:
-  - major.minor (예: `v1.2`)
-- 변경 규칙:
-  - 필드 추가: minor 증가
-  - 필드 제거/의미 변경: major 증가
-- 배포 규칙:
-  - 앱 릴리스 전후 1개 이전 minor까지 서버가 호환하도록 운영
+- endpoint별 성공률 / 4xx / 5xx
+- p50 / p95 / p99 지연시간
+- AI 비용
+- 429 비율
+- 분석 job submit / poll 실패율
+- signed media render 성공률
 
-## 6) 운영에서 꼭 보는 지표
-- 성공률: endpoint별 2xx 비율
-- 실패코드: 4xx/5xx 비율
-- 지연시간: p50/p95/p99
-- AI 비용: 일/월 누적 비용, 429 발생률
+## 8) 장애 대응 기본 룰
 
-## 7) 장애 대응 기본 룰
-- 429(리소스 초과): 재시도 + 백오프, 필요 시 graceful fallback
-- timeout: 재시도 정책 제한, 사용자에게 재시도 안내
-- 계약 불일치: 즉시 롤백 또는 server-side compatibility patch
+- `429`: `Retry-After`를 따르고 백오프
+- `503`: 큐 또는 store 일시 장애 가능성 확인
+- 계약 불일치: 롤백 또는 server-side compatibility patch
 
-### 429 표준 에러 계약 (Phase 4)
+### 429 표준 에러 계약
+
 - HTTP Status: `429`
 - Header: `Retry-After: <seconds>`
 - Body:
   - `detail.message`
-  - `detail.code` (`API_RATE_LIMITED` | `UPSTREAM_RATE_LIMITED`)
+  - `detail.code`
   - `detail.request_id`
   - `detail.retry_after_seconds`
 
-## 8) QA 체크리스트 (릴리스 전)
-- 라벨/음식/바코드 응답에 필수 필드 누락이 없는가?
+## 9) QA / Release Gate 체크리스트
+
+- 분석/인증 응답에 필수 필드 누락이 없는가?
 - `request_id`로 로그 추적이 가능한가?
-- 로그인/로그아웃/계정전환 후 데이터 주인이 정확한가?
-- 구버전 앱에서도 치명적 에러 없이 동작하는가?
+- 계정 전환 후 데이터 소유자가 정확한가?
+- `/me/profile`, `/me/history`가 signed media render URL을 정상 반환하는가?
+- post-deploy smoke가 실행 시점 로그인으로 동적 토큰/미디어 URL을 확보하는가?
 
 ---
 
-문서 버전: v1.6
+문서 버전: v1.7
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-03-29
+최종 수정: 2026-04-09

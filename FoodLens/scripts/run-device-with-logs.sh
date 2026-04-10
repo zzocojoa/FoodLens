@@ -23,6 +23,7 @@ LOG_PID=""
 LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
 MAPS_KEY_PLACEHOLDER="__MISSING_GOOGLE_MAPS_API_KEY__"
+ANDROID_METRO_PORT="${ANDROID_METRO_PORT:-8081}"
 
 enforce_clean_worktree() {
   if [[ "${ALLOW_DIRTY_DEVICE_BUILD:-0}" == "1" ]]; then
@@ -165,6 +166,43 @@ resolve_android_device_name() {
   fi
 
   printf '%s' "${line}" | awk '{ print $1 }'
+}
+
+ensure_android_debug_metro_reverse() {
+  if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "debug" ]]; then
+    return
+  fi
+
+  if ! command -v adb >/dev/null 2>&1; then
+    echo "[run-with-logs] ERROR: adb not found. Cannot configure Metro reverse tunnel."
+    exit 1
+  fi
+
+  local android_device_serial=""
+  android_device_serial="$(resolve_android_device_serial || true)"
+  if [[ -z "${android_device_serial}" ]]; then
+    echo "[run-with-logs] ERROR: Android device serial not found. Cannot configure Metro reverse tunnel."
+    exit 1
+  fi
+
+  echo "[run-with-logs] Configuring Metro reverse tunnel via adb reverse tcp:${ANDROID_METRO_PORT} -> tcp:${ANDROID_METRO_PORT}"
+  if ! adb -s "${android_device_serial}" reverse "tcp:${ANDROID_METRO_PORT}" "tcp:${ANDROID_METRO_PORT}"; then
+    echo "[run-with-logs] ERROR: Failed to configure adb reverse for Metro on ${android_device_serial}."
+    echo "[run-with-logs] Run manually: adb -s ${android_device_serial} reverse tcp:${ANDROID_METRO_PORT} tcp:${ANDROID_METRO_PORT}"
+    exit 1
+  fi
+
+  local reverse_list=""
+  reverse_list="$(adb -s "${android_device_serial}" reverse --list 2>/dev/null || true)"
+  if printf '%s\n' "${reverse_list}" | grep -Fq "tcp:${ANDROID_METRO_PORT} tcp:${ANDROID_METRO_PORT}"; then
+    echo "[run-with-logs] Metro reverse tunnel is active for ${android_device_serial}."
+    return
+  fi
+
+  echo "[run-with-logs] ERROR: adb reverse verification failed for ${android_device_serial}."
+  echo "[run-with-logs] Current reverse list:"
+  printf '%s\n' "${reverse_list}"
+  exit 1
 }
 
 resolve_react_native_version() {
@@ -545,6 +583,7 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
 fi
 
 build_expo_command "${PLATFORM}" "${BUILD_TYPE}" "$@"
+ensure_android_debug_metro_reverse
 echo "[run-with-logs] Running: ${EXPO_CMD[*]}"
 "${EXPO_CMD[@]}"
 force_launch_android_main

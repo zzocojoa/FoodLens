@@ -11,6 +11,7 @@ import { buildResultRoute } from '@/services/contracts/resultRoute';
 import { LocationData } from '@/services/utils/types';
 import { AnalyzedData } from '@/services/ai';
 import { resolveRequestIsoCountryCode } from '@/services/aiCore/internal/requestLocale';
+import type { AnalysisOrigin } from '@/services/aiCore/types';
 
 type Translate = (key: string, fallback?: string) => string;
 
@@ -27,6 +28,7 @@ type UseScanBarcodeFlowParams = {
   setIsAnalyzing: (value: boolean) => void;
   setActiveStep: (value: number | undefined) => void;
   setMode: (mode: 'LABEL' | 'FOOD' | 'BARCODE') => void;
+  setPendingAnalysisOrigin: (analysisOrigin: AnalysisOrigin | null) => void;
   ensureAnalysisAccess: () => Promise<boolean>;
   t: Translate;
 };
@@ -51,6 +53,7 @@ export const useScanBarcodeFlow = ({
   setIsAnalyzing,
   setActiveStep,
   setMode,
+  setPendingAnalysisOrigin,
   ensureAnalysisAccess,
   t,
 }: UseScanBarcodeFlowParams) => {
@@ -74,6 +77,7 @@ export const useScanBarcodeFlow = ({
 
         const hasAnalysisAccess = await ensureAnalysisAccess();
         if (!hasAnalysisAccess) {
+          setPendingAnalysisOrigin(null);
           setScanned(false);
           isProcessingRef.current = false;
           setConsecutiveScans(0);
@@ -91,6 +95,7 @@ export const useScanBarcodeFlow = ({
           const product = normalizeBarcodeIngredients(result.data) as AnalyzedData & {
             raw_data?: Record<string, unknown>;
           };
+          product.analysisOrigin = product.analysisOrigin ?? 'barcode_lookup';
           product.raw_data = {
             ...(product.raw_data || {}),
             scanned_barcode: barcode,
@@ -107,7 +112,15 @@ export const useScanBarcodeFlow = ({
           const finalTimestamp = new Date().toISOString();
 
           dataStore.setData(product, locationData, getRawImageUrl(product) || '', finalTimestamp);
-          replace(buildResultRoute({ isNew: true, isBarcode: true, sourceType: 'camera' }));
+          setPendingAnalysisOrigin(null);
+          replace(
+            buildResultRoute({
+              isNew: true,
+              isBarcode: true,
+              analysisOrigin: product.analysisOrigin,
+              sourceType: 'camera',
+            })
+          );
           resetState();
           return;
         }
@@ -125,6 +138,7 @@ export const useScanBarcodeFlow = ({
               textFallback: 'Cancel',
               style: 'cancel',
               onPress: () => {
+                setPendingAnalysisOrigin(null);
                 setScanned(false);
                 isProcessingRef.current = false;
                 setConsecutiveScans(0);
@@ -134,6 +148,7 @@ export const useScanBarcodeFlow = ({
               textKey: 'scan.alert.takePhoto',
               textFallback: 'Take Photo',
               onPress: () => {
+                setPendingAnalysisOrigin('barcode_to_label_fallback');
                 setMode('LABEL');
                 setScanned(false);
                 isProcessingRef.current = false;
@@ -143,6 +158,7 @@ export const useScanBarcodeFlow = ({
           ],
         });
       } catch {
+        setPendingAnalysisOrigin(null);
         showTranslatedAlert(t, {
           titleKey: 'camera.alert.errorTitle',
           titleFallback: 'Error',
@@ -162,6 +178,7 @@ export const useScanBarcodeFlow = ({
       setActiveStep,
       setIsAnalyzing,
       setMode,
+      setPendingAnalysisOrigin,
       setScanned,
       t,
     ]

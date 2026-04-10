@@ -66,6 +66,23 @@
             "title": "Accepted At",
             "type": "string"
           },
+          "analysis_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "food_photo",
+                  "label_photo",
+                  "barcode_lookup",
+                  "barcode_to_label_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Origin"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -76,6 +93,38 @@
               }
             ],
             "title": "Confidence"
+          },
+          "decision_confidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Confidence"
+          },
+          "decision_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "OK",
+                  "ASK",
+                  "AVOID"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Status"
           },
           "error_code": {
             "anyOf": [
@@ -233,6 +282,23 @@
             ],
             "title": "Raw Result Ko"
           },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "eat",
+                  "verify_label",
+                  "ask_staff",
+                  "avoid"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Action"
+          },
           "request_id": {
             "title": "Request Id",
             "type": "string"
@@ -300,6 +366,24 @@
               }
             ],
             "title": "Translationcard"
+          },
+          "uncertainty_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image_ambiguity",
+                  "missing_label_text",
+                  "barcode_not_found",
+                  "low_confidence",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Reason"
           },
           "updated_at": {
             "title": "Updated At",
@@ -373,6 +457,23 @@
       },
       "AnalysisResponseContract": {
         "properties": {
+          "analysis_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "food_photo",
+                  "label_photo",
+                  "barcode_lookup",
+                  "barcode_to_label_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Origin"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -383,6 +484,38 @@
               }
             ],
             "title": "Confidence"
+          },
+          "decision_confidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Confidence"
+          },
+          "decision_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "OK",
+                  "ASK",
+                  "AVOID"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Status"
           },
           "foodName": {
             "title": "Foodname",
@@ -481,6 +614,23 @@
             ],
             "title": "Raw Result Ko"
           },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "eat",
+                  "verify_label",
+                  "ask_staff",
+                  "avoid"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Action"
+          },
           "request_id": {
             "anyOf": [
               {
@@ -511,6 +661,24 @@
               }
             ]
           },
+          "uncertainty_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image_ambiguity",
+                  "missing_label_text",
+                  "barcode_not_found",
+                  "low_confidence",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Reason"
+          },
           "used_model": {
             "anyOf": [
               {
@@ -532,6 +700,23 @@
       },
       "BarcodeDataContract": {
         "properties": {
+          "analysis_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "food_photo",
+                  "label_photo",
+                  "barcode_lookup",
+                  "barcode_to_label_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Origin"
+          },
           "calories": {
             "anyOf": [
               {
@@ -564,6 +749,38 @@
               }
             ],
             "title": "Coachmessage"
+          },
+          "decision_confidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Confidence"
+          },
+          "decision_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "OK",
+                  "ASK",
+                  "AVOID"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Status"
           },
           "fat": {
             "anyOf": [
@@ -694,6 +911,23 @@
             ],
             "title": "Raw Result Ko"
           },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "eat",
+                  "verify_label",
+                  "ask_staff",
+                  "avoid"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Action"
+          },
           "safetyStatus": {
             "anyOf": [
               {
@@ -753,6 +987,24 @@
               }
             ],
             "title": "Sugar"
+          },
+          "uncertainty_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image_ambiguity",
+                  "missing_label_text",
+                  "barcode_not_found",
+                  "low_confidence",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Reason"
           }
         },
         "required": [

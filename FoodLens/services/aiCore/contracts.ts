@@ -1,11 +1,24 @@
-import { BarcodeLookupResult, LatencyMsBreakdown, LatencyMsByStage } from './types';
-
-type SafetyStatus = 'SAFE' | 'CAUTION' | 'DANGER';
+import {
+  AnalysisOrigin,
+  BarcodeLookupResult,
+  DecisionConfidence,
+  DecisionStatus,
+  LatencyMsBreakdown,
+  LatencyMsByStage,
+  RecommendedAction,
+  SafetyStatus,
+  UncertaintyReason,
+} from './types';
 
 export type AnalysisApiContract = {
   foodName: string;
   safetyStatus: SafetyStatus;
   ingredients: unknown[];
+  decision_status?: DecisionStatus;
+  analysis_origin?: AnalysisOrigin;
+  recommended_action?: RecommendedAction;
+  uncertainty_reason?: UncertaintyReason;
+  decision_confidence?: DecisionConfidence;
   request_id?: string;
   prompt_version?: string;
   used_model?: string;
@@ -39,6 +52,11 @@ export type AnalysisJobStatusContract = {
   prompt_version?: string;
   latency_ms_by_stage?: LatencyMsByStage;
   fallback_reason?: string;
+  decision_status?: DecisionStatus;
+  analysis_origin?: AnalysisOrigin;
+  recommended_action?: RecommendedAction;
+  uncertainty_reason?: UncertaintyReason;
+  decision_confidence?: DecisionConfidence;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,6 +64,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isSafetyStatus = (value: unknown): value is SafetyStatus =>
   value === 'SAFE' || value === 'CAUTION' || value === 'DANGER';
+
+const isDecisionStatus = (value: unknown): value is DecisionStatus =>
+  value === 'OK' || value === 'ASK' || value === 'AVOID';
+
+const isAnalysisOrigin = (value: unknown): value is AnalysisApiContract['analysis_origin'] =>
+  value === 'food_photo' ||
+  value === 'label_photo' ||
+  value === 'barcode_lookup' ||
+  value === 'barcode_to_label_fallback';
+
+const isRecommendedAction = (value: unknown): value is AnalysisApiContract['recommended_action'] =>
+  value === 'eat' ||
+  value === 'verify_label' ||
+  value === 'ask_staff' ||
+  value === 'avoid';
+
+const isUncertaintyReason = (value: unknown): value is AnalysisApiContract['uncertainty_reason'] =>
+  value === 'image_ambiguity' ||
+  value === 'missing_label_text' ||
+  value === 'barcode_not_found' ||
+  value === 'low_confidence' ||
+  value === 'unknown';
+
+const isDecisionConfidence = (value: unknown): value is AnalysisApiContract['decision_confidence'] =>
+  value === 'high' || value === 'medium' || value === 'low';
 
 const assertOptionalString = ({
   value,
@@ -58,6 +101,22 @@ const assertOptionalString = ({
 }): void => {
   if (value === undefined || value === null) return;
   if (typeof value === 'string') return;
+  throw new Error(`[AI Contract] ${endpoint}: missing/invalid "${fieldName}"`);
+};
+
+const assertOptionalEnumValue = ({
+  value,
+  fieldName,
+  endpoint,
+  isValid,
+}: {
+  value: unknown;
+  fieldName: string;
+  endpoint: string;
+  isValid: (candidate: unknown) => boolean;
+}): void => {
+  if (value === undefined || value === null) return;
+  if (isValid(value)) return;
   throw new Error(`[AI Contract] ${endpoint}: missing/invalid "${fieldName}"`);
 };
 
@@ -97,6 +156,44 @@ const assertOptionalLatencyMs = ({
   }
 };
 
+const assertOptionalBarcodeDecisionMetadata = (value: unknown): void => {
+  if (value === undefined || value === null) return;
+  if (!isRecord(value)) {
+    throw new Error('[AI Contract] /lookup/barcode: missing/invalid "data"');
+  }
+
+  assertOptionalEnumValue({
+    value: value['decision_status'],
+    fieldName: 'data.decision_status',
+    endpoint: '/lookup/barcode',
+    isValid: isDecisionStatus,
+  });
+  assertOptionalEnumValue({
+    value: value['analysis_origin'],
+    fieldName: 'data.analysis_origin',
+    endpoint: '/lookup/barcode',
+    isValid: isAnalysisOrigin,
+  });
+  assertOptionalEnumValue({
+    value: value['recommended_action'],
+    fieldName: 'data.recommended_action',
+    endpoint: '/lookup/barcode',
+    isValid: isRecommendedAction,
+  });
+  assertOptionalEnumValue({
+    value: value['uncertainty_reason'],
+    fieldName: 'data.uncertainty_reason',
+    endpoint: '/lookup/barcode',
+    isValid: isUncertaintyReason,
+  });
+  assertOptionalEnumValue({
+    value: value['decision_confidence'],
+    fieldName: 'data.decision_confidence',
+    endpoint: '/lookup/barcode',
+    isValid: isDecisionConfidence,
+  });
+};
+
 export const assertAnalysisResponseContract = (
   value: unknown,
   endpoint: '/analyze' | '/analyze/label' | '/analyze/smart'
@@ -131,6 +228,36 @@ export const assertAnalysisResponseContract = (
     value: value['used_model'],
     fieldName: 'used_model',
     endpoint,
+  });
+  assertOptionalEnumValue({
+    value: value['decision_status'],
+    fieldName: 'decision_status',
+    endpoint,
+    isValid: isDecisionStatus,
+  });
+  assertOptionalEnumValue({
+    value: value['analysis_origin'],
+    fieldName: 'analysis_origin',
+    endpoint,
+    isValid: isAnalysisOrigin,
+  });
+  assertOptionalEnumValue({
+    value: value['recommended_action'],
+    fieldName: 'recommended_action',
+    endpoint,
+    isValid: isRecommendedAction,
+  });
+  assertOptionalEnumValue({
+    value: value['uncertainty_reason'],
+    fieldName: 'uncertainty_reason',
+    endpoint,
+    isValid: isUncertaintyReason,
+  });
+  assertOptionalEnumValue({
+    value: value['decision_confidence'],
+    fieldName: 'decision_confidence',
+    endpoint,
+    isValid: isDecisionConfidence,
   });
 
   assertOptionalLatencyMs({
@@ -169,6 +296,7 @@ export const assertBarcodeLookupContract = (value: unknown): BarcodeLookupResult
     value: value['latency_ms'],
     endpoint: '/lookup/barcode',
   });
+  assertOptionalBarcodeDecisionMetadata(value['data']);
 
   return value as BarcodeLookupResult;
 };
@@ -254,6 +382,36 @@ export const assertAnalysisJobStatusContract = (value: unknown): AnalysisJobStat
     value: value['fallback_reason'],
     fieldName: 'fallback_reason',
     endpoint: '/analyze/jobs/{job_id}',
+  });
+  assertOptionalEnumValue({
+    value: value['decision_status'],
+    fieldName: 'decision_status',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isDecisionStatus,
+  });
+  assertOptionalEnumValue({
+    value: value['analysis_origin'],
+    fieldName: 'analysis_origin',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isAnalysisOrigin,
+  });
+  assertOptionalEnumValue({
+    value: value['recommended_action'],
+    fieldName: 'recommended_action',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isRecommendedAction,
+  });
+  assertOptionalEnumValue({
+    value: value['uncertainty_reason'],
+    fieldName: 'uncertainty_reason',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isUncertaintyReason,
+  });
+  assertOptionalEnumValue({
+    value: value['decision_confidence'],
+    fieldName: 'decision_confidence',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isDecisionConfidence,
   });
   assertOptionalLatencyMsByStage({
     value: value['latency_ms_by_stage'],

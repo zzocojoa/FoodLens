@@ -125,6 +125,10 @@ class _AsyncJobAnalyst:
             "foodName_ko": "비빔밥",
             "foodOrigin": "korean",
             "safetyStatus": "SAFE",
+            "decision_status": "OK",
+            "analysis_origin": "food_photo",
+            "recommended_action": "eat",
+            "uncertainty_reason": "unknown",
             "ingredients": [{"name": "Rice", "bbox": [0, 0, 10, 10], "isAllergen": False}],
             "raw_result": "Safe to eat.",
             "raw_result_en": "Safe to eat.",
@@ -196,6 +200,10 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["foodName"], "Bibimbap")
         self.assertEqual(terminal_payload["foodName_en"], "Bibimbap")
         self.assertEqual(terminal_payload["foodName_ko"], "비빔밥")
+        self.assertEqual(terminal_payload["decision_status"], "OK")
+        self.assertEqual(terminal_payload["analysis_origin"], "food_photo")
+        self.assertEqual(terminal_payload["recommended_action"], "eat")
+        self.assertEqual(terminal_payload["uncertainty_reason"], "unknown")
         self.assertEqual(terminal_payload["used_model"], "gemini-2.0-flash")
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
         self.assertIn("latency_ms_by_stage", terminal_payload)

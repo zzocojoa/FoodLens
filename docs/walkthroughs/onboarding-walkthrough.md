@@ -1,5 +1,10 @@
 # P2-1: 온보딩 — Gender + Birth Year 추가 Walkthrough
 
+> **상태: 변경 기록 문서**
+>
+> 이 문서는 특정 온보딩 변경 작업의 구현 기록입니다. 현재 온보딩 제품 정의나 데이터 수집 원칙의 기준 문서로 사용하지 않습니다.
+> 현재 기준은 [`/docs/README.md`](../README.md), [`/docs/product/project.md`](../product/project.md) 를 우선합니다.
+
 ## Changes Made
 
 ### Data Model

@@ -62,6 +62,21 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
         normalized = self._validate_and_normalize(payload)
         self.assertEqual(normalized["latency_ms"]["total"], 123)
 
+    def test_analysis_decision_fields_are_backward_compatible(self):
+        payload = _load_json("analyze_response.snapshot.json")
+        payload["decision_status"] = "ASK"
+        payload["analysis_origin"] = "food_photo"
+        payload["recommended_action"] = "verify_label"
+        payload["uncertainty_reason"] = "image_ambiguity"
+        payload["decision_confidence"] = "medium"
+
+        normalized = self._validate_and_normalize(payload)
+        self.assertEqual(normalized["decision_status"], "ASK")
+        self.assertEqual(normalized["analysis_origin"], "food_photo")
+        self.assertEqual(normalized["recommended_action"], "verify_label")
+        self.assertEqual(normalized["uncertainty_reason"], "image_ambiguity")
+        self.assertEqual(normalized["decision_confidence"], "medium")
+
 
 if __name__ == "__main__":
     unittest.main()

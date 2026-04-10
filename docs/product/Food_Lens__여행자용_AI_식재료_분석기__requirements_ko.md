@@ -1,5 +1,10 @@
 # UI/UX 디자인 및 기획 (정확히 10개 작성)
 
+> **상태: 역사 문서 / 초기 태스크 덤프**
+>
+> 이 문서는 초기 아이디어와 태스크 목록을 모은 기록으로, 현재 FoodLens 구현/운영 truth를 직접 설명하지 않습니다.
+> 현재 기준은 [`/docs/README.md`](../README.md), [`/docs/product/project.md`](./project.md), [`/docs/contracts/api-contracts.md`](../contracts/api-contracts.md) 를 우선합니다.
+
 1.  **핵심 기능 워크플로우 시각화:** 카메라 촬영부터 AI 분석 결과 표시까지의 사용자 흐름 다이어그램 설계. (TaskID: 5aaf6278-542b-4cf8-ba46-6a4622a2c52c)
 2.  **결과 화면 레이아웃 설계:** 식재료 이미지, 안전성 등급, 성분 목록, 알레르기 유발 물질 정보 표시 영역 디자인. (TaskID: 1d5a102f-9448-49ad-9010-0cb6f55d952b) (완료: Phase 3 UI)
 3.  **카메라 인터페이스 디자인:** 촬영 버튼, 플래시 제어, 줌 기능, 초점 맞추기 UI 요소 디자인. (TaskID: c081cbd5-c025-4313-8606-f8475023232e) (완료: Phase 3 UI)

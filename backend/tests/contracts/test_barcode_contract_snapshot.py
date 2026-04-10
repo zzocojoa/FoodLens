@@ -33,6 +33,22 @@ class BarcodeContractSnapshotTests(unittest.TestCase):
         self.assertEqual(validated.prompt_version, "barcode-v1.0-allergen-analysis")
         self.assertEqual(validated.latency_ms.total, 80)
 
+    def test_barcode_decision_fields_are_backward_compatible(self):
+        payload = _load_json("barcode_lookup.snapshot.json")
+        payload["data"]["decision_status"] = "OK"
+        payload["data"]["analysis_origin"] = "barcode_lookup"
+        payload["data"]["recommended_action"] = "eat"
+        payload["data"]["uncertainty_reason"] = "unknown"
+        payload["data"]["decision_confidence"] = "high"
+
+        validated = BarcodeLookupResponseContract.model_validate(payload)
+        assert validated.data is not None
+        self.assertEqual(validated.data.decision_status, "OK")
+        self.assertEqual(validated.data.analysis_origin, "barcode_lookup")
+        self.assertEqual(validated.data.recommended_action, "eat")
+        self.assertEqual(validated.data.uncertainty_reason, "unknown")
+        self.assertEqual(validated.data.decision_confidence, "high")
+
 
 if __name__ == "__main__":
     unittest.main()

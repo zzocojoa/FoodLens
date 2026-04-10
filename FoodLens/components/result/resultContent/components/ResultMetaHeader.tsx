@@ -32,9 +32,9 @@ export default function ResultMetaHeader({
     return (
         <View style={styles.headerSection}>
             <View style={styles.subHeaderRow}>
-                <MapPin size={12} color="#60A5FA" />
+                <Sparkles size={12} color="#60A5FA" />
                 <Text style={[styles.subHeaderText, { color: theme.textSecondary }]}>
-                    {t('result.meta.visualRecognition', 'VISUAL RECOGNITION')}
+                    {t('result.meta.analyzedFood', 'ANALYZED FOOD')}
                 </Text>
             </View>
             <Text style={[styles.titleText, { color: theme.textPrimary }]}>{foodName}</Text>
