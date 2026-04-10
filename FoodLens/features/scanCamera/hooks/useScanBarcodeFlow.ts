@@ -95,7 +95,6 @@ export const useScanBarcodeFlow = ({
           const product = normalizeBarcodeIngredients(result.data) as AnalyzedData & {
             raw_data?: Record<string, unknown>;
           };
-          product.analysisOrigin = product.analysisOrigin ?? 'barcode_lookup';
           product.raw_data = {
             ...(product.raw_data || {}),
             scanned_barcode: barcode,

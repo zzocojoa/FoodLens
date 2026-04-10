@@ -292,7 +292,7 @@ export const mapBarcodeToAnalyzedData = (
         foodName_ko: getOptionalString(data['food_name_ko']),
         safetyStatus,
         decisionStatus: parseDecisionStatus(data['decision_status']),
-        analysisOrigin: parseAnalysisOrigin(data['analysis_origin']) ?? 'barcode_lookup',
+        analysisOrigin: parseAnalysisOrigin(data['analysis_origin']),
         recommendedAction: parseRecommendedAction(data['recommended_action']),
         uncertaintyReason: parseUncertaintyReason(data['uncertainty_reason']),
         decisionConfidence: parseDecisionConfidence(data['decision_confidence']),
