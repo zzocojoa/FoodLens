@@ -32,7 +32,7 @@ export default function ResultTimestampRow({
           }}
         >
           <Text style={{ fontSize: 9, color: '#64748B', fontWeight: 'bold' }}>
-            {t('result.meta.edit', 'EDIT')}
+            {t('result.meta.edit', 'Edit')}
           </Text>
         </View>
       </View>

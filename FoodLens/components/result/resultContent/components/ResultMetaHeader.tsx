@@ -27,7 +27,7 @@ export default function ResultMetaHeader({
             <View style={styles.subHeaderRow}>
                 <Sparkles size={12} color="#60A5FA" />
                 <Text style={[styles.subHeaderText, { color: theme.textSecondary }]}>
-                    {t('result.meta.analyzedFood', 'RECOGNIZED ITEM')}
+                    {t('result.meta.analyzedFood', 'Recognized item')}
                 </Text>
             </View>
             <Text style={[styles.titleText, { color: theme.textPrimary }]}>{foodName}</Text>

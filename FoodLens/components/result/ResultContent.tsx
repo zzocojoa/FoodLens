@@ -206,6 +206,15 @@ export function ResultContent({
                     </View>
                 </View>
 
+                <ResultMetaHeader
+                    foodName={localizedFoodName}
+                    locationText={locationText}
+                    formattedTimestamp={formattedTimestamp}
+                    theme={theme}
+                    onDatePress={onDatePress}
+                    t={t}
+                />
+
                 {localizedSummary ? (
                     <AiSummaryCard
                         colorScheme={colorScheme}
@@ -215,15 +224,6 @@ export function ResultContent({
                         t={t}
                     />
                 ) : null}
-
-                <ResultMetaHeader
-                    foodName={localizedFoodName}
-                    locationText={locationText}
-                    formattedTimestamp={formattedTimestamp}
-                    theme={theme}
-                    onDatePress={onDatePress}
-                    t={t}
-                />
 
                 <View style={styles.travelerCardSection}>
                     <TravelerAllergyCard

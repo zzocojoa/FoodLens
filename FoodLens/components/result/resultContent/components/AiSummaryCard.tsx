@@ -14,7 +14,7 @@ type AiSummaryCardProps = {
 };
 
 export default function AiSummaryCard({ colorScheme, theme, summary, t }: AiSummaryCardProps) {
-    const titleFallback = 'WHY THIS RESULT';
+    const titleFallback = 'Why this result';
     const summaryFallback =
         'Review the detected ingredients and context below before you decide whether this is safe to eat.';
 

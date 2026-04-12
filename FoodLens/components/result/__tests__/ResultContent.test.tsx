@@ -106,9 +106,9 @@ describe('ResultContent', () => {
         expect(safetyIndex).toBeGreaterThanOrEqual(0);
         expect(actionIndex).toBeGreaterThan(safetyIndex);
         expect(breakdownIndex).toBeGreaterThan(actionIndex);
-        expect(reasonIndex).toBeGreaterThan(actionIndex);
-        expect(foodNameIndex).toBeGreaterThan(reasonIndex);
-        expect(travelerCardIndex).toBeGreaterThan(foodNameIndex);
+        expect(foodNameIndex).toBeGreaterThan(actionIndex);
+        expect(reasonIndex).toBeGreaterThan(foodNameIndex);
+        expect(travelerCardIndex).toBeGreaterThan(reasonIndex);
         expect(ingredientsIndex).toBeGreaterThan(travelerCardIndex);
     });
 
