@@ -26,7 +26,7 @@ export const resultHeaderStyles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '25%',
+    height: '16%',
   },
   barcodeFallback: {
     ...StyleSheet.absoluteFillObject,

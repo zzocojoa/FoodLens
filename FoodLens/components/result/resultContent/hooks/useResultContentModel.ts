@@ -93,6 +93,29 @@ const resolveDecisionVariant = (
   return 'avoid';
 };
 
+const resolveDecisionChecklistItems = (
+  decisionVariant: 'ok' | 'ask' | 'avoid',
+  t?: (key: string, fallback?: string) => string
+): string[] => {
+  const followUpItem =
+    decisionVariant === 'ok'
+      ? t?.(
+          'result.decision.checklist.ok',
+          'Review the ingredient list before you continue.'
+        ) ?? 'Review the ingredient list before you continue.'
+      : decisionVariant === 'ask'
+        ? t?.(
+            'result.decision.checklist.ask',
+            'Use your traveler card if you need to confirm with staff.'
+          ) ?? 'Use your traveler card if you need to confirm with staff.'
+        : t?.(
+            'result.decision.checklist.avoid',
+            'Use your traveler card before ordering or eating.'
+          ) ?? 'Use your traveler card before ordering or eating.';
+
+  return [followUpItem];
+};
+
 export const useResultContentModel = (
   result: ResultContentProps['result'],
   locationData: ResultContentProps['locationData'],
@@ -103,6 +126,8 @@ export const useResultContentModel = (
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const localizedSummary = resolveLocalizedSummary(result, locale);
+  const decisionVariant = resolveDecisionVariant(result.decisionStatus, result.safetyStatus);
+  const hasAllergens = hasAllergenIngredients(result.ingredients);
   const safetyLabel = result.decisionStatus
     ? resolveSafetyLabelFromDecisionStatus(result.decisionStatus, t)
     : resolveSafetyLabelFromSafetyStatus(result.safetyStatus, t);
@@ -113,10 +138,14 @@ export const useResultContentModel = (
   return {
     colorScheme,
     theme,
-    decisionVariant: resolveDecisionVariant(result.decisionStatus, result.safetyStatus),
+    decisionVariant,
     safetyLabel,
     actionLabel,
-    hasAllergens: hasAllergenIngredients(result.ingredients),
+    decisionChecklistItems: resolveDecisionChecklistItems(
+      decisionVariant,
+      t
+    ),
+    hasAllergens,
     localizedFoodName: resolveLocalizedFoodName(result, locale),
     localizedSummary,
     localizedIngredients: result.ingredients.map((ingredient) => ({

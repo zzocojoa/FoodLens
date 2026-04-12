@@ -97,15 +97,20 @@ describe('ResultContent', () => {
         const renderedText = collectRenderedText(view.toJSON());
         const safetyIndex = renderedText.indexOf('ASK');
         const actionIndex = renderedText.indexOf('Check the label or ask staff before eating.');
+        const breakdownIndex = renderedText.indexOf('Why this result');
         const reasonIndex = renderedText.indexOf('SUMMARY_CARD');
         const foodNameIndex = renderedText.indexOf('Bibimbap');
+        const travelerCardIndex = renderedText.indexOf('TRAVELER_CARD');
         const ingredientsIndex = renderedText.indexOf('INGREDIENTS_SECTION');
 
         expect(safetyIndex).toBeGreaterThanOrEqual(0);
         expect(actionIndex).toBeGreaterThan(safetyIndex);
-        expect(reasonIndex).toBeGreaterThan(actionIndex);
-        expect(foodNameIndex).toBeGreaterThan(reasonIndex);
-        expect(ingredientsIndex).toBeGreaterThan(foodNameIndex);
+        expect(breakdownIndex).toBeGreaterThan(actionIndex);
+        expect(foodNameIndex).toBeGreaterThan(actionIndex);
+        expect(reasonIndex).toBeGreaterThan(foodNameIndex);
+        expect(travelerCardIndex).toBeGreaterThan(reasonIndex);
+        expect(ingredientsIndex).toBeGreaterThan(travelerCardIndex);
+        expect(renderedText).not.toContain('Recognized item');
     });
 
     it('does not render the reason block when no summary is available', () => {
