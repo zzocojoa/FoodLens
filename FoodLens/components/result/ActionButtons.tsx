@@ -11,22 +11,24 @@ type ActionButtonsProps = {
 
 export function ActionButtons({ t }: ActionButtonsProps) {
   const insets = useSafeAreaInsets();
-  const { buttonTheme, shadowColor, onGoHome } = useActionButtonsModel();
+  const { buttonTheme, onGoHome } = useActionButtonsModel();
   
   return (
     <View style={[styles.bottomFloat, { bottom: Math.max(30, insets.bottom + 16) }]}>
+        <Text style={styles.helperText}>
+          {t('result.action.footerLabel', 'Optional actions')}
+        </Text>
         <HapticTouchableOpacity 
             style={[
                 styles.saveButton, 
                 {
                     backgroundColor: buttonTheme.backgroundColor,
-                    shadowColor
                 }
             ]} 
             onPress={onGoHome}
-            hapticType="success"
+            hapticType="light"
         >
-            <ArrowUpCircle size={22} color={buttonTheme.foregroundColor} />
+            <ArrowUpCircle size={18} color={buttonTheme.foregroundColor} />
             <Text style={[styles.saveButtonText, { color: buttonTheme.foregroundColor }]}>
               {t('result.action.backHome', 'Back to Home')}
             </Text>

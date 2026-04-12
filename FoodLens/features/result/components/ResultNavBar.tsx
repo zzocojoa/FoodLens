@@ -32,21 +32,21 @@ export default function ResultNavBar({
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                     <HapticTouchableOpacity
                         onPress={onReport}
-                        style={styles.navButton}
+                        style={styles.navUtilityButton}
                         hapticType="light"
                         accessibilityRole="button"
                         accessibilityLabel={reportAccessibilityLabel}
                     >
-                        <Ionicons name="flag-outline" size={20} color="#1C1C1E" />
+                        <Ionicons name="flag-outline" size={18} color="#64748B" />
                     </HapticTouchableOpacity>
                     <HapticTouchableOpacity
                         onPress={onShare}
-                        style={styles.navButton}
+                        style={styles.navUtilityButton}
                         hapticType="light"
                         accessibilityRole="button"
                         accessibilityLabel={shareAccessibilityLabel}
                     >
-                        <Ionicons name="share-outline" size={22} color="#1C1C1E" />
+                        <Ionicons name="share-outline" size={20} color="#64748B" />
                     </HapticTouchableOpacity>
                 </View>
             </View>

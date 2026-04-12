@@ -93,6 +93,67 @@ const resolveDecisionVariant = (
   return 'avoid';
 };
 
+const resolveDecisionSupportText = (
+  decisionVariant: 'ok' | 'ask' | 'avoid',
+  t?: (key: string, fallback?: string) => string
+): string => {
+  if (decisionVariant === 'ok') {
+    return (
+      t?.(
+        'result.decision.support.ok',
+        'Low risk does not mean zero risk. Double-check once before you continue.'
+      ) ?? 'Low risk does not mean zero risk. Double-check once before you continue.'
+    );
+  }
+
+  if (decisionVariant === 'ask') {
+    return (
+      t?.(
+        'result.decision.support.ask',
+        'This result still needs one more verification step before you decide.'
+      ) ?? 'This result still needs one more verification step before you decide.'
+    );
+  }
+
+  return (
+    t?.(
+      'result.decision.support.avoid',
+      'Treat this as unsafe until the ingredients are clearly confirmed.'
+    ) ?? 'Treat this as unsafe until the ingredients are clearly confirmed.'
+  );
+};
+
+const resolveDecisionChecklistItems = (
+  decisionVariant: 'ok' | 'ask' | 'avoid',
+  hasAllergens: boolean,
+  t?: (key: string, fallback?: string) => string
+): string[] => {
+  const followUpItem =
+    decisionVariant === 'ok'
+      ? t?.(
+          'result.decision.checklist.ok',
+          'Review the ingredient list before you continue.'
+        ) ?? 'Review the ingredient list before you continue.'
+      : decisionVariant === 'ask'
+        ? t?.(
+            'result.decision.checklist.ask',
+            'Use your traveler card if you need to confirm with staff.'
+          ) ?? 'Use your traveler card if you need to confirm with staff.'
+        : t?.(
+            'result.decision.checklist.avoid',
+            'Use your traveler card before ordering or eating.'
+          ) ?? 'Use your traveler card before ordering or eating.';
+
+  const allergenItem = hasAllergens
+    ? t?.(
+        'result.decision.checklist.allergen',
+        'Potential trigger ingredients were detected in the result.'
+      ) ?? 'Potential trigger ingredients were detected in the result.'
+    : followUpItem;
+
+  return [allergenItem];
+};
+
 export const useResultContentModel = (
   result: ResultContentProps['result'],
   locationData: ResultContentProps['locationData'],
@@ -103,6 +164,8 @@ export const useResultContentModel = (
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const localizedSummary = resolveLocalizedSummary(result, locale);
+  const decisionVariant = resolveDecisionVariant(result.decisionStatus, result.safetyStatus);
+  const hasAllergens = hasAllergenIngredients(result.ingredients);
   const safetyLabel = result.decisionStatus
     ? resolveSafetyLabelFromDecisionStatus(result.decisionStatus, t)
     : resolveSafetyLabelFromSafetyStatus(result.safetyStatus, t);
@@ -113,10 +176,16 @@ export const useResultContentModel = (
   return {
     colorScheme,
     theme,
-    decisionVariant: resolveDecisionVariant(result.decisionStatus, result.safetyStatus),
+    decisionVariant,
     safetyLabel,
     actionLabel,
-    hasAllergens: hasAllergenIngredients(result.ingredients),
+    decisionSupportText: resolveDecisionSupportText(decisionVariant, t),
+    decisionChecklistItems: resolveDecisionChecklistItems(
+      decisionVariant,
+      hasAllergens,
+      t
+    ),
+    hasAllergens,
     localizedFoodName: resolveLocalizedFoodName(result, locale),
     localizedSummary,
     localizedIngredients: result.ingredients.map((ingredient) => ({

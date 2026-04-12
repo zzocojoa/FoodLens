@@ -35,6 +35,14 @@ export const resultStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    navUtilityButton: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: 'rgba(255,255,255,0.72)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     errorContainer: {
         flex: 1,
         backgroundColor: '#F8FAFC',

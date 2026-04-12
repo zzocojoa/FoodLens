@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { Sparkles } from 'lucide-react-native';
+import { ShieldCheck } from 'lucide-react-native';
 import { resultContentStyles as styles } from '../styles';
 import { ResultTheme } from '../types';
 import { useAiSummaryCardModel } from '../hooks/useAiSummaryCardModel';
@@ -14,9 +14,9 @@ type AiSummaryCardProps = {
 };
 
 export default function AiSummaryCard({ colorScheme, theme, summary, t }: AiSummaryCardProps) {
-    const titleFallback = 'AI Health Coach';
+    const titleFallback = 'WHY THIS RESULT';
     const summaryFallback =
-        'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.';
+        'Review the detected ingredients and context below before you decide whether this is safe to eat.';
 
     const { colors, summaryText } = useAiSummaryCardModel(
         colorScheme,
@@ -32,9 +32,8 @@ export default function AiSummaryCard({ colorScheme, theme, summary, t }: AiSumm
                 colors,
             ]}
         >
-            <View style={styles.aiGlow} />
             <View style={styles.aiHeader}>
-                <Sparkles size={18} color="#60A5FA" fill="#60A5FA" />
+                <ShieldCheck size={18} color="#0F766E" />
                 <Text style={styles.aiTitle}>{t('result.ai.title', titleFallback)}</Text>
             </View>
             <Text style={[styles.aiText, { color: theme.textPrimary }]}>

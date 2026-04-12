@@ -29,6 +29,9 @@ describe('useResultContentModel', () => {
         expect(result.current.safetyLabel).toBe('ASK');
         expect(result.current.actionLabel).toBe('Check the label before eating.');
         expect(result.current.decisionVariant).toBe('ask');
+        expect(result.current.decisionChecklistItems).toEqual([
+            'Use your traveler card if you need to confirm with staff.',
+        ]);
     });
 
     it('falls back to safetyStatus-based action text when recommendedAction is missing', () => {
@@ -49,5 +52,8 @@ describe('useResultContentModel', () => {
         expect(result.current.safetyLabel).toBe('AVOID');
         expect(result.current.actionLabel).toBe('Avoid eating until ingredients are confirmed.');
         expect(result.current.decisionVariant).toBe('avoid');
+        expect(result.current.decisionSupportText).toBe(
+            'Treat this as unsafe until the ingredients are clearly confirmed.'
+        );
     });
 });
