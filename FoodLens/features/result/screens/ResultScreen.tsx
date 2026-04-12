@@ -8,7 +8,6 @@ import { StatusBar } from 'expo-status-bar';
 import Animated from 'react-native-reanimated';
 import BreakdownOverlay from '@/components/BreakdownOverlay';
 import { DateEditSheet } from '@/components/DateEditSheet';
-import { ActionButtons } from '@/components/result/ActionButtons';
 import { ResultContent } from '@/components/result/ResultContent';
 import { ResultHeader } from '@/components/result/ResultHeader';
 import { HEADER_HEIGHT } from '../constants/result.constants';
@@ -17,19 +16,14 @@ import { resultStyles as styles } from '../styles/resultStyles';
 import ResultErrorState from '../components/ResultErrorState';
 import ResultLoadingState from '../components/ResultLoadingState';
 import ResultNavBar from '../components/ResultNavBar';
-import ResultShareCard from '../components/ResultShareCard';
 import {
     buildResultReportMailtoUrl,
-    buildResultShareCardData,
-    buildResultShareMessageData,
 } from '../components/resultActionUtils';
-import { shareResultCard } from '../components/resultShareTransport';
 
 export default function ResultScreen() {
     const router = useRouter();
     const { back } = useAppNavigation();
     const { t, locale } = useI18n();
-    const shareCardRef = React.useRef<View>(null);
 
     const {
         isRestoring,
@@ -54,35 +48,6 @@ export default function ResultScreen() {
         isError,
         errorInfo,
     } = useResultScreen();
-
-    const handleShareResult = async () => {
-        if (!result) {
-            return;
-        }
-
-        const shareMessageData = buildResultShareMessageData({
-            result,
-            locationData,
-            timestamp,
-            locale,
-            t,
-        });
-
-        try {
-            await shareResultCard({
-                viewRef: shareCardRef,
-                dialogTitle: shareMessageData.title,
-                message: shareMessageData.message,
-                shareTitle: shareMessageData.title,
-            });
-        } catch (error) {
-            const messageText =
-                error instanceof Error
-                    ? error.message
-                    : t('result.share.error', 'Could not open the share sheet.');
-            Alert.alert(t('result.share.errorTitle', 'Share failed'), messageText);
-        }
-    };
 
     const handleReportIncorrectResult = async () => {
         if (!result) {
@@ -135,13 +100,6 @@ export default function ResultScreen() {
         }
     };
 
-    React.useEffect(() => {
-        if (!__DEV__) return;
-        console.log('[ResultScreenTrace] constants', {
-            HEADER_HEIGHT,
-        });
-    }, []);
-
     if (isRestoring || (!loaded && !result)) {
         return <ResultLoadingState isRestoring={isRestoring} t={t} />;
     }
@@ -186,14 +144,6 @@ export default function ResultScreen() {
         );
     }
 
-    const shareCardData = buildResultShareCardData({
-        result,
-        locationData,
-        timestamp,
-        locale,
-        t,
-    });
-
     return (
         <View style={styles.container}>
             <Stack.Screen options={{ headerShown: false }} />
@@ -209,9 +159,7 @@ export default function ResultScreen() {
 
             <ResultNavBar
                 onBack={back}
-                onShare={handleShareResult}
                 onReport={handleReportIncorrectResult}
-                shareAccessibilityLabel={t('result.action.share', 'Share')}
                 reportAccessibilityLabel={t('result.action.reportIncorrect', 'Report')}
             />
 
@@ -248,27 +196,6 @@ export default function ResultScreen() {
                 resultData={result}
                 t={t}
             />
-
-            <ActionButtons t={t} />
-
-            <View pointerEvents="none" style={styles.shareCardCaptureContainer}>
-                <View ref={shareCardRef} collapsable={false} style={styles.shareCardCaptureFrame}>
-                    <ResultShareCard
-                        brandLabel={shareCardData.brandLabel}
-                        foodName={shareCardData.foodName}
-                        safetyLabel={shareCardData.safetyLabel}
-                        reasonTitle={shareCardData.reasonTitle}
-                        actionTitle={shareCardData.actionTitle}
-                        reasons={shareCardData.reasons}
-                        actionLine={shareCardData.actionLine}
-                        disclaimer={shareCardData.disclaimer}
-                        imageSource={imageSource}
-                        locationLabel={shareCardData.locationLabel}
-                        placeholderLabel={shareCardData.placeholderLabel}
-                        themeVariant={shareCardData.themeVariant}
-                    />
-                </View>
-            </View>
         </View>
     );
 }

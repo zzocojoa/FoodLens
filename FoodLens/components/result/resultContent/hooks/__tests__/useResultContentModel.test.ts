@@ -52,8 +52,30 @@ describe('useResultContentModel', () => {
         expect(result.current.safetyLabel).toBe('AVOID');
         expect(result.current.actionLabel).toBe('Avoid eating until ingredients are confirmed.');
         expect(result.current.decisionVariant).toBe('avoid');
-        expect(result.current.decisionSupportText).toBe(
-            'Treat this as unsafe until the ingredients are clearly confirmed.'
+    });
+
+    it('keeps the checklist focused on the next action when allergens are detected', () => {
+        const { result } = renderHook(() =>
+            useResultContentModel(
+                {
+                    foodName: 'Bibimbap',
+                    safetyStatus: 'DANGER',
+                    ingredients: [
+                        {
+                            name: 'Wheat flour',
+                            isAllergen: true,
+                        },
+                    ],
+                },
+                null,
+                '2026-04-10T12:00:00.000Z',
+                t,
+                'en-US'
+            )
         );
+
+        expect(result.current.decisionChecklistItems).toEqual([
+            'Use your traveler card before ordering or eating.',
+        ]);
     });
 });

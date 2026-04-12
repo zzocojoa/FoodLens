@@ -7,17 +7,13 @@ import { resultStyles as styles } from '../styles/resultStyles';
 
 type ResultNavBarProps = {
     onBack: () => void;
-    onShare: () => void;
     onReport: () => void;
-    shareAccessibilityLabel: string;
     reportAccessibilityLabel: string;
 };
 
 export default function ResultNavBar({
     onBack,
-    onShare,
     onReport,
-    shareAccessibilityLabel,
     reportAccessibilityLabel,
 }: ResultNavBarProps) {
     return (
@@ -29,26 +25,15 @@ export default function ResultNavBar({
                     </View>
                 </HapticTouchableOpacity>
                 <View style={{ flex: 1 }} />
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <HapticTouchableOpacity
-                        onPress={onReport}
-                        style={styles.navUtilityButton}
-                        hapticType="light"
-                        accessibilityRole="button"
-                        accessibilityLabel={reportAccessibilityLabel}
-                    >
-                        <Ionicons name="flag-outline" size={18} color="#64748B" />
-                    </HapticTouchableOpacity>
-                    <HapticTouchableOpacity
-                        onPress={onShare}
-                        style={styles.navUtilityButton}
-                        hapticType="light"
-                        accessibilityRole="button"
-                        accessibilityLabel={shareAccessibilityLabel}
-                    >
-                        <Ionicons name="share-outline" size={20} color="#64748B" />
-                    </HapticTouchableOpacity>
-                </View>
+                <HapticTouchableOpacity
+                    onPress={onReport}
+                    style={styles.navReportButton}
+                    hapticType="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={reportAccessibilityLabel}
+                >
+                    <Ionicons name="flag-outline" size={18} color="#64748B" />
+                </HapticTouchableOpacity>
             </View>
         </SafeAreaView>
     );

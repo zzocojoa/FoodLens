@@ -93,39 +93,8 @@ const resolveDecisionVariant = (
   return 'avoid';
 };
 
-const resolveDecisionSupportText = (
-  decisionVariant: 'ok' | 'ask' | 'avoid',
-  t?: (key: string, fallback?: string) => string
-): string => {
-  if (decisionVariant === 'ok') {
-    return (
-      t?.(
-        'result.decision.support.ok',
-        'Low risk does not mean zero risk. Double-check once before you continue.'
-      ) ?? 'Low risk does not mean zero risk. Double-check once before you continue.'
-    );
-  }
-
-  if (decisionVariant === 'ask') {
-    return (
-      t?.(
-        'result.decision.support.ask',
-        'This result still needs one more verification step before you decide.'
-      ) ?? 'This result still needs one more verification step before you decide.'
-    );
-  }
-
-  return (
-    t?.(
-      'result.decision.support.avoid',
-      'Treat this as unsafe until the ingredients are clearly confirmed.'
-    ) ?? 'Treat this as unsafe until the ingredients are clearly confirmed.'
-  );
-};
-
 const resolveDecisionChecklistItems = (
   decisionVariant: 'ok' | 'ask' | 'avoid',
-  hasAllergens: boolean,
   t?: (key: string, fallback?: string) => string
 ): string[] => {
   const followUpItem =
@@ -144,14 +113,7 @@ const resolveDecisionChecklistItems = (
             'Use your traveler card before ordering or eating.'
           ) ?? 'Use your traveler card before ordering or eating.';
 
-  const allergenItem = hasAllergens
-    ? t?.(
-        'result.decision.checklist.allergen',
-        'Potential trigger ingredients were detected in the result.'
-      ) ?? 'Potential trigger ingredients were detected in the result.'
-    : followUpItem;
-
-  return [allergenItem];
+  return [followUpItem];
 };
 
 export const useResultContentModel = (
@@ -179,10 +141,8 @@ export const useResultContentModel = (
     decisionVariant,
     safetyLabel,
     actionLabel,
-    decisionSupportText: resolveDecisionSupportText(decisionVariant, t),
     decisionChecklistItems: resolveDecisionChecklistItems(
       decisionVariant,
-      hasAllergens,
       t
     ),
     hasAllergens,

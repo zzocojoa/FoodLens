@@ -12,27 +12,22 @@ jest.mock('@expo/vector-icons', () => {
 });
 
 describe('ResultNavBar', () => {
-    it('calls share and report actions from the navbar buttons', () => {
+    it('keeps only the report utility action in the navbar', () => {
         const onBack = jest.fn();
-        const onShare = jest.fn();
         const onReport = jest.fn();
 
-        const { getByLabelText } = render(
+        const { getByLabelText, queryByLabelText } = render(
             <ResultNavBar
                 onBack={onBack}
-                onShare={onShare}
                 onReport={onReport}
-                shareAccessibilityLabel="Share"
                 reportAccessibilityLabel="Report"
             />
         );
 
-        fireEvent.press(getByLabelText('Share'));
         fireEvent.press(getByLabelText('Report'));
-        fireEvent.press(getByLabelText('Share'));
 
         expect(onBack).not.toHaveBeenCalled();
-        expect(onShare).toHaveBeenCalledTimes(2);
         expect(onReport).toHaveBeenCalledTimes(1);
+        expect(queryByLabelText('Share')).toBeNull();
     });
 });

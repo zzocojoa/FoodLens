@@ -41,7 +41,7 @@ describe('TravelerAllergyCard', () => {
     );
 
     expect(getByText('여행자 알레르기 카드 • 한국어')).toBeTruthy();
-    expect(getByText('사진 위치 기준')).toBeTruthy();
+    expect(queryByText('사진 위치 기준')).toBeNull();
     expect(queryByText('Traveler Safety Card (Photo Location)')).toBeNull();
   });
 

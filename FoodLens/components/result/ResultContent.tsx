@@ -2,7 +2,6 @@ import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { AlertCircle, Sparkles } from 'lucide-react-native';
 import TravelerAllergyCard from '../TravelerAllergyCard';
-import AllergyAlertCard from './resultContent/components/AllergyAlertCard';
 import AiSummaryCard from './resultContent/components/AiSummaryCard';
 import ResultContentFiller from './resultContent/components/ResultContentFiller';
 import ResultIngredientsSection from './resultContent/components/ResultIngredientsSection';
@@ -75,7 +74,6 @@ export function ResultContent({
         decisionVariant,
         safetyLabel,
         actionLabel,
-        decisionSupportText,
         decisionChecklistItems,
         hasAllergens,
         colorScheme,
@@ -162,10 +160,6 @@ export function ResultContent({
                         {actionLabel}
                     </Text>
 
-                    <Text style={[styles.decisionSupportText, { color: theme.textPrimary }]}>
-                        {decisionSupportText}
-                    </Text>
-
                     <View style={styles.decisionChecklist}>
                         {decisionChecklistItems.map((item) => (
                             <View key={item} style={styles.decisionChecklistItem}>
@@ -212,7 +206,6 @@ export function ResultContent({
                     formattedTimestamp={formattedTimestamp}
                     theme={theme}
                     onDatePress={onDatePress}
-                    t={t}
                 />
 
                 {localizedSummary ? (
@@ -231,8 +224,6 @@ export function ResultContent({
                         aiTranslation={result.translationCard}
                     />
                 </View>
-
-                {hasAllergens && <AllergyAlertCard colorScheme={colorScheme} t={t} />}
 
                 <ResultIngredientsSection ingredients={localizedIngredients} theme={theme} t={t} />
             </View>

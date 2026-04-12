@@ -110,6 +110,7 @@ describe('ResultContent', () => {
         expect(reasonIndex).toBeGreaterThan(foodNameIndex);
         expect(travelerCardIndex).toBeGreaterThan(reasonIndex);
         expect(ingredientsIndex).toBeGreaterThan(travelerCardIndex);
+        expect(renderedText).not.toContain('Recognized item');
     });
 
     it('does not render the reason block when no summary is available', () => {

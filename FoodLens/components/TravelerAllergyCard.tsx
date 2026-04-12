@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Sparkles, Globe } from 'lucide-react-native';
+import { Globe } from 'lucide-react-native';
 import { useTravelerAllergyCardModel } from './travelerAllergyCard/hooks/useTravelerAllergyCardModel';
 import { travelerAllergyCardStyles as styles } from './travelerAllergyCard/styles';
 import { TravelerAllergyCardProps } from './travelerAllergyCard/types';
@@ -68,21 +68,6 @@ const resolveTravelerLanguageLabel = (
   return language;
 };
 
-const resolveTravelerSubtitle = (
-  subtitle: string,
-  t: (key: string, fallback?: string) => string
-): string => {
-  if (subtitle === 'Traveler Safety Card (Manual Language)') {
-    return t('travelerCard.subtitle.manual', '수동 언어 설정');
-  }
-
-  if (subtitle === 'Traveler Safety Card (Photo Location)') {
-    return t('travelerCard.subtitle.photoLocation', '사진 위치 기준');
-  }
-
-  return subtitle;
-};
-
 const resolveTravelerFinalMessage = (
   message: string,
   t: (key: string, fallback?: string) => string
@@ -99,23 +84,20 @@ export default function TravelerAllergyCard({ countryCode, aiTranslation }: Trav
   if (!model) return null;
 
   const travelerLanguageLabel = resolveTravelerLanguageLabel(model.displayData.language, t);
-  const travelerSubtitle = resolveTravelerSubtitle(model.displayData.sub, t);
   const travelerFinalMessage = resolveTravelerFinalMessage(model.finalMessage, t);
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Globe size={16} color="#3B82F6" />
-        <Text style={styles.headerTitle}>
-          {t('travelerCard.title', 'Traveler allergy card')} • {travelerLanguageLabel}
-        </Text>
-        {model.isAiLoaded && <Sparkles size={14} color="#F59E0B" />}
-      </View>
+      <View style={styles.cardShell}>
+        <View style={styles.header}>
+          <Globe size={16} color="#4C6EA8" />
+          <Text style={styles.headerTitle}>
+            {t('travelerCard.title', 'Traveler allergy card')} • {travelerLanguageLabel}
+          </Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.mainText}>{travelerFinalMessage}</Text>
-        <View style={styles.footer}>
-          <Text style={styles.subText}>{travelerSubtitle}</Text>
+        <View style={styles.card}>
+          <Text style={styles.mainText}>{travelerFinalMessage}</Text>
         </View>
       </View>
     </View>
