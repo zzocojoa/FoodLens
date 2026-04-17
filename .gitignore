@@ -9,3 +9,4 @@ FoodLens/artifacts/phase2-*.log
 FoodLens/artifacts/phase2/
 FoodLens/artifacts/phase6/
 artifacts/perf/
+.gstack/

@@ -25,6 +25,8 @@ def _auth_headers(access_token: str) -> dict[str, str]:
 
 
 class AuthPhase1RuntimeTests(unittest.TestCase):
+    AUTH_PUBLIC_BASE_URL = "https://api.example.com"
+
     def _signup_email(self, client: TestClient, **payload):
         response = client.post("/auth/email/signup", json=payload)
         self.assertEqual(response.status_code, 200)
@@ -749,7 +751,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "AUTH_PUBLIC_BASE_URL": "https://foodlens-2-w1xu.onrender.com",
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
                     "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
                     "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
                 },
@@ -769,7 +771,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(parsed.netloc, "accounts.google.com")
             query = parse_qs(parsed.query)
             self.assertEqual(query["client_id"][0], "google-client-id-test")
-            self.assertEqual(query["redirect_uri"][0], "https://foodlens-2-w1xu.onrender.com/auth/google/callback")
+            self.assertEqual(query["redirect_uri"][0], f"{self.AUTH_PUBLIC_BASE_URL}/auth/google/callback")
             packed_state = query["state"][0]
 
             callback = client.get(
@@ -811,7 +813,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "AUTH_PUBLIC_BASE_URL": "https://foodlens-2-w1xu.onrender.com",
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
                     "AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS": "foodlens://oauth/logout-complete",
                 },
                 clear=False,
@@ -845,7 +847,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "AUTH_PUBLIC_BASE_URL": "https://foodlens-2-w1xu.onrender.com",
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
                     "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
                     "AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS": "foodlens://oauth/logout-complete",
                 },
@@ -866,7 +868,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(start_query["client_id"][0], "kakao-client-id-test")
             self.assertEqual(
                 start_query["logout_redirect_uri"][0],
-                "https://foodlens-2-w1xu.onrender.com/auth/kakao/logout/callback?app_redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete",
+                f"{self.AUTH_PUBLIC_BASE_URL}/auth/kakao/logout/callback?app_redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete",
             )
 
             callback = client.get(

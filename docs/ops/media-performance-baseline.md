@@ -13,13 +13,13 @@
 1. `k6` 설치
    - macOS: `brew install k6`
 2. 테스트 대상 URL
-   - 예: `https://foodlens-2-w1xu.onrender.com`
+   - 예: `https://<RENDER_BASE_URL>`
 3. 서명된 렌더 URL 1개
    - `GET /me/profile` 또는 `GET /me/history` 응답에서 획득
 
 ## 1) 렌더 URL 확보 예시
 ```bash
-API="https://foodlens-2-w1xu.onrender.com"
+API="https://<RENDER_BASE_URL>"
 TOKEN="<access_token>"
 
 # profile 이미지 렌더 URL
@@ -35,7 +35,7 @@ curl -sS -H "Authorization: Bearer ${TOKEN}" "${API}/me/history?limit=1" \
 ```bash
 cd /Users/beatlefeed/Documents/FoodLens-project
 
-export BASE_URL="https://foodlens-2-w1xu.onrender.com"
+export BASE_URL="https://<RENDER_BASE_URL>"
 export AUTH_BEARER_TOKEN="<access_token>"
 export MEDIA_RENDER_URL="<signed_render_url>"
 
@@ -56,7 +56,7 @@ bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-baselin
 ```bash
 cd /Users/beatlefeed/Documents/FoodLens-project
 
-export BASE_URL="https://foodlens-2-w1xu.onrender.com"
+export BASE_URL="https://<RENDER_BASE_URL>"
 export AUTH_BEARER_TOKEN="<access_token>"
 export MEDIA_RENDER_URL="<signed_render_url>"
 export K6_MATRIX_VUS="20 50 100"

@@ -13,22 +13,132 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Heart, ShieldCheck } from 'lucide-react-native';
+import { AlertTriangle, Camera, ChevronRight, OctagonAlert, ShieldCheck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { FloatingEmojis } from '../../../components/FloatingEmojis';
-import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import ProfileSheet from '../../../components/ProfileSheet';
-import SpatialApple from '../../../components/SpatialApple';
 import { SecureImage } from '../../../components/SecureImage';
 import { WeeklyStatsStrip } from '../../../components/WeeklyStatsStrip';
 import HomeScansSection from '../components/HomeScansSection';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
+import {
+  countHomeStatusSignals,
+  filterScansByHomeStatusSignal,
+  HomeStatusSignal,
+  HomeStatusVariant,
+  resolveHomeStatusVariant,
+} from '../utils/homeStatusCard';
 import { useI18n } from '@/features/i18n';
+import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
+
+const getStatusPalette = (
+  variant: HomeStatusVariant
+): {
+  badgeBackground: string;
+  badgeText: string;
+  verdictText: string;
+  chipBackground: string;
+  chipText: string;
+  glow: string;
+} => {
+  if (variant === 'SAFE') {
+    return {
+      badgeBackground: '#DCFCE7',
+      badgeText: '#166534',
+      verdictText: '#0F1C78',
+      chipBackground: '#DCFCE7',
+      chipText: '#166534',
+      glow: 'rgba(145, 247, 142, 0.16)',
+    };
+  }
+
+  if (variant === 'DANGER') {
+    return {
+      badgeBackground: '#FFE4E6',
+      badgeText: '#BE123C',
+      verdictText: '#0F1C78',
+      chipBackground: '#FFE4E6',
+      chipText: '#BE123C',
+      glow: 'rgba(244, 63, 94, 0.14)',
+    };
+  }
+
+  if (variant === 'CAUTION') {
+    return {
+      badgeBackground: '#FCE7F3',
+      badgeText: '#E11D63',
+      verdictText: '#0F1C78',
+      chipBackground: '#FFEDD5',
+      chipText: '#B45309',
+      glow: 'rgba(251, 191, 36, 0.16)',
+    };
+  }
+
+  return {
+    badgeBackground: '#E2E8F0',
+    badgeText: '#64748B',
+    verdictText: '#0F1C78',
+    chipBackground: '#E2E8F0',
+    chipText: '#64748B',
+    glow: 'rgba(148, 163, 184, 0.14)',
+  };
+};
+
+const getStatusLabel = (
+  t: (key: string, fallback?: string) => string,
+  variant: HomeStatusVariant
+): string => {
+  if (variant === 'SAFE') {
+    return t('home.status.verdict.safe', '안전');
+  }
+
+  if (variant === 'DANGER') {
+    return t('home.status.verdict.danger', '위험');
+  }
+
+  if (variant === 'CAUTION') {
+    return t('home.status.verdict.caution', '주의');
+  }
+
+  return t('home.status.verdict.empty', '없음');
+};
+
+const getStatusChipLabel = (
+  t: (key: string, fallback?: string) => string,
+  variant: HomeStatusVariant,
+  counts: {
+    caution: number;
+    danger: number;
+  },
+  allergyCount: number
+): string => {
+  if (variant === 'EMPTY') {
+    return t('home.status.chip.empty', '기록 없음');
+  }
+
+  if (variant === 'DANGER') {
+    return t('home.status.chip.dangerTemplate', '위험 {count}').replace(
+      '{count}',
+      String(counts.danger)
+    );
+  }
+
+  if (variant === 'CAUTION') {
+    return t('home.status.chip.recheckTemplate', '재확인 {count}').replace(
+      '{count}',
+      String(counts.caution)
+    );
+  }
+
+  return t('home.status.chip.allergyTemplate', '알레르기 {count}').replace(
+    '{count}',
+    String(allergyCount)
+  );
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -42,20 +152,16 @@ export default function HomeScreen() {
     floatingEmojisRef,
     orbAnim,
     dashboard,
-    handleAppleMotion,
     handleOpenProfile,
     handleOpenEmojiPicker,
     handleStartAnalysis,
     handleOpenHistory,
     handleOpenResult,
-    handleOpenTripStats,
-    handleOpenAllergies,
   } = useHomeScreenController();
   const {
     activeModal,
     allergyCount,
     filteredScans,
-    safeCount,
     selectedDate,
     userProfile,
     weeklyStats,
@@ -64,9 +170,55 @@ export default function HomeScreen() {
     loadDashboardData,
     handleDeleteItem,
   } = dashboard;
+  const [activeSignal, setActiveSignal] = React.useState<HomeStatusSignal | null>(null);
   const cameraOrbBottom = Math.max(40, insets.bottom + 16);
   const profileImageUri = userProfile?.profileImage?.trim() || undefined;
   const hasConsumedOpenProfileParamRef = React.useRef(false);
+
+  const statusCounts = React.useMemo(
+    () => countHomeStatusSignals(filteredScans),
+    [filteredScans]
+  );
+  const statusVariant = React.useMemo(
+    () => resolveHomeStatusVariant(statusCounts),
+    [statusCounts]
+  );
+  const statusPalette = React.useMemo(
+    () => getStatusPalette(statusVariant),
+    [statusVariant]
+  );
+  const statusLabel = React.useMemo(
+    () => getStatusLabel(t, statusVariant),
+    [statusVariant, t]
+  );
+  const statusChipLabel = React.useMemo(
+    () =>
+      getStatusChipLabel(
+        t,
+        statusVariant,
+        { caution: statusCounts.caution, danger: statusCounts.danger },
+        allergyCount
+      ),
+    [allergyCount, statusCounts.caution, statusCounts.danger, statusVariant, t]
+  );
+  const signalDateLabel = React.useMemo(() => {
+    return new Intl.DateTimeFormat(locale || DEFAULT_FALLBACK_LOCALE, {
+      month: 'short',
+      day: 'numeric',
+    }).format(selectedDate);
+  }, [locale, selectedDate]);
+  const visibleScans = React.useMemo(
+    () => filterScansByHomeStatusSignal(filteredScans, activeSignal),
+    [activeSignal, filteredScans]
+  );
+
+  React.useEffect(() => {
+    setActiveSignal(null);
+  }, [selectedDate]);
+
+  const handleSignalPress = React.useCallback((signal: HomeStatusSignal) => {
+    setActiveSignal((previous) => (previous === signal ? null : signal));
+  }, []);
 
   React.useEffect(() => {
     if (params.openProfile !== '1') {
@@ -173,75 +325,113 @@ export default function HomeScreen() {
         >
           <View
             style={[
-              styles.heroCard,
+              styles.statusCard,
               {
-                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.glass,
+                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.surface,
                 borderColor:
                   colorScheme === 'light'
-                    ? 'rgba(226, 232, 240, 0.9)'
+                    ? 'rgba(198, 197, 212, 0.34)'
                     : theme.glassBorder,
-                borderWidth: colorScheme === 'light' ? 0 : 1,
                 shadowColor: theme.shadow,
               },
             ]}
           >
-            <View style={styles.heroGlow} />
-            <View style={styles.heroEmoji}>
-              <SpatialApple
-                size={100}
-                emoji={userProfile?.settings?.selectedEmoji || '🍎'}
-                onMotionDetect={handleAppleMotion}
-              />
+            <View style={[styles.statusGlow, { backgroundColor: statusPalette.glow }]} />
+
+            <View style={styles.statusHead}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: statusPalette.badgeBackground },
+                ]}
+              >
+                <Text style={[styles.statusBadgeText, { color: statusPalette.badgeText }]}>
+                  {t('home.status.badge', '오늘 상태')}
+                </Text>
+              </View>
+              <Text style={[styles.statusDate, { color: theme.textSecondary }]}>
+                {signalDateLabel}
+              </Text>
             </View>
-            <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>Food Lens</Text>
-            <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
-              {t('home.hero.subtitle', 'Travel Safe, Eat Smart')}
+
+            <Text style={[styles.statusVerdict, { color: statusPalette.verdictText }]}>
+              {statusLabel}
             </Text>
-          </View>
 
-          <View style={styles.statsGrid}>
-            <HapticTouchableOpacity
-              activeOpacity={0.8}
-              style={{ flex: 1 }}
-              hapticType="light"
-              onPress={handleOpenTripStats}
-            >
-              <BlurView
-                intensity={80}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
-                style={[styles.statCard, { backgroundColor: theme.glass }]}
-                pointerEvents="none"
+            <View style={styles.statusPillStack}>
+              <Pressable
+                onPress={() => handleSignalPress('SAFE')}
+                style={({ pressed }) => [
+                  styles.statusPill,
+                  styles.statusPillSafe,
+                  activeSignal === 'SAFE' && styles.statusPillActive,
+                  pressed && styles.statusPillPressed,
+                ]}
               >
-                <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
-                  <ShieldCheck size={22} color="#166534" />
+                <View style={styles.statusPillMain}>
+                  <View style={styles.statusPillIconSafe}>
+                    <ShieldCheck size={18} color="#006C1B" />
+                  </View>
+                  <Text style={[styles.statusPillLabel, { color: '#006C1B' }]}>
+                    {statusCounts.safe} {t('home.status.pill.safe', '안전')}
+                  </Text>
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-                  {t('home.stats.safeItems', 'Safe Items')}
-                </Text>
-                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{safeCount}</Text>
-              </BlurView>
-            </HapticTouchableOpacity>
+                <ChevronRight size={18} color="rgba(0,108,27,0.46)" />
+              </Pressable>
 
-            <HapticTouchableOpacity
-              style={{ flex: 1 }}
-              hapticType="light"
-              onPress={handleOpenAllergies}
-            >
-              <BlurView
-                intensity={80}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
-                style={[styles.statCard, { backgroundColor: theme.glass }]}
-                pointerEvents="none"
+              <Pressable
+                onPress={() => handleSignalPress('CAUTION')}
+                style={({ pressed }) => [
+                  styles.statusPill,
+                  styles.statusPillCaution,
+                  activeSignal === 'CAUTION' && styles.statusPillActive,
+                  pressed && styles.statusPillPressed,
+                ]}
               >
-                <View style={[styles.statIconBox, { backgroundColor: '#FFE4E6' }]}>
-                  <Heart size={22} color="#E11D48" />
+                <View style={styles.statusPillMain}>
+                  <View style={styles.statusPillIconCaution}>
+                    <AlertTriangle size={18} color="#8B6E00" />
+                  </View>
+                  <Text style={[styles.statusPillLabel, { color: '#8B6E00' }]}>
+                    {statusCounts.caution} {t('home.status.pill.caution', '주의')}
+                  </Text>
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
-                  {t('home.stats.allergies', 'Allergies')}
-                </Text>
-                <Text style={[styles.statValue, { color: theme.textPrimary }]}>{allergyCount}</Text>
-              </BlurView>
-            </HapticTouchableOpacity>
+                <ChevronRight size={18} color="rgba(139,110,0,0.46)" />
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleSignalPress('DANGER')}
+                style={({ pressed }) => [
+                  styles.statusPill,
+                  styles.statusPillRisk,
+                  activeSignal === 'DANGER' && styles.statusPillActive,
+                  pressed && styles.statusPillPressed,
+                ]}
+              >
+                <View style={styles.statusPillMain}>
+                  <View style={styles.statusPillIconRisk}>
+                    <OctagonAlert size={18} color="#8E8E97" />
+                  </View>
+                  <Text style={[styles.statusPillLabel, { color: '#8E8E97' }]}>
+                    {statusCounts.danger} {t('home.status.pill.danger', '위험')}
+                  </Text>
+                </View>
+                <ChevronRight size={18} color="rgba(142,142,151,0.46)" />
+              </Pressable>
+            </View>
+
+            <View
+              style={[
+                styles.statusChip,
+                {
+                  backgroundColor: statusPalette.chipBackground,
+                },
+              ]}
+            >
+              <Text style={[styles.statusChipText, { color: statusPalette.chipText }]}>
+                {statusChipLabel}
+              </Text>
+            </View>
           </View>
 
           <View style={{ marginBottom: 8 }}>
@@ -253,7 +443,7 @@ export default function HomeScreen() {
           </View>
 
           <HomeScansSection
-            filteredScans={filteredScans}
+            filteredScans={visibleScans}
             selectedDate={selectedDate}
             theme={theme}
             onOpenHistory={handleOpenHistory}
