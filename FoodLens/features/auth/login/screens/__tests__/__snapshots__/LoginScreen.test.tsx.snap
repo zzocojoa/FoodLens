@@ -394,10 +394,10 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
               }
             }
           >
-            Lorem ipsum dolor sit amet consectetur.
+            Welcome to FoodLens for safer meals wherever you go.
             
 
-            Lorem id sit
+            Continue to scan food, labels, and barcodes with confidence.
           </Text>
           <View
             collapsable={false}
@@ -1975,10 +1975,10 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
               }
             }
           >
-            Lorem ipsum dolor sit amet consectetur.
+            Welcome to FoodLens for safer meals wherever you go.
             
 
-            Lorem id sit
+            Continue to scan food, labels, and barcodes with confidence.
           </Text>
           <View
             collapsable={false}

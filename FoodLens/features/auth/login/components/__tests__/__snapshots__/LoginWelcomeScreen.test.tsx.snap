@@ -42,10 +42,10 @@ exports[`LoginWelcomeScreen matches snapshot 1`] = `
       }
     }
   >
-    Lorem ipsum dolor sit amet consectetur.
+    Welcome to FoodLens for safer meals wherever you go.
     
 
-    Lorem id sit
+    Continue to scan food, labels, and barcodes with confidence.
   </Text>
   <View
     collapsable={false}

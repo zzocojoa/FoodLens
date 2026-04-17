@@ -24,10 +24,18 @@ describe('ResultNavBar', () => {
             />
         );
 
-        fireEvent.press(getByLabelText('Report'));
+        const reportButton = getByLabelText('Report');
+
+        fireEvent.press(reportButton);
 
         expect(onBack).not.toHaveBeenCalled();
         expect(onReport).toHaveBeenCalledTimes(1);
+        expect(reportButton.props.hitSlop).toEqual({
+            top: 12,
+            right: 12,
+            bottom: 12,
+            left: 12,
+        });
         expect(queryByLabelText('Share')).toBeNull();
     });
 });
