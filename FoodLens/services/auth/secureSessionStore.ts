@@ -20,10 +20,16 @@ let secureStoreModule: SecureStoreModule | null = null;
 let warnedNativeUnavailable = false;
 let volatileSessionJson: string | null = null;
 
-const isNativeModuleUnavailableError = (error: unknown): boolean => {
+export const isNativeModuleUnavailableError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
-  return message.includes('cannot find native module') || message.includes('securestore');
+  return (
+    message.includes('cannot find native module') ||
+    message.includes('securestore') ||
+    message.includes('getvaluewithkeyasync is not a function') ||
+    message.includes('setvaluewithkeyasync is not a function') ||
+    message.includes('deletevaluewithkeyasync is not a function')
+  );
 };
 
 const logNativeUnavailableOnce = (error: unknown): void => {
