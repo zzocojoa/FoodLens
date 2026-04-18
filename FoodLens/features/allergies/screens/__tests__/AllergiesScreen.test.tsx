@@ -4,6 +4,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import AllergiesScreen from '../AllergiesScreen';
 import { useAllergiesData } from '../../hooks/useAllergiesData';
+import { useTravelerAllergyCardModel } from '../../../../components/travelerAllergyCard/hooks/useTravelerAllergyCardModel';
 
 const mockedBack = jest.fn();
 const mockedPush = jest.fn();
@@ -15,6 +16,16 @@ jest.mock('expo-router', () => ({
     useRouter: () => ({
         back: mockedBack,
         push: mockedPush,
+    }),
+}));
+
+jest.mock('react-native-safe-area-context', () => ({
+    SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => ({
+        top: 12,
+        bottom: 24,
+        left: 0,
+        right: 0,
     }),
 }));
 
@@ -48,16 +59,22 @@ jest.mock('../../constants/allergies.constants', () => ({
         },
         emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
         emptyDescription: { key: 'allergies.empty.description', fallback: '등록된 알레르기 정보가 없습니다.' },
-        travelerCardPreviewTitle: {
-            key: 'allergies.travelerCardPreviewTitle',
-            fallback: 'Traveler Card Preview',
-        },
     },
 }));
 
 jest.mock('../../hooks/useAllergiesData', () => ({
     useAllergiesData: jest.fn(),
 }));
+
+jest.mock('../../../../components/travelerAllergyCard/hooks/useTravelerAllergyCardModel', () => ({
+    useTravelerAllergyCardModel: jest.fn(),
+}));
+
+jest.mock('../../../home/components/HomeBackgroundAtmosphere', () => {
+    return function MockHomeBackgroundAtmosphere() {
+        return null;
+    };
+});
 
 jest.mock('@/features/i18n', () => ({
     useI18n: () => ({
@@ -67,12 +84,15 @@ jest.mock('@/features/i18n', () => ({
 
 describe('AllergiesScreen', () => {
     const mockedUseAllergiesData = useAllergiesData as jest.MockedFunction<typeof useAllergiesData>;
+    const mockedUseTravelerAllergyCardModel =
+        useTravelerAllergyCardModel as jest.MockedFunction<typeof useTravelerAllergyCardModel>;
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    test('renders header and description', () => {
+    test('renders loading shell without traveler preview or add CTA', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue(null);
         mockedUseAllergiesData.mockReturnValue({
             loading: true,
             allergies: [],
@@ -80,53 +100,91 @@ describe('AllergiesScreen', () => {
             severityMap: {},
         });
 
-        const { getByText } = render(<AllergiesScreen />);
+        const { getByText, queryByText } = render(<AllergiesScreen />);
 
         expect(getByText('My Allergies')).toBeTruthy();
-        expect(getByText(/등록된 알레르기 및 식단 제한 정보입니다/)).toBeTruthy();
-        expect(getByText('Edit Health Profile')).toBeTruthy();
+        expect(getByText('Preparing your passport card')).toBeTruthy();
+        expect(queryByText('Add allergy info')).toBeNull();
     });
 
-    test('does not render traveler card section while loading', () => {
+    test('renders empty state with the add-allergy CTA', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue(null);
         mockedUseAllergiesData.mockReturnValue({
-            loading: true,
+            loading: false,
             allergies: [],
             dietaryRestrictions: [],
             severityMap: {},
+        });
+
+        const { getByText, queryByText } = render(<AllergiesScreen />);
+
+        expect(getByText('No saved items yet')).toBeTruthy();
+        expect(getByText('Add your allergies before analyzing food.')).toBeTruthy();
+        expect(getByText('Add allergy info')).toBeTruthy();
+        expect(queryByText('Traveler Card Preview')).toBeNull();
+    });
+
+    test('renders the traveler passport hero and closes the modal from the backdrop', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue({
+            displayData: {
+                isAiLoaded: false,
+                language: 'English',
+                sub: 'Traveler Safety Card (Manual Language)',
+                text: 'I have food allergies. Please check ingredients carefully.',
+                usedAiText: false,
+            },
+            finalMessage: 'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanuts, Vegan',
+            isAiLoaded: false,
+        });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['Peanuts'],
+            dietaryRestrictions: ['Vegan'],
+            severityMap: { Peanuts: 'severe' },
+        });
+
+        const { getByTestId, getByText, queryByText, queryByTestId } = render(<AllergiesScreen />);
+
+        expect(getByText('Your passport card is ready')).toBeTruthy();
+        expect(getByText('Severe 1')).toBeTruthy();
+        expect(getByText('Restrictions 1')).toBeTruthy();
+        expect(queryByText('View larger card')).toBeNull();
+        expect(queryByText('Edit profile')).toBeNull();
+
+        fireEvent.press(getByText('Traveler Passport'));
+
+        expect(getByTestId('allergies-traveler-card-body')).toBeTruthy();
+        expect(queryByText('Traveler Card Preview')).toBeNull();
+        expect(queryByText('Expanded view')).toBeNull();
+        expect(queryByText('Close')).toBeNull();
+
+        fireEvent.press(getByTestId('allergies-traveler-card-backdrop'));
+
+        expect(queryByTestId('allergies-traveler-card-body')).toBeNull();
+    });
+
+    test('does not render redundant traveler-card action buttons', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue({
+            displayData: {
+                isAiLoaded: false,
+                language: 'English',
+                sub: 'Traveler Safety Card (Manual Language)',
+                text: 'I have food allergies. Please check ingredients carefully.',
+                usedAiText: false,
+            },
+            finalMessage: 'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanuts',
+            isAiLoaded: false,
+        });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['Peanuts'],
+            dietaryRestrictions: [],
+            severityMap: { Peanuts: 'moderate' },
         });
 
         const { queryByText } = render(<AllergiesScreen />);
 
-        expect(queryByText('Traveler Card Preview')).toBeNull();
-        expect(queryByText('MOCK_TRAVELER_CARD')).toBeNull();
-    });
-
-    test('renders traveler card section after loading', () => {
-        mockedUseAllergiesData.mockReturnValue({
-            loading: false,
-            allergies: ['Peanuts'],
-            dietaryRestrictions: [],
-            severityMap: { Peanuts: 'moderate' },
-        });
-
-        const { getByText } = render(<AllergiesScreen />);
-
-        expect(getByText('Traveler Card Preview')).toBeTruthy();
-        expect(getByText('MOCK_TRAVELER_CARD')).toBeTruthy();
-    });
-
-    test('navigates to profile when edit CTA is pressed', () => {
-        mockedUseAllergiesData.mockReturnValue({
-            loading: false,
-            allergies: ['Peanuts'],
-            dietaryRestrictions: [],
-            severityMap: { Peanuts: 'moderate' },
-        });
-
-        const { getByText } = render(<AllergiesScreen />);
-
-        fireEvent.press(getByText('Edit Health Profile'));
-
-        expect(mockedPush).toHaveBeenCalledWith('/profile');
+        expect(queryByText('View larger card')).toBeNull();
+        expect(queryByText('Edit profile')).toBeNull();
     });
 });
