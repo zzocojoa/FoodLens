@@ -346,6 +346,46 @@ cleanup_stale_android_launcher_assets() {
   fi
 }
 
+remove_android_launcher_variant_assets() {
+  local resource_root="${PROJECT_DIR}/android/app/src/main/res"
+  if [[ ! -d "${resource_root}" ]]; then
+    return
+  fi
+
+  local asset_name=""
+  local asset_extension=""
+  local asset_path=""
+  local removed_any="0"
+  local asset_names=(
+    "ic_launcher"
+    "ic_launcher_round"
+    "ic_launcher_foreground"
+    "ic_launcher_background"
+    "ic_launcher_monochrome"
+  )
+  local asset_extensions=(
+    "png"
+    "webp"
+    "xml"
+  )
+
+  for asset_name in "${asset_names[@]}"; do
+    for asset_extension in "${asset_extensions[@]}"; do
+      while IFS= read -r -d '' asset_path; do
+        rm -f "${asset_path}"
+        removed_any="1"
+        echo "[run-with-logs] Removed malformed Android launcher resource ${asset_path}"
+      done < <(
+        find "${resource_root}" -type f -name "${asset_name} *.${asset_extension}" -print0
+      )
+    done
+  done
+
+  if [[ "${removed_any}" == "1" ]]; then
+    echo "[run-with-logs] Cleared malformed Android launcher resource variants."
+  fi
+}
+
 cleanup_stale_android_release_intermediates() {
   if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "release" ]]; then
     return
@@ -679,8 +719,10 @@ fi
 
 if [[ "${PLATFORM}" == "android" ]]; then
   echo "[run-with-logs] Syncing native Android config via Expo prebuild..."
+  remove_android_launcher_variant_assets
   remove_prebuilt_android_launcher_assets
   npx expo prebuild --platform android --no-install
+  remove_android_launcher_variant_assets
   cleanup_stale_android_launcher_assets
   if [[ -f "${ANDROID_MANIFEST_PATH}" ]]; then
     if ! grep -q "com.google.android.geo.API_KEY" "${ANDROID_MANIFEST_PATH}"; then
