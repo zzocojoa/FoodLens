@@ -23,8 +23,8 @@ import { publishUserProfileUpdated } from './userProfileStore';
 import { buildDefaultProfile } from './profileFactory';
 import { getUserStorageKey } from './constants';
 
-const DEFAULT_HISTORY_MODE: SyncedHistoryMode = 'list';
-const DEFAULT_HISTORY_FILTER: SyncedHistoryFilter = 'all';
+export const DEFAULT_HISTORY_MODE: SyncedHistoryMode = 'list';
+export const DEFAULT_HISTORY_FILTER: SyncedHistoryFilter = 'all';
 
 const loadProfileSnapshotSync = (userId: string): UserProfile => {
   const scoped = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
@@ -143,3 +143,21 @@ export const buildHistoryMapRegionPatch = (
     mapRegion,
   },
 });
+
+export const buildReleasePresentationResetPatch = (
+  date: Date
+): Partial<SyncedClientState> => ({
+  home: {
+    selectedDate: toLocalDateString(date),
+  },
+  history: {
+    archiveMode: DEFAULT_HISTORY_MODE,
+    filter: DEFAULT_HISTORY_FILTER,
+    mapRegion: null,
+  },
+});
+
+export const resetReleasePresentationClientState = async (
+  userId: string,
+  date: Date
+): Promise<UserProfile> => updateUserClientState(userId, buildReleasePresentationResetPatch(date));

@@ -1,29 +1,24 @@
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
+import { AlertTriangle, ArrowRight, ChevronRight, OctagonAlert, ShieldCheck } from 'lucide-react-native';
 import {
-  Animated,
-  BackHandler,
-  Image,
-  Platform,
   Pressable,
   ScrollView,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { AlertTriangle, Camera, ChevronRight, OctagonAlert, ShieldCheck } from 'lucide-react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { FloatingEmojis } from '../../../components/FloatingEmojis';
-import ProfileSheet from '../../../components/ProfileSheet';
+import { FoodThumbnail } from '../../../components/FoodThumbnail';
+import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import { SecureImage } from '../../../components/SecureImage';
-import { WeeklyStatsStrip } from '../../../components/WeeklyStatsStrip';
-import HomeScansSection from '../components/HomeScansSection';
+import TopLevelScreenShell, {
+  getTopLevelScreenBottomPadding,
+} from '../../../components/navigation/TopLevelScreenShell';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { homeStyles as styles } from '../styles/homeStyles';
+import { isSameDay } from '../utils/homeDashboard';
+import { getHomeScanStatusBadge } from '../utils/homeUi';
 import {
   countHomeStatusSignals,
   filterScansByHomeStatusSignal,
@@ -31,9 +26,11 @@ import {
   HomeStatusVariant,
   resolveHomeStatusVariant,
 } from '../utils/homeStatusCard';
+import { getLocalizedFoodName } from '../utils/localizedFoodName';
 import { useI18n } from '@/features/i18n';
 import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
-import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
+import { getBarcodeImageUri, resolveImageUri } from '@/services/imageStorage';
+import { formatDate, getEmoji } from '@/services/utils';
 
 const getStatusPalette = (
   variant: HomeStatusVariant
@@ -69,10 +66,10 @@ const getStatusPalette = (
 
   if (variant === 'CAUTION') {
     return {
-      badgeBackground: '#FCE7F3',
-      badgeText: '#E11D63',
+      badgeBackground: '#FEF3C7',
+      badgeText: '#B45309',
       verdictText: '#0F1C78',
-      chipBackground: '#FFEDD5',
+      chipBackground: '#FEF3C7',
       chipText: '#B45309',
       glow: 'rgba(251, 191, 36, 0.16)',
     };
@@ -134,47 +131,36 @@ const getStatusChipLabel = (
     );
   }
 
-  return t('home.status.chip.allergyTemplate', '알레르기 {count}').replace(
-    '{count}',
-    String(allergyCount)
-  );
+  if (allergyCount > 0) {
+    return t('home.status.chip.allergyTemplate', '알레르기 {count}').replace(
+      '{count}',
+      String(allergyCount)
+    );
+  }
+
+  return t('home.status.chip.safe', '안정');
 };
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ openProfile?: string }>();
   const { t, locale } = useI18n();
   const insets = useSafeAreaInsets();
   const {
     colorScheme,
     theme,
     isConnected,
-    floatingEmojisRef,
-    orbAnim,
     dashboard,
-    handleOpenProfile,
-    handleOpenEmojiPicker,
-    handleStartAnalysis,
-    handleOpenHistory,
     handleOpenResult,
   } = useHomeScreenController();
   const {
-    activeModal,
     allergyCount,
     filteredScans,
+    recentScans,
     selectedDate,
     userProfile,
-    weeklyStats,
-    setActiveModal,
     setSelectedDate,
-    loadDashboardData,
-    handleDeleteItem,
   } = dashboard;
   const [activeSignal, setActiveSignal] = React.useState<HomeStatusSignal | null>(null);
-  const cameraOrbBottom = Math.max(40, insets.bottom + 16);
   const profileImageUri = userProfile?.profileImage?.trim() || undefined;
-  const hasConsumedOpenProfileParamRef = React.useRef(false);
-
   const statusCounts = React.useMemo(
     () => countHomeStatusSignals(filteredScans),
     [filteredScans]
@@ -196,86 +182,85 @@ export default function HomeScreen() {
       getStatusChipLabel(
         t,
         statusVariant,
-        { caution: statusCounts.caution, danger: statusCounts.danger },
+        {
+          caution: statusCounts.caution,
+          danger: statusCounts.danger,
+        },
         allergyCount
       ),
     [allergyCount, statusCounts.caution, statusCounts.danger, statusVariant, t]
   );
-  const signalDateLabel = React.useMemo(() => {
-    return new Intl.DateTimeFormat(locale || DEFAULT_FALLBACK_LOCALE, {
-      month: 'short',
-      day: 'numeric',
-    }).format(selectedDate);
-  }, [locale, selectedDate]);
-  const visibleScans = React.useMemo(
-    () => filterScansByHomeStatusSignal(filteredScans, activeSignal),
-    [activeSignal, filteredScans]
-  );
+  const homeContentBottomPadding =
+    getTopLevelScreenBottomPadding(insets.bottom, 24);
+
+  const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
+  const visibleRecentScans = React.useMemo(() => {
+    if (activeSignal === null) {
+      return recentScans;
+    }
+
+    return filterScansByHomeStatusSignal(filteredScans, activeSignal);
+  }, [activeSignal, filteredScans, recentScans]);
+  const featuredRecentScan = visibleRecentScans[0] ?? recentScans[0] ?? null;
+  const signalDateLabel = new Intl.DateTimeFormat(locale || DEFAULT_FALLBACK_LOCALE, {
+    month: 'short',
+    day: 'numeric',
+  }).format(selectedDate);
+  const cardSurfaceStyle = {
+    backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.glass,
+    borderColor:
+      colorScheme === 'light' ? 'rgba(198, 197, 212, 0.34)' : theme.glassBorder,
+    shadowColor: theme.shadow,
+  };
+  const featuredFoodName = featuredRecentScan ? getLocalizedFoodName(featuredRecentScan, locale) : null;
+  const featuredBadge = featuredRecentScan
+    ? getHomeScanStatusBadge(featuredRecentScan.safetyStatus)
+    : null;
+  const featuredImageUri = featuredRecentScan
+    ? featuredRecentScan.isBarcode
+      ? getBarcodeImageUri()
+      : (resolveImageUri(featuredRecentScan.imageUri) || undefined)
+    : undefined;
 
   React.useEffect(() => {
     setActiveSignal(null);
   }, [selectedDate]);
 
+  React.useEffect(() => {
+    const today = new Date();
+
+    if (!isSameDay(selectedDate, today)) {
+      setSelectedDate(today);
+    }
+  }, [selectedDate, setSelectedDate]);
+
   const handleSignalPress = React.useCallback((signal: HomeStatusSignal) => {
     setActiveSignal((previous) => (previous === signal ? null : signal));
   }, []);
 
-  React.useEffect(() => {
-    if (params.openProfile !== '1') {
-      hasConsumedOpenProfileParamRef.current = false;
-      return;
-    }
-    if (hasConsumedOpenProfileParamRef.current) {
-      return;
-    }
-    hasConsumedOpenProfileParamRef.current = true;
-    setActiveModal('PROFILE');
-    router.setParams({ openProfile: undefined });
-  }, [params.openProfile, router, setActiveModal]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      if (Platform.OS !== 'android' || activeModal !== 'PROFILE') {
-        return undefined;
-      }
-
-      const onBackPress = () => {
-        setActiveModal('NONE');
-        return true;
-      };
-
-      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => {
-        subscription.remove();
-      };
-    }, [activeModal, setActiveModal])
-  );
-
-  const homeBackgroundColor = colorScheme === 'light' ? '#FFFFFF' : theme.background;
-
   return (
-    <View style={[styles.container, { backgroundColor: homeBackgroundColor }]}>
-      <View style={styles.backgroundContainer} />
+    <TopLevelScreenShell
+      activeItem="home"
+      backgroundColor={homeBackgroundColor}
+      hideNav={false}
+    >
+      <View style={[styles.container, { backgroundColor: homeBackgroundColor }]}>
+        <View style={styles.backgroundContainer} />
 
-      <SafeAreaView style={{ flex: 1, backgroundColor: homeBackgroundColor }} edges={['top']}>
-        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <SafeAreaView style={{ flex: 1, backgroundColor: homeBackgroundColor }} edges={['top']}>
+          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
-        {isConnected === false && (
-          <View style={styles.offlineBanner}>
-            <Text style={styles.offlineText}>
-              {t('home.offline.cachedMode', 'Offline Mode: Using cached data')}
-            </Text>
-          </View>
-        )}
+          {isConnected === false && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineText}>
+                {t('home.offline.cachedMode', 'Offline Mode: Using cached data')}
+              </Text>
+            </View>
+          )}
 
-        <View style={[styles.header, { paddingHorizontal: 24 }]}>
-          <View style={styles.userInfo}>
-            <Pressable
-              onPress={handleOpenProfile}
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-              hitSlop={20}
-            >
-              <View style={styles.avatarContainer} pointerEvents="none">
+          <View style={[styles.header, { paddingHorizontal: 24 }]}>
+            <View style={styles.userInfo}>
+              <View style={styles.avatarContainer}>
                 {profileImageUri ? (
                   <SecureImage
                     source={{ uri: profileImageUri }}
@@ -293,199 +278,168 @@ export default function HomeScreen() {
                   />
                 )}
               </View>
-            </Pressable>
-            <View>
-              <Text style={[styles.welcomeText, { color: theme.textSecondary }]}>
-                {t('home.greeting.welcomeBack', 'Welcome back,')}
-              </Text>
-              <Text style={[styles.userName, { color: theme.textPrimary }]}>
-                {userProfile?.name || t('home.greeting.defaultName', 'Traveler Joy')} ✈️
-              </Text>
-            </View>
-          </View>
-
-          <Pressable
-            onPress={handleOpenEmojiPicker}
-            style={({ pressed }) => [styles.emojiPickerButton, { opacity: pressed ? 0.6 : 1 }]}
-            hitSlop={10}
-          >
-            <View pointerEvents="none">
-              <Image
-                source={require('../../../assets/images/emoji-picker-icon.png')}
-                style={{ width: 28, height: 28, tintColor: theme.textPrimary }}
-                resizeMode="contain"
-              />
-            </View>
-          </Pressable>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={{ paddingBottom: 120 + insets.bottom, paddingHorizontal: 24 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View
-            style={[
-              styles.statusCard,
-              {
-                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.surface,
-                borderColor:
-                  colorScheme === 'light'
-                    ? 'rgba(198, 197, 212, 0.34)'
-                    : theme.glassBorder,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <View style={[styles.statusGlow, { backgroundColor: statusPalette.glow }]} />
-
-            <View style={styles.statusHead}>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: statusPalette.badgeBackground },
-                ]}
-              >
-                <Text style={[styles.statusBadgeText, { color: statusPalette.badgeText }]}>
-                  {t('home.status.badge', '오늘 상태')}
+              <View>
+                <Text style={[styles.welcomeText, { color: theme.textSecondary }]}>
+                  {t('home.greeting.welcomeBack', 'Welcome back,')}
+                </Text>
+                <Text style={[styles.userName, { color: theme.textPrimary }]}>
+                  {userProfile?.name || t('home.greeting.defaultName', 'Traveler Joy')} ✈️
                 </Text>
               </View>
-              <Text style={[styles.statusDate, { color: theme.textSecondary }]}>
-                {signalDateLabel}
-              </Text>
             </View>
 
-            <Text style={[styles.statusVerdict, { color: statusPalette.verdictText }]}>
-              {statusLabel}
-            </Text>
-
-            <View style={styles.statusPillStack}>
-              <Pressable
-                onPress={() => handleSignalPress('SAFE')}
-                style={({ pressed }) => [
-                  styles.statusPill,
-                  styles.statusPillSafe,
-                  activeSignal === 'SAFE' && styles.statusPillActive,
-                  pressed && styles.statusPillPressed,
-                ]}
-              >
-                <View style={styles.statusPillMain}>
-                  <View style={styles.statusPillIconSafe}>
-                    <ShieldCheck size={18} color="#006C1B" />
-                  </View>
-                  <Text style={[styles.statusPillLabel, { color: '#006C1B' }]}>
-                    {statusCounts.safe} {t('home.status.pill.safe', '안전')}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color="rgba(0,108,27,0.46)" />
-              </Pressable>
-
-              <Pressable
-                onPress={() => handleSignalPress('CAUTION')}
-                style={({ pressed }) => [
-                  styles.statusPill,
-                  styles.statusPillCaution,
-                  activeSignal === 'CAUTION' && styles.statusPillActive,
-                  pressed && styles.statusPillPressed,
-                ]}
-              >
-                <View style={styles.statusPillMain}>
-                  <View style={styles.statusPillIconCaution}>
-                    <AlertTriangle size={18} color="#8B6E00" />
-                  </View>
-                  <Text style={[styles.statusPillLabel, { color: '#8B6E00' }]}>
-                    {statusCounts.caution} {t('home.status.pill.caution', '주의')}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color="rgba(139,110,0,0.46)" />
-              </Pressable>
-
-              <Pressable
-                onPress={() => handleSignalPress('DANGER')}
-                style={({ pressed }) => [
-                  styles.statusPill,
-                  styles.statusPillRisk,
-                  activeSignal === 'DANGER' && styles.statusPillActive,
-                  pressed && styles.statusPillPressed,
-                ]}
-              >
-                <View style={styles.statusPillMain}>
-                  <View style={styles.statusPillIconRisk}>
-                    <OctagonAlert size={18} color="#8E8E97" />
-                  </View>
-                  <Text style={[styles.statusPillLabel, { color: '#8E8E97' }]}>
-                    {statusCounts.danger} {t('home.status.pill.danger', '위험')}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color="rgba(142,142,151,0.46)" />
-              </Pressable>
-            </View>
-
-            <View
-              style={[
-                styles.statusChip,
-                {
-                  backgroundColor: statusPalette.chipBackground,
-                },
-              ]}
-            >
-              <Text style={[styles.statusChipText, { color: statusPalette.chipText }]}>
-                {statusChipLabel}
-              </Text>
-            </View>
           </View>
 
-          <View style={{ marginBottom: 8 }}>
-            <WeeklyStatsStrip
-              weeklyData={weeklyStats}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-            />
-          </View>
+          <ScrollView
+            contentContainerStyle={{
+              paddingBottom: homeContentBottomPadding,
+              paddingHorizontal: 24,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.topfoldSection}>
+              <View style={[styles.signalCard, cardSurfaceStyle]}>
+                <View style={[styles.statusGlow, { backgroundColor: statusPalette.glow }]} />
 
-          <HomeScansSection
-            filteredScans={visibleScans}
-            selectedDate={selectedDate}
-            theme={theme}
-            onOpenHistory={handleOpenHistory}
-            onOpenResult={handleOpenResult}
-            onDeleteItem={handleDeleteItem}
-            t={t}
-            locale={locale}
-          />
-        </ScrollView>
+              <View style={styles.signalHeaderRow}>
+                <View style={[styles.statusKicker, { backgroundColor: statusPalette.badgeBackground }]}>
+                  <Text style={[styles.statusKickerText, { color: statusPalette.badgeText }]}>
+                    {t('home.status.badge', '오늘 상태')}
+                  </Text>
+                </View>
+                <Text style={[styles.signalDateLabel, { color: theme.textSecondary }]}>
+                  {signalDateLabel}
+                </Text>
+              </View>
 
-        <ProfileSheet
-          isOpen={activeModal === 'PROFILE'}
-          onClose={() => setActiveModal('NONE')}
-          userId={getCurrentUserIdSnapshot()}
-          onUpdate={loadDashboardData}
-        />
-      </SafeAreaView>
+              <Text style={[styles.signalHeadline, { color: statusPalette.verdictText }]}>
+                {statusLabel}
+              </Text>
 
-      <Animated.View
-        style={[
-          styles.orbContainer,
-          {
-            opacity: orbAnim,
-            bottom: cameraOrbBottom,
-            transform: [{ scale: orbAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
-          },
-        ]}
-        pointerEvents={activeModal === 'PROFILE' ? 'none' : 'box-none'}
-      >
-        <View
-          style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, { alignItems: 'center', justifyContent: 'center' }]}
-          pointerEvents="none"
-        >
-          <FloatingEmojis ref={floatingEmojisRef} />
-        </View>
+              <View style={styles.metricPillStack}>
+                <Pressable
+                  onPress={() => handleSignalPress('SAFE')}
+                  style={({ pressed }) => [
+                    styles.metricPill,
+                    styles.metricPillSafe,
+                    activeSignal === 'SAFE' && styles.metricPillActive,
+                    pressed && styles.metricPillPressed,
+                  ]}
+                >
+                  <View style={styles.metricPillMain}>
+                    <View style={styles.metricPillIconSafe}>
+                      <ShieldCheck color="#166534" size={16} strokeWidth={2.3} />
+                    </View>
+                    <Text style={[styles.metricPillValue, styles.metricPillSafeText]}>
+                      {statusCounts.safe} {t('home.status.pill.safe', '안전')}
+                    </Text>
+                  </View>
+                  <ChevronRight color="rgba(22, 101, 52, 0.55)" size={18} strokeWidth={2.4} />
+                </Pressable>
 
-        <TouchableOpacity onPress={handleStartAnalysis} activeOpacity={0.8} style={styles.cameraButtonShadow}>
-          <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.cameraButton} pointerEvents="none">
-            <Camera color="white" size={32} />
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
-    </View>
+                <Pressable
+                  onPress={() => handleSignalPress('CAUTION')}
+                  style={({ pressed }) => [
+                    styles.metricPill,
+                    styles.metricPillCaution,
+                    activeSignal === 'CAUTION' && styles.metricPillActive,
+                    pressed && styles.metricPillPressed,
+                  ]}
+                >
+                  <View style={styles.metricPillMain}>
+                    <View style={styles.metricPillIconCaution}>
+                      <AlertTriangle color="#B45309" size={16} strokeWidth={2.3} />
+                    </View>
+                    <Text style={[styles.metricPillValue, styles.metricPillCautionText]}>
+                      {statusCounts.caution} {t('home.status.pill.caution', '주의')}
+                    </Text>
+                  </View>
+                  <ChevronRight color="rgba(180, 83, 9, 0.55)" size={18} strokeWidth={2.4} />
+                </Pressable>
+
+                <Pressable
+                  onPress={() => handleSignalPress('DANGER')}
+                  style={({ pressed }) => [
+                    styles.metricPill,
+                    styles.metricPillDanger,
+                    activeSignal === 'DANGER' && styles.metricPillActive,
+                    pressed && styles.metricPillPressed,
+                  ]}
+                >
+                  <View style={styles.metricPillMain}>
+                    <View style={styles.metricPillIconDanger}>
+                      <OctagonAlert color="#BE123C" size={16} strokeWidth={2.3} />
+                    </View>
+                    <Text style={[styles.metricPillValue, styles.metricPillDangerText]}>
+                      {statusCounts.danger} {t('home.status.pill.danger', '위험')}
+                    </Text>
+                  </View>
+                  <ChevronRight color="rgba(190, 18, 60, 0.55)" size={18} strokeWidth={2.4} />
+                </Pressable>
+              </View>
+
+              <View style={[styles.statusSignalChip, { backgroundColor: statusPalette.chipBackground }]}>
+                <Text style={[styles.statusSignalChipText, { color: statusPalette.chipText }]}>
+                  {statusChipLabel}
+                </Text>
+              </View>
+            </View>
+
+              {featuredRecentScan && featuredFoodName && featuredBadge ? (
+                <HapticTouchableOpacity
+                  activeOpacity={0.9}
+                  hapticType="selection"
+                  onPress={() => handleOpenResult(featuredRecentScan)}
+                  style={[styles.featuredScanCard, cardSurfaceStyle]}
+                >
+                  <View style={styles.featuredScanMedia}>
+                    <FoodThumbnail
+                      uri={featuredImageUri}
+                      emoji={getEmoji(featuredFoodName)}
+                      style={styles.featuredScanThumbnail}
+                      imageStyle={styles.featuredScanThumbnailImage}
+                      fallbackFontSize={42}
+                    />
+                    <View
+                      style={[
+                        styles.featuredScanBadge,
+                        { backgroundColor: featuredBadge.backgroundColor },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.featuredScanBadgeText,
+                          { color: featuredBadge.textColor },
+                        ]}
+                      >
+                        {featuredBadge.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.featuredScanBody}>
+                    <View style={styles.featuredScanCopy}>
+                      <Text style={[styles.featuredScanEyebrow, { color: theme.textSecondary }]}>
+                        {t('home.scans.featuredTitle', '가장 최근 판단')}
+                      </Text>
+                      <Text style={[styles.featuredScanName, { color: theme.textPrimary }]}>
+                        {featuredFoodName}
+                      </Text>
+                      <Text style={[styles.featuredScanMeta, { color: theme.textSecondary }]}>
+                        {formatDate(featuredRecentScan.timestamp, locale)}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.featuredScanAction, { backgroundColor: theme.surface }]}>
+                      <ArrowRight color={theme.textPrimary} size={18} strokeWidth={2.4} />
+                    </View>
+                  </View>
+                </HapticTouchableOpacity>
+              ) : null}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    </TopLevelScreenShell>
   );
 }

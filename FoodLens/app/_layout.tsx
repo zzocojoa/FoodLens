@@ -1,11 +1,11 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, router as appRouter } from 'expo-router';
+import { Stack, router as appRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 import { useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, BackHandler, Platform, ToastAndroid } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
@@ -19,16 +19,25 @@ import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore
 import { AnalysisService } from '../services/analysisService';
 import { UserService } from '../services/userService';
 import { initializeGoogleAdsRuntime } from '../services/ads/googleAdsRuntime';
+import { syncReleasePresentationStateVersion } from '../services/appVersionState';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initSentry, setUser } from '../services/sentry';
+import {
+  isAndroidTopLevelRoute,
+  shouldExitOnSecondBack,
+} from '../components/navigation/androidTopLevelNavigation';
+import { TOP_LEVEL_NAV_ROUTES } from '../components/navigation/topLevelNavRegistry';
+import { useI18n } from '../features/i18n';
 
 SplashScreen.preventAutoHideAsync();
 
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 15_000;
 const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
+const ANDROID_TOP_LEVEL_SCREEN_OPTIONS =
+  Platform.OS === 'android' ? { animation: 'none' as const } : undefined;
 
 const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
   const callbackRef = useRef(callback);
@@ -82,6 +91,9 @@ export const unstable_settings = {
 
 function LayoutContent() {
   const { colorScheme } = useTheme();
+  const { t } = useI18n();
+  const pathname = usePathname();
+  const lastAndroidBackPressAtRef = useRef<number>(0);
   const runWithAuthenticatedUser = (run: (userId: string) => void | Promise<void>) => {
     const userId = getCurrentUserIdSnapshot();
     if (userId && userId !== 'auth-required') {
@@ -137,8 +149,17 @@ function LayoutContent() {
           setUser(deviceId);
           nextRoute = '/login';
         } else {
-          startPhase2SyncRuntime();
           setUser(restoredSession.user.id);
+          try {
+            await syncReleasePresentationStateVersion(restoredSession.user.id, new Date());
+          } catch (error) {
+            console.error('[AppVersionState] Release presentation migration failed', {
+              request_id: `app-version-state-${Date.now().toString(36)}`,
+              user_id: restoredSession.user.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          startPhase2SyncRuntime();
           // Professional background cleanup
           cleanupOrphanedImages().catch(() => {});
 
@@ -177,22 +198,59 @@ function LayoutContent() {
     void initializeGoogleAdsRuntime();
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    lastAndroidBackPressAtRef.current = 0;
+
+    const onBackPress = () => {
+      if (!isAndroidTopLevelRoute(pathname)) {
+        return false;
+      }
+
+      const nowMs = Date.now();
+      if (shouldExitOnSecondBack(nowMs, lastAndroidBackPressAtRef.current)) {
+        BackHandler.exitApp();
+        return true;
+      }
+
+      lastAndroidBackPressAtRef.current = nowMs;
+      ToastAndroid.show(
+        t('bottomNav.exitPrompt', '뒤로가기를 한 번 더 누르면 앱이 종료됩니다.'),
+        ToastAndroid.SHORT,
+      );
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      subscription.remove();
+    };
+  }, [pathname, t]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ErrorBoundary>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
-            <Stack.Screen name="(tabs)" />
             <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
             <Stack.Screen name="camera" options={{ animation: 'none' }} />
             <Stack.Screen name="result" options={{ animation: 'fade_from_bottom' }} />
-            <Stack.Screen name="profile" />
-            <Stack.Screen name="history" />
+            <Stack.Screen name="health-profile" />
             <Stack.Screen name="trip-stats" />
             <Stack.Screen name="emoji-picker" />
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
             <Stack.Screen name="oauth/kakao-callback" options={{ animation: 'none' }} />
+            {TOP_LEVEL_NAV_ROUTES.map((route) => (
+              <Stack.Screen
+                key={route.stackName}
+                name={route.stackName}
+                options={ANDROID_TOP_LEVEL_SCREEN_OPTIONS}
+              />
+            ))}
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>

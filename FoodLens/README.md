@@ -42,7 +42,7 @@ npm run ios:dev # iOS 시뮬레이터 실행
 npx expo run:ios --device
 npx expo run:android --device
 npx expo run:ios --configuration Release --device
-npx expo run:android --variant release --device
+npm run android:release:device:logs
 # 또는
 npx expo start # Expo Go 실행
 npx expo start --tunnel
@@ -59,6 +59,9 @@ npm run ios:release:device:logs
 npm run android:device:logs
 npm run android:release:device:logs
 ```
+
+- 로컬 release 설치는 canonical worktree인 `/Users/beatlefeed/Documents/FoodLens-project/FoodLens` 기준으로만 허용됩니다.
+- 다른 worktree는 자동으로 별도 package id를 쓰며, 예외적으로 non-canonical release를 강행할 때만 `FOODLENS_ALLOW_NONCANONICAL_RELEASE=1`을 명시합니다.
 
 ```
 cd /Users/beatlefeed/Documents/FoodLens-project/FoodLens

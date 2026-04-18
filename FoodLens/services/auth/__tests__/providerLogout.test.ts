@@ -37,6 +37,21 @@ const ANALYSIS_SERVER_URL = 'https://api.example.com';
 
 const ORIGINAL_ENV = process.env;
 
+const loadIsolatedLogoutFromOAuthProvider = (): typeof logoutFromOAuthProvider => {
+  let loadedModule: typeof import('../providerLogout') | null = null;
+
+  jest.isolateModules(() => {
+    loadedModule = require('../providerLogout') as typeof import('../providerLogout');
+  });
+
+  if (!loadedModule) {
+    throw new Error('providerLogout module failed to load in isolateModules');
+  }
+
+  const resolvedModule = loadedModule as typeof import('../providerLogout');
+  return resolvedModule.logoutFromOAuthProvider;
+};
+
 beforeEach(() => {
   jest.resetAllMocks();
   process.env = { ...ORIGINAL_ENV };
@@ -64,10 +79,7 @@ describe('providerLogout', () => {
       type: 'opened',
     });
 
-    let isolatedLogoutFromOAuthProvider: typeof logoutFromOAuthProvider;
-    jest.isolateModules(() => {
-      ({ logoutFromOAuthProvider: isolatedLogoutFromOAuthProvider } = require('../providerLogout'));
-    });
+    const isolatedLogoutFromOAuthProvider = loadIsolatedLogoutFromOAuthProvider();
 
     await isolatedLogoutFromOAuthProvider('google');
 

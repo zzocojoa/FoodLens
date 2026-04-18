@@ -25,6 +25,7 @@ export type AnalysisStoreSnapshot = {
 };
 
 export type AnalysisStoreBackup = {
+  schemaVersion: 2;
   result: AnalysisStoreResult;
   location: AnalysisStoreLocation | null;
   imageUri: string | null;

@@ -1,3 +1,18 @@
+const loadIsolatedAuthSecureSessionStore = (): typeof import('../secureSessionStore').AuthSecureSessionStore => {
+  let loadedModule: typeof import('../secureSessionStore') | null = null;
+
+  jest.isolateModules(() => {
+    loadedModule = require('../secureSessionStore') as typeof import('../secureSessionStore');
+  });
+
+  if (!loadedModule) {
+    throw new Error('secureSessionStore module failed to load in isolateModules');
+  }
+
+  const resolvedModule = loadedModule as typeof import('../secureSessionStore');
+  return resolvedModule.AuthSecureSessionStore;
+};
+
 describe('AuthSecureSessionStore regression', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -11,11 +26,7 @@ describe('AuthSecureSessionStore regression', () => {
     }));
 
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    let AuthSecureSessionStore: typeof import('../secureSessionStore').AuthSecureSessionStore;
-
-    jest.isolateModules(() => {
-      ({ AuthSecureSessionStore } = require('../secureSessionStore'));
-    });
+    const AuthSecureSessionStore = loadIsolatedAuthSecureSessionStore();
 
     await expect(AuthSecureSessionStore.read()).resolves.toBeNull();
 
