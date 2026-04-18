@@ -20,11 +20,12 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('expo-linear-gradient', () => {
-  const React = require('react');
-  const { View } = require('react-native');
+  const ReactModule = jest.requireActual('react') as typeof import('react');
+  const { View } = jest.requireActual('react-native') as typeof import('react-native');
 
   return {
-    LinearGradient: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
+    LinearGradient: ({ children }: { children: React.ReactNode }) =>
+      ReactModule.createElement(View, null, children),
   };
 });
 

@@ -14,7 +14,6 @@ import {
   FLOATING_BOTTOM_NAV_LABEL_SIZE,
   FLOATING_BOTTOM_NAV_MAX_WIDTH,
   FLOATING_BOTTOM_NAV_SCAN_SURFACE_SIZE,
-  FLOATING_BOTTOM_NAV_SLOT_WIDTH,
   FloatingBottomNavItemKey,
 } from './floatingBottomNav.constants';
 import { TOP_LEVEL_NAV_ROUTES } from './topLevelNavRegistry';
