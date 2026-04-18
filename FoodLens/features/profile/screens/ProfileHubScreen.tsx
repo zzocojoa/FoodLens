@@ -102,7 +102,9 @@ export default function ProfileHubScreen() {
     const userId = getCurrentUserIdSnapshot();
     const { state, travelerLanguageSheet, uiLanguageSheet } = useProfileHubController({ userId });
     const [logoutLoading, setLogoutLoading] = React.useState(false);
+    const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
+    const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
 
     const travelerOptions = React.useMemo(
         () =>
@@ -174,6 +176,10 @@ export default function ProfileHubScreen() {
     const handleUpdateProfile = React.useCallback(() => {
         void state.handleUpdate(() => undefined, () => undefined);
     }, [state]);
+
+    const handleToggleBuildFingerprint = React.useCallback(() => {
+        setIsBuildFingerprintVisible((previous) => !previous);
+    }, []);
 
     const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -259,9 +265,21 @@ export default function ProfileHubScreen() {
 
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                     <View style={profileHubStyles.header}>
-                        <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
-                            {t('profileHub.title', 'Profile')}
-                        </Text>
+                        {canRevealBuildFingerprint ? (
+                            <HapticTouchableOpacity
+                                onLongPress={handleToggleBuildFingerprint}
+                                activeOpacity={1}
+                                hapticType="selection"
+                            >
+                                <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
+                                    {t('profileHub.title', 'Profile')}
+                                </Text>
+                            </HapticTouchableOpacity>
+                        ) : (
+                            <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
+                                {t('profileHub.title', 'Profile')}
+                            </Text>
+                        )}
                     </View>
 
                     <ScrollView
@@ -356,40 +374,42 @@ export default function ProfileHubScreen() {
                             </Text>
                         </HapticTouchableOpacity>
 
-                        <View
-                            style={[
-                                profileHubStyles.buildSection,
-                                {
-                                    backgroundColor: theme.surface,
-                                    borderColor: theme.border,
-                                },
-                            ]}
-                        >
-                            <Text style={[profileHubStyles.buildSectionTitle, { color: theme.textPrimary }]}>
-                                {t('profileHub.buildFingerprint.title', 'Build Fingerprint')}
-                            </Text>
-                            {buildFingerprintRows.map((row, index) => (
-                                <View
-                                    key={row.label}
-                                    style={[
-                                        profileHubStyles.buildRow,
-                                        {
-                                            borderBottomColor: theme.border,
-                                            paddingBottom: index === buildFingerprintRows.length - 1 ? 0 : 10,
-                                            borderBottomWidth:
-                                                index === buildFingerprintRows.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                                        },
-                                    ]}
-                                >
-                                    <Text style={[profileHubStyles.buildLabel, { color: theme.textSecondary }]}>
-                                        {row.label}
-                                    </Text>
-                                    <Text selectable style={[profileHubStyles.buildValue, { color: theme.textPrimary }]}>
-                                        {row.value}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
+                        {canRevealBuildFingerprint && isBuildFingerprintVisible ? (
+                            <View
+                                style={[
+                                    profileHubStyles.buildSection,
+                                    {
+                                        backgroundColor: theme.surface,
+                                        borderColor: theme.border,
+                                    },
+                                ]}
+                            >
+                                <Text style={[profileHubStyles.buildSectionTitle, { color: theme.textPrimary }]}>
+                                    {t('profileHub.buildFingerprint.title', 'Build Fingerprint')}
+                                </Text>
+                                {buildFingerprintRows.map((row, index) => (
+                                    <View
+                                        key={row.label}
+                                        style={[
+                                            profileHubStyles.buildRow,
+                                            {
+                                                borderBottomColor: theme.border,
+                                                paddingBottom: index === buildFingerprintRows.length - 1 ? 0 : 10,
+                                                borderBottomWidth:
+                                                    index === buildFingerprintRows.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={[profileHubStyles.buildLabel, { color: theme.textSecondary }]}>
+                                            {row.label}
+                                        </Text>
+                                        <Text selectable style={[profileHubStyles.buildValue, { color: theme.textPrimary }]}>
+                                            {row.value}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        ) : null}
 
                         <HapticTouchableOpacity
                             onPress={() => void handleLogout()}
