@@ -126,8 +126,8 @@ describe('ProfileSheet', () => {
 
   it('calls provider logout after local logout for social account', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      const continueButton = buttons?.find((button) => button.text === 'Continue');
-      continueButton?.onPress?.();
+      const confirmButton = buttons?.find((button) => button.style === 'destructive');
+      confirmButton?.onPress?.();
     });
 
     render(
