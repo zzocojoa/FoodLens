@@ -13,6 +13,8 @@ const mockGetUserStorageKey = jest.fn();
 const mockReadHomeSelectedDateSnapshot = jest.fn();
 const mockBuildHomeSelectedDatePatch = jest.fn();
 const mockUpdateUserClientState = jest.fn();
+const mockShowTranslatedAlert = jest.fn();
+const mockDeleteAnalysis = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const React = require('react');
@@ -62,12 +64,12 @@ jest.mock('@/features/i18n', () => ({
 }));
 
 jest.mock('@/services/ui/uiAlerts', () => ({
-  showTranslatedAlert: jest.fn(),
+  showTranslatedAlert: (...args: unknown[]) => mockShowTranslatedAlert(...args),
 }));
 
 jest.mock('@/services/analysisService', () => ({
   AnalysisService: {
-    deleteAnalysis: jest.fn(),
+    deleteAnalysis: (...args: unknown[]) => mockDeleteAnalysis(...args),
   },
 }));
 
@@ -116,6 +118,7 @@ describe('useHomeDashboard profile update subscription', () => {
     mockReadHomeSelectedDateSnapshot.mockReturnValue(null);
     mockBuildHomeSelectedDatePatch.mockImplementation((date: Date) => buildSelectedDatePatch(date));
     mockUpdateUserClientState.mockResolvedValue({});
+    mockDeleteAnalysis.mockResolvedValue(undefined);
     mockFetchHomeDashboardData.mockResolvedValue({
       recentData: [],
       allHistory: [],
@@ -377,5 +380,24 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(mockBuildHomeSelectedDatePatch).toHaveBeenCalledWith(nextDay);
     expect(mockUpdateUserClientState).toHaveBeenCalledTimes(1);
     expect(mockUpdateUserClientState).toHaveBeenCalledWith('usr_home', nextDayPatch);
+  });
+
+  it('shows translated delete failure alert without inline fallback strings', async () => {
+    mockDeleteAnalysis.mockRejectedValueOnce(new Error('delete failed'));
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.handleDeleteItem('analysis_home_1');
+    });
+
+    expect(mockShowTranslatedAlert).toHaveBeenCalledWith(expect.any(Function), {
+      titleKey: 'home.alert.errorTitle',
+      messageKey: 'home.alert.deleteFailedRestore',
+    });
   });
 });

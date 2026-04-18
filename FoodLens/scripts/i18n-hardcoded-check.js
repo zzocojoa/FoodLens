@@ -3,13 +3,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT_DIR = process.cwd();
-
-const TARGET_PATHS = [
+const DEFAULT_TARGET_PATHS = [
   'features/result/screens',
   'features/scanCamera/screens',
   'features/camera/screens',
   'features/home/screens',
+  'features/home/components',
+  'features/home/utils',
+  'features/home/hooks',
   'features/history/screens',
   'features/profile/screens',
   'features/tripStats/screens',
@@ -31,14 +32,17 @@ const ALLOW_TEXT_LITERALS = new Set([
 
 const JSX_TEXT_PATTERN = /<Text\b[^>]*>([^<{][^<]*)<\/Text>/g;
 const ALERT_TITLE_PATTERN = /Alert\.alert\(\s*(['"])([^'"\\]*(?:\\.[^'"\\]*)*)\1/g;
-const UI_PROP_PATTERN = /\b(title|label|placeholder|message|description)\s*:\s*(['"])([^'"\\]*(?:\\.[^'"\\]*)*)\2/g;
+const UI_PROP_PATTERN = /\b(title|label|placeholder|message|description)(?:Fallback)?\s*:\s*(['"])([^'"\\]*(?:\\.[^'"\\]*)*)\2/g;
 
 const hasVisibleLetters = (text) => /[A-Za-z\u3131-\uD79D]/.test(text);
+
+const getRootDir = () => process.cwd();
 
 const isExcludedFile = (filePath) => EXCLUDED_PATTERNS.some((pattern) => pattern.test(filePath));
 
 const walkFiles = (targetPath) => {
-  const fullPath = path.join(ROOT_DIR, targetPath);
+  const rootDir = getRootDir();
+  const fullPath = path.join(rootDir, targetPath);
 
   if (!fs.existsSync(fullPath)) {
     return [];
@@ -55,7 +59,7 @@ const walkFiles = (targetPath) => {
   entries.forEach((entry) => {
     const entryPath = path.join(fullPath, entry.name);
     if (entry.isDirectory()) {
-      results.push(...walkFiles(path.relative(ROOT_DIR, entryPath)));
+      results.push(...walkFiles(path.relative(getRootDir(), entryPath)));
       return;
     }
 
@@ -80,8 +84,9 @@ const pushFinding = (findings, filePath, content, matchIndex, text, kind) => {
   if (normalized.includes('t(')) return;
   if (ALLOW_TEXT_LITERALS.has(normalized)) return;
 
+  const rootDir = getRootDir();
   findings.push({
-    filePath: path.relative(ROOT_DIR, filePath),
+    filePath: path.relative(rootDir, filePath),
     line: getLine(content, matchIndex),
     kind,
     text: normalized,
@@ -98,8 +103,16 @@ const collectMatches = (content, pattern) => {
   return matches;
 };
 
-const run = () => {
-  const files = TARGET_PATHS.flatMap(walkFiles);
+const normalizeTargetPaths = (targetPaths = []) => {
+  if (targetPaths.length > 0) {
+    return targetPaths;
+  }
+
+  return DEFAULT_TARGET_PATHS;
+};
+
+const collectFindings = (targetPaths = []) => {
+  const files = normalizeTargetPaths(targetPaths).flatMap(walkFiles);
   const findings = [];
 
   files.forEach((filePath) => {
@@ -118,6 +131,12 @@ const run = () => {
     });
   });
 
+  return findings;
+};
+
+const run = (targetPaths = []) => {
+  const findings = collectFindings(targetPaths);
+
   if (findings.length > 0) {
     console.error('[i18n-hardcoded-check] Found potential hardcoded UI strings:');
     findings.forEach((finding) => {
@@ -130,11 +149,22 @@ const run = () => {
   }
 
   console.log('[i18n-hardcoded-check] Passed.');
+  return findings;
 };
 
 try {
-  run();
+  if (require.main === module) {
+    const cliTargetPaths = process.argv.slice(2).filter((argument) => !argument.startsWith('-'));
+    run(cliTargetPaths);
+  }
 } catch (error) {
   console.error('[i18n-hardcoded-check] Unexpected error:', error);
   process.exit(1);
 }
+
+module.exports = {
+  DEFAULT_TARGET_PATHS,
+  collectFindings,
+  normalizeTargetPaths,
+  run,
+};

@@ -71,7 +71,7 @@ export default function HomeScansSection({
       <View style={styles.scanList}>
         {filteredScans.length > 0 ? (
           filteredScans.map((item, index) => {
-            const badgeStyle = getHomeScanStatusBadge(item.safetyStatus);
+            const badgeStyle = getHomeScanStatusBadge(item.safetyStatus, t);
             const localizedFoodName = getLocalizedFoodName(item, locale);
             return (
               <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>

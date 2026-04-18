@@ -138,7 +138,7 @@ const getStatusChipLabel = (
     );
   }
 
-  return t('home.status.chip.safe', '안정');
+  return t('home.status.chip.safe', 'Safe');
 };
 
 export default function HomeScreen() {
@@ -214,7 +214,7 @@ export default function HomeScreen() {
   };
   const featuredFoodName = featuredRecentScan ? getLocalizedFoodName(featuredRecentScan, locale) : null;
   const featuredBadge = featuredRecentScan
-    ? getHomeScanStatusBadge(featuredRecentScan.safetyStatus)
+    ? getHomeScanStatusBadge(featuredRecentScan.safetyStatus, t)
     : null;
   const featuredImageUri = featuredRecentScan
     ? featuredRecentScan.isBarcode
@@ -420,7 +420,7 @@ export default function HomeScreen() {
                   <View style={styles.featuredScanBody}>
                     <View style={styles.featuredScanCopy}>
                       <Text style={[styles.featuredScanEyebrow, { color: theme.textSecondary }]}>
-                        {t('home.scans.featuredTitle', '가장 최근 판단')}
+                        {t('home.scans.featuredTitle', 'Latest Verdict')}
                       </Text>
                       <Text style={[styles.featuredScanName, { color: theme.textPrimary }]}>
                         {featuredFoodName}

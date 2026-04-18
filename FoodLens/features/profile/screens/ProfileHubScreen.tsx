@@ -156,15 +156,15 @@ export default function ProfileHubScreen() {
     const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
         return new Promise((resolve) => {
             Alert.alert(
-                'Log out?',
-                'You will be logged out and moved to the login screen.',
+                t('profileHub.logout.confirmTitle', 'Log out?'),
+                t('profileHub.logout.confirmMessage', 'You will be logged out and moved to the login screen.'),
                 [
-                    { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-                    { text: 'Continue', style: 'destructive', onPress: () => resolve(true) },
+                    { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(false) },
+                    { text: t('profileSheet.menu.logout.title', 'Log out'), style: 'destructive', onPress: () => resolve(true) },
                 ],
             );
         });
-    }, []);
+    }, [t]);
 
     const handleLogout = React.useCallback(async () => {
         if (logoutLoading) {
