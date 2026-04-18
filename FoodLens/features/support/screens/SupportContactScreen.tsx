@@ -1,11 +1,11 @@
 import React from 'react';
 import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
+import { getRuntimeAppVersion } from '@/services/runtimeAppVersion';
 import {
   buildSupportMailtoUrl,
   SUPPORT_EMAIL_ADDRESS,
@@ -82,7 +82,7 @@ export default function SupportContactScreen() {
       params.foodName?.trim() ? `${t('support.contact.foodNameLabel', 'Food name')}: ${params.foodName.trim()}` : '',
       `${t('support.contact.localeLabel', 'Locale')}: ${locale}`,
       `${t('support.contact.platformLabel', 'Platform')}: ${Platform.OS}`,
-      `${t('support.contact.appVersionLabel', 'App version')}: ${Constants.expoConfig?.version ?? Constants['nativeApplicationVersion'] ?? 'unknown'}`,
+      `${t('support.contact.appVersionLabel', 'App version')}: ${getRuntimeAppVersion()}`,
     ]
       .filter((line) => line.trim().length > 0)
       .join('\n');

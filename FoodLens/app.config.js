@@ -1,15 +1,15 @@
-const IS_DEV = process.env.APP_VARIANT === "development";
+const { resolveBuildIdentity } = require("./buildIdentity");
 
-const APP_NAME = "FoodLens";
-const APP_NAME_DEV = "FoodLens (Dev)";
+const buildIdentity = resolveBuildIdentity({
+  projectDir: __dirname,
+  appVariant: process.env.APP_VARIANT,
+  processEnv: process.env,
+});
+
+const IS_DEV = buildIdentity.appVariant === "development";
 const APP_SLUG = "FoodLens";
 const APP_VERSION = "1.0.0";
 const APP_SCHEME = "foodlens";
-
-const IOS_BUNDLE_ID = "com.hoihou.foodlens";
-const IOS_BUNDLE_ID_DEV = "com.hoihou.foodlens.dev";
-const ANDROID_PACKAGE = "com.hoihou.foodlens";
-const ANDROID_PACKAGE_DEV = "com.hoihou.foodlens.dev";
 
 const DEV_PLIST_PATH = "./Dev.plist";
 const PROD_PLIST_PATH = "./Prod.plist";
@@ -21,8 +21,9 @@ const SPLASH_IMAGE_PATH = "./assets/images/splash-icon.png";
 const EAS_PROJECT_ID = "dab80641-3ca1-4633-a381-36ddbb37a22e";
 
 const IOS_GOOGLE_SERVICES_FILE = IS_DEV ? DEV_PLIST_PATH : PROD_PLIST_PATH;
-const IOS_BUNDLE_IDENTIFIER = IS_DEV ? IOS_BUNDLE_ID_DEV : IOS_BUNDLE_ID;
-const ANDROID_APP_PACKAGE = IS_DEV ? ANDROID_PACKAGE_DEV : ANDROID_PACKAGE;
+const IOS_BUNDLE_IDENTIFIER = buildIdentity.iosBundleIdentifier;
+const ANDROID_APP_PACKAGE = buildIdentity.androidPackage;
+const IOS_ALLOWS_LOCAL_NETWORKING = IS_DEV;
 const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
 const ADMOB_ANDROID_APP_ID =
@@ -32,18 +33,34 @@ const ADMOB_IOS_APP_ID =
   (process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "").trim() ||
   "ca-app-pub-3940256099942544~1458002511";
 
+const EXPO_BUILD_IDENTITY = {
+  appName: buildIdentity.appName,
+  appVariant: buildIdentity.appVariant,
+  installTrack: buildIdentity.installTrack,
+  buildSourceLabel: buildIdentity.buildSourceLabel,
+  worktreeName: buildIdentity.worktreeName,
+  workspaceDisplayName: buildIdentity.workspaceDisplayName,
+  isCanonicalPackageContext: buildIdentity.isCanonicalPackageContext,
+  isWorkspacePackageContext: buildIdentity.isWorkspacePackageContext,
+  androidPackage: buildIdentity.androidPackage,
+  iosBundleIdentifier: buildIdentity.iosBundleIdentifier,
+  gitBranch: buildIdentity.gitBranch,
+  gitCommitSha: buildIdentity.gitCommitSha,
+  gitCommitShortSha: buildIdentity.gitCommitShortSha,
+  gitDirty: buildIdentity.gitDirty,
+  builtAtIso: buildIdentity.builtAtIso,
+};
+
 if (!ANDROID_GOOGLE_MAPS_API_KEY) {
-  // Keep Android map metadata present even when env wiring is broken.
-  // Build scripts are expected to fail fast before release packaging.
   console.warn(
     "[app.config] EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is missing. " +
       "Using placeholder key; Android map runtime may not function."
   );
 }
 
-export default {
+module.exports = {
   expo: {
-    name: IS_DEV ? APP_NAME_DEV : APP_NAME,
+    name: buildIdentity.appName,
     slug: APP_SLUG,
     version: APP_VERSION,
     orientation: "portrait",
@@ -59,7 +76,7 @@ export default {
         ITSAppUsesNonExemptEncryption: false,
         NSAppTransportSecurity: {
           NSAllowsArbitraryLoads: false,
-          NSAllowsLocalNetworking: true,
+          NSAllowsLocalNetworking: IOS_ALLOWS_LOCAL_NETWORKING,
         },
       },
     },
@@ -157,6 +174,7 @@ export default {
       eas: {
         projectId: EAS_PROJECT_ID,
       },
+      buildIdentity: EXPO_BUILD_IDENTITY,
     },
   },
 };

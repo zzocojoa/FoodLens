@@ -7,7 +7,7 @@ Date: 2026-02-13
 - Backend dependency file: `backend/requirements.txt`
 - Setup script path: `backend/setup.sh`
 - Backend run command: `python -m backend.server`
-- Canonical Docker build file: `backend/Dockerfile`
+- Canonical Docker build file: `Dockerfile`
 
 ## Applied Moves (Batch A)
 - business_plan.md -> docs/plans/business_plan.md
@@ -25,12 +25,11 @@ Date: 2026-02-13
 ## Applied Moves (Batch C)
 - requirements.txt -> backend/requirements.txt
 - setup.sh -> backend/setup.sh
-- Dockerfile -> backend/Dockerfile
+- Dockerfile -> Dockerfile (root canonical)
 - Added root compatibility wrapper: requirements.txt (historical)
 - Added root compatibility wrapper: setup.sh (historical)
-- Added root compatibility wrapper: Dockerfile (historical)
 - Root compatibility wrappers(`server.py`, `setup.sh`, `requirements.txt`) are removed.
-- Root `Dockerfile` is retained for Render default deploy compatibility.
+- Root `Dockerfile` is retained as the canonical Render default deploy target.
 
 ## Keep As-Is (Runtime Stability)
 - `backend/server.py`

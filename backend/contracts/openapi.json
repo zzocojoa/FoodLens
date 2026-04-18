@@ -3578,6 +3578,22 @@
         "summary": "Debug Models"
       }
     },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness_check_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness Check"
+      }
+    },
     "/lookup/barcode": {
       "post": {
         "description": "Lookup product by barcode.\nFull SoC Implementation: Controller -> Service -> Infrastructure (DataGo/OFF)\nIf ingredients are found and user has allergies, run Gemini allergen analysis.",

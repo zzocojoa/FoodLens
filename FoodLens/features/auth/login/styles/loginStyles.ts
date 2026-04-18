@@ -398,6 +398,10 @@ export const loginStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  supportLinkPressable: {
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
   supportLink: {
     color: LOGIN_COLORS.accent,
     fontSize: 13,

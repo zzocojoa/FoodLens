@@ -13,19 +13,21 @@ from PIL import Image
 import backend.modules.analysis_jobs as analysis_jobs
 from backend.modules.analysis_jobs import (
     AnalysisJobStoreError,
+    AnalysisJobWorker,
     InMemoryAnalysisJobStore,
     InMemoryNutritionCacheStore,
     PostgresAnalysisJobStore,
     NutritionEnrichmentService,
     create_analysis_job_payload,
 )
+from backend.modules.server_bootstrap import decode_upload_to_image
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
 os.environ["AUTH_STATE_BACKEND"] = "memory"
 os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
 os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
-from backend.server import app  # noqa: E402
+from backend.server import app, resolve_prompt_country_code  # noqa: E402
 
 
 def _build_image_bytes() -> bytes:
@@ -149,26 +151,53 @@ class _AsyncJobAnalyst:
 
 
 class AnalysisJobRuntimeTests(unittest.TestCase):
-    def test_submit_job_returns_202_and_poll_completes(self) -> None:
+    def _build_worker(self) -> AnalysisJobWorker:
+        return AnalysisJobWorker(
+            store=app.state.analysis_job_store,
+            nutrition_service=NutritionEnrichmentService(
+                cache_store=InMemoryNutritionCacheStore(),
+                lookup_func=lambda _name, _origin: {
+                    "calories": 150.0,
+                    "protein": 3.0,
+                    "carbs": 20.0,
+                    "fat": 4.0,
+                    "fiber": 1.0,
+                    "sodium": 10.0,
+                    "sugar": 2.0,
+                    "servingSize": "100g",
+                    "dataSource": "TestCache",
+                },
+                budget_seconds=0.5,
+                max_parallelism=1,
+            ),
+            get_analyst=lambda: app.state.analyst,
+            get_smart_router=lambda: app.state.smart_router,
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            lease_seconds=60,
+            poll_interval_seconds=0.1,
+            worker_id="worker-test",
+        )
+
+    def _process_next_job_with_worker(self) -> None:
+        worker = self._build_worker()
+        claimed_job = worker.store.claim_next_job(
+            worker_id=worker.worker_id,
+            lease_seconds=worker.lease_seconds,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertIsNotNone(claimed_job)
+        asyncio.run(worker._process_job(claimed_job))
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_submit_job_returns_202_and_poll_completes(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
         with TestClient(app) as client:
             app.state.analyst = _AsyncJobAnalyst()
-            for worker in app.state.analysis_job_workers:
-                worker.nutrition_service = NutritionEnrichmentService(
-                    cache_store=InMemoryNutritionCacheStore(),
-                    lookup_func=lambda _name, _origin: {
-                        "calories": 150.0,
-                        "protein": 3.0,
-                        "carbs": 20.0,
-                        "fat": 4.0,
-                        "fiber": 1.0,
-                        "sodium": 10.0,
-                        "sugar": 2.0,
-                        "servingSize": "100g",
-                        "dataSource": "TestCache",
-                    },
-                    budget_seconds=0.5,
-                    max_parallelism=1,
-                )
 
             submit = client.post(
                 "/analyze/jobs",
@@ -182,19 +211,15 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
             self.assertEqual(payload["status"], "queued")
             self.assertIn("job_id", payload)
 
-            terminal_payload = None
-            for _ in range(40):
-                polled = client.get(
-                    f"/analyze/jobs/{payload['job_id']}",
-                    headers={"X-Request-Id": "req-analysis-job-poll"},
-                )
-                self.assertEqual(polled.status_code, 200)
-                terminal_payload = polled.json()
-                if terminal_payload["status"] in {"completed", "fallback_completed", "failed"}:
-                    break
-                time.sleep(0.05)
+            self._process_next_job_with_worker()
 
-        assert terminal_payload is not None
+            polled = client.get(
+                f"/analyze/jobs/{payload['job_id']}",
+                headers={"X-Request-Id": "req-analysis-job-poll"},
+            )
+
+        self.assertEqual(polled.status_code, 200)
+        terminal_payload = polled.json()
         self.assertEqual(terminal_payload["status"], "completed")
         self.assertEqual(terminal_payload["request_id"], "req-analysis-job-1")
         self.assertEqual(terminal_payload["foodName"], "Bibimbap")

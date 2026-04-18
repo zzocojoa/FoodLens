@@ -99,6 +99,13 @@ describe('oauthProvider', () => {
     expect(result.user.id).toBe('usr_google');
   });
 
+  it('does not allow mock mode outside development runtime', () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'mock';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    expect(AuthOAuthProvider.getOAuthMode()).toBe('live');
+  });
+
   it('throws misconfigured error when live oauth URL is missing', async () => {
     process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
 
@@ -135,6 +142,24 @@ describe('oauthProvider', () => {
 
     expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
       expect.stringContaining('https://api.foodlens.example.com/auth/google/start'),
+      'foodlens://oauth/google-callback'
+    );
+  });
+
+  it('prefers provider-specific start URL over analysis server fallback', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] = 'https://api.foodlens.example.com/';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] =
+      'https://accounts.google.com/o/oauth2/v2/auth?client_id=test';
+    mockedLinking.createURL.mockReturnValue('foodlens://oauth/google-callback');
+    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({ type: 'cancel' });
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_CANCELLED',
+    });
+
+    expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+      expect.stringContaining('https://accounts.google.com/o/oauth2/v2/auth?client_id=test'),
       'foodlens://oauth/google-callback'
     );
   });

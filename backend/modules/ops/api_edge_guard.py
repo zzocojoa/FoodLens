@@ -11,18 +11,6 @@ from typing import Deque
 from fastapi import HTTPException, Request
 
 
-DEFAULT_CORS_ORIGINS = (
-    "https://foodlens-2-w1xu.onrender.com",
-    "http://localhost:8081",
-    "http://localhost:3000",
-    "http://127.0.0.1:8081",
-    "http://127.0.0.1:3000",
-)
-DEFAULT_CORS_ORIGIN_REGEX = (
-    r"^https?://(localhost|127\.0\.0\.1|10\..+|192\.168\..+|172\.(1[6-9]|2\d|3[0-1])\..+)(:\d+)?$"
-)
-
-
 @dataclass(frozen=True)
 class AnalysisCorsConfig:
     allow_origins: list[str]
@@ -55,14 +43,23 @@ def _parse_csv(raw: str | None) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def _default_public_origins() -> list[str]:
+    origins: list[str] = []
+    for key in ("AUTH_PUBLIC_BASE_URL", "MEDIA_PUBLIC_BASE_URL"):
+        candidate = (os.environ.get(key) or "").strip().rstrip("/")
+        if candidate and candidate not in origins:
+            origins.append(candidate)
+    return origins
+
+
 def build_cors_config_from_env() -> AnalysisCorsConfig:
     allow_origins = _parse_csv(os.environ.get("ANALYSIS_CORS_ALLOWED_ORIGINS"))
     if not allow_origins:
-        allow_origins = list(DEFAULT_CORS_ORIGINS)
+        allow_origins = _default_public_origins()
 
     allow_origin_regex = (os.environ.get("ANALYSIS_CORS_ALLOW_ORIGIN_REGEX") or "").strip()
     if not allow_origin_regex:
-        allow_origin_regex = DEFAULT_CORS_ORIGIN_REGEX
+        allow_origin_regex = None
 
     return AnalysisCorsConfig(
         allow_origins=allow_origins,

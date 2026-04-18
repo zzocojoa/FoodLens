@@ -9,7 +9,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_ANALYSIS_SERVER_URL": "https://foodlens-2-w1xu.onrender.com",
+        "EXPO_PUBLIC_AUTH_OAUTH_MODE": "live",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBw09_wBmLUgcZ20UwJIP0B6V4oS_ahbVQ",
+        "EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED": "1",
+        "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID": "ca-app-pub-3940256099942544~3347511713",
+        "EXPO_PUBLIC_ADMOB_ANDROID_REWARDED_ANALYSIS_ID": "ca-app-pub-3940256099942544/5224354917"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -17,10 +26,6 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_ANALYSIS_SERVER_URL": "https://foodlens-2-w1xu.onrender.com",
         "EXPO_PUBLIC_AUTH_OAUTH_MODE": "live",
-        "EXPO_PUBLIC_AUTH_GOOGLE_START_URL": "https://foodlens-2-w1xu.onrender.com/auth/google/start",
-        "EXPO_PUBLIC_AUTH_KAKAO_START_URL": "https://foodlens-2-w1xu.onrender.com/auth/kakao/start",
-        "EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL": "https://foodlens-2-w1xu.onrender.com/auth/google/logout/start",
-        "EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL": "https://foodlens-2-w1xu.onrender.com/auth/kakao/logout/start",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBw09_wBmLUgcZ20UwJIP0B6V4oS_ahbVQ",
         "EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED": "1",
         "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID": "ca-app-pub-3940256099942544~3347511713",

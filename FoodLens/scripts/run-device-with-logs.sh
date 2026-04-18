@@ -18,7 +18,8 @@ if [[ -z "${PLATFORM}" ]]; then
 fi
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-LOG_FILTER_REGEX='request_id|user_id|AuthSession|Phase2Sync|\\[Auth\\]|AUTH_|SafeStorage|MMKV|Session bootstrap|Secure storage|No route named|unmatched route|AndroidRuntime|FATAL EXCEPTION|Process: com\\.hoihou\\.foodlens|Process: com\\.hoihou\\.foodlens\\.dev'
+PACKAGE_FAMILY_REGEX='com\\.hoihou\\.foodlens(\\.[A-Za-z0-9_]+)*'
+LOG_FILTER_REGEX="request_id|user_id|AuthSession|Phase2Sync|\\\\[Auth\\\\]|AUTH_|SafeStorage|MMKV|Session bootstrap|Secure storage|No route named|unmatched route|AndroidRuntime|FATAL EXCEPTION|Process: ${PACKAGE_FAMILY_REGEX}"
 LOG_PID=""
 LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
@@ -50,6 +51,64 @@ enforce_clean_worktree() {
     echo "[run-with-logs] Override only if intentional: ALLOW_DIRTY_DEVICE_BUILD=1"
     exit 1
   fi
+}
+
+load_build_identity() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "[run-with-logs] ERROR: node not found. Cannot resolve build identity."
+    exit 1
+  fi
+
+  local build_identity_output=""
+  build_identity_output="$(
+    node "${PROJECT_DIR}/buildIdentity.js" shell "${PROJECT_DIR}" "${APP_VARIANT:-}"
+  )"
+  eval "${build_identity_output}"
+
+  if [[ -z "${ANDROID_LAUNCH_PACKAGE:-}" ]]; then
+    export ANDROID_LAUNCH_PACKAGE="${FOODLENS_BUILD_ANDROID_PACKAGE}"
+  fi
+
+  if [[ -z "${IOS_BUNDLE_IDENTIFIER:-}" ]]; then
+    export IOS_BUNDLE_IDENTIFIER="${FOODLENS_BUILD_IOS_BUNDLE_IDENTIFIER}"
+  fi
+}
+
+print_build_fingerprint() {
+  echo "[run-with-logs] Build fingerprint:"
+  echo "[run-with-logs]   worktree: ${FOODLENS_BUILD_WORKTREE_NAME}"
+  echo "[run-with-logs]   source: ${FOODLENS_BUILD_SOURCE_LABEL}"
+  echo "[run-with-logs]   variant: ${FOODLENS_BUILD_APP_VARIANT}"
+  echo "[run-with-logs]   install track: ${FOODLENS_BUILD_INSTALL_TRACK}"
+  echo "[run-with-logs]   android package: ${FOODLENS_BUILD_ANDROID_PACKAGE}"
+  echo "[run-with-logs]   ios bundle: ${FOODLENS_BUILD_IOS_BUNDLE_IDENTIFIER}"
+  echo "[run-with-logs]   branch: ${FOODLENS_BUILD_GIT_BRANCH:-unknown}"
+  echo "[run-with-logs]   commit: ${FOODLENS_BUILD_GIT_COMMIT_SHORT_SHA:-unknown}"
+  echo "[run-with-logs]   dirty: ${FOODLENS_BUILD_GIT_DIRTY}"
+}
+
+enforce_release_install_identity() {
+  if [[ "${BUILD_TYPE}" != "release" ]]; then
+    return 0
+  fi
+
+  if [[ "${FOODLENS_BUILD_CANONICAL_CONTEXT}" == "1" && "${FOODLENS_BUILD_APP_VARIANT}" == "production" ]]; then
+    return 0
+  fi
+
+  if [[ "${FOODLENS_ALLOW_NONCANONICAL_RELEASE:-0}" == "1" ]]; then
+    echo "[run-with-logs] WARN: FOODLENS_ALLOW_NONCANONICAL_RELEASE=1 set. Continuing with non-canonical release install."
+    return 0
+  fi
+
+  echo "[run-with-logs] ERROR: Local release installs must come from the canonical production worktree."
+  echo "[run-with-logs] Current worktree: ${FOODLENS_BUILD_WORKTREE_NAME}"
+  echo "[run-with-logs] Current variant: ${FOODLENS_BUILD_APP_VARIANT}"
+  echo "[run-with-logs] Current install track: ${FOODLENS_BUILD_INSTALL_TRACK}"
+  echo "[run-with-logs] Current android package: ${FOODLENS_BUILD_ANDROID_PACKAGE}"
+  echo "[run-with-logs] Canonical worktree: ${FOODLENS_BUILD_CANONICAL_WORKTREE_NAME}"
+  echo "[run-with-logs] Use the canonical worktree or set FOODLENS_ALLOW_NONCANONICAL_RELEASE=1 only for an explicit exception."
+  exit 1
 }
 
 run_with_timeout() {
@@ -396,6 +455,18 @@ start_android_logs() {
 
 EXPO_CMD=()
 
+prepare_android_device_context() {
+  if [[ "${PLATFORM}" != "android" ]]; then
+    return
+  fi
+
+  local android_device_serial=""
+  android_device_serial="$(resolve_android_device_serial || true)"
+  if [[ -n "${android_device_serial}" ]]; then
+    export ANDROID_SERIAL="${android_device_serial}"
+  fi
+}
+
 build_expo_command() {
   local platform="$1"
   local build="$2"
@@ -429,7 +500,7 @@ build_expo_command() {
       ;;
     android)
       if [[ "${build}" == "release" ]]; then
-        EXPO_CMD=(npx expo run:android --variant release)
+        EXPO_CMD=(npx expo run:android --variant release --no-bundler)
       else
         EXPO_CMD=(npx expo run:android)
       fi
@@ -459,6 +530,9 @@ resolve_android_launch_package() {
   if [[ -n "${ANDROID_LAUNCH_PACKAGE:-}" ]]; then
     candidates+=("${ANDROID_LAUNCH_PACKAGE}")
   fi
+  if [[ -n "${FOODLENS_BUILD_ANDROID_PACKAGE:-}" ]]; then
+    candidates+=("${FOODLENS_BUILD_ANDROID_PACKAGE}")
+  fi
   candidates+=("com.hoihou.foodlens" "com.hoihou.foodlens.dev")
 
   local package_name
@@ -484,13 +558,13 @@ force_launch_android_main() {
   local package_name
   package_name="$(resolve_android_launch_package || true)"
   if [[ -z "${package_name}" ]]; then
-    package_name="${ANDROID_LAUNCH_PACKAGE:-com.hoihou.foodlens}"
+    package_name="${ANDROID_LAUNCH_PACKAGE:-${FOODLENS_BUILD_ANDROID_PACKAGE:-com.hoihou.foodlens}}"
   fi
   local activity_name="${ANDROID_LAUNCH_ACTIVITY:-.MainActivity}"
   local launch_output=""
 
   echo "[run-with-logs] Installed package candidates:"
-  adb shell pm list packages | grep -E "com\\.hoihou\\.foodlens(\\.dev)?$" || true
+  adb shell pm list packages | sed 's/^package://' | grep -E "^${PACKAGE_FAMILY_REGEX}$" || true
 
   echo "[run-with-logs] Forcing launcher start: ${package_name}/${activity_name}"
   launch_output="$(
@@ -514,8 +588,34 @@ force_launch_android_main() {
   echo "[run-with-logs] Launcher start failed. Set ANDROID_LAUNCH_PACKAGE/ANDROID_LAUNCH_ACTIVITY if your app id differs."
 }
 
+run_android_release_with_gradle() {
+  if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "release" ]]; then
+    return
+  fi
+
+  local apk_path="${PROJECT_DIR}/android/app/build/outputs/apk/release/app-release.apk"
+
+  echo "[run-with-logs] Running: ./gradlew :app:assembleRelease"
+  (
+    cd "${PROJECT_DIR}/android"
+    ./gradlew :app:assembleRelease
+  )
+
+  if [[ ! -f "${apk_path}" ]]; then
+    echo "[run-with-logs] ERROR: Release APK was not created."
+    echo "[run-with-logs] Expected: ${apk_path}"
+    exit 1
+  fi
+
+  echo "[run-with-logs] Installing ${apk_path}"
+  adb install -r "${apk_path}"
+}
+
 cd "${PROJECT_DIR}"
+load_build_identity
+print_build_fingerprint
 enforce_clean_worktree
+enforce_release_install_identity
 
 # Ensure Android native build can read maps key even when it exists only in .env.
 if [[ "${PLATFORM}" == "android" && -z "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}" && -f "${PROJECT_DIR}/.env" ]]; then
@@ -571,6 +671,9 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
   export SENTRY_DISABLE_AUTO_UPLOAD=true
   export SENTRY_ALLOW_FAILURE=1
   echo "[run-with-logs] Local release run: Sentry upload failures are non-blocking."
+  if [[ "${PLATFORM}" == "android" ]]; then
+    echo "[run-with-logs] Local Android release run uses Gradle + adb install only."
+  fi
   if [[ -n "${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE+x}" ]]; then
     echo "[run-with-logs] EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE=${EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE} (user supplied)."
   else
@@ -582,10 +685,17 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
   fi
 fi
 
-build_expo_command "${PLATFORM}" "${BUILD_TYPE}" "$@"
-ensure_android_debug_metro_reverse
-echo "[run-with-logs] Running: ${EXPO_CMD[*]}"
-"${EXPO_CMD[@]}"
+prepare_android_device_context
+
+if [[ "${PLATFORM}" == "android" && "${BUILD_TYPE}" == "release" ]]; then
+  run_android_release_with_gradle
+else
+  build_expo_command "${PLATFORM}" "${BUILD_TYPE}" "$@"
+  ensure_android_debug_metro_reverse
+  echo "[run-with-logs] Running: ${EXPO_CMD[*]}"
+  "${EXPO_CMD[@]}"
+fi
+
 force_launch_android_main
 
 if [[ -n "${LOG_FILE}" && -n "${LOG_PID}" ]]; then

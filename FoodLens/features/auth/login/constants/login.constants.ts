@@ -17,8 +17,8 @@ export const LOGIN_COLORS = {
 
 export const LOGIN_COPY = {
   welcomeTitle: 'Welcome',
-  welcomeDescriptionLine1: 'Lorem ipsum dolor sit amet consectetur.',
-  welcomeDescriptionLine2: 'Lorem id sit',
+  welcomeDescriptionLine1: 'Welcome to FoodLens for safer meals wherever you go.',
+  welcomeDescriptionLine2: 'Continue to scan food, labels, and barcodes with confidence.',
   continueLabel: 'Continue',
   emailLabel: 'Email',
   emailPlaceholder: 'example@email.com',
@@ -60,8 +60,8 @@ export const LOGIN_COPY = {
   supportHint: 'Need help?',
   supportHelp: 'Help Center',
   supportContact: 'Contact Support',
-  loginSwitchLead: "Don't have an Account ?",
-  signupSwitchLead: 'Already have an Account!',
+  loginSwitchLead: "Don't have an account?",
+  signupSwitchLead: 'Already have an account?',
   loginSwitchAction: 'Sign up',
   signupSwitchAction: 'Login',
   invalidEmailOrPassword: 'Enter a valid email and a password with at least 8 characters.',

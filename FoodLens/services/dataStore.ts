@@ -9,6 +9,7 @@ import type { AnalysisOrigin } from './aiCore/types';
 
 const DATA_STORE_BACKUP_KEY = 'foodlens_analysis_backup_v1';
 const BACKUP_ERROR_LOG_PREFIX = '[AnalysisDataStore]';
+const BACKUP_SCHEMA_VERSION = 2 as const;
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -74,6 +75,7 @@ class AnalysisDataStore {
   private buildBackupPayload(): AnalysisStoreBackup | null {
     if (!this.currentResult) return null;
     return {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
       result: this.currentResult,
       location: this.currentLocation,
       imageUri: this.currentImageUri,
@@ -100,11 +102,12 @@ class AnalysisDataStore {
   public async restoreBackup(): Promise<boolean> {
       try {
           const backup = await SafeStorage.get<AnalysisStoreBackup | null>(DATA_STORE_BACKUP_KEY, null);
-          if (backup && backup.result) {
-              // Optional: Check timestamp validity (e.g. 1 hour expiry)
-              // For now, infinite validity for crash recovery
+          if (backup && backup.result && backup.schemaVersion === BACKUP_SCHEMA_VERSION) {
               this.applyBackup(backup);
               return true;
+          }
+          if (backup) {
+              await SafeStorage.remove(DATA_STORE_BACKUP_KEY);
           }
       } catch (error) {
           console.warn(`${BACKUP_ERROR_LOG_PREFIX} Failed to restore backup`, error);

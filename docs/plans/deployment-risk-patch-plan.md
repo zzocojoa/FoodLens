@@ -111,7 +111,7 @@
 - Files
   - `backend/requirements.txt`
   - `backend/requirements-dev.txt` (신규)
-  - `backend/Dockerfile`
+  - `Dockerfile`
 - Patch
   - API 런타임 불필요 패키지(Streamlit/Altair/BigQuery 등) 분리
   - Dockerfile은 런타임 requirements만 설치

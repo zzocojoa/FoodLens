@@ -54,6 +54,7 @@ type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
   allergyCount: number;
   filteredScans: AnalysisRecord[];
+  recentScans: AnalysisRecord[];
   safeCount: number;
   selectedDate: Date;
   userProfile: UserProfile | null;
@@ -257,6 +258,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     activeModal,
     allergyCount,
     filteredScans,
+    recentScans,
     safeCount,
     selectedDate,
     userProfile,

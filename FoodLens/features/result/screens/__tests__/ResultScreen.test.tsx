@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import ResultScreen from '../ResultScreen';
-import { openMailtoUrl } from '@/features/support/supportMail';
+import { isMailtoUnavailableError, openMailtoUrl } from '@/features/support/supportMail';
 import { useResultScreen } from '../../hooks/useResultScreen';
 
 jest.mock('@/services/storage', () => ({
@@ -20,6 +20,7 @@ jest.mock('../../hooks/useResultScreen', () => ({
 
 jest.mock('@/features/support/supportMail', () => ({
     openMailtoUrl: jest.fn(),
+    isMailtoUnavailableError: jest.fn(),
 }));
 
 jest.mock('@/hooks/use-app-navigation', () => ({
@@ -82,6 +83,8 @@ jest.mock('../../components/ResultNavBar', () => ({
 
 const mockUseResultScreen = useResultScreen as jest.MockedFunction<typeof useResultScreen>;
 const mockOpenMailtoUrl = openMailtoUrl as jest.MockedFunction<typeof openMailtoUrl>;
+const mockIsMailtoUnavailableError =
+    isMailtoUnavailableError as jest.MockedFunction<typeof isMailtoUnavailableError>;
 
 const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>): ReturnType<typeof useResultScreen> => ({
     isRestoring: false,
@@ -141,6 +144,7 @@ const buildHookState = (overrides?: Partial<ReturnType<typeof useResultScreen>>)
 describe('ResultScreen', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockIsMailtoUnavailableError.mockReturnValue(false);
     });
 
     it('blocks report while a new result is still saving', () => {
@@ -188,5 +192,24 @@ describe('ResultScreen', () => {
         fireEvent.press(getByLabelText('Report'));
 
         expect(mockOpenMailtoUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a localized fallback when a mail app is unavailable', async () => {
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
+        const mailUnavailableError = new Error('MAILTO_UNAVAILABLE');
+
+        mockUseResultScreen.mockReturnValue(buildHookState());
+        mockOpenMailtoUrl.mockRejectedValue(mailUnavailableError);
+        mockIsMailtoUnavailableError.mockReturnValue(true);
+
+        const { getByLabelText } = render(<ResultScreen />);
+        fireEvent.press(getByLabelText('Report'));
+
+        await Promise.resolve();
+
+        expect(alertSpy).toHaveBeenCalledWith(
+            'Support unavailable',
+            'Unable to open your email app. Please contact support manually.'
+        );
     });
 });

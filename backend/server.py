@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 # Build Trigger: 2026-02-10 12:40 (After Pipeline Credits Increase)
 import asyncio
 import base64
@@ -181,8 +181,30 @@ def _deletion_queue_max_batch() -> int:
     return max(1, _env_int("DELETION_QUEUE_MAX_BATCH", 20))
 
 
+PROCESS_ROLE_WEB = "web"
+PROCESS_ROLE_WORKER = "worker"
+PROCESS_ROLE_CRON = "cron"
+SUPPORTED_PROCESS_ROLES = {
+    PROCESS_ROLE_WEB,
+    PROCESS_ROLE_WORKER,
+    PROCESS_ROLE_CRON,
+}
+
+
+def _normalize_process_role(process_role: str) -> str:
+    normalized = (process_role or "").strip().lower()
+    if normalized not in SUPPORTED_PROCESS_ROLES:
+        raise RuntimeError(f"Unsupported FoodLens process role: {process_role}")
+    return normalized
+
+
+def _current_process_role() -> str:
+    current = getattr(app.state, "process_role", PROCESS_ROLE_WEB)
+    return _normalize_process_role(str(current))
+
+
 def _analysis_job_worker_count() -> int:
-    return max(1, _env_int("ANALYSIS_JOB_WORKER_COUNT", 1))
+    return max(0, _env_int("ANALYSIS_JOB_WORKER_COUNT", 1))
 
 
 def _analysis_job_lease_seconds() -> int:
@@ -206,66 +228,39 @@ def _analysis_job_allowed_content_types() -> set[str]:
     return {part.strip().lower() for part in raw.split(",") if part.strip()}
 
 
-def _initialize_phase5_runtime() -> None:
-    app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
-    database_url = _env_str("DATABASE_URL", "")
-    retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
-    if retention_store_backend == "file":
-        retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
-    elif retention_store_backend == "postgres":
-        retention_store = PostgresRetentionStore(
-            database_url=database_url,
-            table_name=_env_str("RETENTION_STORE_TABLE", "retention_records"),
-        )
-    else:
-        retention_store = InMemoryRetentionStore()
-    app.state.retention_store = retention_store
-
-    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
-    if retention_delete_backend == "local_file":
-        delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
-        cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
-    elif retention_delete_backend == "media_asset":
-        cleanup_adapter = CallbackRetentionCleanupAdapter(_delete_media_retention_record)
-    else:
-        cleanup_adapter = NoOpRetentionCleanupAdapter()
-
-    app.state.retention_cleanup_job = RetentionCleanupJob(
-        store=retention_store,
-        policy=app.state.retention_policy,
-        adapter=cleanup_adapter,
-    )
-
-    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
-    if deletion_queue_backend == "file":
-        deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
-    elif deletion_queue_backend == "postgres":
-        deletion_storage = PostgresDeletionQueueStorage(
-            database_url=database_url,
-            queue_table_name=_env_str("DELETION_QUEUE_TABLE", "deletion_queue"),
-            status_table_name=_env_str("DELETION_STATUS_TABLE", "deletion_statuses"),
-        )
-    else:
-        deletion_storage = InMemoryDeletionQueueStorage()
-    app.state.deletion_queue_storage = deletion_storage
-    app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
-
-    deletion_handler_backend = _env_str("DELETION_HANDLER_BACKEND", "user").lower()
-    if deletion_handler_backend == "noop":
-        deletion_handler = NoOpDeletionHandler()
-    else:
-        deletion_handler = UserDeletionHandler(
-            auth_service=app.state.auth_service,
-            media_storage=app.state.media_storage,
-            retention_store=retention_store,
-        )
-    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, deletion_handler)
-    app.state.retention_cleanup_task = asyncio.create_task(_retention_cleanup_loop())
-    app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
+def _reset_runtime_state() -> None:
+    defaults: dict[str, Any] = {
+        "startup_completed": False,
+        "auth_service": None,
+        "media_storage": None,
+        "analysis_job_store": None,
+        "analysis_nutrition_cache_store": None,
+        "analysis_nutrition_service": None,
+        "analysis_job_workers": [],
+        "retention_policy": None,
+        "retention_store": None,
+        "retention_cleanup_job": None,
+        "retention_cleanup_task": None,
+        "deletion_queue_storage": None,
+        "deletion_queue_producer": None,
+        "deletion_queue_consumer": None,
+        "deletion_queue_task": None,
+        "analyst": None,
+        "barcode_service": None,
+        "smart_router": None,
+        "label_cost_guardrail": None,
+        "label_rollout_controller": None,
+        "label_rollout_auto_manager": None,
+        "label_rollout_kpi_thresholds": None,
+        "analysis_rate_limiter": None,
+        "analysis_admission_limiter": None,
+        "analysis_admission_retry_after_seconds": 1,
+    }
+    for name, value in defaults.items():
+        setattr(app.state, name, value)
 
 
-@app.on_event("startup")
-async def _startup() -> None:
+def _initialize_auth_and_media_runtime() -> None:
     app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
     app.state.media_storage = build_media_storage_from_env(os.environ.get)
     app.state.media_render_signing_secret = _env_str(
@@ -299,6 +294,9 @@ async def _startup() -> None:
         "[Media] storage enabled=%s",
         getattr(app.state.media_storage, "enabled", False),
     )
+
+
+def _initialize_analysis_runtime() -> None:
     app.state.analysis_job_store = build_analysis_job_store_from_env(os.environ.get)
     app.state.analysis_nutrition_cache_store = build_nutrition_cache_store_from_env(os.environ.get)
     for store in (app.state.analysis_job_store, app.state.analysis_nutrition_cache_store):
@@ -311,7 +309,11 @@ async def _startup() -> None:
         budget_seconds=_env_float("ANALYSIS_NUTRITION_BUDGET_SECONDS", 3.0),
         max_parallelism=max(1, _env_int("ANALYSIS_NUTRITION_MAX_PARALLELISM", 4)),
     )
-    app.state.analysis_job_workers = [
+
+
+def _build_analysis_job_workers() -> list[AnalysisJobWorker]:
+    worker_count = _analysis_job_worker_count()
+    return [
         AnalysisJobWorker(
             store=app.state.analysis_job_store,
             nutrition_service=app.state.analysis_nutrition_service,
@@ -323,8 +325,15 @@ async def _startup() -> None:
             poll_interval_seconds=_analysis_job_poll_interval_seconds(),
             worker_id=f"worker-{index + 1}",
         )
-        for index in range(_analysis_job_worker_count())
+        for index in range(worker_count)
     ]
+
+
+def _start_analysis_job_workers() -> None:
+    workers = _build_analysis_job_workers()
+    if len(workers) == 0:
+        raise RuntimeError("ANALYSIS_JOB_WORKER_COUNT must be at least 1 for the worker runtime.")
+    app.state.analysis_job_workers = workers
     for worker in app.state.analysis_job_workers:
         worker.start()
     logger.info(
@@ -332,19 +341,75 @@ async def _startup() -> None:
         len(app.state.analysis_job_workers),
         type(app.state.analysis_job_store).__name__,
     )
-    _initialize_phase5_runtime()
 
-    if _is_openapi_export_mode():
-        app.state.analyst = None
-        app.state.barcode_service = None
-        app.state.smart_router = None
-        logger.info("[Startup] OPENAPI_EXPORT_ONLY=1, runtime service initialization skipped.")
-        return
 
+def _initialize_retention_runtime() -> None:
+    app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
+    database_url = _env_str("DATABASE_URL", "")
+    retention_store_backend = _env_str("RETENTION_STORE_BACKEND", "memory").lower()
+    if retention_store_backend == "file":
+        retention_store = JsonFileRetentionStore(_env_str("RETENTION_STORE_PATH", "/tmp/foodlens_retention_store.json"))
+    elif retention_store_backend == "postgres":
+        retention_store = PostgresRetentionStore(
+            database_url=database_url,
+            table_name=_env_str("RETENTION_STORE_TABLE", "retention_records"),
+        )
+    else:
+        retention_store = InMemoryRetentionStore()
+    app.state.retention_store = retention_store
+
+    retention_delete_backend = _env_str("RETENTION_DELETE_BACKEND", "noop").lower()
+    if retention_delete_backend == "local_file":
+        delete_roots = [part.strip() for part in _env_str("RETENTION_DELETE_ROOTS", "").split(",") if part.strip()]
+        cleanup_adapter = LocalFileRetentionCleanupAdapter(delete_roots)
+    elif retention_delete_backend == "media_asset":
+        cleanup_adapter = CallbackRetentionCleanupAdapter(_delete_media_retention_record)
+    else:
+        cleanup_adapter = NoOpRetentionCleanupAdapter()
+
+    app.state.retention_cleanup_job = RetentionCleanupJob(
+        store=retention_store,
+        policy=app.state.retention_policy,
+        adapter=cleanup_adapter,
+    )
+
+
+def _initialize_deletion_queue_runtime() -> None:
+    database_url = _env_str("DATABASE_URL", "")
+    deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
+    if deletion_queue_backend == "file":
+        deletion_storage = JsonFileDeletionQueueStorage(_env_str("DELETION_QUEUE_PATH", "/tmp/foodlens_deletion_queue.json"))
+    elif deletion_queue_backend == "postgres":
+        deletion_storage = PostgresDeletionQueueStorage(
+            database_url=database_url,
+            queue_table_name=_env_str("DELETION_QUEUE_TABLE", "deletion_queue"),
+            status_table_name=_env_str("DELETION_STATUS_TABLE", "deletion_statuses"),
+        )
+    else:
+        deletion_storage = InMemoryDeletionQueueStorage()
+    app.state.deletion_queue_storage = deletion_storage
+    app.state.deletion_queue_producer = DeletionQueueProducer(deletion_storage)
+
+    deletion_handler_backend = _env_str("DELETION_HANDLER_BACKEND", "user").lower()
+    if deletion_handler_backend == "noop":
+        deletion_handler = NoOpDeletionHandler()
+    else:
+        deletion_handler = UserDeletionHandler(
+            auth_service=app.state.auth_service,
+            media_storage=app.state.media_storage,
+            retention_store=app.state.retention_store,
+        )
+    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, deletion_handler)
+
+
+def _initialize_core_runtime_services() -> None:
     analyst, barcode_service, smart_router = initialize_services()
     app.state.analyst = analyst
     app.state.barcode_service = barcode_service
     app.state.smart_router = smart_router
+
+
+def _initialize_api_runtime_controls() -> None:
     app.state.label_cost_guardrail = CostGuardrailService(
         InMemoryMonthlyUsageStorage(),
         monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
@@ -406,8 +471,41 @@ async def _startup() -> None:
         logger.info("[Admission] disabled")
 
 
-@app.on_event("shutdown")
-async def _shutdown() -> None:
+async def _startup_runtime(process_role: str) -> None:
+    normalized_role = _normalize_process_role(process_role)
+    _reset_runtime_state()
+    app.state.process_role = normalized_role
+    _initialize_auth_and_media_runtime()
+
+    if normalized_role in {PROCESS_ROLE_WEB, PROCESS_ROLE_WORKER}:
+        _initialize_analysis_runtime()
+
+    _initialize_retention_runtime()
+
+    if normalized_role in {PROCESS_ROLE_WEB, PROCESS_ROLE_WORKER}:
+        _initialize_deletion_queue_runtime()
+
+    if _is_openapi_export_mode():
+        if normalized_role != PROCESS_ROLE_WEB:
+            raise RuntimeError("OPENAPI_EXPORT_ONLY=1 is only supported for the web runtime.")
+        app.state.startup_completed = True
+        logger.info("[Startup] OPENAPI_EXPORT_ONLY=1, runtime service initialization skipped.")
+        return
+
+    if normalized_role in {PROCESS_ROLE_WEB, PROCESS_ROLE_WORKER}:
+        _initialize_core_runtime_services()
+
+    if normalized_role == PROCESS_ROLE_WEB:
+        _initialize_api_runtime_controls()
+
+    if normalized_role == PROCESS_ROLE_WORKER:
+        _start_analysis_job_workers()
+        app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
+
+    app.state.startup_completed = True
+
+
+async def _shutdown_runtime() -> None:
     for worker in list(getattr(app.state, "analysis_job_workers", [])):
         await worker.stop()
     for task_name in ("retention_cleanup_task", "deletion_queue_task"):
@@ -421,11 +519,216 @@ async def _shutdown() -> None:
             pass
 
 
+async def startup_web_runtime() -> None:
+    await _startup_runtime(PROCESS_ROLE_WEB)
+
+
+async def startup_worker_runtime() -> None:
+    await _startup_runtime(PROCESS_ROLE_WORKER)
+
+
+async def startup_retention_cron_runtime() -> None:
+    await _startup_runtime(PROCESS_ROLE_CRON)
+
+
+async def shutdown_runtime() -> None:
+    await _shutdown_runtime()
+
+
+async def run_retention_cleanup_pass() -> None:
+    await _run_retention_cleanup_once()
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    await startup_web_runtime()
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    await shutdown_runtime()
+
+
 def _service(name: str) -> Any:
     service = getattr(app.state, name, None)
     if service is None:
         raise raise_service_unavailable(name)
     return service
+
+
+def _task_is_running(task: Any) -> bool:
+    if task is None:
+        return False
+    done = getattr(task, "done", None)
+    if not callable(done):
+        return False
+    try:
+        return not bool(done())
+    except Exception:
+        return False
+
+
+def _is_media_storage_ready() -> tuple[bool, bool]:
+    media_storage = getattr(app.state, "media_storage", None)
+    if media_storage is None:
+        return False, False
+
+    media_storage_enabled = bool(getattr(media_storage, "enabled", False))
+    media_backend = _env_str("MEDIA_STORAGE_BACKEND", "gcs").strip().lower()
+    if media_backend in {"disabled", "off", "none"}:
+        return True, media_storage_enabled
+
+    return media_storage_enabled, media_storage_enabled
+
+
+def _build_readiness_report() -> tuple[dict[str, Any], int]:
+    process_role = _current_process_role()
+    export_mode = _is_openapi_export_mode()
+    startup_completed = bool(getattr(app.state, "startup_completed", False))
+    auth_service_ready = getattr(app.state, "auth_service", None) is not None
+    media_storage_ready, media_storage_enabled = _is_media_storage_ready()
+    analysis_job_store_ready = getattr(app.state, "analysis_job_store", None) is not None
+    analysis_nutrition_service_ready = getattr(app.state, "analysis_nutrition_service", None) is not None
+    retention_store_ready = getattr(app.state, "retention_store", None) is not None
+    retention_cleanup_job_ready = getattr(app.state, "retention_cleanup_job", None) is not None
+    deletion_queue_producer_ready = getattr(app.state, "deletion_queue_producer", None) is not None
+    deletion_queue_consumer_ready = getattr(app.state, "deletion_queue_consumer", None) is not None
+    retention_cleanup_task_ready = _task_is_running(getattr(app.state, "retention_cleanup_task", None))
+    deletion_queue_task_ready = _task_is_running(getattr(app.state, "deletion_queue_task", None))
+    core_services_ready = all(
+        getattr(app.state, service_name, None) is not None
+        for service_name in ("analyst", "barcode_service", "smart_router")
+    )
+
+    analysis_job_workers = getattr(app.state, "analysis_job_workers", None)
+    analysis_job_workers_ready = (
+        isinstance(analysis_job_workers, list)
+        and len(analysis_job_workers) > 0
+        and all(_task_is_running(getattr(worker, "_task", None)) for worker in analysis_job_workers)
+    )
+
+    checks = {
+        "process_role": process_role,
+        "startup_completed": startup_completed,
+        "openapi_export_mode": export_mode,
+        "auth_service": auth_service_ready,
+        "media_storage": media_storage_ready,
+        "media_storage_enabled": media_storage_enabled,
+        "analysis_job_store": analysis_job_store_ready,
+        "analysis_nutrition_service": analysis_nutrition_service_ready,
+        "analysis_job_workers": analysis_job_workers_ready,
+        "retention_store": retention_store_ready,
+        "retention_cleanup_job": retention_cleanup_job_ready,
+        "deletion_queue_producer": deletion_queue_producer_ready,
+        "deletion_queue_consumer": deletion_queue_consumer_ready,
+        "retention_cleanup_task": retention_cleanup_task_ready,
+        "deletion_queue_task": deletion_queue_task_ready,
+        "core_services": core_services_ready,
+    }
+
+    required_checks = [
+        "startup_completed",
+        "auth_service",
+        "media_storage",
+        "retention_store",
+    ]
+    if process_role in {PROCESS_ROLE_WEB, PROCESS_ROLE_WORKER}:
+        required_checks.extend(
+            [
+                "analysis_job_store",
+                "analysis_nutrition_service",
+                "deletion_queue_producer",
+                "deletion_queue_consumer",
+            ]
+        )
+    if process_role == PROCESS_ROLE_WEB:
+        if not export_mode:
+            required_checks.append("core_services")
+    elif process_role == PROCESS_ROLE_WORKER:
+        required_checks.extend(
+            [
+                "analysis_job_workers",
+                "deletion_queue_task",
+                "core_services",
+            ]
+        )
+    elif process_role == PROCESS_ROLE_CRON:
+        required_checks.append("retention_cleanup_job")
+
+    issue_catalog = {
+        "startup_completed": {
+            "code": "STARTUP_NOT_COMPLETED",
+            "message": "Startup did not finish initializing the runtime state.",
+        },
+        "auth_service": {
+            "code": "AUTH_SERVICE_MISSING",
+            "message": "app.state.auth_service is missing or uninitialized.",
+        },
+        "media_storage": {
+            "code": "MEDIA_STORAGE_NOT_READY",
+            "message": "Media storage is missing, uninitialized, or disabled for the configured backend.",
+        },
+        "analysis_job_store": {
+            "code": "ANALYSIS_JOB_STORE_MISSING",
+            "message": "app.state.analysis_job_store is missing or uninitialized.",
+        },
+        "analysis_nutrition_service": {
+            "code": "ANALYSIS_NUTRITION_SERVICE_MISSING",
+            "message": "app.state.analysis_nutrition_service is missing or uninitialized.",
+        },
+        "analysis_job_workers": {
+            "code": "ANALYSIS_JOB_WORKERS_NOT_READY",
+            "message": "Analysis job workers are missing or not running.",
+        },
+        "retention_store": {
+            "code": "RETENTION_STORE_MISSING",
+            "message": "app.state.retention_store is missing or uninitialized.",
+        },
+        "retention_cleanup_job": {
+            "code": "RETENTION_CLEANUP_JOB_MISSING",
+            "message": "app.state.retention_cleanup_job is missing or uninitialized.",
+        },
+        "deletion_queue_producer": {
+            "code": "DELETION_QUEUE_PRODUCER_MISSING",
+            "message": "app.state.deletion_queue_producer is missing or uninitialized.",
+        },
+        "deletion_queue_consumer": {
+            "code": "DELETION_QUEUE_CONSUMER_MISSING",
+            "message": "app.state.deletion_queue_consumer is missing or uninitialized.",
+        },
+        "deletion_queue_task": {
+            "code": "DELETION_QUEUE_TASK_NOT_RUNNING",
+            "message": "Deletion queue task is missing or stopped.",
+        },
+        "core_services": {
+            "code": "CORE_SERVICES_MISSING",
+            "message": "Runtime analysis services are missing or uninitialized.",
+        },
+    }
+
+    issues: list[dict[str, str]] = []
+    if export_mode:
+        issues.append(
+            {
+                "code": "OPENAPI_EXPORT_ONLY",
+                "message": "OPENAPI_EXPORT_ONLY=1 disables runtime service readiness.",
+            }
+        )
+    for check_name in required_checks:
+        if checks[check_name]:
+            continue
+        issues.append(dict(issue_catalog[check_name]))
+
+    status = "ready" if not issues else "not_ready"
+    payload = {
+        "status": status,
+        "ready": not issues,
+        "process_role": process_role,
+        "required_checks": required_checks,
+        "checks": checks,
+        "issues": issues,
+    }
+    return payload, 200 if not issues else 503
 
 LOCALE_TO_ISO = {
     "ko-kr": "KR",
@@ -1367,31 +1670,35 @@ def _delete_media_retention_record(record: RetentionRecord) -> bool:
     return True
 
 
+async def _run_retention_cleanup_once() -> None:
+    job = getattr(app.state, "retention_cleanup_job", None)
+    if job is None:
+        raise RuntimeError("Retention cleanup job is unavailable.")
+    for data_class in (
+        RetentionDataClass.ORIGINAL,
+        RetentionDataClass.DERIVED,
+        RetentionDataClass.LOG,
+    ):
+        result = await run_in_threadpool(
+            job.run_once,
+            data_class=data_class,
+            now=datetime.now(timezone.utc),
+            limit=100,
+        )
+        logger.info(
+            "[Retention] cleanup data_class=%s scanned=%s expired=%s deleted=%s",
+            result.data_class.value,
+            result.scanned_count,
+            result.expired_count,
+            result.deleted_count,
+        )
+
+
 async def _retention_cleanup_loop() -> None:
     try:
         while True:
             await asyncio.sleep(_retention_cleanup_interval_seconds())
-            job = getattr(app.state, "retention_cleanup_job", None)
-            if job is None:
-                continue
-            for data_class in (
-                RetentionDataClass.ORIGINAL,
-                RetentionDataClass.DERIVED,
-                RetentionDataClass.LOG,
-            ):
-                result = await run_in_threadpool(
-                    job.run_once,
-                    data_class=data_class,
-                    now=datetime.now(timezone.utc),
-                    limit=100,
-                )
-                logger.info(
-                    "[Retention] cleanup data_class=%s scanned=%s expired=%s deleted=%s",
-                    result.data_class.value,
-                    result.scanned_count,
-                    result.expired_count,
-                    result.deleted_count,
-                )
+            await _run_retention_cleanup_once()
     except asyncio.CancelledError:
         return
 
@@ -2010,6 +2317,13 @@ def _resolve_authenticated_user(request: Request, request_id: str):
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
+
+
+@app.get("/health/ready")
+def readiness_check():
+    payload, status_code = _build_readiness_report()
+    return JSONResponse(status_code=status_code, content=payload)
+
 
 @app.get("/debug/models")
 async def debug_models():

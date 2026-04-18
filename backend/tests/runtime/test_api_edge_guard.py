@@ -19,8 +19,27 @@ class ApiEdgeGuardTests(unittest.TestCase):
     def test_build_cors_config_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
             config = build_cors_config_from_env()
-        self.assertTrue(config.allow_origins)
-        self.assertIsNotNone(config.allow_origin_regex)
+        self.assertEqual(config.allow_origins, [])
+        self.assertIsNone(config.allow_origin_regex)
+
+    def test_build_cors_config_defaults_to_public_base_urls(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_PUBLIC_BASE_URL": "https://api.foodlens.example.com/",
+                "MEDIA_PUBLIC_BASE_URL": "https://media.foodlens.example.com/",
+            },
+            clear=True,
+        ):
+            config = build_cors_config_from_env()
+        self.assertEqual(
+            config.allow_origins,
+            [
+                "https://api.foodlens.example.com",
+                "https://media.foodlens.example.com",
+            ],
+        )
+        self.assertIsNone(config.allow_origin_regex)
 
     def test_build_cors_config_from_env(self):
         with patch.dict(

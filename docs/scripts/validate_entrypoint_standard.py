@@ -9,13 +9,14 @@ REQUIRED_FILES = [
     "backend/server.py",
     "backend/setup.sh",
     "backend/requirements.txt",
-    "backend/Dockerfile",
+    "Dockerfile",
 ]
 
 FORBIDDEN_PATHS = [
     "server.py",
     "setup.sh",
     "requirements.txt",
+    "backend/Dockerfile",
     "modules",
     "scripts/remove_bg.py",
 ]

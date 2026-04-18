@@ -5,10 +5,12 @@ import { LOGIN_ANIMATION, LOGIN_LAYOUT } from '../constants/login.constants';
 import { LoginAuthMode } from '../types/login.types';
 
 const toPhoneStateValue = (mode: LoginAuthMode): number => (mode === 'signup' ? 2 : 1);
+export const shouldUseLoginNativeDriver = (platform: string): boolean => platform !== 'web';
 
 export const useLoginMotion = () => {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const useNativeDriver = shouldUseLoginNativeDriver(Platform.OS);
 
   const phoneStateProgress = useRef(new Animated.Value(0)).current;
   const signupProgress = useRef(new Animated.Value(0)).current;
@@ -84,30 +86,31 @@ export const useLoginMotion = () => {
         toValue: 1,
         duration: 320,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(welcomeTitleProgress, {
         toValue: 1,
         duration: LOGIN_ANIMATION.welcomeDurationMs,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(welcomeDescriptionProgress, {
         toValue: 1,
         duration: LOGIN_ANIMATION.welcomeDurationMs,
         delay: 100,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(welcomeContinueProgress, {
         toValue: 1,
         duration: LOGIN_ANIMATION.welcomeDurationMs,
         delay: 200,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
     ]).start();
   }, [
+    useNativeDriver,
     welcomeContinueProgress,
     welcomeDescriptionProgress,
     welcomeScreenOpacity,
@@ -167,14 +170,14 @@ export const useLoginMotion = () => {
           duration: LOGIN_ANIMATION.authFadeInMs,
           delay: 180,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(authFooterProgress, {
           toValue: 1,
           duration: LOGIN_ANIMATION.footerFadeInMs,
           delay: 250,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
     },
@@ -186,6 +189,7 @@ export const useLoginMotion = () => {
       phoneStateProgress,
       setAuthMode,
       signupProgress,
+      useNativeDriver,
       welcomeScreenOpacity,
     ],
   );

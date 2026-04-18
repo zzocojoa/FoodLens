@@ -3,7 +3,7 @@ import { Alert, Text, TouchableOpacity, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAppNavigation } from '@/hooks/use-app-navigation';
 import { useI18n } from '@/features/i18n';
-import { openMailtoUrl } from '@/features/support/supportMail';
+import { isMailtoUnavailableError, openMailtoUrl } from '@/features/support/supportMail';
 import { StatusBar } from 'expo-status-bar';
 import Animated from 'react-native-reanimated';
 import BreakdownOverlay from '@/components/BreakdownOverlay';
@@ -90,12 +90,17 @@ export default function ResultScreen() {
             await openMailtoUrl(mailtoUrl);
         } catch (error) {
             const messageText =
-                error instanceof Error
-                    ? error.message
-                    : t(
+                isMailtoUnavailableError(error)
+                    ? t(
                           'result.report.contactFallback',
                           'Unable to open your email app. Please contact support manually.',
-                      );
+                      )
+                    : error instanceof Error
+                      ? error.message
+                      : t(
+                            'result.report.contactFallback',
+                            'Unable to open your email app. Please contact support manually.',
+                        );
             Alert.alert(t('result.report.errorTitle', 'Support unavailable'), messageText);
         }
     };

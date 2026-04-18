@@ -6,7 +6,7 @@
 - Run URL: https://github.com/zzocojoa/FoodLens/actions/runs/22224958415
 - Ref: `main`
 - Commit: `97d81ab`
-- Input `auth_public_base_url`: `https://foodlens-2-w1xu.onrender.com`
+- Input `auth_public_base_url`: `https://<RENDER_BASE_URL>`
 
 ## Artifact
 

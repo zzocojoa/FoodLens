@@ -14,6 +14,7 @@ import { useHistoryScreen } from '../hooks/useHistoryScreen';
 import { historyStyles as styles } from '../styles/historyStyles';
 import { toggleCountryExpanded } from '../utils/historySelection';
 import HistoryHeader from '../components/HistoryHeader';
+import TopLevelScreenShell from '@/components/navigation/TopLevelScreenShell';
 import { useI18n } from '@/features/i18n';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import {
@@ -137,62 +138,68 @@ export default function HistoryScreen() {
     }, [historyUserId]);
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <Stack.Screen options={{ headerShown: false }} />
-            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-                <HistoryHeader
-                    title={t('history.header.title', 'Food Passport')}
-                    theme={theme}
-                    archiveMode={ui.archiveMode}
-                    isEditMode={ui.isEditMode}
-                    isMapModeAvailable={ui.isMapModeAvailable}
-                    onBack={() => router.back()}
-                    onSwitchMode={ui.handleSwitchMode}
-                    onToggleEdit={ui.toggleEditMode}
-                />
-
-                {ui.archiveMode === 'map' ? (
-                    canRenderNativeMap ? (
-                        <HistoryMap
-                            data={archiveData}
-                            initialRegion={ui.savedMapRegion ?? ui.savedMapRegionRef.current ?? initialRegion}
-                            onMarkerPress={handleMarkerPress}
-                            onRegionChange={handleRegionChange}
-                        />
-                    ) : (
-                        <View style={[styles.mapUnavailableContainer, { backgroundColor: theme.background }]}>
-                            <Text style={[styles.mapUnavailableTitle, { color: theme.textPrimary }]}>
-                                {t('history.map.unavailableTitle', 'Map unavailable')}
-                            </Text>
-                            <Text style={[styles.mapUnavailableDescription, { color: theme.textSecondary }]}>
-                                {t(
-                                    'history.map.unavailableMessage',
-                                    'Map mode is unavailable on this Android build. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild.'
-                                )}
-                            </Text>
-                        </View>
-                    )
-                ) : (
-                    <HistoryList
-                        data={archiveData}
-                        loading={loading}
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        filter={archiveFilter}
-                        setFilter={setArchiveFilter}
-                        matchesFilter={matchesFilter}
-                        isAllowedItemType={isAllowedItemType}
-                        expandedCountries={expandedCountries}
-                        onToggleCountry={handleToggleCountry}
+        <TopLevelScreenShell
+            activeItem="history"
+            backgroundColor={theme.background}
+            hideNav={ui.isEditMode}
+        >
+            <View style={[styles.container, { backgroundColor: theme.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                    <HistoryHeader
+                        title={t('history.header.title', 'Food Passport')}
+                        theme={theme}
+                        archiveMode={ui.archiveMode}
                         isEditMode={ui.isEditMode}
-                        selectedItems={ui.selectedItems}
-                        onReplaceSelection={ui.replaceSelection}
-                        onToggleItem={ui.toggleSelectItem}
-                        onDelete={(id) => deleteItem(id)}
-                        onBulkDelete={ui.handleBulkDelete}
+                        isMapModeAvailable={ui.isMapModeAvailable}
+                        onBack={() => router.back()}
+                        onSwitchMode={ui.handleSwitchMode}
+                        onToggleEdit={ui.toggleEditMode}
                     />
-                )}
-            </SafeAreaView>
-        </View>
+
+                    {ui.archiveMode === 'map' ? (
+                        canRenderNativeMap ? (
+                            <HistoryMap
+                                data={archiveData}
+                                initialRegion={ui.savedMapRegion ?? ui.savedMapRegionRef.current ?? initialRegion}
+                                onMarkerPress={handleMarkerPress}
+                                onRegionChange={handleRegionChange}
+                            />
+                        ) : (
+                            <View style={[styles.mapUnavailableContainer, { backgroundColor: theme.background }]}>
+                                <Text style={[styles.mapUnavailableTitle, { color: theme.textPrimary }]}>
+                                    {t('history.map.unavailableTitle', 'Map unavailable')}
+                                </Text>
+                                <Text style={[styles.mapUnavailableDescription, { color: theme.textSecondary }]}>
+                                    {t(
+                                        'history.map.unavailableMessage',
+                                        'Map mode is unavailable on this Android build. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild.'
+                                    )}
+                                </Text>
+                            </View>
+                        )
+                    ) : (
+                        <HistoryList
+                            data={archiveData}
+                            loading={loading}
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            filter={archiveFilter}
+                            setFilter={setArchiveFilter}
+                            matchesFilter={matchesFilter}
+                            isAllowedItemType={isAllowedItemType}
+                            expandedCountries={expandedCountries}
+                            onToggleCountry={handleToggleCountry}
+                            isEditMode={ui.isEditMode}
+                            selectedItems={ui.selectedItems}
+                            onReplaceSelection={ui.replaceSelection}
+                            onToggleItem={ui.toggleSelectItem}
+                            onDelete={(id) => deleteItem(id)}
+                            onBulkDelete={ui.handleBulkDelete}
+                        />
+                    )}
+                </SafeAreaView>
+            </View>
+        </TopLevelScreenShell>
     );
 }

@@ -477,12 +477,15 @@ export const UserService = {
       resolvedUserId = await resolveScopedUserId(uid);
     } catch (error) {
       if (error instanceof Error && error.message === AUTH_REQUIRED_ERROR_MESSAGE) {
-        const fallbackUserId = normalizeUserId(uid) ?? UNAUTHENTICATED_USER_ID;
-        logger.warn('[Auth] profile read requested without authenticated user; returning fallback profile', {
-          request_id: 'auth-profile-read-without-user',
-          requested_user_id: normalizeUserId(uid) ?? UNAUTHENTICATED_USER_ID,
-          fallback_user_id: fallbackUserId,
-        });
+        const requestedUserId = normalizeUserId(uid) ?? UNAUTHENTICATED_USER_ID;
+        const fallbackUserId = requestedUserId;
+        if (requestedUserId !== UNAUTHENTICATED_USER_ID) {
+          logger.warn('[Auth] profile read requested without authenticated user; returning fallback profile', {
+            request_id: 'auth-profile-read-without-user',
+            requested_user_id: requestedUserId,
+            fallback_user_id: fallbackUserId,
+          });
+        }
         return buildDefaultProfile(fallbackUserId);
       }
       throw error;

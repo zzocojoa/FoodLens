@@ -11,6 +11,13 @@ type ResultNavBarProps = {
     reportAccessibilityLabel: string;
 };
 
+const reportButtonHitSlop = {
+    top: 12,
+    right: 12,
+    bottom: 12,
+    left: 12,
+} as const;
+
 export default function ResultNavBar({
     onBack,
     onReport,
@@ -29,6 +36,7 @@ export default function ResultNavBar({
                     onPress={onReport}
                     style={styles.navReportButton}
                     hapticType="light"
+                    hitSlop={reportButtonHitSlop}
                     accessibilityRole="button"
                     accessibilityLabel={reportAccessibilityLabel}
                 >

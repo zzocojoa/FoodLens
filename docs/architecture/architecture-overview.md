@@ -116,7 +116,7 @@ FoodLens-project/
 - Setup: `bash backend/setup.sh`
 - Virtual env: `source .venv/bin/activate`
 - Run backend: `python -m backend.server`
-- Docker build context/file: `docker build -f backend/Dockerfile .`
+- Docker build context/file: `docker build .`
 
 ---
 
