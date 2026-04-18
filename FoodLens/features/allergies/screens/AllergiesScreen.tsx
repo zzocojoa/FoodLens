@@ -1,29 +1,60 @@
-import React from 'react';
-import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import TravelerAllergyCard from '../../../components/TravelerAllergyCard';
+import { Stack, useRouter } from 'expo-router';
+import React from 'react';
+import {
+    ScrollView,
+    StyleSheet,
+    View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import TopLevelScreenShell, {
     getTopLevelScreenBottomPadding,
 } from '../../../components/navigation/TopLevelScreenShell';
-import { Colors } from '../../../constants/theme';
-import { useColorScheme } from '../../../hooks/use-color-scheme';
-import AllergiesHeader from '../components/AllergiesHeader';
-import AllergyListSection from '../components/AllergyListSection';
+import { ALLERGEN_TERMS } from '../../../services/staticTranslations';
+import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
+import AllergiesConciergeRail from '../components/AllergiesConciergeRail';
+import {
+    allergiesDashboardColors,
+    type AllergiesDashboardTone,
+} from '../components/allergiesDashboardTokens';
+import {
+    allergiesDashboardStyles,
+} from '../components/allergiesDashboardStyles';
+import AllergiesEmptyHero from '../components/AllergiesEmptyHero';
+import AllergiesPassportHero, {
+    type AllergiesPassportCardCopy,
+    type AllergiesPassportHeroState,
+    type AllergiesPassportSummary,
+} from '../components/AllergiesPassportHero';
+import AllergiesRiskLedger, {
+    type AllergiesRiskLedgerSection,
+} from '../components/AllergiesRiskLedger';
+import AllergiesTravelerCardModal from '../components/AllergiesTravelerCardModal';
+import AllergiesTravelerPassportCard from '../components/AllergiesTravelerPassportCard';
 import { ALLERGIES_COPY } from '../constants/allergies.constants';
 import { useAllergiesData } from '../hooks/useAllergiesData';
-import { allergiesStyles as styles } from '../styles/allergiesStyles';
-import { useI18n } from '@/features/i18n';
+import { translateAllergenToKorean } from '../utils/translateAllergen';
+import { useTravelerAllergyCardModel } from '@/components/travelerAllergyCard/hooks/useTravelerAllergyCardModel';
 import { AllergySeverity } from '@/features/profile/types/profile.types';
+import { useI18n } from '@/features/i18n';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
-type AllergiesSummary = {
-    trackedItemCount: number;
-    severeCount: number;
-    moderateCount: number;
-    mildCount: number;
-    restrictionCount: number;
-};
+type TranslationFunction = (key: string, fallback?: string) => string;
+
+type LedgerItem = Readonly<{
+    id: string;
+    primaryLabel: string;
+    secondaryLabel: string;
+}>;
+
+type TravelerCardViewModel = Readonly<{
+    finalMessage: string;
+    isPersonalized: boolean;
+    languageLabel: string;
+}>;
+
+const TRAVELER_ALLERGIES_PREFIX = '⚠️ My Allergies:';
 
 const replaceCountTemplate = (template: string, count: number): string => {
     return template.replace('{count}', String(count));
@@ -33,7 +64,7 @@ const getAllergiesSummary = (
     allergies: string[],
     dietaryRestrictions: string[],
     severityMap: Record<string, AllergySeverity>,
-): AllergiesSummary => {
+): AllergiesPassportSummary => {
     const severeCount = allergies.filter((item) => severityMap[item] === 'severe').length;
     const mildCount = allergies.filter((item) => severityMap[item] === 'mild').length;
     const moderateCount = allergies.length - severeCount - mildCount;
@@ -43,7 +74,251 @@ const getAllergiesSummary = (
         severeCount,
         moderateCount,
         mildCount,
-        restrictionCount: dietaryRestrictions.length,
+        dietaryRestrictionCount: dietaryRestrictions.length,
+        allergyCount: allergies.length,
+    };
+};
+
+const resolveTravelerLanguageLabel = (
+    language: string,
+    t: TranslationFunction,
+): string => {
+    const normalized = language.trim().toLowerCase();
+
+    if (normalized === 'korean' || normalized === 'kr' || normalized === 'ko' || normalized === 'ko-kr') {
+        return t('travelerCard.language.korean', '한국어');
+    }
+
+    if (normalized === 'english' || normalized === 'us' || normalized === 'en' || normalized === 'en-us') {
+        return t('travelerCard.language.english', '영어');
+    }
+
+    if (normalized === 'japanese' || normalized === 'jp' || normalized === 'ja' || normalized === 'ja-jp') {
+        return t('travelerCard.language.japanese', '일본어');
+    }
+
+    if (normalized === 'chinese' || normalized === 'cn' || normalized === 'zh' || normalized === 'zh-hans') {
+        return t('travelerCard.language.chineseSimplified', '중국어 간체');
+    }
+
+    if (
+        normalized === 'traditional chinese' ||
+        normalized === 'zh-hant' ||
+        normalized === 'zh-tw' ||
+        normalized === 'tw'
+    ) {
+        return t('travelerCard.language.chineseTraditional', '중국어 번체');
+    }
+
+    if (normalized === 'thai' || normalized === 'th' || normalized === 'th-th') {
+        return t('travelerCard.language.thai', '태국어');
+    }
+
+    if (normalized === 'vietnamese' || normalized === 'vn' || normalized === 'vi' || normalized === 'vi-vn') {
+        return t('travelerCard.language.vietnamese', '베트남어');
+    }
+
+    if (normalized === 'indonesian' || normalized === 'id' || normalized === 'id-id') {
+        return t('travelerCard.language.indonesian', '인도네시아어');
+    }
+
+    if (normalized === 'french' || normalized === 'fr' || normalized === 'fr-fr') {
+        return t('travelerCard.language.french', '프랑스어');
+    }
+
+    if (normalized === 'italian' || normalized === 'it' || normalized === 'it-it') {
+        return t('travelerCard.language.italian', '이탈리아어');
+    }
+
+    if (normalized === 'spanish' || normalized === 'es' || normalized === 'es-es') {
+        return t('travelerCard.language.spanish', '스페인어');
+    }
+
+    if (normalized === 'german' || normalized === 'de' || normalized === 'de-de') {
+        return t('travelerCard.language.german', '독일어');
+    }
+
+    return language;
+};
+
+const resolveTravelerFinalMessage = (
+    message: string,
+    t: TranslationFunction,
+): string => {
+    return message.replace(
+        TRAVELER_ALLERGIES_PREFIX,
+        t('travelerCard.allergiesLabel', '⚠️ My allergies:'),
+    );
+};
+
+const resolveTravelerCardViewModel = (
+    finalMessage: string,
+    language: string,
+    t: TranslationFunction,
+): TravelerCardViewModel => {
+    return {
+        finalMessage: resolveTravelerFinalMessage(finalMessage, t),
+        isPersonalized: hasPersonalizedTravelerMessage(finalMessage),
+        languageLabel: resolveTravelerLanguageLabel(language, t),
+    };
+};
+
+const getHeroState = (
+    loading: boolean,
+    hasSavedItems: boolean,
+    travelerCardViewModel: TravelerCardViewModel | null,
+): AllergiesPassportHeroState => {
+    if (loading) {
+        return 'loading';
+    }
+
+    if (!hasSavedItems) {
+        return 'empty';
+    }
+
+    if (travelerCardViewModel === null) {
+        return 'card-unavailable';
+    }
+
+    if (travelerCardViewModel.isPersonalized) {
+        return 'personalized';
+    }
+
+    return 'generic';
+};
+
+const hasPersonalizedTravelerMessage = (message: string): boolean => {
+    return message.includes(TRAVELER_ALLERGIES_PREFIX);
+};
+
+const getRailTone = (state: AllergiesPassportHeroState): AllergiesDashboardTone => {
+    if (state === 'personalized') {
+        return 'safe';
+    }
+
+    if (state === 'generic') {
+        return 'accent';
+    }
+
+    if (state === 'card-unavailable') {
+        return 'danger';
+    }
+
+    if (state === 'empty') {
+        return 'caution';
+    }
+
+    return 'neutral';
+};
+
+const getRailStatusLabel = (
+    state: AllergiesPassportHeroState,
+    t: TranslationFunction,
+): string => {
+    if (state === 'personalized') {
+        return t('allergies.rail.travelerReady', 'Traveler-ready');
+    }
+
+    if (state === 'generic') {
+        return t('allergies.hero.state.generic', 'Translated');
+    }
+
+    if (state === 'card-unavailable') {
+        return t('allergies.hero.state.unavailable', 'Unavailable');
+    }
+
+    if (state === 'empty') {
+        return t('allergies.rail.travelerNotReady', 'Not ready yet');
+    }
+
+    return t('allergies.hero.state.loading', 'Syncing');
+};
+
+const getSavedCountLabel = (
+    trackedItemCount: number,
+    t: TranslationFunction,
+): string => {
+    return replaceCountTemplate(
+        t('allergies.rail.savedCountTemplate', '{count} saved items'),
+        trackedItemCount,
+    );
+};
+
+const getPrimaryLabel = (value: string): string => {
+    return translateAllergenToKorean(value, ALLERGEN_TERMS);
+};
+
+const getLedgerItems = (values: string[]): LedgerItem[] => {
+    return values.map((value) => ({
+        id: value,
+        primaryLabel: getPrimaryLabel(value),
+        secondaryLabel: value,
+    }));
+};
+
+const getSeverityItems = (
+    allergies: string[],
+    severityMap: Record<string, AllergySeverity>,
+    severity: AllergySeverity,
+): LedgerItem[] => {
+    return allergies
+        .filter((item) => {
+            if (severity === 'moderate') {
+                return severityMap[item] !== 'severe' && severityMap[item] !== 'mild';
+            }
+
+            return severityMap[item] === severity;
+        })
+        .map((item) => ({
+            id: item,
+            primaryLabel: getPrimaryLabel(item),
+            secondaryLabel: item,
+        }));
+};
+
+const getLedgerSections = (
+    allergies: string[],
+    dietaryRestrictions: string[],
+    severityMap: Record<string, AllergySeverity>,
+    t: TranslationFunction,
+): AllergiesRiskLedgerSection[] => {
+    return [
+        {
+            kind: 'severe',
+            title: t('allergies.ledger.severe', 'Severe'),
+            items: getSeverityItems(allergies, severityMap, 'severe'),
+        },
+        {
+            kind: 'moderate',
+            title: t('allergies.ledger.moderate', 'Moderate'),
+            items: getSeverityItems(allergies, severityMap, 'moderate'),
+        },
+        {
+            kind: 'mild',
+            title: t('allergies.ledger.mild', 'Mild'),
+            items: getSeverityItems(allergies, severityMap, 'mild'),
+        },
+        {
+            kind: 'dietaryRestrictions',
+            title: t('allergies.ledger.restrictions', 'Restrictions'),
+            items: getLedgerItems(dietaryRestrictions),
+        },
+    ];
+};
+
+const getTravelerCardCopy = (
+    travelerCardViewModel: TravelerCardViewModel | null,
+    t: TranslationFunction,
+): AllergiesPassportCardCopy | undefined => {
+    if (travelerCardViewModel === null) {
+        return undefined;
+    }
+
+    return {
+        headline: t('allergies.hero.passportTitle', 'Traveler Passport'),
+        message: travelerCardViewModel.finalMessage,
+        languageLabel: travelerCardViewModel.languageLabel,
+        supportingLabel: t('allergies.hero.conciergeSubtitle', 'Show this card to restaurant staff when ordering.'),
     };
 };
 
@@ -51,223 +326,155 @@ export default function AllergiesScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme() ?? 'light';
-    const theme = Colors[colorScheme];
     const { t } = useI18n();
-    const { allergies, dietaryRestrictions, severityMap, loading } = useAllergiesData();
+    const {
+        allergies,
+        dietaryRestrictions,
+        severityMap,
+        loading,
+    } = useAllergiesData();
+    const travelerCardModel = useTravelerAllergyCardModel(undefined, undefined);
     const [isTravelerCardExpanded, setIsTravelerCardExpanded] = React.useState(false);
+
     const summary = React.useMemo(
         () => getAllergiesSummary(allergies, dietaryRestrictions, severityMap),
         [allergies, dietaryRestrictions, severityMap],
     );
     const hasSavedItems = summary.trackedItemCount > 0;
-    const summaryTitle = loading
-        ? t('allergies.loading.title', 'Loading saved allergies')
-        : hasSavedItems
-          ? replaceCountTemplate(
-                t('allergies.summary.itemsToAvoidTemplate', 'Avoid {count} items'),
-                summary.trackedItemCount,
-            )
-          : t('allergies.summary.emptyTitle', 'No saved items yet');
-    const summaryChips = React.useMemo(() => {
-        if (loading || !hasSavedItems) {
-            return [];
+    const travelerCardViewModel = React.useMemo(() => {
+        if (travelerCardModel === null) {
+            return null;
         }
 
-        const chips: string[] = [];
+        return resolveTravelerCardViewModel(
+            travelerCardModel.finalMessage,
+            travelerCardModel.displayData.language,
+            t,
+        );
+    }, [t, travelerCardModel]);
+    const heroState = React.useMemo(
+        () => getHeroState(loading, hasSavedItems, travelerCardViewModel),
+        [hasSavedItems, loading, travelerCardViewModel],
+    );
+    const heroCardCopy = React.useMemo(
+        () => getTravelerCardCopy(travelerCardViewModel, t),
+        [t, travelerCardViewModel],
+    );
+    const ledgerSections = React.useMemo(
+        () => getLedgerSections(allergies, dietaryRestrictions, severityMap, t),
+        [allergies, dietaryRestrictions, severityMap, t],
+    );
+    const railTone = React.useMemo(
+        () => getRailTone(heroState),
+        [heroState],
+    );
+    const railStatusLabel = React.useMemo(
+        () => getRailStatusLabel(heroState, t),
+        [heroState, t],
+    );
+    const savedCountLabel = React.useMemo(
+        () => getSavedCountLabel(summary.trackedItemCount, t),
+        [summary.trackedItemCount, t],
+    );
+    const homeContentBottomPadding = getTopLevelScreenBottomPadding(insets.bottom, 24);
 
-        if (summary.severeCount > 0) {
-            chips.push(
-                replaceCountTemplate(
-                    t('allergies.summary.severeTemplate', 'Severe {count}'),
-                    summary.severeCount,
-                ),
-            );
-        }
-
-        if (summary.moderateCount > 0) {
-            chips.push(
-                replaceCountTemplate(
-                    t('allergies.summary.moderateTemplate', 'Moderate {count}'),
-                    summary.moderateCount,
-                ),
-            );
-        }
-
-        if (summary.mildCount > 0) {
-            chips.push(
-                replaceCountTemplate(
-                    t('allergies.summary.mildTemplate', 'Mild {count}'),
-                    summary.mildCount,
-                ),
-            );
-        }
-
-        if (summary.restrictionCount > 0) {
-            chips.push(
-                replaceCountTemplate(
-                    t('allergies.summary.restrictionsTemplate', 'Restrictions {count}'),
-                    summary.restrictionCount,
-                ),
-            );
-        }
-
-        return chips;
-    }, [hasSavedItems, loading, summary, t]);
     const handleEditProfile = React.useCallback(() => {
         router.push('/health-profile' as never);
     }, [router]);
+
     const handleOpenTravelerCard = React.useCallback(() => {
         setIsTravelerCardExpanded(true);
     }, []);
+
     const handleCloseTravelerCard = React.useCallback(() => {
         setIsTravelerCardExpanded(false);
     }, []);
 
+    const modalCardState =
+        heroState === 'personalized' || heroState === 'generic' ? heroState : 'generic';
+
     return (
         <TopLevelScreenShell
             activeItem="allergies"
-            backgroundColor={theme.background}
+            backgroundColor={allergiesDashboardColors.paper}
             hideNav={false}
         >
-            <View style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={screenStyles.container}>
+                <HomeBackgroundAtmosphere />
                 <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                 <Stack.Screen options={{ headerShown: false }} />
 
-                <SafeAreaView style={{ flex: 1 }}>
-                    <AllergiesHeader
-                        title={t(ALLERGIES_COPY.title.key, ALLERGIES_COPY.title.fallback)}
-                        theme={theme}
-                    />
-
+                <SafeAreaView style={screenStyles.safeArea} edges={['top']}>
                     <ScrollView
+                        contentInsetAdjustmentBehavior="automatic"
                         contentContainerStyle={[
-                            styles.content,
-                            { paddingBottom: getTopLevelScreenBottomPadding(insets.bottom, 0) },
+                            allergiesDashboardStyles.scrollContent,
+                            screenStyles.scrollContent,
+                            { paddingBottom: homeContentBottomPadding },
                         ]}
+                        showsVerticalScrollIndicator={false}
                     >
-                        {hasSavedItems && !loading ? (
-                            <View style={styles.passportHeroSection}>
-                                <View style={styles.passportHeroHeader}>
-                                    <View style={styles.passportHeroLead}>
-                                        <Text style={[styles.passportHeroEyebrow, { color: theme.textSecondary }]}>
-                                            {t('allergies.travelerCardPreviewEyebrow', 'Travel utility')}
-                                        </Text>
-                                        <Text style={[styles.passportHeroTitle, { color: theme.textPrimary }]}>
-                                            {t(
-                                                ALLERGIES_COPY.travelerCardPreviewTitle.key,
-                                                ALLERGIES_COPY.travelerCardPreviewTitle.fallback,
-                                            )}
-                                        </Text>
-                                        <Text style={[styles.passportHeroDescription, { color: theme.textSecondary }]}>
-                                            {t(
-                                                'allergies.travelerHeroDescription',
-                                                'Open this screen and show it directly to restaurant staff.',
-                                            )}
-                                        </Text>
-                                    </View>
+                        <AllergiesConciergeRail
+                            title={t(ALLERGIES_COPY.title.key, ALLERGIES_COPY.title.fallback)}
+                            description={t(ALLERGIES_COPY.description.key, ALLERGIES_COPY.description.fallback)}
+                            savedCountLabel={savedCountLabel}
+                            statusLabel={railStatusLabel}
+                            statusTone={railTone}
+                        />
 
-                                    <TouchableOpacity
-                                        style={[styles.inlineEditButton, { borderColor: theme.border }]}
-                                        onPress={handleEditProfile}
-                                        activeOpacity={0.8}
-                                    >
-                                        <Text style={[styles.inlineEditButtonText, { color: theme.textPrimary }]}>
-                                            {t('allergies.action.editSecondary', 'Edit')}
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                <TravelerAllergyCard
-                                    countryCode={undefined}
-                                    aiTranslation={undefined}
-                                />
-
-                                <View style={styles.passportHeroFooter}>
-                                    <TouchableOpacity
-                                        style={[styles.primaryTravelerButton, { backgroundColor: theme.textPrimary }]}
-                                        onPress={handleOpenTravelerCard}
-                                        activeOpacity={0.86}
-                                    >
-                                        <Text style={[styles.primaryTravelerButtonText, { color: theme.background }]}>
-                                            {t('allergies.action.openTravelerCard', 'View larger')}
-                                        </Text>
-                                    </TouchableOpacity>
-
-                                    {summaryChips.length > 0 && (
-                                        <View style={styles.summaryChipRow}>
-                                            {summaryChips.map((chip) => (
-                                                <View
-                                                    key={chip}
-                                                    style={[styles.summaryChip, { backgroundColor: theme.background }]}
-                                                >
-                                                    <Text style={[styles.summaryChipText, { color: theme.textSecondary }]}>
-                                                        {chip}
-                                                    </Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
+                        {heroState === 'empty' ? (
+                            <AllergiesEmptyHero
+                                eyebrow={t('allergies.rail.travelerNotReady', 'Not ready yet')}
+                                title={t('allergies.summary.emptyTitle', 'No saved items yet')}
+                                description={t('allergies.summary.emptyHint', 'Add your allergies before analyzing food.')}
+                                actionLabel={t('allergies.action.addAllergyInfo', 'Add allergy info')}
+                                onActionPress={handleEditProfile}
+                            />
                         ) : (
-                            <View style={[styles.topfold, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                                <View style={styles.topfoldRow}>
-                                    <View style={styles.summaryContent}>
-                                        <Text style={[styles.summaryTitle, { color: theme.textPrimary }]}>
-                                            {summaryTitle}
-                                        </Text>
-                                        <Text style={[styles.summaryHint, { color: theme.textSecondary }]}>
-                                            {t(
-                                                'allergies.summary.emptyHint',
-                                                'Add your allergies before analyzing food.',
-                                            )}
-                                        </Text>
-                                    </View>
-                                </View>
-                            </View>
+                            <AllergiesPassportHero
+                                state={heroState}
+                                summary={summary}
+                                cardCopy={heroCardCopy}
+                                onOpenTravelerCard={handleOpenTravelerCard}
+                            />
                         )}
 
-                        <AllergyListSection
-                            loading={loading}
-                            allergies={allergies}
-                            dietaryRestrictions={dietaryRestrictions}
-                            severityMap={severityMap}
-                            theme={theme}
-                            onPressEdit={handleEditProfile}
-                        />
+                        {!loading && hasSavedItems ? (
+                            <AllergiesRiskLedger
+                                title={t('allergies.ledger.title', 'Risk Ledger')}
+                                meta={t('allergies.ledger.meta', 'Severity · restrictions')}
+                                sections={ledgerSections}
+                                emptyTitle={t('allergies.ledger.empty', 'Nothing tracked yet')}
+                                emptyDescription={t('allergies.summary.emptyHint', 'Add your allergies before analyzing food.')}
+                            />
+                        ) : null}
                     </ScrollView>
                 </SafeAreaView>
             </View>
 
-            <Modal
-                transparent={true}
-                animationType="fade"
+            <AllergiesTravelerCardModal
                 visible={isTravelerCardExpanded}
-                onRequestClose={handleCloseTravelerCard}
+                onClose={handleCloseTravelerCard}
             >
-                <View style={styles.travelerModalBackdrop}>
-                    <SafeAreaView style={styles.travelerModalSafeArea}>
-                        <View style={styles.travelerModalHeader}>
-                            <TouchableOpacity
-                                style={styles.travelerModalCloseButton}
-                                onPress={handleCloseTravelerCard}
-                                activeOpacity={0.85}
-                            >
-                                <Text style={styles.travelerModalCloseText}>
-                                    {t('allergies.action.closeTravelerCard', 'Close')}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.travelerModalCardFrame}>
-                            <TravelerAllergyCard
-                                countryCode={undefined}
-                                aiTranslation={undefined}
-                            />
-                        </View>
-                    </SafeAreaView>
-                </View>
-            </Modal>
+                <AllergiesTravelerPassportCard
+                    state={modalCardState}
+                    copy={heroCardCopy ?? {}}
+                />
+            </AllergiesTravelerCardModal>
         </TopLevelScreenShell>
     );
 }
+
+const screenStyles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: allergiesDashboardColors.paper,
+    },
+    safeArea: {
+        flex: 1,
+        backgroundColor: allergiesDashboardColors.paper,
+    },
+    scrollContent: {
+        paddingTop: 6,
+    },
+});

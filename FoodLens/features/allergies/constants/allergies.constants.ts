@@ -11,8 +11,4 @@ export const ALLERGIES_COPY = {
     },
     emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
     emptyDescription: { key: 'allergies.empty.description', fallback: 'No allergy information registered.' },
-    travelerCardPreviewTitle: {
-        key: 'allergies.travelerCardPreviewTitle',
-        fallback: 'Traveler Card Preview',
-    },
 } as const;
