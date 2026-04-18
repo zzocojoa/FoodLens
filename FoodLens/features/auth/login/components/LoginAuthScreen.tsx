@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Keyboard,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -205,6 +206,7 @@ export default function LoginAuthScreen({
       : `${copy.verificationExpiresInPrefix} ${verificationCountdownLabel}`
     : copy.verificationHelpText;
   const authContainerStyle = [loginStyles.authContainer, containerStyle];
+  const inactiveWebScreenStyle = Platform.OS === 'web' && !isActive ? { display: 'none' as const } : null;
 
   const footerContent = (
     <>
@@ -284,11 +286,21 @@ export default function LoginAuthScreen({
           <View style={loginStyles.supportPanel}>
             <Text style={loginStyles.supportHint}>{copy.supportHint}</Text>
             <View style={loginStyles.supportLinksRow}>
-              <Pressable onPress={() => router.push('/help/faq')}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={copy.supportHelp}
+                onPress={() => router.push('/help/faq')}
+                style={loginStyles.supportLinkPressable}
+              >
                 <Text style={loginStyles.supportLink}>{copy.supportHelp}</Text>
               </Pressable>
               <Text style={loginStyles.supportSeparator}>•</Text>
-              <Pressable onPress={() => router.push('/help/contact')}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={copy.supportContact}
+                onPress={() => router.push('/help/contact')}
+                style={loginStyles.supportLinkPressable}
+              >
                 <Text style={loginStyles.supportLink}>{copy.supportContact}</Text>
               </Pressable>
             </View>
@@ -445,7 +457,10 @@ export default function LoginAuthScreen({
   );
 
   return (
-    <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
+    <Animated.View
+      style={[loginStyles.screen, screenStyle, inactiveWebScreenStyle]}
+      pointerEvents={isActive ? 'auto' : 'none'}
+    >
       <View style={loginStyles.authBody}>
         {formContent}
         <Animated.View style={[loginStyles.authFooterInline, footerStyle]}>{footerContent}</Animated.View>

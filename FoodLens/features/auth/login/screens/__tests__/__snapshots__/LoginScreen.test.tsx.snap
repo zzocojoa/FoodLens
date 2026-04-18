@@ -1474,6 +1474,8 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                   }
                 >
                   <View
+                    accessibilityLabel="Help Center"
+                    accessibilityRole="link"
                     accessibilityState={
                       {
                         "busy": undefined,
@@ -1503,6 +1505,12 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                     onResponderTerminate={[Function]}
                     onResponderTerminationRequest={[Function]}
                     onStartShouldSetResponder={[Function]}
+                    style={
+                      {
+                        "paddingHorizontal": 2,
+                        "paddingVertical": 2,
+                      }
+                    }
                   >
                     <Text
                       style={
@@ -1528,6 +1536,8 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                     •
                   </Text>
                   <View
+                    accessibilityLabel="Contact Support"
+                    accessibilityRole="link"
                     accessibilityState={
                       {
                         "busy": undefined,
@@ -1557,6 +1567,12 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                     onResponderTerminate={[Function]}
                     onResponderTerminationRequest={[Function]}
                     onStartShouldSetResponder={[Function]}
+                    style={
+                      {
+                        "paddingHorizontal": 2,
+                        "paddingVertical": 2,
+                      }
+                    }
                   >
                     <Text
                       style={
@@ -3159,6 +3175,8 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                   }
                 >
                   <View
+                    accessibilityLabel="Help Center"
+                    accessibilityRole="link"
                     accessibilityState={
                       {
                         "busy": undefined,
@@ -3188,6 +3206,12 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                     onResponderTerminate={[Function]}
                     onResponderTerminationRequest={[Function]}
                     onStartShouldSetResponder={[Function]}
+                    style={
+                      {
+                        "paddingHorizontal": 2,
+                        "paddingVertical": 2,
+                      }
+                    }
                   >
                     <Text
                       style={
@@ -3213,6 +3237,8 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                     •
                   </Text>
                   <View
+                    accessibilityLabel="Contact Support"
+                    accessibilityRole="link"
                     accessibilityState={
                       {
                         "busy": undefined,
@@ -3242,6 +3268,12 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                     onResponderTerminate={[Function]}
                     onResponderTerminationRequest={[Function]}
                     onStartShouldSetResponder={[Function]}
+                    style={
+                      {
+                        "paddingHorizontal": 2,
+                        "paddingVertical": 2,
+                      }
+                    }
                   >
                     <Text
                       style={

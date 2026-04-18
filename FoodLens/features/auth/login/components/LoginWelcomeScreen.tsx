@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Pressable, Text } from 'react-native';
+import { Animated, Platform, Pressable, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LoginCopy } from '../constants/login.constants';
 import { loginStyles } from '../styles/loginStyles';
@@ -23,8 +23,13 @@ export default function LoginWelcomeScreen({
   continueStyle,
   onContinue,
 }: LoginWelcomeScreenProps) {
+  const inactiveWebScreenStyle = Platform.OS === 'web' && !isActive ? { display: 'none' as const } : null;
+
   return (
-    <Animated.View style={[loginStyles.screen, screenStyle]} pointerEvents={isActive ? 'auto' : 'none'}>
+    <Animated.View
+      style={[loginStyles.screen, screenStyle, inactiveWebScreenStyle]}
+      pointerEvents={isActive ? 'auto' : 'none'}
+    >
       <Animated.Text style={[loginStyles.welcomeTitle, titleStyle]}>{copy.welcomeTitle}</Animated.Text>
       <Animated.Text style={[loginStyles.welcomeDescription, descriptionStyle]}>
         {copy.welcomeDescriptionLine1}
