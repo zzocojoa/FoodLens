@@ -346,6 +346,39 @@ cleanup_stale_android_launcher_assets() {
   fi
 }
 
+cleanup_stale_android_release_intermediates() {
+  if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "release" ]]; then
+    return
+  fi
+
+  local build_root="${PROJECT_DIR}/android/app/build"
+  if [[ ! -d "${build_root}" ]]; then
+    return
+  fi
+
+  local cleanup_targets=(
+    "${build_root}/intermediates/packaged_res/release"
+    "${build_root}/intermediates/incremental/release/packageReleaseResources"
+    "${build_root}/intermediates/incremental/lintVitalAnalyzeRelease"
+    "${build_root}/intermediates/lint_vital_partial_results/release"
+    "${build_root}/intermediates/lint_vital_report_lint_model/release"
+  )
+  local cleanup_target=""
+  local removed_any="0"
+
+  for cleanup_target in "${cleanup_targets[@]}"; do
+    if [[ -e "${cleanup_target}" ]]; then
+      rm -rf "${cleanup_target}"
+      removed_any="1"
+      echo "[run-with-logs] Removed stale Android release intermediate ${cleanup_target}"
+    fi
+  done
+
+  if [[ "${removed_any}" == "1" ]]; then
+    echo "[run-with-logs] Cleared stale Android release intermediates before Gradle assemble."
+  fi
+}
+
 remove_prebuilt_android_launcher_assets() {
   local resource_root="${PROJECT_DIR}/android/app/src/main/res"
   if [[ ! -d "${resource_root}" ]]; then
@@ -686,6 +719,7 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
 fi
 
 prepare_android_device_context
+cleanup_stale_android_release_intermediates
 
 if [[ "${PLATFORM}" == "android" && "${BUILD_TYPE}" == "release" ]]; then
   run_android_release_with_gradle
