@@ -7,10 +7,16 @@ const ts = require('typescript');
 const ROOT_DIR = process.cwd();
 const BASE_LOCALE_FILE = 'en.json';
 const DEFAULT_REFERENCE_TARGET_PATHS = [
+  'app',
+  'components/ProfileSheet.tsx',
+  'components/navigation',
+  'components/profileSheet',
   'features/home/screens',
   'features/home/components',
   'features/home/utils',
   'features/home/hooks',
+  'features/profile/screens',
+  'features/profile/profileHub',
 ];
 const SOURCE_FILE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const EXCLUDED_DIRECTORY_NAMES = new Set(['.git', 'artifacts', 'build', 'coverage', 'dist', 'node_modules', 'scripts']);

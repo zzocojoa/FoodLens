@@ -108,7 +108,7 @@ export default function ProfileHubScreen() {
         () =>
             LANGUAGE_OPTIONS.map((option) => ({
                 ...option,
-                label: t(`profileHub.travelerLanguage.option.${option.code}`, option.label),
+                label: t(`profileHub.travelerLanguage.option.${option.code}`),
             })),
         [t],
     );
@@ -116,9 +116,31 @@ export default function ProfileHubScreen() {
         () =>
             UI_LANGUAGE_OPTIONS.map((option) => ({
                 ...option,
-                label: t(`profileHub.settingsLanguage.option.${option.code}`, option.label),
+                label: t(`profileHub.settingsLanguage.option.${option.code}`),
             })),
         [t],
+    );
+    const travelerAutoLabel = React.useMemo(
+        () => {
+            const autoOption = travelerOptions.find((option) => option.code === 'auto');
+            if (!autoOption) {
+                throw new Error('profileHub traveler auto option is missing');
+            }
+
+            return autoOption.label;
+        },
+        [travelerOptions],
+    );
+    const settingsAutoLabel = React.useMemo(
+        () => {
+            const autoOption = settingsLanguageOptions.find((option) => option.code === 'auto');
+            if (!autoOption) {
+                throw new Error('profileHub settings auto option is missing');
+            }
+
+            return autoOption.label;
+        },
+        [settingsLanguageOptions],
     );
     const buildFingerprintRows = React.useMemo(
         () => [
@@ -295,7 +317,11 @@ export default function ProfileHubScreen() {
                                 title={t('profileHub.menu.travelerLanguage.title', 'Traveler Card Language')}
                                 subtitle={t('profileHub.menu.travelerLanguage.subtitleTemplate', '{language} • Result card only').replace(
                                     '{language}',
-                                    toLanguageLabel(state.travelerLanguage),
+                                    toLanguageLabel({
+                                        language: state.travelerLanguage,
+                                        fallbackLabel: travelerAutoLabel,
+                                        options: travelerOptions,
+                                    }),
                                 )}
                                 iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
                                 onPress={() => state.setTravelerLangModalVisible(true)}
@@ -305,7 +331,11 @@ export default function ProfileHubScreen() {
                             <ProfileMenuItem
                                 icon={<Globe size={20} color="#2563EB" />}
                                 title={t('profileHub.menu.settingsLanguage.title', 'Settings Language')}
-                                subtitle={toUiLanguageLabel(state.uiLanguage)}
+                                subtitle={toUiLanguageLabel({
+                                    language: state.uiLanguage,
+                                    fallbackLabel: settingsAutoLabel,
+                                    options: settingsLanguageOptions,
+                                })}
                                 iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
                                 onPress={() => state.setUiLangModalVisible(true)}
                                 theme={theme}

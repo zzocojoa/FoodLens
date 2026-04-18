@@ -108,4 +108,49 @@ describe('i18n-check', () => {
       cleanupWorkspace(rootDir);
     }
   });
+
+  it('scans app, navigation, and profile hub paths by default', () => {
+    const rootDir = createWorkspace();
+
+    try {
+      writeJsonFile(path.join(rootDir, 'features', 'i18n', 'resources', 'en.json'), {
+        'common.done': 'Done',
+      });
+      writeJsonFile(path.join(rootDir, 'features', 'i18n', 'resources', 'ko.json'), {
+        'common.done': '완료',
+      });
+      writeTextFile(
+        path.join(rootDir, 'app', '_layout.tsx'),
+        [
+          "export const exitPrompt = t('bottomNav.exitPrompt', '뒤로가기를 한 번 더 누르면 앱이 종료됩니다.');",
+          '',
+        ].join('\n')
+      );
+      writeTextFile(
+        path.join(rootDir, 'components', 'navigation', 'FloatingBottomNav.tsx'),
+        [
+          "export const homeLabel = t('bottomNav.home', 'Home');",
+          '',
+        ].join('\n')
+      );
+      writeTextFile(
+        path.join(rootDir, 'features', 'profile', 'screens', 'ProfileHubScreen.tsx'),
+        [
+          "export const title = t('profileHub.title', 'Profile');",
+          '',
+        ].join('\n')
+      );
+
+      const result = muteConsole(() => i18nCheck.runI18nCheck(rootDir));
+
+      expect(result.hasError).toBe(true);
+      expect(result.missingReferencedKeys.map((entry: { key: string }) => entry.key)).toEqual([
+        'bottomNav.exitPrompt',
+        'bottomNav.home',
+        'profileHub.title',
+      ]);
+    } finally {
+      cleanupWorkspace(rootDir);
+    }
+  });
 });

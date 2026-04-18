@@ -1,24 +1,57 @@
 import { CanonicalLocale } from '@/features/i18n';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
-import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../constants';
+import { LanguageOption } from '../types';
 
-export const toLanguageLabel = (language: string | undefined): string => {
-  if (!language) return 'Auto (Photo/GPS)';
-  const normalized = normalizeTravelerTargetLanguage(language);
+type ResolveLanguageLabelParams = {
+  language: string | undefined;
+  fallbackLabel: string;
+  options: LanguageOption[];
+};
 
-  if (!normalized) {
-    return 'Auto (Photo/GPS)';
+type ResolveUiLanguageLabelParams = {
+  language: string | undefined;
+  fallbackLabel: string;
+  options: LanguageOption[];
+};
+
+const findOptionLabel = (code: string, options: LanguageOption[]): string | null => {
+  const matchedOption = options.find((option) => option.code === code);
+  return matchedOption?.label ?? null;
+};
+
+export const toLanguageLabel = ({
+  language,
+  fallbackLabel,
+  options,
+}: ResolveLanguageLabelParams): string => {
+  if (!language) {
+    return fallbackLabel;
   }
 
-  return LANGUAGE_OPTIONS.find((option) => option.code === language)?.label ||
-    LANGUAGE_OPTIONS.find((option) => normalizeTravelerTargetLanguage(option.code) === normalized)?.label ||
-    'Auto (Photo/GPS)';
+  const normalized = normalizeTravelerTargetLanguage(language);
+  if (!normalized) {
+    return fallbackLabel;
+  }
+
+  const directLabel = findOptionLabel(language, options);
+  if (directLabel) {
+    return directLabel;
+  }
+
+  const normalizedLabel =
+    options.find((option) => normalizeTravelerTargetLanguage(option.code) === normalized)?.label ?? null;
+
+  return normalizedLabel ?? fallbackLabel;
 };
 
 export const toTargetLanguage = (code: string): string | undefined =>
   code === 'auto' ? undefined : code;
 
-export const toUiLanguageLabel = (language: string | undefined): string => {
+export const toUiLanguageLabel = ({
+  language,
+  fallbackLabel,
+  options,
+}: ResolveUiLanguageLabelParams): string => {
   const resolved = (language || 'auto') as CanonicalLocale;
-  return UI_LANGUAGE_OPTIONS.find((option) => option.code === resolved)?.label || 'Auto (Device)';
+  return findOptionLabel(resolved, options) ?? fallbackLabel;
 };

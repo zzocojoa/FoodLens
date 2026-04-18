@@ -129,6 +129,7 @@ export const useProfileHubState = (userId: string) => {
         (count: number): Promise<Phase2ConflictResolution | null> =>
             new Promise((resolve) => {
                 let settled = false;
+                const conflictMessage = t('sync.conflict.message').replace('{count}', String(count));
                 const settle = (value: Phase2ConflictResolution | null) => {
                     if (settled) return;
                     settled = true;
@@ -136,23 +137,20 @@ export const useProfileHubState = (userId: string) => {
                 };
 
                 Alert.alert(
-                    t('sync.conflict.title', 'Sync conflict detected'),
-                    t(
-                        'sync.conflict.message',
-                        `Saved locally, but ${count} cloud conflict(s) were found. Choose which data to keep.`,
-                    ),
+                    t('sync.conflict.title'),
+                    conflictMessage,
                     [
                         {
-                            text: t('sync.conflict.action.later', 'Later'),
+                            text: t('sync.conflict.action.later'),
                             style: 'cancel',
                             onPress: () => settle(null),
                         },
                         {
-                            text: t('sync.conflict.action.keepServer', 'Keep Server'),
+                            text: t('sync.conflict.action.keepServer'),
                             onPress: () => settle('use_server'),
                         },
                         {
-                            text: t('sync.conflict.action.keepDevice', 'Keep This Device'),
+                            text: t('sync.conflict.action.keepDevice'),
                             style: 'destructive',
                             onPress: () => settle('use_local'),
                         },
@@ -239,10 +237,7 @@ export const useProfileHubState = (userId: string) => {
         if (!resolution) {
             showTranslatedAlert(t, {
                 titleKey: 'sync.conflict.deferredTitle',
-                titleFallback: 'Saved locally',
                 messageKey: 'sync.conflict.deferredMessage',
-                messageFallback:
-                    'Cloud sync has pending conflicts. Resolve them later from this device.',
             });
             return;
         }
@@ -255,21 +250,14 @@ export const useProfileHubState = (userId: string) => {
         if (result.remaining === 0) {
             showTranslatedAlert(t, {
                 titleKey: 'sync.conflict.resolvedTitle',
-                titleFallback: 'Conflict resolved',
                 messageKey: 'sync.conflict.resolvedMessage',
-                messageFallback:
-                    resolution === 'use_server'
-                        ? 'Server version was kept for conflicting fields.'
-                        : 'This device version was re-applied to the server.',
             });
             return;
         }
 
         showTranslatedAlert(t, {
             titleKey: 'sync.conflict.remainingTitle',
-            titleFallback: 'Conflicts remaining',
             messageKey: 'sync.conflict.remainingMessage',
-            messageFallback: 'Some conflicts are still pending. Please try again.',
         });
     }, [promptConflictResolution, t, userId]);
 
@@ -370,9 +358,7 @@ export const useProfileHubState = (userId: string) => {
                 console.error("Profile update failed:", error);
                 showTranslatedAlert(t, {
                     titleKey: 'profile.alert.errorTitle',
-                    titleFallback: 'Error',
                     messageKey: 'profile.alert.saveFailed',
-                    messageFallback: 'Failed to save.',
                 });
             } finally {
                 setLoading(false);
@@ -396,9 +382,7 @@ export const useProfileHubState = (userId: string) => {
         } catch {
             showTranslatedAlert(t, {
                 titleKey: 'profile.alert.errorTitle',
-                titleFallback: 'Error',
                 messageKey: 'profile.alert.imagePickFailed',
-                messageFallback: 'Failed to pick image.',
             });
         }
     }, [setImage, t]);

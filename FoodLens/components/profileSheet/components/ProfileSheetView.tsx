@@ -92,7 +92,7 @@ export default function ProfileSheetView({
     () =>
       LANGUAGE_OPTIONS.map((option) => ({
         ...option,
-        label: t(`profileSheet.travelerLanguage.option.${option.code}`, option.label),
+        label: t(`profileSheet.travelerLanguage.option.${option.code}`),
       })),
     [t]
   );
@@ -100,7 +100,7 @@ export default function ProfileSheetView({
     () =>
       UI_LANGUAGE_OPTIONS.map((option) => ({
         ...option,
-        label: t(`profileSheet.settingsLanguage.option.${option.code}`, option.label),
+        label: t(`profileSheet.settingsLanguage.option.${option.code}`),
       })),
     [t]
   );
