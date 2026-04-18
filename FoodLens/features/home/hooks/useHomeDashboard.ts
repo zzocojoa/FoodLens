@@ -233,9 +233,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         setRecentScans(previousScans);
         showTranslatedAlert(t, {
           titleKey: 'home.alert.errorTitle',
-          titleFallback: 'Error',
           messageKey: 'home.alert.deleteFailedRestore',
-          messageFallback: 'Failed to delete item. Restoring data.',
         });
       }
     },

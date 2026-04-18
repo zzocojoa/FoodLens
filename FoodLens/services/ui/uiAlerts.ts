@@ -4,16 +4,16 @@ type Translate = (key: string, fallback?: string) => string;
 
 type TranslatedButton = {
   textKey: string;
-  textFallback: string;
+  textFallback?: string;
   style?: AlertButton['style'];
   onPress?: () => void;
 };
 
 type TranslatedAlertParams = {
   titleKey: string;
-  titleFallback: string;
+  titleFallback?: string;
   messageKey: string;
-  messageFallback: string;
+  messageFallback?: string;
   buttons?: TranslatedButton[];
 };
 

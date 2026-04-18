@@ -13,6 +13,13 @@ const mockSafeStorageGet = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
 const mockSetUiLanguageInStore = jest.fn();
+const mockTranslations: Record<string, string> = {
+  'sync.conflict.title': 'Sync conflict detected',
+  'sync.conflict.message': 'Saved locally, but {count} cloud conflict(s) were found. Choose which data to keep.',
+  'sync.conflict.action.later': 'Later',
+  'sync.conflict.action.keepServer': 'Keep Server',
+  'sync.conflict.action.keepDevice': 'Keep This Device',
+};
 
 jest.mock('../../services/profileSheetService', () => ({
   profileSheetService: {
@@ -29,7 +36,7 @@ jest.mock('../../utils/profileSheetStateUtils', () => ({
 
 jest.mock('@/features/i18n', () => ({
   useI18n: () => ({
-    t: (_key: string, fallback?: string) => fallback || _key,
+    t: (key: string, fallback?: string) => mockTranslations[key] ?? fallback ?? key,
   }),
 }));
 

@@ -102,13 +102,15 @@ export default function ProfileHubScreen() {
     const userId = getCurrentUserIdSnapshot();
     const { state, travelerLanguageSheet, uiLanguageSheet } = useProfileHubController({ userId });
     const [logoutLoading, setLogoutLoading] = React.useState(false);
+    const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
+    const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
 
     const travelerOptions = React.useMemo(
         () =>
             LANGUAGE_OPTIONS.map((option) => ({
                 ...option,
-                label: t(`profileHub.travelerLanguage.option.${option.code}`, option.label),
+                label: t(`profileHub.travelerLanguage.option.${option.code}`),
             })),
         [t],
     );
@@ -116,9 +118,31 @@ export default function ProfileHubScreen() {
         () =>
             UI_LANGUAGE_OPTIONS.map((option) => ({
                 ...option,
-                label: t(`profileHub.settingsLanguage.option.${option.code}`, option.label),
+                label: t(`profileHub.settingsLanguage.option.${option.code}`),
             })),
         [t],
+    );
+    const travelerAutoLabel = React.useMemo(
+        () => {
+            const autoOption = travelerOptions.find((option) => option.code === 'auto');
+            if (!autoOption) {
+                throw new Error('profileHub traveler auto option is missing');
+            }
+
+            return autoOption.label;
+        },
+        [travelerOptions],
+    );
+    const settingsAutoLabel = React.useMemo(
+        () => {
+            const autoOption = settingsLanguageOptions.find((option) => option.code === 'auto');
+            if (!autoOption) {
+                throw new Error('profileHub settings auto option is missing');
+            }
+
+            return autoOption.label;
+        },
+        [settingsLanguageOptions],
     );
     const buildFingerprintRows = React.useMemo(
         () => [
@@ -153,18 +177,22 @@ export default function ProfileHubScreen() {
         void state.handleUpdate(() => undefined, () => undefined);
     }, [state]);
 
+    const handleToggleBuildFingerprint = React.useCallback(() => {
+        setIsBuildFingerprintVisible((previous) => !previous);
+    }, []);
+
     const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
         return new Promise((resolve) => {
             Alert.alert(
-                'Log out?',
-                'You will be logged out and moved to the login screen.',
+                t('profileHub.logout.confirmTitle', 'Log out?'),
+                t('profileHub.logout.confirmMessage', 'You will be logged out and moved to the login screen.'),
                 [
-                    { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-                    { text: 'Continue', style: 'destructive', onPress: () => resolve(true) },
+                    { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(false) },
+                    { text: t('profileSheet.menu.logout.title', 'Log out'), style: 'destructive', onPress: () => resolve(true) },
                 ],
             );
         });
-    }, []);
+    }, [t]);
 
     const handleLogout = React.useCallback(async () => {
         if (logoutLoading) {
@@ -237,9 +265,21 @@ export default function ProfileHubScreen() {
 
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                     <View style={profileHubStyles.header}>
-                        <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
-                            {t('profileHub.title', 'Profile')}
-                        </Text>
+                        {canRevealBuildFingerprint ? (
+                            <HapticTouchableOpacity
+                                onLongPress={handleToggleBuildFingerprint}
+                                activeOpacity={1}
+                                hapticType="selection"
+                            >
+                                <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
+                                    {t('profileHub.title', 'Profile')}
+                                </Text>
+                            </HapticTouchableOpacity>
+                        ) : (
+                            <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
+                                {t('profileHub.title', 'Profile')}
+                            </Text>
+                        )}
                     </View>
 
                     <ScrollView
@@ -295,7 +335,11 @@ export default function ProfileHubScreen() {
                                 title={t('profileHub.menu.travelerLanguage.title', 'Traveler Card Language')}
                                 subtitle={t('profileHub.menu.travelerLanguage.subtitleTemplate', '{language} • Result card only').replace(
                                     '{language}',
-                                    toLanguageLabel(state.travelerLanguage),
+                                    toLanguageLabel({
+                                        language: state.travelerLanguage,
+                                        fallbackLabel: travelerAutoLabel,
+                                        options: travelerOptions,
+                                    }),
                                 )}
                                 iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
                                 onPress={() => state.setTravelerLangModalVisible(true)}
@@ -305,7 +349,11 @@ export default function ProfileHubScreen() {
                             <ProfileMenuItem
                                 icon={<Globe size={20} color="#2563EB" />}
                                 title={t('profileHub.menu.settingsLanguage.title', 'Settings Language')}
-                                subtitle={toUiLanguageLabel(state.uiLanguage)}
+                                subtitle={toUiLanguageLabel({
+                                    language: state.uiLanguage,
+                                    fallbackLabel: settingsAutoLabel,
+                                    options: settingsLanguageOptions,
+                                })}
                                 iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
                                 onPress={() => state.setUiLangModalVisible(true)}
                                 theme={theme}
@@ -326,40 +374,42 @@ export default function ProfileHubScreen() {
                             </Text>
                         </HapticTouchableOpacity>
 
-                        <View
-                            style={[
-                                profileHubStyles.buildSection,
-                                {
-                                    backgroundColor: theme.surface,
-                                    borderColor: theme.border,
-                                },
-                            ]}
-                        >
-                            <Text style={[profileHubStyles.buildSectionTitle, { color: theme.textPrimary }]}>
-                                {t('profileHub.buildFingerprint.title', 'Build Fingerprint')}
-                            </Text>
-                            {buildFingerprintRows.map((row, index) => (
-                                <View
-                                    key={row.label}
-                                    style={[
-                                        profileHubStyles.buildRow,
-                                        {
-                                            borderBottomColor: theme.border,
-                                            paddingBottom: index === buildFingerprintRows.length - 1 ? 0 : 10,
-                                            borderBottomWidth:
-                                                index === buildFingerprintRows.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                                        },
-                                    ]}
-                                >
-                                    <Text style={[profileHubStyles.buildLabel, { color: theme.textSecondary }]}>
-                                        {row.label}
-                                    </Text>
-                                    <Text selectable style={[profileHubStyles.buildValue, { color: theme.textPrimary }]}>
-                                        {row.value}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
+                        {canRevealBuildFingerprint && isBuildFingerprintVisible ? (
+                            <View
+                                style={[
+                                    profileHubStyles.buildSection,
+                                    {
+                                        backgroundColor: theme.surface,
+                                        borderColor: theme.border,
+                                    },
+                                ]}
+                            >
+                                <Text style={[profileHubStyles.buildSectionTitle, { color: theme.textPrimary }]}>
+                                    {t('profileHub.buildFingerprint.title', 'Build Fingerprint')}
+                                </Text>
+                                {buildFingerprintRows.map((row, index) => (
+                                    <View
+                                        key={row.label}
+                                        style={[
+                                            profileHubStyles.buildRow,
+                                            {
+                                                borderBottomColor: theme.border,
+                                                paddingBottom: index === buildFingerprintRows.length - 1 ? 0 : 10,
+                                                borderBottomWidth:
+                                                    index === buildFingerprintRows.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={[profileHubStyles.buildLabel, { color: theme.textSecondary }]}>
+                                            {row.label}
+                                        </Text>
+                                        <Text selectable style={[profileHubStyles.buildValue, { color: theme.textPrimary }]}>
+                                            {row.value}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        ) : null}
 
                         <HapticTouchableOpacity
                             onPress={() => void handleLogout()}

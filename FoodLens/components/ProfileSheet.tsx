@@ -3,12 +3,14 @@ import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useI18n } from '@/features/i18n';
 import { AuthApi } from '@/services/auth/authApi';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
 import { clearSession } from '@/services/auth/sessionManager';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
+import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from './profileSheet/constants';
 import { useProfileSheetController } from './profileSheet/hooks/useProfileSheetController';
 import { ProfileSheetProps } from './profileSheet/types';
 import {
@@ -19,6 +21,7 @@ import {
 
 export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: ProfileSheetProps) {
   const router = useRouter();
+  const { t } = useI18n();
   const { theme: currentTheme, setTheme, colorScheme } = useTheme();
   const theme = Colors[colorScheme];
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -30,14 +33,53 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     onUpdate,
   });
 
+  const travelerOptions = React.useMemo(
+    () =>
+      LANGUAGE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(`profileSheet.travelerLanguage.option.${option.code}`),
+      })),
+    [t]
+  );
+  const settingsLanguageOptions = React.useMemo(
+    () =>
+      UI_LANGUAGE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(`profileSheet.settingsLanguage.option.${option.code}`),
+      })),
+    [t]
+  );
+  const travelerAutoLabel = React.useMemo(
+    () => {
+      const autoOption = travelerOptions.find((option) => option.code === 'auto');
+      if (!autoOption) {
+        throw new Error('profileSheet traveler auto option is missing');
+      }
+
+      return autoOption.label;
+    },
+    [travelerOptions]
+  );
+  const settingsAutoLabel = React.useMemo(
+    () => {
+      const autoOption = settingsLanguageOptions.find((option) => option.code === 'auto');
+      if (!autoOption) {
+        throw new Error('profileSheet settings auto option is missing');
+      }
+
+      return autoOption.label;
+    },
+    [settingsLanguageOptions]
+  );
+
   const confirmLogoutIntent = async (): Promise<boolean> =>
     new Promise((resolve) => {
       Alert.alert(
-        'Log out?',
-        'You will be logged out and moved to the login screen.',
+        t('profileSheet.logout.confirmTitle'),
+        t('profileSheet.logout.confirmMessage'),
         [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Continue', style: 'destructive', onPress: () => resolve(true) },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('profileSheet.menu.logout.title'), style: 'destructive', onPress: () => resolve(true) },
         ]
       );
     });
@@ -140,11 +182,19 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       travelerLanguagePanY={travelerLanguageSheet.panY}
       travelerLanguagePanHandlers={travelerLanguageSheet.panResponder.panHandlers}
       closeTravelerLanguageModal={travelerLanguageSheet.closeSheet}
-      travelerLanguageLabel={toLanguageLabel(state.travelerLanguage)}
+      travelerLanguageLabel={toLanguageLabel({
+        language: state.travelerLanguage,
+        fallbackLabel: travelerAutoLabel,
+        options: travelerOptions,
+      })}
       uiLanguagePanY={uiLanguageSheet.panY}
       uiLanguagePanHandlers={uiLanguageSheet.panResponder.panHandlers}
       closeUiLanguageModal={uiLanguageSheet.closeSheet}
-      uiLanguageLabel={toUiLanguageLabel(state.uiLanguage)}
+      uiLanguageLabel={toUiLanguageLabel({
+        language: state.uiLanguage,
+        fallbackLabel: settingsAutoLabel,
+        options: settingsLanguageOptions,
+      })}
       toLanguageCode={toTargetLanguage}
     />
   );
