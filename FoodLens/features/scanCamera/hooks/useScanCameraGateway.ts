@@ -10,6 +10,7 @@ import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
 import { analyzeImage, analyzeLabel, analyzeSmart, loadPendingAnalysisJob } from '../../../services/ai';
+import { clearPendingAnalysisJob } from '../../../services/aiCore/pendingAnalysisStore';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { MODES } from '../constants/scanCamera.constants';
 import { CameraMode } from '../types/scanCamera.types';
@@ -25,6 +26,29 @@ import { useScanGalleryFlow } from './useScanGalleryFlow';
 import { useScanAnalysisAdGate } from './useScanAnalysisAdGate';
 import { dataStore } from '@/services/dataStore';
 import type { AnalysisOrigin } from '@/services/aiCore/types';
+import { logger } from '@/services/logger';
+
+const getErrorText = (error: unknown): string => {
+    if (typeof error !== 'object' || error === null) {
+        return String(error ?? '').toLowerCase();
+    }
+
+    const maybeError = error as { code?: unknown; message?: unknown };
+    const errorCode = typeof maybeError.code === 'string' ? maybeError.code : '';
+    const errorMessage = typeof maybeError.message === 'string' ? maybeError.message : '';
+    return `${errorCode} ${errorMessage}`.toLowerCase();
+};
+
+const isTimeoutStyleAnalysisError = (error: unknown): boolean => {
+    const errorText = getErrorText(error);
+    return (
+        errorText.includes('timed out') ||
+        errorText.includes('polling timed out') ||
+        errorText.includes('polling became stale') ||
+        errorText.includes('analysis_job_poll_timeout') ||
+        errorText.includes('analysis_job_poll_stale')
+    );
+};
 
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
@@ -104,6 +128,12 @@ export const useScanCameraGateway = () => {
         dataStore.setPendingAnalysisOrigin(analysisOrigin);
     }, []);
 
+    const clearPendingAnalysisJobSafely = useCallback(() => {
+        void clearPendingAnalysisJob().catch((error) => {
+            logger.warn('Failed to clear pending scan analysis job', error, 'ScanCamera');
+        });
+    }, []);
+
     const replaceWithAnalysisOrigin = useCallback(
         (href: Href) => {
             const pendingAnalysisOrigin = pendingResultAnalysisOriginRef.current;
@@ -132,8 +162,9 @@ export const useScanCameraGateway = () => {
     const handleCancelAnalysis = useCallback(() => {
         isCancelled.current = true;
         setPendingAnalysisOrigin(null);
+        clearPendingAnalysisJobSafely();
         resetState();
-    }, [resetState, setPendingAnalysisOrigin]);
+    }, [clearPendingAnalysisJobSafely, resetState, setPendingAnalysisOrigin]);
 
     const handleClose = () => {
         if (isAnalyzing) {
@@ -146,10 +177,10 @@ export const useScanCameraGateway = () => {
     const handleError = useCallback(
         (error: unknown) => {
             console.error(error);
+            clearPendingAnalysisJobSafely();
             resetState();
 
-            const errorMessage =
-                error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
+            const errorMessage = getErrorText(error);
             if (errorMessage.includes('status 5') || errorMessage.includes('status 500')) {
                 showTranslatedAlert(t, {
                     titleKey: 'camera.alert.serverErrorTitle',
@@ -157,7 +188,7 @@ export const useScanCameraGateway = () => {
                     messageKey: 'scan.alert.serverTemporary',
                     messageFallback: 'A temporary server issue occurred.',
                 });
-            } else if (errorMessage.includes('timed out')) {
+            } else if (isTimeoutStyleAnalysisError(error)) {
                 showTranslatedAlert(t, {
                     titleKey: 'camera.alert.analysisFailedTitle',
                     titleFallback: 'Analysis Failed',
@@ -173,7 +204,7 @@ export const useScanCameraGateway = () => {
                 });
             }
         },
-        [resetState, t]
+        [clearPendingAnalysisJobSafely, resetState, t]
     );
 
     const runFlow = useCallback(
@@ -242,12 +273,15 @@ export const useScanCameraGateway = () => {
         async (
             uri: string,
             customTimestamp?: string | null,
-            customSourceType: 'camera' | 'library' = 'camera'
+            customSourceType?: 'camera' | 'library',
+            customLocation?: LocationData | null
         ) => {
+            const sourceType = customSourceType ?? 'camera';
             await runFlow({
                 uri,
-                sourceType: customSourceType,
+                sourceType,
                 timestamp: customTimestamp,
+                customLocation,
                 fallbackAddress: 'Location Unavailable',
                 needsFileValidation: true,
                 analyzer: analyzeLabel,
@@ -336,7 +370,7 @@ export const useScanCameraGateway = () => {
     const handleGallery = useScanGalleryFlow({
         mode,
         processImage,
-        processLabel: async (uri, timestamp) => processLabel(uri, timestamp, 'library'),
+        processLabel,
         processSmart,
         t,
     });

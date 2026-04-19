@@ -93,6 +93,7 @@ from backend.modules.contracts.analysis_job import (
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 from backend.modules.contracts.observability import LatencyMsContract
 from backend.modules.auth.email_sender import _mask_email
+from backend.modules.auth.state_store import AuthStateStoreError, PostgresAuthStateStore
 from backend.modules.analysis_jobs import (
     AnalysisJobStoreError,
     AnalysisJobWorker,
@@ -219,6 +220,95 @@ def _analysis_job_poll_interval_seconds() -> float:
     return max(0.1, _env_float("ANALYSIS_JOB_POLL_INTERVAL_SECONDS", 0.5))
 
 
+def _analysis_job_worker_heartbeat_interval_seconds() -> float:
+    return max(5.0, _env_float("ANALYSIS_JOB_WORKER_HEARTBEAT_INTERVAL_SECONDS", 15.0))
+
+
+def _analysis_job_worker_heartbeat_stale_after_seconds() -> float:
+    default_stale_after_seconds = max(_analysis_job_worker_heartbeat_interval_seconds() * 3.0, 45.0)
+    return max(
+        _analysis_job_worker_heartbeat_interval_seconds(),
+        _env_float("ANALYSIS_JOB_WORKER_HEARTBEAT_STALE_AFTER_SECONDS", default_stale_after_seconds),
+    )
+
+
+def _analysis_job_worker_heartbeat_state_key() -> str:
+    return _env_str("ANALYSIS_JOB_WORKER_HEARTBEAT_STATE_KEY", "analysis_job_worker_heartbeat")
+
+
+def _analysis_job_backend_name() -> str:
+    configured_backend = (os.environ.get("ANALYSIS_JOB_BACKEND") or "").strip().lower()
+    if configured_backend:
+        return configured_backend
+    if _is_openapi_export_mode():
+        return "memory"
+    return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+
+
+def _auth_state_backend_name() -> str:
+    configured_backend = (os.environ.get("AUTH_STATE_BACKEND") or "").strip().lower()
+    if configured_backend:
+        return configured_backend
+    return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+
+
+def _build_analysis_job_worker_heartbeat_store() -> PostgresAuthStateStore | None:
+    database_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if _auth_state_backend_name() != "postgres" or not database_url:
+        return None
+    return PostgresAuthStateStore(
+        database_url=database_url,
+        table_name=_env_str("AUTH_STATE_TABLE", "auth_runtime_state"),
+        state_key=_analysis_job_worker_heartbeat_state_key(),
+    )
+
+
+def _is_analysis_job_remote_worker_required() -> bool:
+    if _is_openapi_export_mode():
+        return False
+    if _current_process_role() != PROCESS_ROLE_WEB:
+        return False
+    if _analysis_job_backend_name() != "postgres":
+        return False
+    return _build_analysis_job_worker_heartbeat_store() is not None
+
+
+def _read_analysis_job_remote_worker_heartbeat_snapshot() -> dict[str, Any] | None:
+    override_snapshot = getattr(app.state, "analysis_job_remote_worker_heartbeat_override", None)
+    if isinstance(override_snapshot, dict):
+        return override_snapshot
+    store = _build_analysis_job_worker_heartbeat_store()
+    if store is None:
+        return None
+    try:
+        snapshot = store.load()
+    except AuthStateStoreError as error:
+        logger.error("[AnalysisJob] remote worker heartbeat load failed error=%s", str(error))
+        return None
+    if isinstance(snapshot, dict):
+        return snapshot
+    return None
+
+
+def _analysis_job_remote_worker_heartbeat_age_seconds(snapshot: dict[str, Any] | None) -> float | None:
+    if not isinstance(snapshot, dict):
+        return None
+    raw_value = snapshot.get("heartbeat_epoch_seconds")
+    if not isinstance(raw_value, int | float):
+        return None
+    return max(0.0, time.time() - float(raw_value))
+
+
+def _analysis_job_remote_worker_readiness() -> tuple[bool, dict[str, Any] | None]:
+    if not _is_analysis_job_remote_worker_required():
+        return True, None
+    snapshot = _read_analysis_job_remote_worker_heartbeat_snapshot()
+    heartbeat_age_seconds = _analysis_job_remote_worker_heartbeat_age_seconds(snapshot)
+    if heartbeat_age_seconds is None:
+        return False, snapshot
+    return heartbeat_age_seconds <= _analysis_job_worker_heartbeat_stale_after_seconds(), snapshot
+
+
 def _analysis_job_max_upload_bytes() -> int:
     return max(128 * 1024, _env_int("ANALYSIS_JOB_MAX_UPLOAD_BYTES", 900_000))
 
@@ -237,6 +327,10 @@ def _reset_runtime_state() -> None:
         "analysis_nutrition_cache_store": None,
         "analysis_nutrition_service": None,
         "analysis_job_workers": [],
+        "analysis_job_worker_heartbeat_store": None,
+        "analysis_job_worker_heartbeat_task": None,
+        "analysis_job_worker_started_at": None,
+        "analysis_job_remote_worker_heartbeat_override": None,
         "retention_policy": None,
         "retention_store": None,
         "retention_cleanup_job": None,
@@ -294,6 +388,39 @@ def _initialize_auth_and_media_runtime() -> None:
         "[Media] storage enabled=%s",
         getattr(app.state.media_storage, "enabled", False),
     )
+
+
+def _build_analysis_job_worker_heartbeat_payload(*, started_at: str, worker_ids: list[str]) -> dict[str, Any]:
+    heartbeat_at = datetime.now(timezone.utc)
+    return {
+        "heartbeat_at": heartbeat_at.isoformat(),
+        "heartbeat_epoch_seconds": heartbeat_at.timestamp(),
+        "process_role": _current_process_role(),
+        "pid": os.getpid(),
+        "started_at": started_at,
+        "worker_count": len(worker_ids),
+        "worker_ids": worker_ids,
+    }
+
+
+async def _run_analysis_job_worker_heartbeat_loop() -> None:
+    interval_seconds = _analysis_job_worker_heartbeat_interval_seconds()
+    started_at = str(getattr(app.state, "analysis_job_worker_started_at", datetime.now(timezone.utc).isoformat()))
+    while True:
+        try:
+            worker_ids = [
+                str(getattr(worker, "worker_id", "unknown"))
+                for worker in list(getattr(app.state, "analysis_job_workers", []))
+            ]
+            payload = _build_analysis_job_worker_heartbeat_payload(started_at=started_at, worker_ids=worker_ids)
+            store = getattr(app.state, "analysis_job_worker_heartbeat_store", None)
+            if store is not None:
+                await run_in_threadpool(store.save, payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.exception("[AnalysisJob] worker heartbeat save failed error=%s", str(error))
+        await asyncio.sleep(interval_seconds)
 
 
 def _initialize_analysis_runtime() -> None:
@@ -500,6 +627,9 @@ async def _startup_runtime(process_role: str) -> None:
 
     if normalized_role == PROCESS_ROLE_WORKER:
         _start_analysis_job_workers()
+        app.state.analysis_job_worker_heartbeat_store = _build_analysis_job_worker_heartbeat_store()
+        app.state.analysis_job_worker_started_at = datetime.now(timezone.utc).isoformat()
+        app.state.analysis_job_worker_heartbeat_task = asyncio.create_task(_run_analysis_job_worker_heartbeat_loop())
         app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
 
     app.state.startup_completed = True
@@ -508,7 +638,7 @@ async def _startup_runtime(process_role: str) -> None:
 async def _shutdown_runtime() -> None:
     for worker in list(getattr(app.state, "analysis_job_workers", [])):
         await worker.stop()
-    for task_name in ("retention_cleanup_task", "deletion_queue_task"):
+    for task_name in ("analysis_job_worker_heartbeat_task", "retention_cleanup_task", "deletion_queue_task"):
         task = getattr(app.state, task_name, None)
         if task is None:
             continue
@@ -606,6 +736,10 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         and len(analysis_job_workers) > 0
         and all(_task_is_running(getattr(worker, "_task", None)) for worker in analysis_job_workers)
     )
+    analysis_job_remote_worker_ready, analysis_job_remote_worker_snapshot = _analysis_job_remote_worker_readiness()
+    analysis_job_remote_worker_age_seconds = _analysis_job_remote_worker_heartbeat_age_seconds(
+        analysis_job_remote_worker_snapshot
+    )
 
     checks = {
         "process_role": process_role,
@@ -617,6 +751,7 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         "analysis_job_store": analysis_job_store_ready,
         "analysis_nutrition_service": analysis_nutrition_service_ready,
         "analysis_job_workers": analysis_job_workers_ready,
+        "analysis_job_remote_worker": analysis_job_remote_worker_ready,
         "retention_store": retention_store_ready,
         "retention_cleanup_job": retention_cleanup_job_ready,
         "deletion_queue_producer": deletion_queue_producer_ready,
@@ -644,6 +779,8 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
     if process_role == PROCESS_ROLE_WEB:
         if not export_mode:
             required_checks.append("core_services")
+        if _is_analysis_job_remote_worker_required():
+            required_checks.append("analysis_job_remote_worker")
     elif process_role == PROCESS_ROLE_WORKER:
         required_checks.extend(
             [
@@ -679,6 +816,10 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         "analysis_job_workers": {
             "code": "ANALYSIS_JOB_WORKERS_NOT_READY",
             "message": "Analysis job workers are missing or not running.",
+        },
+        "analysis_job_remote_worker": {
+            "code": "ANALYSIS_JOB_REMOTE_WORKER_NOT_READY",
+            "message": "The shared analysis worker heartbeat is missing or stale.",
         },
         "retention_store": {
             "code": "RETENTION_STORE_MISSING",
@@ -728,6 +869,10 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         "checks": checks,
         "issues": issues,
     }
+    if isinstance(analysis_job_remote_worker_snapshot, dict):
+        payload["analysis_job_remote_worker_heartbeat_at"] = analysis_job_remote_worker_snapshot.get("heartbeat_at")
+    if analysis_job_remote_worker_age_seconds is not None:
+        payload["analysis_job_remote_worker_age_seconds"] = analysis_job_remote_worker_age_seconds
     return payload, 200 if not issues else 503
 
 LOCALE_TO_ISO = {
@@ -1763,6 +1908,41 @@ def _analysis_job_store_http_exception(*, request_id: str, action: str) -> HTTPE
             "code": ErrorCode.ANALYZE_FAILED,
             "request_id": request_id,
         },
+    )
+
+
+def _analysis_job_remote_worker_http_exception(
+    *,
+    request_id: str,
+    heartbeat_snapshot: dict[str, Any] | None,
+) -> HTTPException:
+    detail: dict[str, Any] = {
+        "message": "Analysis worker is unavailable. Try again shortly.",
+        "code": ErrorCode.SERVICE_UNAVAILABLE,
+        "request_id": request_id,
+    }
+    if isinstance(heartbeat_snapshot, dict):
+        detail["analysis_job_remote_worker_heartbeat_at"] = heartbeat_snapshot.get("heartbeat_at")
+    return HTTPException(
+        status_code=503,
+        detail=detail,
+        headers={"Retry-After": str(max(1, int(_analysis_job_worker_heartbeat_interval_seconds())))},
+    )
+
+
+def _assert_analysis_job_remote_worker_available(*, request_id: str) -> None:
+    worker_ready, heartbeat_snapshot = _analysis_job_remote_worker_readiness()
+    if worker_ready:
+        return
+    logger.error(
+        "[AnalysisJob] submit blocked request_id=%s heartbeat_age_seconds=%s heartbeat_at=%s",
+        request_id,
+        _analysis_job_remote_worker_heartbeat_age_seconds(heartbeat_snapshot),
+        heartbeat_snapshot.get("heartbeat_at") if isinstance(heartbeat_snapshot, dict) else None,
+    )
+    raise _analysis_job_remote_worker_http_exception(
+        request_id=request_id,
+        heartbeat_snapshot=heartbeat_snapshot,
     )
 
 
@@ -3216,6 +3396,7 @@ async def submit_analysis_job(
 
     _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/jobs", request_id=request_id)
+    _assert_analysis_job_remote_worker_available(request_id=request_id)
     started_at = time.perf_counter()
 
     try:

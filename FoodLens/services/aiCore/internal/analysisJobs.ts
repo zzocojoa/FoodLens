@@ -35,6 +35,7 @@ import { clearPendingAnalysisJob, savePendingAnalysisJob } from '../pendingAnaly
 import type { AnalysisStoreLocation } from '@/services/contracts/analysisStore';
 
 type AnalysisStageCallback = (status: AnalysisJobStatus) => void;
+type AnalysisJobPollingErrorCode = 'ANALYSIS_JOB_POLL_TIMEOUT' | 'ANALYSIS_JOB_POLL_STALE';
 
 type SubmitAnalysisJobParams = {
   mode: AnalysisJobMode;
@@ -46,6 +47,7 @@ type SubmitAnalysisJobParams = {
 type PollAnalysisJobParams = {
   jobId: string;
   requestId: string;
+  submittedAt: string;
   onStageChange?: AnalysisStageCallback;
   isCancelled?: { current: boolean };
 };
@@ -69,6 +71,17 @@ type RetryableJobStatusError = Error & {
   retryAfterMs?: number;
   nonRetryable?: boolean;
 };
+type AnalysisJobPollingError = Error & {
+  code: AnalysisJobPollingErrorCode;
+  job_id: string;
+  request_id: string;
+  submitted_at: string;
+  updated_at: string;
+  elapsed_ms: number;
+};
+
+const ANALYSIS_JOB_POLL_MAX_DURATION_MS = 2 * 60 * 1000;
+const ANALYSIS_JOB_STALE_TIMEOUT_MS = 90 * 1000;
 
 const createRequestId = (mode: AnalysisJobMode): string => {
   const suffix = Math.random().toString(16).slice(2, 10);
@@ -112,6 +125,46 @@ const getPollDelayMs = ({
 }): number => {
   const stagedDelay = attempt < 5 ? 1000 : 2000;
   return Math.max(stagedDelay, pollAfterMs);
+};
+
+const parseTimestampMs = (timestamp: string): number => {
+  const parsed = Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`[AI Job] Invalid timestamp: ${timestamp}`);
+  }
+  return parsed;
+};
+
+const isTerminalAnalysisJobStatus = (status: AnalysisJobStatus): boolean =>
+  status === 'completed' || status === 'fallback_completed' || status === 'failed';
+
+const createAnalysisJobPollingError = ({
+  code,
+  jobId,
+  requestId,
+  submittedAt,
+  updatedAt,
+  elapsedMs,
+}: {
+  code: AnalysisJobPollingErrorCode;
+  jobId: string;
+  requestId: string;
+  submittedAt: string;
+  updatedAt: string;
+  elapsedMs: number;
+}): AnalysisJobPollingError => {
+  const reason =
+    code === 'ANALYSIS_JOB_POLL_TIMEOUT' ? 'polling timed out' : 'polling became stale';
+  const error = new Error(
+    `[AI Job] ${reason} job_id=${jobId} request_id=${requestId} submitted_at=${submittedAt} updated_at=${updatedAt} elapsed_ms=${elapsedMs}`
+  ) as AnalysisJobPollingError;
+  error.code = code;
+  error.job_id = jobId;
+  error.request_id = requestId;
+  error.submitted_at = submittedAt;
+  error.updated_at = updatedAt;
+  error.elapsed_ms = elapsedMs;
+  return error;
 };
 
 const fetchJsonWithTimeout = async ({
@@ -266,15 +319,44 @@ const submitAnalysisJob = async ({
 const pollAnalysisJobUntilTerminal = async ({
   jobId,
   requestId,
+  submittedAt,
   onStageChange,
   isCancelled,
 }: PollAnalysisJobParams): Promise<AnalysisJobStatusResponse> => {
   const activeServerUrl = await ServerConfig.getServerUrl();
+  const startedAtMs = Date.now();
+  const submittedAtMs = parseTimestampMs(submittedAt);
+  let lastProgressAtMs = startedAtMs;
+  let lastUpdatedAtMs = submittedAtMs;
   let attempt = 0;
 
   while (true) {
     if (isCancelled?.current) {
       throw new Error('Analysis polling cancelled.');
+    }
+
+    const nowMs = Date.now();
+    const pollElapsedMs = nowMs - startedAtMs;
+    if (pollElapsedMs > ANALYSIS_JOB_POLL_MAX_DURATION_MS) {
+      throw createAnalysisJobPollingError({
+        code: 'ANALYSIS_JOB_POLL_TIMEOUT',
+        jobId,
+        requestId,
+        submittedAt,
+        updatedAt: new Date(lastUpdatedAtMs).toISOString(),
+        elapsedMs: pollElapsedMs,
+      });
+    }
+
+    if (nowMs - lastProgressAtMs > ANALYSIS_JOB_STALE_TIMEOUT_MS) {
+      throw createAnalysisJobPollingError({
+        code: 'ANALYSIS_JOB_POLL_STALE',
+        jobId,
+        requestId,
+        submittedAt,
+        updatedAt: new Date(lastUpdatedAtMs).toISOString(),
+        elapsedMs: nowMs - lastProgressAtMs,
+      });
     }
 
     const response = await fetchJobStatusWithRetry({
@@ -289,12 +371,14 @@ const pollAnalysisJobUntilTerminal = async ({
     const parsed = assertAnalysisJobStatusContract((await response.json()) as unknown) as AnalysisJobStatusResponse;
     onStageChange?.(parsed.status);
 
-    if (
-      parsed.status === 'completed' ||
-      parsed.status === 'fallback_completed' ||
-      parsed.status === 'failed'
-    ) {
+    if (isTerminalAnalysisJobStatus(parsed.status)) {
       return parsed;
+    }
+
+    const updatedAtMs = parseTimestampMs(parsed.updated_at);
+    if (updatedAtMs > lastUpdatedAtMs) {
+      lastUpdatedAtMs = updatedAtMs;
+      lastProgressAtMs = nowMs;
     }
 
     const delayMs = getPollDelayMs({
@@ -339,39 +423,47 @@ export const runAsyncAnalysisJob = async (
   await savePendingAnalysisJob(pending);
   params.onStageChange?.('queued');
 
-  const terminal = await pollAnalysisJobUntilTerminal({
-    jobId: submit.job_id,
-    requestId: submit.request_id,
-    onStageChange: asyncStatus => {
-      void savePendingAnalysisJob({
-        ...pending,
-        status: asyncStatus,
-      });
-      params.onStageChange?.(asyncStatus);
-    },
-    isCancelled: params.isCancelled,
-  });
-
-  if (terminal.status === 'failed') {
-    await clearPendingAnalysisJob();
-    const errorMessage =
-      typeof terminal['error_message'] === 'string' && terminal['error_message'].length > 0
-        ? terminal['error_message']
-        : 'Analysis job failed.';
-    throw new Error(errorMessage);
-  }
-
-  await clearPendingAnalysisJob();
   try {
-    await setAiCacheValue(cacheKey, terminal);
-  } catch (error) {
-    logger.warn('[AI Job] Failed to write async analysis cache', {
-      job_id: submit.job_id,
-      request_id: submit.request_id,
-      error: error instanceof Error ? error.message : String(error),
+    const terminal = await pollAnalysisJobUntilTerminal({
+      jobId: submit.job_id,
+      requestId: submit.request_id,
+      submittedAt: submit.accepted_at,
+      onStageChange: asyncStatus => {
+        if (params.isCancelled?.current) {
+          return;
+        }
+        void savePendingAnalysisJob({
+          ...pending,
+          status: asyncStatus,
+        });
+        params.onStageChange?.(asyncStatus);
+      },
+      isCancelled: params.isCancelled,
     });
+
+    if (terminal.status === 'failed') {
+      const errorMessage =
+        typeof terminal['error_message'] === 'string' && terminal['error_message'].length > 0
+          ? terminal['error_message']
+          : 'Analysis job failed.';
+      throw new Error(errorMessage);
+    }
+
+    await clearPendingAnalysisJob();
+    try {
+      await setAiCacheValue(cacheKey, terminal);
+    } catch (error) {
+      logger.warn('[AI Job] Failed to write async analysis cache', {
+        job_id: submit.job_id,
+        request_id: submit.request_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return mapAnalyzedData(terminal);
+  } catch (error) {
+    await clearPendingAnalysisJob();
+    throw error;
   }
-  return mapAnalyzedData(terminal);
 };
 
 export const resumePendingAnalysisJob = async ({
@@ -388,26 +480,34 @@ export const resumePendingAnalysisJob = async ({
     request_id: pendingJob.requestId,
     status: pendingJob.status,
   });
-  const terminal = await pollAnalysisJobUntilTerminal({
-    jobId: pendingJob.jobId,
-    requestId: pendingJob.requestId,
-    onStageChange: asyncStatus => {
-      void savePendingAnalysisJob({
-        ...pendingJob,
-        status: asyncStatus,
-      });
-      onStageChange?.(asyncStatus);
-    },
-    isCancelled,
-  });
-  if (terminal.status === 'failed') {
+  try {
+    const terminal = await pollAnalysisJobUntilTerminal({
+      jobId: pendingJob.jobId,
+      requestId: pendingJob.requestId,
+      submittedAt: pendingJob.submittedAt,
+      onStageChange: asyncStatus => {
+        if (isCancelled?.current) {
+          return;
+        }
+        void savePendingAnalysisJob({
+          ...pendingJob,
+          status: asyncStatus,
+        });
+        onStageChange?.(asyncStatus);
+      },
+      isCancelled,
+    });
+    if (terminal.status === 'failed') {
+      const errorMessage =
+        typeof terminal['error_message'] === 'string' && terminal['error_message'].length > 0
+          ? terminal['error_message']
+          : 'Analysis job failed.';
+      throw new Error(errorMessage);
+    }
     await clearPendingAnalysisJob();
-    const errorMessage =
-      typeof terminal['error_message'] === 'string' && terminal['error_message'].length > 0
-        ? terminal['error_message']
-        : 'Analysis job failed.';
-    throw new Error(errorMessage);
+    return mapAnalyzedData(terminal);
+  } catch (error) {
+    await clearPendingAnalysisJob();
+    throw error;
   }
-  await clearPendingAnalysisJob();
-  return mapAnalyzedData(terminal);
 };

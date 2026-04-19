@@ -1,4 +1,5 @@
 import { resumePendingAnalysisJob, runAsyncAnalysisJob } from '../internal/analysisJobs';
+import type { AnalysisJobStatus } from '../types';
 
 jest.mock('../upload', () => ({
   uploadWithRetryForAcceptedStatuses: jest.fn(),
@@ -236,6 +237,179 @@ describe('analysisJobs', () => {
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
   });
 
+  it('submits and polls label async jobs until completion', async () => {
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_label_123',
+        request_id: 'req_label_123',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_label_123',
+          request_id: 'req_label_123',
+          status: 'queued',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:01Z',
+          poll_after_ms: 0,
+        },
+      }) as unknown as Response
+    ).mockResolvedValueOnce(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_label_123',
+          request_id: 'req_label_123',
+          status: 'completed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          foodName: 'Milk',
+          foodName_en: 'Milk',
+          foodName_ko: '우유',
+          safetyStatus: 'CAUTION',
+          decision_status: 'ASK',
+          analysis_origin: 'label_photo',
+          recommended_action: 'verify_label',
+          uncertainty_reason: 'missing_label_text',
+          ingredients: [],
+        },
+      }) as unknown as Response
+    );
+
+    const statuses: AnalysisJobStatus[] = [];
+    const result = await runAsyncAnalysisJob({
+      flow: 'camera',
+      mode: 'label',
+      imageUri: 'file://label.jpg',
+      isoCountryCode: 'KR',
+      location: null,
+      timestamp: '2026-03-17T00:00:00Z',
+      sourceType: 'camera',
+      onStageChange: status => statuses.push(status),
+    });
+
+    expect(result.foodName).toBe('Milk');
+    expect(result.foodName_en).toBe('Milk');
+    expect(result.foodName_ko).toBe('우유');
+    expect(result.request_id).toBe('req_label_123');
+    expect(result.decisionStatus).toBe('ASK');
+    expect(result.analysisOrigin).toBe('label_photo');
+    expect(result.recommendedAction).toBe('verify_label');
+    expect(result.uncertaintyReason).toBe('missing_label_text');
+    expect(statuses).toEqual(['queued', 'queued', 'completed']);
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(cacheModule.setAiCacheValue).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears pending jobs when polling is cancelled during resume', async () => {
+    const isCancelled = { current: true };
+
+    await expect(
+      resumePendingAnalysisJob({
+        pendingJob: {
+          jobId: 'job_cancelled',
+          requestId: 'req_cancelled',
+          flow: 'scan',
+          mode: 'food',
+          status: 'queued',
+          imageUri: 'file://food.jpg',
+          isoCountryCode: 'US',
+          location: null,
+          timestamp: null,
+          sourceType: 'camera',
+          submittedAt: '2026-03-17T00:00:00Z',
+        },
+        isCancelled,
+      })
+    ).rejects.toThrow('Analysis polling cancelled.');
+
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('clears pending jobs when polling retries exhaust after repeated server errors', async () => {
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_retry_exhausted',
+        request_id: 'req_retry_exhausted',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      createMockResponse({
+        status: 500,
+        body: {
+          detail: 'upstream failure',
+        },
+      }) as unknown as Response
+    );
+
+    await expect(
+      runAsyncAnalysisJob({
+        flow: 'camera',
+        mode: 'food',
+        imageUri: 'file://food.jpg',
+        isoCountryCode: 'KR',
+        location: null,
+        timestamp: null,
+        sourceType: 'camera',
+      })
+    ).rejects.toThrow('[AI Job] 500');
+
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws when a resumed label job ends in failed terminal status', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_label_failed',
+          request_id: 'req_label_failed',
+          status: 'failed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          error_message: 'label job failed',
+        },
+      }) as unknown as Response
+    );
+
+    await expect(
+      resumePendingAnalysisJob({
+        pendingJob: {
+          jobId: 'job_label_failed',
+          requestId: 'req_label_failed',
+          flow: 'scan',
+          mode: 'label',
+          status: 'queued',
+          imageUri: 'file://label.jpg',
+          isoCountryCode: 'US',
+          location: null,
+          timestamp: null,
+          sourceType: 'camera',
+          submittedAt: '2026-03-17T00:00:00Z',
+        },
+      })
+    ).rejects.toThrow('label job failed');
+
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('resumes a pending job and maps terminal result', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       createMockResponse({
@@ -337,6 +511,95 @@ describe('analysisJobs', () => {
     expect(result.recommendedAction).toBe('verify_label');
     expect(result.uncertaintyReason).toBe('missing_label_text');
     expect(result.fallback_reason).toBe('nutrition_unavailable');
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out and clears pending job when polling never reaches a terminal state', async () => {
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_timeout',
+        request_id: 'req_timeout',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    let nowMs = Date.parse('2026-03-17T00:00:00Z');
+    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
+    jest.spyOn(global, 'fetch').mockImplementation(async () => {
+      nowMs += 75000;
+      return createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_timeout',
+          request_id: 'req_timeout',
+          status: 'queued',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: new Date(nowMs).toISOString(),
+          poll_after_ms: 0,
+        },
+      }) as unknown as Response;
+    });
+
+    await expect(
+      runAsyncAnalysisJob({
+        flow: 'camera',
+        mode: 'food',
+        imageUri: 'file://food.jpg',
+        isoCountryCode: 'KR',
+        location: null,
+        timestamp: null,
+        sourceType: 'camera',
+      })
+    ).rejects.toMatchObject({
+      code: 'ANALYSIS_JOB_POLL_TIMEOUT',
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a non-progressing resumed job as stale and clears the pending entry', async () => {
+    let nowMs = Date.parse('2026-03-17T00:00:00Z');
+    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
+    jest.spyOn(global, 'fetch').mockImplementation(async () => {
+      nowMs += 60000;
+      return createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_stale',
+          request_id: 'req_stale',
+          status: 'queued',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:00Z',
+          poll_after_ms: 0,
+        },
+      }) as unknown as Response;
+    });
+
+    await expect(
+      resumePendingAnalysisJob({
+        pendingJob: {
+          jobId: 'job_stale',
+          requestId: 'req_stale',
+          flow: 'scan',
+          mode: 'food',
+          status: 'queued',
+          imageUri: 'file://food.jpg',
+          isoCountryCode: 'US',
+          location: null,
+          timestamp: null,
+          sourceType: 'camera',
+          submittedAt: '2026-03-17T00:00:00Z',
+        },
+      })
+    ).rejects.toMatchObject({
+      code: 'ANALYSIS_JOB_POLL_STALE',
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
   });
 
