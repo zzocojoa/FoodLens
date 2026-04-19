@@ -15,7 +15,12 @@ type UseScanGalleryFlowParams = {
     timestamp?: string | null,
     customLocation?: LocationData | null
   ) => Promise<void>;
-  processLabel: (uri: string, timestamp?: string | null) => Promise<void>;
+  processLabel: (
+    uri: string,
+    timestamp?: string | null,
+    sourceType?: 'camera' | 'library',
+    customLocation?: LocationData | null
+  ) => Promise<void>;
   processSmart: (
     uri: string,
     timestamp?: string | null,
@@ -47,7 +52,7 @@ export const useScanGalleryFlow = ({
       const { timestamp: finalDate, exifLocation } = await resolveGalleryMetadata(asset);
       if (mode === 'LABEL') {
         console.log('[ScanGallery] route:LABEL -> analyzeLabel');
-        await processLabel(asset.uri, finalDate);
+        await processLabel(asset.uri, finalDate, 'library', exifLocation);
         return;
       }
       if (mode === 'FOOD') {

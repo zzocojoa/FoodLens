@@ -1,12 +1,16 @@
 import { act, renderHook } from '@testing-library/react-native';
 import type { CameraView, PermissionResponse } from 'expo-camera';
 import { PermissionStatus } from 'expo-modules-core';
+import * as ImagePicker from 'expo-image-picker';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '@/services/sync/phase2SyncQueue';
 import { updateUserClientState } from '@/services/user/clientStateService';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { useScanCaptureFlow } from '../useScanCaptureFlow';
+import { useScanGalleryFlow } from '../useScanGalleryFlow';
 import { useScanPermissionFlow } from '../useScanPermissionFlow';
+import { resolveGalleryMetadata } from '../../utils/galleryMetadata';
+import type { LocationData } from '@/services/utils/types';
 
 jest.mock('@/services/ui/permissionDialogs', () => ({
   showOpenSettingsAlert: jest.fn(),
@@ -16,8 +20,13 @@ jest.mock('@/services/ui/uiAlerts', () => ({
   showTranslatedAlert: jest.fn(),
 }));
 
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn(),
+}));
+
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
+  selectionAsync: jest.fn(),
   ImpactFeedbackStyle: {
     Medium: 'medium',
   },
@@ -32,6 +41,10 @@ jest.mock('@/services/user/clientStateService', () => ({
   updateUserClientState: jest.fn(),
 }));
 
+jest.mock('../../utils/galleryMetadata', () => ({
+  resolveGalleryMetadata: jest.fn(),
+}));
+
 const mockedShowOpenSettingsAlert =
   showOpenSettingsAlert as jest.MockedFunction<typeof showOpenSettingsAlert>;
 const mockedShowTranslatedAlert =
@@ -41,6 +54,10 @@ const mockedDispatchPhase2SyncQueue =
   dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
 const mockedUpdateUserClientState =
   updateUserClientState as jest.MockedFunction<typeof updateUserClientState>;
+const mockedLaunchImageLibraryAsync =
+  ImagePicker.launchImageLibraryAsync as jest.MockedFunction<typeof ImagePicker.launchImageLibraryAsync>;
+const mockedResolveGalleryMetadata =
+  resolveGalleryMetadata as jest.MockedFunction<typeof resolveGalleryMetadata>;
 
 const translate = (key: string, fallback?: string): string => fallback || key;
 
@@ -110,5 +127,70 @@ describe('scan local-only flows', () => {
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockedUpdateUserClientState).not.toHaveBeenCalled();
+  });
+
+  it('passes EXIF location through LABEL gallery analysis', async () => {
+    const exifLocation: LocationData = {
+      latitude: 37.5665,
+      longitude: 126.978,
+      country: 'South Korea',
+      city: 'Seoul',
+      district: 'Jung-gu',
+      subregion: 'Seoul',
+      isoCountryCode: 'KR',
+      formattedAddress: 'Seoul, South Korea',
+    };
+    const processImage = jest.fn<
+      Promise<void>,
+      [string, 'camera' | 'library', string | null | undefined, LocationData | null | undefined]
+    >();
+    const processLabel = jest.fn<
+      Promise<void>,
+      [
+        string,
+        string | null | undefined,
+        ('camera' | 'library') | undefined,
+        LocationData | null | undefined,
+      ]
+    >();
+    const processSmart = jest.fn<
+      Promise<void>,
+      [string, string | null | undefined, LocationData | null | undefined]
+    >();
+    mockedLaunchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file://label-gallery.jpg',
+        },
+      ],
+    } as never);
+    mockedResolveGalleryMetadata.mockResolvedValue({
+      timestamp: '2026-04-19T12:34:56Z',
+      exifLocation,
+    });
+
+    const { result } = renderHook(() =>
+      useScanGalleryFlow({
+        mode: 'LABEL',
+        processImage,
+        processLabel,
+        processSmart,
+        t: translate,
+      })
+    );
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(processLabel).toHaveBeenCalledWith(
+      'file://label-gallery.jpg',
+      '2026-04-19T12:34:56Z',
+      'library',
+      exifLocation
+    );
+    expect(processImage).not.toHaveBeenCalled();
+    expect(processSmart).not.toHaveBeenCalled();
   });
 });

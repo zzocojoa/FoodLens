@@ -8,6 +8,8 @@ import { useCameraGatewayInitialization } from './useCameraGatewayInitialization
 import { useI18n } from '@/features/i18n';
 import { useCameraGatewayErrorHandler } from './useCameraGatewayErrorHandler';
 import { loadPendingAnalysisJob } from '@/services/ai';
+import { clearPendingAnalysisJob } from '@/services/aiCore/pendingAnalysisStore';
+import { logger } from '@/services/logger';
 
 type UseCameraGatewayOptions = {
     params: CameraRouteParams;
@@ -26,7 +28,7 @@ export const useCameraGateway = ({
     const messages = getCameraErrorMessages(t);
 
     const [permission, requestPermission] = ImagePicker.useCameraPermissions();
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [, setIsAnalyzing] = useState(false);
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [isLocationReady, setIsLocationReady] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
@@ -60,6 +62,9 @@ export const useCameraGateway = ({
 
     const handleCancelAnalysis = useCallback(() => {
         isCancelled.current = true;
+        void clearPendingAnalysisJob().catch((error) => {
+            logger.warn('Failed to clear pending camera analysis job', error, 'CameraGateway');
+        });
         resetState();
         onExit();
     }, [onExit, resetState]);

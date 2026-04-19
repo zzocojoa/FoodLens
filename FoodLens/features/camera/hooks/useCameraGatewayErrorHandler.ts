@@ -1,6 +1,13 @@
 import { MutableRefObject, useCallback } from 'react';
-import { isFileError, isRetryableServerError } from '../utils/cameraMappers';
+import {
+  getAnalysisErrorText,
+  isFileError,
+  isRetryableServerError,
+  isTimeoutStyleAnalysisError,
+} from '../utils/cameraMappers';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { clearPendingAnalysisJob } from '@/services/aiCore/pendingAnalysisStore';
+import { logger } from '@/services/logger';
 
 type Translate = (key: string, fallback?: string) => string;
 
@@ -19,6 +26,12 @@ export const useCameraGatewayErrorHandler = ({
   resetState,
   processImageRef,
 }: UseCameraGatewayErrorHandlerParams) => {
+  const clearPendingAnalysisJobSafely = useCallback(() => {
+    void clearPendingAnalysisJob().catch((error) => {
+      logger.warn('Failed to clear pending camera analysis job', error, 'CameraGateway');
+    });
+  }, []);
+
   const showRetryableServerAlert = useCallback(
     (uri: string) => {
       showTranslatedAlert(t, {
@@ -55,6 +68,16 @@ export const useCameraGatewayErrorHandler = ({
         return;
       }
 
+      if (isTimeoutStyleAnalysisError(errorMessage)) {
+        showTranslatedAlert(t, {
+          titleKey: 'camera.alert.analysisFailedTitle',
+          titleFallback: 'Analysis Failed',
+          messageKey: 'scan.alert.analysisTimeout',
+          messageFallback: 'Analysis is taking longer than expected. Please try again.',
+        });
+        return;
+      }
+
       showTranslatedAlert(t, {
         titleKey: 'camera.alert.analysisFailedTitle',
         titleFallback: 'Analysis Failed',
@@ -67,9 +90,9 @@ export const useCameraGatewayErrorHandler = ({
 
   return useCallback(
     (error: unknown, uri: string) => {
+      clearPendingAnalysisJobSafely();
       resetState();
-      const errorMessage =
-        error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
+      const errorMessage = getAnalysisErrorText(error);
 
       if (isRetryableServerError(errorMessage)) {
         showRetryableServerAlert(uri);
@@ -79,6 +102,6 @@ export const useCameraGatewayErrorHandler = ({
       showAnalysisFailureAlert(errorMessage);
       onExit();
     },
-    [onExit, resetState, showAnalysisFailureAlert, showRetryableServerAlert]
+    [clearPendingAnalysisJobSafely, onExit, resetState, showAnalysisFailureAlert, showRetryableServerAlert]
   );
 };

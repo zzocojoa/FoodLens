@@ -43,6 +43,10 @@ class ProcessRoleRuntimeTests(unittest.TestCase):
         "barcode_service",
         "smart_router",
         "analysis_job_workers",
+        "analysis_job_worker_heartbeat_store",
+        "analysis_job_worker_heartbeat_task",
+        "analysis_job_worker_started_at",
+        "analysis_job_remote_worker_heartbeat_override",
         "retention_store",
         "retention_cleanup_job",
         "retention_cleanup_task",
@@ -101,6 +105,59 @@ class ProcessRoleRuntimeTests(unittest.TestCase):
         self.assertFalse(payload["checks"]["analysis_job_workers"])
         self.assertFalse(payload["checks"]["retention_cleanup_task"])
         self.assertFalse(payload["checks"]["deletion_queue_task"])
+
+    def test_initialize_auth_and_media_runtime_sets_media_render_runtime_state(self) -> None:
+        server._initialize_auth_and_media_runtime()
+
+        self.assertIsNotNone(getattr(app.state, "auth_service", None))
+        self.assertIsNotNone(getattr(app.state, "media_storage", None))
+        self.assertTrue(hasattr(app.state, "media_render_cache"))
+        self.assertTrue(hasattr(app.state, "media_render_cache_lock"))
+        self.assertTrue(hasattr(app.state, "media_render_inflight_tasks"))
+        self.assertTrue(hasattr(app.state, "media_render_inflight_lock"))
+
+    def test_web_role_readiness_requires_remote_worker_heartbeat_for_postgres_job_backend(self) -> None:
+        self._prime_common_runtime_state()
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "AUTH_STATE_BACKEND": "postgres",
+                "ANALYSIS_JOB_BACKEND": "postgres",
+            },
+            clear=False,
+        ):
+            payload, status_code = self._call_readiness_report(WEB_ROLE)
+
+        self.assertEqual(status_code, 503)
+        self.assertFalse(payload["ready"])
+        self.assertIn("analysis_job_remote_worker", payload["required_checks"])
+        self.assertIn("ANALYSIS_JOB_REMOTE_WORKER_NOT_READY", {issue["code"] for issue in payload["issues"]})
+
+    def test_web_role_readiness_accepts_fresh_remote_worker_heartbeat_for_postgres_job_backend(self) -> None:
+        self._prime_common_runtime_state()
+        app.state.analysis_job_remote_worker_heartbeat_override = {
+            "heartbeat_at": "2026-04-19T14:10:00+00:00",
+            "heartbeat_epoch_seconds": 1763561400.0,
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "AUTH_STATE_BACKEND": "postgres",
+                "ANALYSIS_JOB_BACKEND": "postgres",
+            },
+            clear=False,
+        ):
+            with patch("backend.server.time.time", return_value=1763561410.0):
+                payload, status_code = self._call_readiness_report(WEB_ROLE)
+
+        self.assertEqual(status_code, 200)
+        self.assertTrue(payload["ready"])
+        self.assertTrue(payload["checks"]["analysis_job_remote_worker"])
+        self.assertEqual(payload["analysis_job_remote_worker_heartbeat_at"], "2026-04-19T14:10:00+00:00")
 
     def test_worker_role_readiness_requires_analysis_workers_and_deletion_queue_loop(self) -> None:
         self._prime_common_runtime_state()

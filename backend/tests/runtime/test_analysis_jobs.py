@@ -257,6 +257,26 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["code"], "ANALYZE_FAILED")
         self.assertIn("submit failed", "\n".join(captured.output))
 
+    @patch("backend.server._analysis_job_remote_worker_readiness", return_value=(False, None))
+    def test_submit_job_returns_503_when_remote_worker_heartbeat_is_missing(
+        self,
+        _analysis_job_remote_worker_readiness: object,
+    ) -> None:
+        with TestClient(app) as client:
+            with self.assertLogs("foodlens.api", level="ERROR") as captured:
+                response = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR", "mode": "food"},
+                    headers={"X-Request-Id": "req-analysis-job-worker-missing"},
+                )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers["Retry-After"], "15")
+        self.assertEqual(response.json()["detail"]["request_id"], "req-analysis-job-worker-missing")
+        self.assertEqual(response.json()["detail"]["code"], "SERVICE_UNAVAILABLE")
+        self.assertIn("submit blocked", "\n".join(captured.output))
+
     def test_get_job_status_returns_503_when_store_get_job_fails(self) -> None:
         def raise_store_error(*, job_id: str) -> None:
             del job_id
