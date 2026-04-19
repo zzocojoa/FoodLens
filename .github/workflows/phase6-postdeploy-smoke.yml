@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run postdeploy smoke gate (auth, media, analyze jobs)
         env:
@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload postdeploy smoke artifacts (summary + analyze-jobs evidence)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phase6-postdeploy-smoke-${{ github.run_id }}
           path: FoodLens/artifacts/phase6/postdeploy-smoke
