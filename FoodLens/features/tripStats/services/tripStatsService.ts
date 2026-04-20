@@ -1,10 +1,44 @@
-import * as Location from 'expo-location';
 import { loadUserProfileWithHistory } from '@/services/user/profileAnalysisLoader';
 import { UserService } from '@/services/userService';
+import { getFreshLocationData, type LocationData } from '@/services/utils';
 import { buildLocationLabel } from '../utils/tripStatsCalculations';
 import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 type Coordinates = { latitude: number; longitude: number };
+type ResolvedTripLocation = {
+  locationName: string;
+  coordinates: Coordinates;
+};
+
+const formatCoordinateLabel = (latitude: number, longitude: number): string => {
+  return `Lat: ${latitude.toFixed(2)}, Lon: ${longitude.toFixed(2)}`;
+};
+
+const resolveTripLocationName = (location: LocationData): string => {
+  return buildLocationLabel(
+    {
+      city: location.city || location.district || location.subregion || null,
+      region: null,
+      country: location.country || null,
+    },
+    formatCoordinateLabel(location.latitude, location.longitude)
+  );
+};
+
+const resolveTripLocation = async (): Promise<ResolvedTripLocation> => {
+  const locationData = await getFreshLocationData();
+  if (locationData === null) {
+    throw new Error('TRIP_STATS_LOCATION_UNAVAILABLE');
+  }
+
+  return {
+    locationName: resolveTripLocationName(locationData),
+    coordinates: {
+      latitude: locationData.latitude,
+      longitude: locationData.longitude,
+    },
+  };
+};
 
 export const tripStatsService = {
   async loadUserTripData(userId: string) {
@@ -12,27 +46,20 @@ export const tripStatsService = {
     return { user, allAnalyses };
   },
 
-  async resolveCurrentLocation() {
+  async resolveCurrentLocation(): Promise<
+    | { ok: true; locationName: string; coordinates: Coordinates }
+    | { ok: false; reason: 'permission_denied' }
+  > {
     const permission = await ensureForegroundLocationPermission();
     if (!permission.granted) {
       return { ok: false as const, reason: 'permission_denied' as const };
     }
 
-    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const { latitude, longitude } = location.coords;
-
-    let locationName = `Lat: ${latitude.toFixed(2)}, Lon: ${longitude.toFixed(2)}`;
-    try {
-      const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-      locationName = buildLocationLabel(reverseGeocode.length > 0 ? reverseGeocode[0] : null, locationName);
-    } catch (geocodeError) {
-      console.warn('Geocoding failed', geocodeError);
-    }
-
+    const resolvedLocation = await resolveTripLocation();
     return {
       ok: true as const,
-      locationName,
-      coordinates: { latitude, longitude } satisfies Coordinates,
+      locationName: resolvedLocation.locationName,
+      coordinates: resolvedLocation.coordinates,
     };
   },
 

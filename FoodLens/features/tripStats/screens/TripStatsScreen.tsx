@@ -3,11 +3,12 @@ import { Stack, useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 
 import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
 import TripStatsJournalRail from '../components/TripStatsJournalRail';
 import TripStatsPassportTotals from '../components/TripStatsPassportTotals';
+import TripStatsToast from '../components/TripStatsToast';
 import {
     tripStatsDashboardColors as colors,
     tripStatsDashboardSpacing as spacing,
@@ -24,6 +25,7 @@ export default function TripStatsScreen(): React.JSX.Element {
     const handleIgnoredJourneyEntry = React.useCallback((_entryId: string): void => {}, []);
     const {
         currentLocation,
+        clearStartFeedback,
         handleOpenHistory,
         handleStartNewTrip,
         isLocating,
@@ -59,12 +61,6 @@ export default function TripStatsScreen(): React.JSX.Element {
     const primaryActionLabel = isLocating
         ? t('tripStats.hero.verifyingLocation', 'Verifying location...')
         : t('tripStats.action.primary', 'Start trip');
-    const startFeedbackMessage = startFeedbackLocation
-        ? t('tripStats.toast.nowExploringTemplate', 'Now exploring {location}').replace(
-              '{location}',
-              startFeedbackLocation,
-          )
-        : null;
 
     return (
         <View style={tripStatsDashboardStyles.screenBackground}>
@@ -110,20 +106,6 @@ export default function TripStatsScreen(): React.JSX.Element {
 
                     <TripStatsPassportTotals totals={passportTotals} />
 
-                    {startFeedbackMessage ? (
-                        <View style={styles.startFeedbackCard}>
-                            <View style={styles.startFeedbackIconWrap}>
-                                <ShieldCheck color={colors.white} size={16} />
-                            </View>
-                            <View style={styles.startFeedbackCopy}>
-                                <Text style={styles.startFeedbackTitle}>
-                                    {t('tripStats.toast.startedTitle', 'Trip started!')}
-                                </Text>
-                                <Text style={styles.startFeedbackMessage}>{startFeedbackMessage}</Text>
-                            </View>
-                        </View>
-                    ) : null}
-
                     <View style={styles.actionRow}>
                         <Pressable
                             accessibilityRole="button"
@@ -152,6 +134,11 @@ export default function TripStatsScreen(): React.JSX.Element {
                         </Pressable>
                     </View>
                 </ScrollView>
+                <TripStatsToast
+                    currentLocation={startFeedbackLocation}
+                    insetsTop={insets.top}
+                    onHidden={clearStartFeedback}
+                />
             </SafeAreaView>
         </View>
     );
@@ -199,44 +186,6 @@ const styles = StyleSheet.create({
         lineHeight: 16,
         textTransform: 'uppercase',
         letterSpacing: 0.7,
-    },
-    startFeedbackCard: {
-        alignItems: 'center',
-        backgroundColor: colors.accentGreenSoft,
-        borderColor: colors.lineStrong,
-        borderCurve: 'continuous',
-        borderRadius: 18,
-        borderWidth: 1,
-        flexDirection: 'row',
-        gap: spacing.sm,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-    },
-    startFeedbackIconWrap: {
-        alignItems: 'center',
-        backgroundColor: colors.accentGreen,
-        borderRadius: 999,
-        height: 28,
-        justifyContent: 'center',
-        width: 28,
-    },
-    startFeedbackCopy: {
-        flex: 1,
-        gap: 2,
-    },
-    startFeedbackTitle: {
-        color: colors.accentGreen,
-        fontSize: typography.caption,
-        fontWeight: '800',
-        letterSpacing: 0.5,
-        lineHeight: 16,
-        textTransform: 'uppercase',
-    },
-    startFeedbackMessage: {
-        color: colors.ink,
-        fontSize: typography.bodyStrong,
-        fontWeight: '700',
-        lineHeight: 18,
     },
     actionRow: {
         flexDirection: 'row',

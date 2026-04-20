@@ -11,6 +11,27 @@ const LAST_KNOWN_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_LOCATION_TEXT = '';
 let lastResolvedLocation: LocationData | null = null;
 
+type LocationDataRequest = {
+  allowLastKnownPosition: boolean;
+  allowLastResolvedLocation: boolean;
+  locationTimeoutMs: number;
+  reverseGeocodeTimeoutMs: number;
+};
+
+const DEFAULT_LOCATION_DATA_REQUEST: LocationDataRequest = {
+  allowLastKnownPosition: true,
+  allowLastResolvedLocation: true,
+  locationTimeoutMs: LOCATION_TIMEOUT_MS,
+  reverseGeocodeTimeoutMs: REVERSE_GEOCODE_TIMEOUT_MS,
+};
+
+const STRICT_LOCATION_DATA_REQUEST: LocationDataRequest = {
+  allowLastKnownPosition: false,
+  allowLastResolvedLocation: false,
+  locationTimeoutMs: LOCATION_TIMEOUT_MS,
+  reverseGeocodeTimeoutMs: REVERSE_GEOCODE_TIMEOUT_MS,
+};
+
 type ExifLocationInput = {
   GPSLatitude?: unknown;
   GPSLongitude?: unknown;
@@ -66,52 +87,86 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | nul
   ]);
 }
 
-/**
- * Fetches current location and geocoded country/city data with detailed address.
- */
-export const getLocationData = async (): Promise<LocationData | null> => {
+const getLastKnownPosition = async (
+  request: LocationDataRequest,
+): Promise<Location.LocationObject | null> => {
+  if (!request.allowLastKnownPosition) {
+    return null;
+  }
+
+  return Location.getLastKnownPositionAsync({
+    maxAge: LAST_KNOWN_MAX_AGE_MS,
+    requiredAccuracy: 5000,
+  }).catch(() => null);
+};
+
+const getActivePosition = async (
+  request: LocationDataRequest,
+): Promise<Location.LocationObject | null> => {
+  const lastKnownPosition = await getLastKnownPosition(request);
+  const locationResult = await withTimeout(
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    request.locationTimeoutMs,
+  );
+
+  return locationResult ?? lastKnownPosition;
+};
+
+const resolveMappedLocation = async (
+  latitude: number,
+  longitude: number,
+  request: LocationDataRequest,
+): Promise<LocationData> => {
+  let mappedLocation: LocationData = buildFallbackLocation(latitude, longitude);
+
+  try {
+    const reverseGeocode = await withTimeout(
+      Location.reverseGeocodeAsync({ latitude, longitude }),
+      request.reverseGeocodeTimeoutMs,
+    );
+    if (Array.isArray(reverseGeocode) && hasGeocodeResult(reverseGeocode)) {
+      mappedLocation = mapPlaceToLocationData(reverseGeocode[0], latitude, longitude);
+    }
+  } catch (error) {
+    console.warn('Reverse geocode failed', error);
+  }
+
+  return mappedLocation;
+};
+
+const getLocationDataForRequest = async (
+  request: LocationDataRequest,
+): Promise<LocationData | null> => {
   try {
     const permission = await ensureForegroundLocationPermission();
     if (!permission.granted) return null;
 
-    const lastKnownPosition = await Location.getLastKnownPositionAsync({
-      maxAge: LAST_KNOWN_MAX_AGE_MS,
-      requiredAccuracy: 5000,
-    }).catch(() => null);
-
-    const locationResult = await withTimeout(
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      LOCATION_TIMEOUT_MS,
-    );
-
-    const activePosition = locationResult ?? lastKnownPosition;
+    const activePosition = await getActivePosition(request);
 
     if (!activePosition) {
-      return lastResolvedLocation;
+      return request.allowLastResolvedLocation ? lastResolvedLocation : null;
     }
 
     const { latitude, longitude } = activePosition.coords;
-
-    let mappedLocation: LocationData = buildFallbackLocation(latitude, longitude);
-
-    try {
-      const reverseGeocode = await withTimeout(
-        Location.reverseGeocodeAsync({ latitude, longitude }),
-        REVERSE_GEOCODE_TIMEOUT_MS,
-      );
-      if (Array.isArray(reverseGeocode) && hasGeocodeResult(reverseGeocode)) {
-        mappedLocation = mapPlaceToLocationData(reverseGeocode[0], latitude, longitude);
-      }
-    } catch (error) {
-      console.warn('Reverse geocode failed', error);
-    }
+    const mappedLocation = await resolveMappedLocation(latitude, longitude, request);
 
     lastResolvedLocation = mappedLocation;
     return mappedLocation;
   } catch (error) {
     console.error('getLocationData failed', error);
-    return lastResolvedLocation;
+    return request.allowLastResolvedLocation ? lastResolvedLocation : null;
   }
+};
+
+/**
+ * Fetches current location and geocoded country/city data with detailed address.
+ */
+export const getLocationData = async (): Promise<LocationData | null> => {
+  return getLocationDataForRequest(DEFAULT_LOCATION_DATA_REQUEST);
+};
+
+export const getFreshLocationData = async (): Promise<LocationData | null> => {
+  return getLocationDataForRequest(STRICT_LOCATION_DATA_REQUEST);
 };
 
 /**

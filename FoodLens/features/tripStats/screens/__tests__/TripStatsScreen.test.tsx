@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import TripStatsScreen from '../TripStatsScreen';
 import { useTripStatsScreen } from '../../hooks/useTripStatsScreen';
@@ -79,6 +79,7 @@ describe('TripStatsScreen', () => {
         const handleOpenHistory = jest.fn();
         const handleOpenJourneyEntry = jest.fn();
         const handleStartNewTrip = jest.fn();
+        const clearStartFeedback = jest.fn();
 
         mockedUseTripStatsScreen.mockReturnValue({
             loading: false,
@@ -140,6 +141,7 @@ describe('TripStatsScreen', () => {
             handleOpenHistory,
             handleOpenJourneyEntry,
             handleStartNewTrip,
+            clearStartFeedback,
         });
 
         const { getByText, queryByText } = render(<TripStatsScreen />);
@@ -162,7 +164,7 @@ describe('TripStatsScreen', () => {
         expect(handleStartNewTrip).toHaveBeenCalledTimes(1);
     });
 
-    test('renders the trip start success banner when a new trip has just started', () => {
+    test('renders the trip start success toast when a new trip has just started', async () => {
         mockedUseTripStatsScreen.mockReturnValue({
             loading: false,
             currentLocation: 'Daegu, South Korea',
@@ -202,11 +204,64 @@ describe('TripStatsScreen', () => {
             handleOpenHistory: jest.fn(),
             handleOpenJourneyEntry: jest.fn(),
             handleStartNewTrip: jest.fn(),
+            clearStartFeedback: jest.fn(),
         });
 
         const { getByText } = render(<TripStatsScreen />);
 
-        expect(getByText('Trip started!')).toBeTruthy();
-        expect(getByText('Now exploring Daegu, South Korea')).toBeTruthy();
+        await waitFor(() => {
+            expect(getByText('Trip started!')).toBeTruthy();
+            expect(getByText('Now exploring Daegu, South Korea')).toBeTruthy();
+        });
+    });
+
+    test('shows verifying location copy while the trip start is in progress', () => {
+        mockedUseTripStatsScreen.mockReturnValue({
+            loading: false,
+            currentLocation: null,
+            isLocating: true,
+            tripStartDate: null,
+            startFeedbackLocation: null,
+            viewModel: {
+                hasActiveTrip: false,
+                hero: {
+                    scope: 'currentTrip',
+                    tripStartDate: null,
+                    locationLabel: null,
+                    tone: 'neutral',
+                    analysisCount: 0,
+                    safeCount: 0,
+                    cautionCount: 0,
+                    dangerCount: 0,
+                    totalCount: 0,
+                    chapterCount: 0,
+                    recentJourneyCount: 0,
+                },
+                passportTotals: {
+                    totalAnalyses: 0,
+                    safeCount: 0,
+                    cautionCount: 0,
+                    dangerCount: 0,
+                    currentTripCount: 0,
+                    currentTripSafeCount: 0,
+                    currentTripCautionCount: 0,
+                    currentTripDangerCount: 0,
+                    countriesVisitedCount: 0,
+                    citiesVisitedCount: 0,
+                },
+                countryChapters: [],
+                recentJourneyEntries: [],
+            },
+            handleOpenHistory: jest.fn(),
+            handleOpenJourneyEntry: jest.fn(),
+            handleStartNewTrip: jest.fn(),
+            clearStartFeedback: jest.fn(),
+        });
+
+        const { getByText, queryByText } = render(<TripStatsScreen />);
+
+        expect(getByText('Verifying location...')).toBeTruthy();
+        expect(queryByText('Start trip')).toBeNull();
+        expect(getByText('View history')).toBeTruthy();
     });
 });
