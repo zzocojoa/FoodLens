@@ -6,6 +6,13 @@ export const isAndroidTopLevelRoute = (pathname: string): boolean => {
   return isTopLevelNavPath(pathname);
 };
 
+export const shouldUseAndroidExitFlow = (
+  pathname: string,
+  canGoBack: boolean,
+): boolean => {
+  return isAndroidTopLevelRoute(pathname) && !canGoBack;
+};
+
 export const shouldExitOnSecondBack = (
   nowMs: number,
   previousBackPressMs: number,

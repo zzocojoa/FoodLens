@@ -1,5 +1,6 @@
 import {
   isAndroidTopLevelRoute,
+  shouldUseAndroidExitFlow,
   shouldExitOnSecondBack,
 } from '../androidTopLevelNavigation';
 
@@ -17,5 +18,12 @@ describe('androidTopLevelNavigation', () => {
     expect(shouldExitOnSecondBack(2_500, 0)).toBe(false);
     expect(shouldExitOnSecondBack(2_500, 700)).toBe(true);
     expect(shouldExitOnSecondBack(5_000, 2_000)).toBe(false);
+  });
+
+  it('uses exit flow only when the route is top-level and there is no back stack', () => {
+    expect(shouldUseAndroidExitFlow('/history', false)).toBe(true);
+    expect(shouldUseAndroidExitFlow('/history', true)).toBe(false);
+    expect(shouldUseAndroidExitFlow('/trip-stats', true)).toBe(false);
+    expect(shouldUseAndroidExitFlow('/result', false)).toBe(false);
   });
 });
