@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 
 export const historyMapStyles = StyleSheet.create({
-    mapContainer: { flex: 1, overflow: 'hidden', marginHorizontal: 20, marginBottom: 20, borderRadius: 32, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F1F5F9' },
+    mapContainer: { alignSelf: 'stretch', backgroundColor: '#F1F5F9', flex: 1, minHeight: 520, overflow: 'hidden', width: '100%' },
     map: { width: '100%', height: '100%' },
     errorOverlay: { backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
     errorContent: { alignItems: 'center', opacity: 0.7, paddingHorizontal: 40 },

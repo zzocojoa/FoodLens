@@ -155,7 +155,7 @@ type HistoryMapSourceItem = CountryData['regions'][number]['items'][number] & {
 export const flattenMarkers = (data: CountryData[]): MapMarker[] => {
     const markers: MapMarker[] = [];
 
-    data.forEach((country, countryIdx) => {
+    data.forEach((country) => {
         (country?.regions || []).forEach((region) => {
             (region?.items || []).forEach((rawItem) => {
                 const item = rawItem as HistoryMapSourceItem;
@@ -171,7 +171,7 @@ export const flattenMarkers = (data: CountryData[]): MapMarker[] => {
                 markers.push({
                     id: item.id,
                     coordinate: { latitude: lat, longitude: lng },
-                    countryId: `${country.country}-${countryIdx}`,
+                    countryId: country.country,
                     emoji: item.emoji,
                     name: item.name,
                     imageUri: item.imageUri ? resolveImageUri(item.imageUri) || undefined : undefined,

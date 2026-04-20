@@ -6,6 +6,7 @@ import { useHistoryData } from '../useHistoryData';
 const mockUseHistoryQuery = jest.fn();
 const mockUseDeleteAnalysisMutation = jest.fn();
 const mockAggregateHistoryByCountry = jest.fn();
+const mockBuildHistoryArchiveViewModel = jest.fn();
 const mockBuildInitialRegion = jest.fn();
 
 jest.mock('../queries/useHistoryQuery', () => ({
@@ -18,6 +19,7 @@ jest.mock('../mutations/useAnalysisMutations', () => ({
 
 jest.mock('../historyDataUtils', () => ({
   aggregateHistoryByCountry: (...args: unknown[]) => mockAggregateHistoryByCountry(...args),
+  buildHistoryArchiveViewModel: (...args: unknown[]) => mockBuildHistoryArchiveViewModel(...args),
   buildInitialRegion: (...args: unknown[]) => mockBuildInitialRegion(...args),
   removeItemsFromArchive: jest.fn(),
 }));
@@ -65,6 +67,60 @@ describe('useHistoryData', () => {
         regions: [],
       },
     ]);
+    mockBuildHistoryArchiveViewModel.mockReturnValue({
+      atlasSummary: {
+        cityCount: 0,
+        countriesWithLocationCount: 0,
+        countryCount: 1,
+        latestCityLabel: null,
+        latestCountryLabel: 'Korea',
+        latestRecordAt: null,
+        toneCounts: {
+          caution: 0,
+          danger: 0,
+          safe: 1,
+        },
+        totalCount: 1,
+      },
+      countryChapters: [
+        {
+          cityCount: 0,
+          country: 'Korea',
+          countryData: {
+            coordinates: [37.5665, 126.978],
+            country: 'Korea',
+            flag: '🇰🇷',
+            regions: [],
+            total: 1,
+          },
+          flag: '🇰🇷',
+          id: 'Korea',
+          latestCityLabel: null,
+          latestRecordAt: null,
+          latestRecordId: null,
+          toneCounts: {
+            caution: 0,
+            danger: 0,
+            safe: 1,
+          },
+          totalCount: 1,
+        },
+      ],
+      journalSummary: {
+        cityCount: 0,
+        countryCount: 1,
+        latestCityLabel: null,
+        latestCountryLabel: 'Korea',
+        latestRecordAt: null,
+        toneCounts: {
+          caution: 0,
+          danger: 0,
+          safe: 1,
+        },
+        totalCount: 1,
+      },
+      recentEntries: [],
+    });
     mockBuildInitialRegion.mockReturnValue({
       latitude: 37.5665,
       longitude: 126.978,
@@ -77,14 +133,14 @@ describe('useHistoryData', () => {
     const { result } = renderHook(() => useHistoryData('usr_history'));
 
     await waitFor(() => {
-      expect(Array.from(result.current.expandedCountries)).toEqual(['Korea-0']);
+      expect(Array.from(result.current.expandedCountries)).toEqual(['Korea']);
     });
 
     act(() => {
-      result.current.setExpandedCountries(new Set(['Japan-0']));
+      result.current.setExpandedCountries(new Set(['Japan']));
     });
 
-    expect(Array.from(result.current.expandedCountries)).toEqual(['Japan-0']);
+    expect(Array.from(result.current.expandedCountries)).toEqual(['Japan']);
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockedUpdateUserClientState).not.toHaveBeenCalled();

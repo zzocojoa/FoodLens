@@ -3,6 +3,15 @@ import { AnalysisRecord } from '../services/analysisService';
 import { getBarcodeImageUri, resolveImageUri } from '../services/imageStorage';
 import { getEmoji } from '../services/utils';
 import { getLocalizedFoodName } from '../features/home/utils/localizedFoodName';
+import type {
+  HistoryArchiveViewModel,
+  HistoryAtlasSummary,
+  HistoryCountryChapter,
+  HistoryJournalSummary,
+  HistoryRecentEntry,
+  HistoryToneCounts,
+  HistoryTone,
+} from '../features/history/types/historyViewModel.types';
 export { flattenHistoryData } from './historyDataFlatten';
 export type { FlattenedHistoryItem } from './historyDataFlatten';
 
@@ -153,17 +162,216 @@ const hasValidLocation = (record: AnalysisRecord): boolean =>
   !!record.location.longitude &&
   (record.location.latitude !== 0 || record.location.longitude !== 0);
 
-export const buildInitialRegion = (records: AnalysisRecord[]) => {
-  for (const record of records) {
-    if (!hasValidLocation(record)) continue;
+const INITIAL_REGION_MIN_DELTA = 0.6;
+const INITIAL_REGION_PADDING_MULTIPLIER = 1.6;
+const INITIAL_REGION_MAX_LATITUDE_DELTA = 180;
+const INITIAL_REGION_MAX_LONGITUDE_DELTA = 360;
+
+const sortRecordsByTimestampDesc = (records: AnalysisRecord[]): AnalysisRecord[] =>
+  [...records].sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
+
+const createEmptyToneCounts = (): HistoryToneCounts => ({
+  safe: 0,
+  caution: 0,
+  danger: 0,
+});
+
+const toHistoryTone = (safetyStatus?: string): HistoryTone => {
+  const normalized = safetyStatus?.toUpperCase() || '';
+  if (normalized === 'SAFE') return 'ok';
+  if (normalized === 'DANGER' || normalized === 'WARNING') return 'avoid';
+  return 'ask';
+};
+
+const buildToneCountsFromRecords = (records: AnalysisRecord[]): HistoryToneCounts => {
+  const counts = createEmptyToneCounts();
+  records.forEach((record) => {
+    const tone = toHistoryTone(record.safetyStatus);
+    if (tone === 'ok') {
+      counts.safe += 1;
+      return;
+    }
+
+    if (tone === 'avoid') {
+      counts.danger += 1;
+      return;
+    }
+
+    counts.caution += 1;
+  });
+  return counts;
+};
+
+const buildToneCountsFromCountry = (country: CountryData): HistoryToneCounts => {
+  const counts = createEmptyToneCounts();
+  country.regions.forEach((region) => {
+    region.items.forEach((item) => {
+      if (item.type === 'ok') {
+        counts.safe += 1;
+        return;
+      }
+
+      if (item.type === 'avoid') {
+        counts.danger += 1;
+        return;
+      }
+
+      counts.caution += 1;
+    });
+  });
+  return counts;
+};
+
+const findLatestItem = (country: CountryData) => {
+  let latestItem = null as CountryData['regions'][number]['items'][number] | null;
+  let latestCity = null as string | null;
+
+  country.regions.forEach((region) => {
+    region.items.forEach((item) => {
+      if (!latestItem || item.timestamp.getTime() > latestItem.timestamp.getTime()) {
+        latestItem = item;
+        latestCity = region.name;
+      }
+    });
+  });
+
+  return {
+    latestItem,
+    latestCity,
+  };
+};
+
+const buildHistoryCountryChapters = (
+  archiveData: CountryData[]
+): HistoryCountryChapter[] =>
+  archiveData.map((country) => {
+    const toneCounts = buildToneCountsFromCountry(country);
+    const latest = findLatestItem(country);
+
     return {
+      id: country.country,
+      country: country.country,
+      flag: country.flag,
+      totalCount: country.total,
+      cityCount: country.regions.length,
+      toneCounts,
+      latestRecordAt: latest.latestItem?.timestamp || null,
+      latestCityLabel: latest.latestCity,
+      latestRecordId: latest.latestItem?.id || null,
+      countryData: country,
+    };
+  });
+
+const buildRecentEntries = (
+  records: AnalysisRecord[],
+  locale?: string,
+  t?: TranslateFn
+): HistoryRecentEntry[] =>
+  sortRecordsByTimestampDesc(records).map((record) => {
+    const localizedFoodName = getLocalizedFoodName(record, locale);
+    const { country, city, effectiveIso } = toCountryAndCity(record, locale, t);
+
+    return {
+      id: record.id,
+      tone: toHistoryTone(record.safetyStatus),
+      countryLabel: country,
+      cityLabel: city,
+      foodName: localizedFoodName,
+      emoji: getEmoji(localizedFoodName),
+      timestamp: record.timestamp,
+      imageUri: record.isBarcode ? getBarcodeImageUri() : (resolveImageUri(record.imageUri) || undefined),
+      countryCode: effectiveIso || null,
+      record,
+    };
+  });
+
+const buildHistoryJournalSummary = (
+  records: AnalysisRecord[],
+  archiveData: CountryData[],
+  locale?: string,
+  t?: TranslateFn
+): HistoryJournalSummary => {
+  const sortedRecords = sortRecordsByTimestampDesc(records);
+  const latestRecord = sortedRecords[0] || null;
+  const latestLocation = latestRecord ? toCountryAndCity(latestRecord, locale, t) : null;
+
+  return {
+    totalCount: sortedRecords.length,
+    countryCount: archiveData.length,
+    cityCount: archiveData.reduce((sum, country) => sum + country.regions.length, 0),
+    toneCounts: buildToneCountsFromRecords(sortedRecords),
+    latestRecordAt: latestRecord?.timestamp || null,
+    latestCountryLabel: latestLocation?.country || null,
+    latestCityLabel: latestLocation?.city || null,
+  };
+};
+
+const buildHistoryAtlasSummary = (
+  records: AnalysisRecord[],
+  archiveData: CountryData[],
+  locale?: string,
+  t?: TranslateFn
+): HistoryAtlasSummary => {
+  const journalSummary = buildHistoryJournalSummary(records, archiveData, locale, t);
+  const locationCountries = new Set<string>();
+
+  records.forEach((record) => {
+    const location = toCountryAndCity(record, locale, t);
+    if (!location.hasLocation) return;
+    locationCountries.add(location.country);
+  });
+
+  return {
+    ...journalSummary,
+    countriesWithLocationCount: locationCountries.size,
+  };
+};
+
+export const buildHistoryArchiveViewModel = (
+  records: AnalysisRecord[],
+  archiveData: CountryData[],
+  locale?: string,
+  t?: TranslateFn
+): HistoryArchiveViewModel => ({
+  journalSummary: buildHistoryJournalSummary(records, archiveData, locale, t),
+  countryChapters: buildHistoryCountryChapters(archiveData),
+  recentEntries: buildRecentEntries(records, locale, t),
+  atlasSummary: buildHistoryAtlasSummary(records, archiveData, locale, t),
+});
+
+export const buildInitialRegion = (records: AnalysisRecord[]) => {
+  const validLocations = records
+    .filter(hasValidLocation)
+    .map((record) => ({
       latitude: record.location!.latitude,
       longitude: record.location!.longitude,
-      latitudeDelta: 50,
-      longitudeDelta: 50,
-    };
+    }));
+
+  if (validLocations.length === 0) {
+    return null;
   }
-  return null;
+
+  const latitudes = validLocations.map((location) => location.latitude);
+  const longitudes = validLocations.map((location) => location.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const latitudeSpan = maxLatitude - minLatitude;
+  const longitudeSpan = maxLongitude - minLongitude;
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta: Math.min(
+      Math.max(latitudeSpan * INITIAL_REGION_PADDING_MULTIPLIER, INITIAL_REGION_MIN_DELTA),
+      INITIAL_REGION_MAX_LATITUDE_DELTA
+    ),
+    longitudeDelta: Math.min(
+      Math.max(longitudeSpan * INITIAL_REGION_PADDING_MULTIPLIER, INITIAL_REGION_MIN_DELTA),
+      INITIAL_REGION_MAX_LONGITUDE_DELTA
+    ),
+  };
 };
 
 const toCountryAndCity = (record: AnalysisRecord, locale?: string, t?: TranslateFn) => {
