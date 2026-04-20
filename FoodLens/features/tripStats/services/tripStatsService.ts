@@ -1,6 +1,6 @@
 import { loadUserProfileWithHistory } from '@/services/user/profileAnalysisLoader';
 import { UserService } from '@/services/userService';
-import { getFreshLocationData, type LocationData } from '@/services/utils';
+import { getRecentLocationData, type LocationData } from '@/services/utils';
 import { buildLocationLabel } from '../utils/tripStatsCalculations';
 import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
@@ -26,7 +26,7 @@ const resolveTripLocationName = (location: LocationData): string => {
 };
 
 const resolveTripLocation = async (): Promise<ResolvedTripLocation> => {
-  const locationData = await getFreshLocationData();
+  const locationData = await getRecentLocationData();
   if (locationData === null) {
     throw new Error('TRIP_STATS_LOCATION_UNAVAILABLE');
   }

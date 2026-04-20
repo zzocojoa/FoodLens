@@ -14,6 +14,7 @@ let lastResolvedLocation: LocationData | null = null;
 type LocationDataRequest = {
   allowLastKnownPosition: boolean;
   allowLastResolvedLocation: boolean;
+  lastKnownMaxAgeMs: number | null;
   locationTimeoutMs: number;
   reverseGeocodeTimeoutMs: number;
 };
@@ -21,6 +22,7 @@ type LocationDataRequest = {
 const DEFAULT_LOCATION_DATA_REQUEST: LocationDataRequest = {
   allowLastKnownPosition: true,
   allowLastResolvedLocation: true,
+  lastKnownMaxAgeMs: LAST_KNOWN_MAX_AGE_MS,
   locationTimeoutMs: LOCATION_TIMEOUT_MS,
   reverseGeocodeTimeoutMs: REVERSE_GEOCODE_TIMEOUT_MS,
 };
@@ -28,6 +30,15 @@ const DEFAULT_LOCATION_DATA_REQUEST: LocationDataRequest = {
 const STRICT_LOCATION_DATA_REQUEST: LocationDataRequest = {
   allowLastKnownPosition: false,
   allowLastResolvedLocation: false,
+  lastKnownMaxAgeMs: null,
+  locationTimeoutMs: LOCATION_TIMEOUT_MS,
+  reverseGeocodeTimeoutMs: REVERSE_GEOCODE_TIMEOUT_MS,
+};
+
+const RECENT_LOCATION_DATA_REQUEST: LocationDataRequest = {
+  allowLastKnownPosition: true,
+  allowLastResolvedLocation: false,
+  lastKnownMaxAgeMs: 30_000,
   locationTimeoutMs: LOCATION_TIMEOUT_MS,
   reverseGeocodeTimeoutMs: REVERSE_GEOCODE_TIMEOUT_MS,
 };
@@ -90,12 +101,12 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | nul
 const getLastKnownPosition = async (
   request: LocationDataRequest,
 ): Promise<Location.LocationObject | null> => {
-  if (!request.allowLastKnownPosition) {
+  if (!request.allowLastKnownPosition || request.lastKnownMaxAgeMs === null) {
     return null;
   }
 
   return Location.getLastKnownPositionAsync({
-    maxAge: LAST_KNOWN_MAX_AGE_MS,
+    maxAge: request.lastKnownMaxAgeMs,
     requiredAccuracy: 5000,
   }).catch(() => null);
 };
@@ -167,6 +178,10 @@ export const getLocationData = async (): Promise<LocationData | null> => {
 
 export const getFreshLocationData = async (): Promise<LocationData | null> => {
   return getLocationDataForRequest(STRICT_LOCATION_DATA_REQUEST);
+};
+
+export const getRecentLocationData = async (): Promise<LocationData | null> => {
+  return getLocationDataForRequest(RECENT_LOCATION_DATA_REQUEST);
 };
 
 /**

@@ -87,6 +87,7 @@ const buildOptimisticTripStartState = (
 export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult {
     const { t } = useI18n();
     const loadRequestIdRef = useRef(0);
+    const isStartingTripRef = useRef(false);
     const [state, setState] = useState<TripStatsScreenState>(buildInitialState);
 
     const beginLoadRequest = useCallback((): number => {
@@ -175,6 +176,11 @@ export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult
     );
 
     const handleStartNewTrip = useCallback(async () => {
+        if (isStartingTripRef.current) {
+            return;
+        }
+
+        isStartingTripRef.current = true;
         const requestId = beginLoadRequest();
 
         setState((currentState) => ({
@@ -220,6 +226,8 @@ export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult
                 isLocating: false,
                 startFeedbackLocation: null,
             }));
+        } finally {
+            isStartingTripRef.current = false;
         }
     }, [beginLoadRequest, refreshDataInBackground, t]);
 

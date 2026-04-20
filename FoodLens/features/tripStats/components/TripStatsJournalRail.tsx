@@ -66,22 +66,19 @@ export default function TripStatsJournalRail({
                 warmWashColor={colors.pearlPeach}
             />
 
-            <View style={styles.content}>
-                <View style={tripStatsDashboardStyles.railHeader}>
-                    <View style={tripStatsDashboardStyles.railCopy}>
-                        <Text style={tripStatsDashboardStyles.railMeta}>
-                            {t('tripStats.rail.kicker', 'Trip status')}
-                        </Text>
-                        <Text style={tripStatsDashboardStyles.railTitle}>
-                            {t('tripStats.rail.title', 'Trip overview')}
-                        </Text>
-                        <Text style={tripStatsDashboardStyles.railSubtitle}>
-                            {t(
-                                'tripStats.rail.subtitle',
-                                'Location, date, and status at a glance.',
-                            )}
-                        </Text>
-                    </View>
+                <View style={styles.content}>
+                    <View style={tripStatsDashboardStyles.railHeader}>
+                        <View style={tripStatsDashboardStyles.railCopy}>
+                            <Text style={tripStatsDashboardStyles.railTitle}>
+                                {t('tripStats.rail.title', 'Trip overview')}
+                            </Text>
+                            <Text style={tripStatsDashboardStyles.railSubtitle}>
+                                {t(
+                                    'tripStats.rail.subtitle',
+                                    'Location, date, and status at a glance.',
+                                )}
+                            </Text>
+                        </View>
 
                     <View style={tripStatsDashboardStyles.pill}>
                         <Text style={tripStatsDashboardStyles.pillText}>

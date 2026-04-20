@@ -229,4 +229,46 @@ describe('useTripStatsScreen', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.startFeedbackLocation).toBeNull();
   });
+
+  it('ignores repeated trip start requests while the first one is still running', async () => {
+    const initialSnapshot = buildSnapshot(null, null);
+    const refreshedSnapshot = buildSnapshot('Daegu, South Korea', 'Daegu, South Korea');
+    const startTripDeferred = createDeferred<{
+      ok: true;
+      tripStartDate: Date;
+      currentLocation: string;
+    }>();
+
+    mockLoadTripStatsSnapshot
+      .mockResolvedValueOnce(initialSnapshot)
+      .mockResolvedValueOnce(refreshedSnapshot);
+    mockStartTripFromCurrentLocation.mockReturnValue(startTripDeferred.promise);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory: jest.fn(),
+        onOpenJourneyEntry: jest.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      void result.current.handleStartNewTrip();
+      void result.current.handleStartNewTrip();
+    });
+
+    expect(mockStartTripFromCurrentLocation).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      startTripDeferred.resolve({
+        ok: true,
+        tripStartDate: new Date('2026-04-20T00:00:00.000Z'),
+        currentLocation: 'Daegu, South Korea',
+      });
+      await Promise.resolve();
+    });
+  });
 });
