@@ -197,6 +197,12 @@ jest.mock('../../constants/history.constants', () => ({
   getHistoryUserId: () => 'history-user',
 }));
 
+type HistoryScreenTestEnv = NodeJS.ProcessEnv & {
+  EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?: string;
+};
+
+const historyScreenTestEnv = process.env as HistoryScreenTestEnv;
+
 const createHistoryDataMock = (): ReturnType<typeof useHistoryData> => ({
   archiveData: [],
   atlasSummary: {
@@ -294,15 +300,15 @@ describe('HistoryScreen', () => {
   const mockedUseHistoryData = useHistoryData as jest.MockedFunction<typeof useHistoryData>;
   const mockedUseHistoryFilter = useHistoryFilter as jest.MockedFunction<typeof useHistoryFilter>;
   const mockedUseHistoryScreen = useHistoryScreen as jest.MockedFunction<typeof useHistoryScreen>;
-  const originalGoogleMapsKey = process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'];
+  const originalGoogleMapsKey = historyScreenTestEnv.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] = 'history-test-key';
+    historyScreenTestEnv.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'history-test-key';
   });
 
   afterEach(() => {
-    process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] = originalGoogleMapsKey;
+    historyScreenTestEnv.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = originalGoogleMapsKey;
   });
 
   it('renders the journal mode shell and routes row presses to stored results', () => {
@@ -419,6 +425,43 @@ describe('HistoryScreen', () => {
 
     expect(mockTopLevelShell).toHaveBeenCalledWith({ activeItem: 'history', hideNav: true });
     expect(screen.getByTestId('history-selection')).toBeTruthy();
+  });
+
+  it('shows a loading card instead of the empty archive state during the initial fetch', () => {
+    const historyDataMock = createHistoryDataMock();
+
+    mockedUseHistoryData.mockReturnValue({
+      ...historyDataMock,
+      countryChapters: [],
+      loading: true,
+      records: [],
+    });
+    mockedUseHistoryFilter.mockReturnValue({
+      archiveFilter: 'all',
+      getFilteredItemsCount: jest.fn(() => 0),
+      isAllowedItemType: ((type: string | undefined): type is 'ask' | 'avoid' | 'ok' => Boolean(type)),
+      matchesFilter: jest.fn(() => true),
+      setArchiveFilter: jest.fn(),
+    });
+    mockedUseHistoryScreen.mockReturnValue({
+      archiveMode: 'list',
+      handleBulkDelete: jest.fn(),
+      handleSwitchMode: jest.fn(),
+      isEditMode: false,
+      isMapModeAvailable: true,
+      replaceSelection: jest.fn(),
+      savedMapRegion: null,
+      savedMapRegionRef: { current: null },
+      selectedItems: new Set<string>(),
+      setSavedMapRegion: jest.fn(),
+      toggleEditMode: jest.fn(),
+      toggleSelectItem: jest.fn(),
+    });
+
+    render(<HistoryScreen />);
+
+    expect(screen.getByText('Loading Passport...')).toBeTruthy();
+    expect(screen.queryByTestId('history-chapters')).toBeNull();
   });
 
   it('selects only rows from expanded chapters in edit mode', () => {

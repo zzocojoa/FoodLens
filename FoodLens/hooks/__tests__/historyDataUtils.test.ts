@@ -71,4 +71,15 @@ describe('historyDataUtils', () => {
     expect(region?.latitudeDelta).toBeLessThanOrEqual(180);
     expect(region?.longitudeDelta).toBeLessThanOrEqual(360);
   });
+
+  it('fits records across the dateline around the visited longitudes', () => {
+    const region = buildInitialRegion([
+      createAnalysisRecord('record-6', 35.6764, 139.6500),
+      createAnalysisRecord('record-7', 64.2008, -149.4937),
+    ]);
+
+    expect(region).not.toBeNull();
+    expect(Math.abs(region!.longitude)).toBeGreaterThan(140);
+    expect(region?.longitudeDelta).toBeLessThan(120);
+  });
 });

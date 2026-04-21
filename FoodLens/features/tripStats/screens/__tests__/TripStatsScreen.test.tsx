@@ -5,8 +5,6 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import TripStatsScreen from '../TripStatsScreen';
 import { useTripStatsScreen } from '../../hooks/useTripStatsScreen';
-import type { AnalysisRecord } from '@/services/analysis/types';
-import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation';
 
 const mockedBack = jest.fn();
 
@@ -52,66 +50,6 @@ jest.mock('../../components/TripStatsPassportTotals', () => {
     };
 });
 
-jest.mock('../../components/TripStatsAtlasHero', () => {
-    const React = require('react');
-    const { Pressable, Text, View } = require('react-native');
-
-    return function MockTripStatsAtlasHero(props: {
-        isLocating: boolean;
-        onPressHistory: () => void;
-        onPressStartTrip: () => void;
-    }) {
-        return (
-            <View>
-                <Text>{props.isLocating ? 'ATLAS_HERO_LOCATING' : 'ATLAS_HERO_READY'}</Text>
-                <Pressable onPress={props.onPressStartTrip}>
-                    <Text>MOCK_START_TRIP</Text>
-                </Pressable>
-                <Pressable onPress={props.onPressHistory}>
-                    <Text>MOCK_OPEN_HISTORY</Text>
-                </Pressable>
-            </View>
-        );
-    };
-});
-
-jest.mock('../../components/TripStatsCountryChapters', () => {
-    const React = require('react');
-    const { Pressable, Text, View } = require('react-native');
-
-    return function MockTripStatsCountryChapters(props: {
-        onPressChapter?: (chapterId: string) => void;
-    }) {
-        return (
-            <View>
-                <Text>COUNTRY_CHAPTERS</Text>
-                <Pressable onPress={() => props.onPressChapter?.('chapter-1')}>
-                    <Text>MOCK_OPEN_CHAPTER</Text>
-                </Pressable>
-            </View>
-        );
-    };
-});
-
-jest.mock('../../components/TripStatsJourneyFeed', () => {
-    const React = require('react');
-    const { Pressable, Text, View } = require('react-native');
-
-    return function MockTripStatsJourneyFeed(props: {
-        items: Array<{ id: string }>;
-        onPressItem?: (itemId: string) => void;
-    }) {
-        return (
-            <View>
-                <Text>JOURNEY_FEED</Text>
-                <Pressable onPress={() => props.onPressItem?.(props.items[0]?.id)}>
-                    <Text>MOCK_OPEN_JOURNEY</Text>
-                </Pressable>
-            </View>
-        );
-    };
-});
-
 jest.mock('../../hooks/useTripStatsScreen', () => ({
     useTripStatsScreen: jest.fn(),
 }));
@@ -126,33 +64,20 @@ jest.mock('@/features/i18n', () => ({
     },
 }));
 
-jest.mock('@/services/navigation/resultEntryNavigation', () => ({
-    navigateToStoredResult: jest.fn(),
-}));
-
 describe('TripStatsScreen', () => {
     const mockedUseTripStatsScreen = useTripStatsScreen as jest.MockedFunction<typeof useTripStatsScreen>;
-    const mockedNavigateToStoredResult = navigateToStoredResult as jest.MockedFunction<
-        typeof navigateToStoredResult
-    >;
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    test('renders the redesigned atlas sections and wires primary interactions', () => {
+    test('renders the simplified trip stats sections and keeps the main actions', () => {
         const handleOpenHistory = jest.fn();
+        const handleOpenJourneyEntry = jest.fn();
         const handleStartNewTrip = jest.fn();
         const clearStartFeedback = jest.fn();
-        const recentJourneyRecord: AnalysisRecord = {
-            id: 'entry-1',
-            foodName: 'Miso Soup',
-            ingredients: [],
-            safetyStatus: 'SAFE',
-            timestamp: new Date('2026-01-11T00:00:00.000Z'),
-        };
 
-        mockedUseTripStatsScreen.mockImplementation((handlers) => ({
+        mockedUseTripStatsScreen.mockReturnValue({
             loading: false,
             currentLocation: 'Tokyo, Japan',
             isLocating: false,
@@ -189,6 +114,13 @@ describe('TripStatsScreen', () => {
                 recentJourneyEntries: [
                     {
                         id: 'entry-1',
+                        record: {
+                            id: 'entry-1',
+                            foodName: 'Miso Soup',
+                            ingredients: [],
+                            safetyStatus: 'SAFE',
+                            timestamp: new Date('2026-01-11T00:00:00.000Z'),
+                        },
                         foodName: 'Miso Soup',
                         safetyStatus: 'SAFE',
                         tone: 'safe',
@@ -199,39 +131,33 @@ describe('TripStatsScreen', () => {
                         cityLabel: 'Tokyo',
                         imageUri: null,
                         isCurrentTrip: true,
-                        record: recentJourneyRecord,
                     },
                 ],
             },
             handleOpenHistory,
-            handleOpenJourneyEntry: handlers.onOpenJourneyEntry,
+            handleOpenJourneyEntry,
             handleStartNewTrip,
             clearStartFeedback,
-        }));
+        });
 
         const { getByText, queryByText } = render(<TripStatsScreen />);
 
         expect(getByText('Trip Statistics')).toBeTruthy();
         expect(getByText('Safety snapshot')).toBeTruthy();
         expect(getByText('JOURNAL_RAIL')).toBeTruthy();
-        expect(getByText('ATLAS_HERO_READY')).toBeTruthy();
         expect(getByText('PASSPORT_TOTALS')).toBeTruthy();
-        expect(getByText('COUNTRY_CHAPTERS')).toBeTruthy();
-        expect(getByText('JOURNEY_FEED')).toBeTruthy();
-        expect(queryByText('Start trip')).toBeNull();
+        expect(getByText('Start trip')).toBeTruthy();
+        expect(getByText('View history')).toBeTruthy();
+        expect(queryByText('Travel Journal Atlas')).toBeNull();
+        expect(queryByText('COUNTRY_CHAPTERS')).toBeNull();
+        expect(queryByText('JOURNEY_FEED')).toBeNull();
 
-        fireEvent.press(getByText('MOCK_START_TRIP'));
-        fireEvent.press(getByText('MOCK_OPEN_HISTORY'));
-        fireEvent.press(getByText('MOCK_OPEN_CHAPTER'));
-        fireEvent.press(getByText('MOCK_OPEN_JOURNEY'));
+        fireEvent.press(getByText('Start trip'));
+        fireEvent.press(getByText('View history'));
 
-        expect(handleOpenHistory).toHaveBeenCalledTimes(2);
+        expect(handleOpenHistory).toHaveBeenCalledTimes(1);
+        expect(handleOpenJourneyEntry).not.toHaveBeenCalled();
         expect(handleStartNewTrip).toHaveBeenCalledTimes(1);
-        expect(mockedNavigateToStoredResult).toHaveBeenCalledWith(
-            expect.any(Object),
-            recentJourneyRecord,
-            { isBarcode: undefined },
-        );
     });
 
     test('renders the trip start success toast when a new trip has just started', async () => {
@@ -330,8 +256,8 @@ describe('TripStatsScreen', () => {
 
         const { getByText, queryByText } = render(<TripStatsScreen />);
 
-        expect(getByText('ATLAS_HERO_LOCATING')).toBeTruthy();
+        expect(getByText('Verifying location...')).toBeTruthy();
         expect(queryByText('Start trip')).toBeNull();
-        expect(getByText('MOCK_OPEN_HISTORY')).toBeTruthy();
+        expect(getByText('View history')).toBeTruthy();
     });
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, LayoutAnimation, Platform, RefreshControl, ScrollView, UIManager } from 'react-native';
+import { ActivityIndicator, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,11 +24,13 @@ import HistoryCountryChapters from '../components/HistoryCountryChapters';
 import HistoryFilterRail from '../components/HistoryFilterRail';
 import HistoryJournalRail from '../components/HistoryJournalRail';
 import HistorySelectionUtilityBar from '../components/HistorySelectionUtilityBar';
+import HistorySurfaceCard from '../components/HistorySurfaceCard';
 import {
     historyDashboardColors,
     historyDashboardSpacing,
 } from '../components/historyDashboardTokens';
 import { historyDashboardStyles } from '../components/historyDashboardStyles';
+import { useI18n } from '@/features/i18n';
 
 const HISTORY_CLIENT_STATE_REFRESH_DEBOUNCE_MS = 250;
 const HISTORY_MAP_REGION_SAVE_DEBOUNCE_MS = 250;
@@ -40,6 +42,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 export default function HistoryScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useI18n();
     const historyUserId = getHistoryUserId();
     const [syncedHistoryState, setSyncedHistoryState] = useState(() =>
         readHistoryStateSnapshot(historyUserId)
@@ -52,6 +55,7 @@ export default function HistoryScreen() {
         archiveData,
         countryChapters,
         initialRegion,
+        loading,
         refreshing,
         onRefresh,
         expandedCountries,
@@ -239,17 +243,41 @@ export default function HistoryScreen() {
                                         totalCount={visibleSelectableItemIds.length}
                                     />
                                 ) : null}
-                                <HistoryCountryChapters
-                                    chapters={countryChapters}
-                                    expandedCountries={expandedCountries}
-                                    isEditMode={ui.isEditMode}
-                                    matchesFilter={matchesFilter}
-                                    onDelete={deleteItem}
-                                    onEntryPress={handleOpenRecentEntry}
-                                    onToggleCountry={handleToggleCountry}
-                                    onToggleItem={ui.toggleSelectItem}
-                                    selectedItems={ui.selectedItems}
-                                />
+                                {loading && countryChapters.length === 0 ? (
+                                    <HistorySurfaceCard accentWashColor={historyDashboardColors.pearlMist}>
+                                        <View
+                                            style={{
+                                                alignItems: 'center',
+                                                gap: historyDashboardSpacing.sm,
+                                                paddingVertical: historyDashboardSpacing.lg,
+                                            }}
+                                        >
+                                            <ActivityIndicator color={historyDashboardColors.accentBlue} />
+                                            <Text
+                                                style={{
+                                                    color: historyDashboardColors.inkSoft,
+                                                    fontSize: 15,
+                                                    fontWeight: '700',
+                                                    lineHeight: 20,
+                                                }}
+                                            >
+                                                {t('history.loading.passport', 'Loading Passport...')}
+                                            </Text>
+                                        </View>
+                                    </HistorySurfaceCard>
+                                ) : (
+                                    <HistoryCountryChapters
+                                        chapters={countryChapters}
+                                        expandedCountries={expandedCountries}
+                                        isEditMode={ui.isEditMode}
+                                        matchesFilter={matchesFilter}
+                                        onDelete={deleteItem}
+                                        onEntryPress={handleOpenRecentEntry}
+                                        onToggleCountry={handleToggleCountry}
+                                        onToggleItem={ui.toggleSelectItem}
+                                        selectedItems={ui.selectedItems}
+                                    />
+                                )}
                             </View>
                         </ScrollView>
                     )}

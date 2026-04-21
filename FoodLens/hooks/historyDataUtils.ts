@@ -339,6 +339,71 @@ export const buildHistoryArchiveViewModel = (
   atlasSummary: buildHistoryAtlasSummary(records, archiveData, locale, t),
 });
 
+const normalizeLongitudeToPositive = (longitude: number): number => {
+  const normalizedLongitude = longitude % 360;
+
+  return normalizedLongitude >= 0 ? normalizedLongitude : normalizedLongitude + 360;
+};
+
+const normalizeLongitudeToSigned = (longitude: number): number =>
+  longitude > 180 ? longitude - 360 : longitude;
+
+const buildLongitudeRegion = (
+  longitudes: readonly number[]
+): {
+  longitude: number;
+  longitudeDelta: number;
+} => {
+  const normalizedLongitudes = longitudes
+    .map(normalizeLongitudeToPositive)
+    .sort((left, right) => left - right);
+
+  if (normalizedLongitudes.length === 1) {
+    return {
+      longitude: normalizeLongitudeToSigned(normalizedLongitudes[0]),
+      longitudeDelta: INITIAL_REGION_MIN_DELTA,
+    };
+  }
+
+  const wrappedLongitudes = [
+    ...normalizedLongitudes,
+    normalizedLongitudes[0] + 360,
+  ];
+  const largestGap = wrappedLongitudes
+    .slice(0, -1)
+    .reduce(
+      (currentLargestGap, currentLongitude, index) => {
+        const nextLongitude = wrappedLongitudes[index + 1];
+        const gap = nextLongitude - currentLongitude;
+
+        if (gap <= currentLargestGap.gap) {
+          return currentLargestGap;
+        }
+
+        return {
+          gap,
+          startIndex: (index + 1) % normalizedLongitudes.length,
+        };
+      },
+      { gap: -1, startIndex: 0 }
+    );
+  const startLongitude = normalizedLongitudes[largestGap.startIndex];
+  const endLongitude =
+    largestGap.startIndex === 0
+      ? normalizedLongitudes[normalizedLongitudes.length - 1]
+      : normalizedLongitudes[largestGap.startIndex - 1] + 360;
+  const longitudeSpan = endLongitude - startLongitude;
+  const centerLongitude = normalizeLongitudeToSigned((startLongitude + endLongitude) / 2);
+
+  return {
+    longitude: centerLongitude,
+    longitudeDelta: Math.min(
+      Math.max(longitudeSpan * INITIAL_REGION_PADDING_MULTIPLIER, INITIAL_REGION_MIN_DELTA),
+      INITIAL_REGION_MAX_LONGITUDE_DELTA
+    ),
+  };
+};
+
 export const buildInitialRegion = (records: AnalysisRecord[]) => {
   const validLocations = records
     .filter(hasValidLocation)
@@ -352,25 +417,21 @@ export const buildInitialRegion = (records: AnalysisRecord[]) => {
   }
 
   const latitudes = validLocations.map((location) => location.latitude);
-  const longitudes = validLocations.map((location) => location.longitude);
   const minLatitude = Math.min(...latitudes);
   const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
   const latitudeSpan = maxLatitude - minLatitude;
-  const longitudeSpan = maxLongitude - minLongitude;
+  const longitudeRegion = buildLongitudeRegion(
+    validLocations.map((location) => location.longitude)
+  );
 
   return {
     latitude: (minLatitude + maxLatitude) / 2,
-    longitude: (minLongitude + maxLongitude) / 2,
+    longitude: longitudeRegion.longitude,
     latitudeDelta: Math.min(
       Math.max(latitudeSpan * INITIAL_REGION_PADDING_MULTIPLIER, INITIAL_REGION_MIN_DELTA),
       INITIAL_REGION_MAX_LATITUDE_DELTA
     ),
-    longitudeDelta: Math.min(
-      Math.max(longitudeSpan * INITIAL_REGION_PADDING_MULTIPLIER, INITIAL_REGION_MIN_DELTA),
-      INITIAL_REGION_MAX_LONGITUDE_DELTA
-    ),
+    longitudeDelta: longitudeRegion.longitudeDelta,
   };
 };
 
