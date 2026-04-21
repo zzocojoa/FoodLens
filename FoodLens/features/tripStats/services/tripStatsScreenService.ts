@@ -1,54 +1,41 @@
-import { countSafeAnalysesFromStart, countSafeAnalysesTotal } from '../utils/tripStatsCalculations';
+import { TripStatsSnapshot, TripStatsStartTripResult } from '../types/tripStats.types';
+import { buildTripStatsScreenViewModel } from '../utils/tripStatsCalculations';
 import { tripStatsService } from './tripStatsService';
 
-export type TripStatsSnapshot = {
-  totalCount: number;
-  safeCount: number;
-  tripStartDate: Date | null;
-  currentLocation: string | null;
-};
-
 export const loadTripStatsSnapshot = async (userId: string): Promise<TripStatsSnapshot> => {
-  const { user, allAnalyses } = await tripStatsService.loadUserTripData(userId);
+    const { user, allAnalyses } = await tripStatsService.loadUserTripData(userId);
+    const rawTripStartDate = user?.currentTripStart ? new Date(user.currentTripStart) : null;
+    const tripStartDate = rawTripStartDate && !Number.isNaN(rawTripStartDate.getTime()) ? rawTripStartDate : null;
+    const currentLocation = tripStartDate ? user?.currentTripLocation || null : null;
 
-  const totalCount = allAnalyses.length;
-
-  if (user?.currentTripStart) {
-    const tripStartDate = new Date(user.currentTripStart);
-    const startTime = tripStartDate.getTime();
     return {
-      totalCount,
-      safeCount: countSafeAnalysesFromStart(allAnalyses, startTime),
-      tripStartDate,
-      currentLocation: user.currentTripLocation || null,
+        user,
+        analyses: allAnalyses,
+        tripStartDate,
+        currentLocation,
+        viewModel: buildTripStatsScreenViewModel(user, allAnalyses),
     };
-  }
-
-  return {
-    totalCount,
-    safeCount: countSafeAnalysesTotal(allAnalyses),
-    tripStartDate: null,
-    currentLocation: null,
-  };
 };
 
-export const startTripFromCurrentLocation = async (userId: string) => {
-  const locationResult = await tripStatsService.resolveCurrentLocation();
-  if (!locationResult.ok) {
-    return { ok: false as const, reason: 'permission_denied' as const };
-  }
+export const startTripFromCurrentLocation = async (
+    userId: string,
+): Promise<TripStatsStartTripResult> => {
+    const locationResult = await tripStatsService.resolveCurrentLocation();
+    if (!locationResult.ok) {
+        return { ok: false as const, reason: 'permission_denied' as const };
+    }
 
-  const now = new Date();
-  await tripStatsService.startTrip(
-    userId,
-    locationResult.locationName,
-    locationResult.coordinates,
-    now
-  );
+    const now = new Date();
+    await tripStatsService.startTrip(
+        userId,
+        locationResult.locationName,
+        locationResult.coordinates,
+        now,
+    );
 
-  return {
-    ok: true as const,
-    tripStartDate: now,
-    currentLocation: locationResult.locationName,
-  };
+    return {
+        ok: true as const,
+        tripStartDate: now,
+        currentLocation: locationResult.locationName,
+    };
 };

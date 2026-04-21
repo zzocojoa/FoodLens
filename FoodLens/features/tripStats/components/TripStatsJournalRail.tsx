@@ -1,0 +1,159 @@
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Clock3, MapPin, Navigation } from 'lucide-react-native';
+
+import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
+import {
+    tripStatsDashboardColors as colors,
+    tripStatsDashboardRadii as radii,
+    tripStatsDashboardSpacing as spacing,
+    tripStatsDashboardTypography as typography,
+} from './tripStatsDashboardTokens';
+import { tripStatsDashboardStyles } from './tripStatsDashboardStyles';
+import { formatCalendarDate } from '@/features/i18n';
+import { useI18n } from '@/features/i18n';
+
+export type TripStatsJournalRailProps = {
+    currentLocation: string | null;
+    isLocating: boolean;
+    loading: boolean;
+    tripStartDate: Date | null;
+};
+
+const resolveStatusLabel = (
+    loading: boolean,
+    isLocating: boolean,
+    tripStartDate: Date | null,
+    t: (key: string, fallback?: string) => string,
+): string => {
+    if (loading) {
+        return t('tripStats.rail.statusLoading', 'Syncing');
+    }
+
+    if (isLocating) {
+        return t('tripStats.rail.statusPending', 'Locating');
+    }
+
+    if (tripStartDate) {
+        return t('tripStats.rail.statusReady', 'Ready');
+    }
+
+    return t('tripStats.rail.statusIdle', 'Idle');
+};
+
+export default function TripStatsJournalRail({
+    currentLocation,
+    isLocating,
+    loading,
+    tripStartDate,
+}: TripStatsJournalRailProps): React.JSX.Element {
+    const { locale, t } = useI18n();
+    const locationLabel = currentLocation?.trim() || t('tripStats.hero.locationNotSet', 'Location not set');
+    const tripDateLabel = tripStartDate
+        ? formatCalendarDate(tripStartDate, locale, { month: 'short', day: 'numeric' })
+        : t('tripStats.rail.noTripDate', 'No start yet');
+    const scopeLabel = tripStartDate
+        ? t('tripStats.hero.currentTripLabel', 'This trip')
+        : t('tripStats.hero.allTimeLabel', 'Overall');
+
+    return (
+        <View style={[tripStatsDashboardStyles.railCard, styles.container]}>
+            <PearlSurfaceOverlay
+                accentWashColor={colors.pearlMist}
+                baseBottomColor="#FFF7EF"
+                baseTopColor={colors.pearlIvory}
+                coolWashColor={colors.pearlSage}
+                warmWashColor={colors.pearlPeach}
+            />
+
+                <View style={styles.content}>
+                    <View style={tripStatsDashboardStyles.railHeader}>
+                        <View style={tripStatsDashboardStyles.railCopy}>
+                            <Text style={tripStatsDashboardStyles.railTitle}>
+                                {t('tripStats.rail.title', 'Trip overview')}
+                            </Text>
+                            <Text style={tripStatsDashboardStyles.railSubtitle}>
+                                {t(
+                                    'tripStats.rail.subtitle',
+                                    'Location, date, and status at a glance.',
+                                )}
+                            </Text>
+                        </View>
+
+                    <View style={tripStatsDashboardStyles.pill}>
+                        <Text style={tripStatsDashboardStyles.pillText}>
+                            {resolveStatusLabel(loading, isLocating, tripStartDate, t)}
+                        </Text>
+                    </View>
+                </View>
+
+                <View style={styles.metaRow}>
+                    <MetaChip
+                        icon={<MapPin color={colors.accentBlue} size={14} />}
+                        label={locationLabel}
+                    />
+                    <MetaChip
+                        icon={<Clock3 color={colors.accentAmber} size={14} />}
+                        label={tripDateLabel}
+                    />
+                    <MetaChip
+                        icon={<Navigation color={colors.accentGreen} size={14} />}
+                        label={scopeLabel}
+                    />
+                </View>
+            </View>
+        </View>
+    );
+}
+
+type MetaChipProps = {
+    icon: React.ReactNode;
+    label: string;
+};
+
+const MetaChip = ({ icon, label }: MetaChipProps): React.JSX.Element => {
+    return (
+        <View style={styles.metaChip}>
+            {icon}
+            <Text numberOfLines={1} style={styles.metaChipText}>
+                {label}
+            </Text>
+        </View>
+    );
+};
+
+const styles = StyleSheet.create({
+    container: {
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    content: {
+        gap: spacing.md,
+        zIndex: 1,
+    },
+    metaRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.xs,
+    },
+    metaChip: {
+        alignItems: 'center',
+        backgroundColor: colors.surfaceMuted,
+        borderColor: colors.line,
+        borderCurve: 'continuous',
+        borderRadius: radii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: spacing.xs,
+        minHeight: 30,
+        paddingHorizontal: spacing.sm,
+    },
+    metaChipText: {
+        color: colors.inkSoft,
+        fontSize: typography.caption,
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        lineHeight: 14,
+        textTransform: 'uppercase',
+    },
+});

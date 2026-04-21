@@ -1,47 +1,197 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+
 import { getTripStatsUserId } from '../constants/tripStats.constants';
-import { loadTripStatsSnapshot, startTripFromCurrentLocation } from '../services/tripStatsScreenService';
-import { useTripStartToast } from './useTripStartToast';
+import {
+    loadTripStatsSnapshot,
+    startTripFromCurrentLocation,
+} from '../services/tripStatsScreenService';
+import { TripStatsSnapshot, TripStatsState } from '../types/tripStats.types';
+import { buildTripStatsScreenViewModel } from '../utils/tripStatsCalculations';
 import { useI18n } from '@/features/i18n';
+import { UserProfile } from '@/models/User';
+import { AnalysisRecord } from '@/services/analysis/types';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
-export function useTripStatsScreen(insetsTop: number) {
+type UseTripStatsScreenResult = TripStatsState & {
+    handleOpenHistory: () => void;
+    handleOpenJourneyEntry: (entryId: string) => void;
+    handleStartNewTrip: () => Promise<void>;
+    clearStartFeedback: () => void;
+};
+
+type Handlers = {
+    onOpenHistory: () => void;
+    onOpenJourneyEntry: (entryId: string) => void;
+};
+
+type TripStatsScreenState = TripStatsState & {
+    user: UserProfile | null;
+    analyses: readonly AnalysisRecord[];
+};
+
+const buildInitialState = (): TripStatsScreenState => {
+    return {
+        loading: true,
+        currentLocation: null,
+        isLocating: false,
+        tripStartDate: null,
+        viewModel: null,
+        startFeedbackLocation: null,
+        user: null,
+        analyses: [],
+    };
+};
+
+const buildStateFromSnapshot = (
+    snapshot: TripStatsSnapshot,
+    startFeedbackLocation: string | null,
+): TripStatsScreenState => {
+    return {
+        loading: false,
+        currentLocation: snapshot.currentLocation,
+        isLocating: false,
+        tripStartDate: snapshot.tripStartDate,
+        viewModel: snapshot.viewModel,
+        startFeedbackLocation,
+        user: snapshot.user,
+        analyses: snapshot.analyses,
+    };
+};
+
+const buildOptimisticTripStartState = (
+    currentState: TripStatsScreenState,
+    tripStartDate: Date,
+    currentLocation: string,
+): TripStatsScreenState => {
+    const nextUser = currentState.user === null
+        ? null
+        : {
+              ...currentState.user,
+              currentTripStart: tripStartDate.toISOString(),
+              currentTripLocation: currentLocation,
+          };
+
+    return {
+        ...currentState,
+        loading: false,
+        currentLocation,
+        isLocating: false,
+        tripStartDate,
+        viewModel: buildTripStatsScreenViewModel(nextUser, currentState.analyses),
+        startFeedbackLocation: currentLocation,
+        user: nextUser,
+    };
+};
+
+export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult {
     const { t } = useI18n();
-    const [loading, setLoading] = useState(true);
-    const [safeCount, setSafeCount] = useState(0);
-    const [totalCount, setTotalCount] = useState(0);
-    const [currentLocation, setCurrentLocation] = useState<string | null>(null);
-    const [isLocating, setIsLocating] = useState(false);
-    const [tripStartDate, setTripStartDate] = useState<Date | null>(null);
+    const loadRequestIdRef = useRef(0);
+    const isStartingTripRef = useRef(false);
+    const [state, setState] = useState<TripStatsScreenState>(buildInitialState);
 
-    const { showToast, toastOpacity, toastTranslate, triggerToast } = useTripStartToast(insetsTop);
+    const beginLoadRequest = useCallback((): number => {
+        loadRequestIdRef.current += 1;
+        return loadRequestIdRef.current;
+    }, []);
 
-    const loadData = useCallback(async () => {
+    const clearStartFeedback = useCallback(() => {
+        setState((currentState) => {
+            if (currentState.startFeedbackLocation === null) {
+                return currentState;
+            }
+
+            return {
+                ...currentState,
+                startFeedbackLocation: null,
+            };
+        });
+    }, []);
+
+    const loadData = useCallback(async (startFeedbackLocation: string | null) => {
+        const requestId = beginLoadRequest();
+
         try {
-            setLoading(true);
+            setState((currentState) => ({
+                ...currentState,
+                loading: true,
+            }));
+
             const snapshot = await loadTripStatsSnapshot(getTripStatsUserId());
-            setTotalCount(snapshot.totalCount);
-            setSafeCount(snapshot.safeCount);
-            setTripStartDate(snapshot.tripStartDate);
-            setCurrentLocation(snapshot.currentLocation);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+            if (requestId !== loadRequestIdRef.current) {
+                return;
+            }
+
+            setState(buildStateFromSnapshot(snapshot, startFeedbackLocation));
+        } catch (error) {
+            console.error(error);
+            if (requestId !== loadRequestIdRef.current) {
+                return;
+            }
+
+            setState((currentState) => ({
+                ...currentState,
+                loading: false,
+                isLocating: false,
+                startFeedbackLocation,
+            }));
+        }
+    }, [beginLoadRequest]);
+
+    const refreshDataInBackground = useCallback(async (requestId: number) => {
+        try {
+            const snapshot = await loadTripStatsSnapshot(getTripStatsUserId());
+            if (requestId !== loadRequestIdRef.current) {
+                return;
+            }
+
+            setState((currentState) => ({
+                ...currentState,
+                loading: false,
+                currentLocation: snapshot.currentLocation,
+                isLocating: false,
+                tripStartDate: snapshot.tripStartDate,
+                viewModel: snapshot.viewModel,
+                user: snapshot.user,
+                analyses: snapshot.analyses,
+            }));
+        } catch (error) {
+            console.error(error);
+            if (requestId !== loadRequestIdRef.current) {
+                return;
+            }
+
+            setState((currentState) => ({
+                ...currentState,
+                loading: false,
+                isLocating: false,
+            }));
         }
     }, []);
 
     useFocusEffect(
         useCallback(() => {
-            void loadData();
-        }, [loadData])
+            void loadData(null);
+        }, [loadData]),
     );
 
     const handleStartNewTrip = useCallback(async () => {
-        setIsLocating(true);
+        if (isStartingTripRef.current) {
+            return;
+        }
+
+        isStartingTripRef.current = true;
+        const requestId = beginLoadRequest();
+
+        setState((currentState) => ({
+            ...currentState,
+            isLocating: true,
+            startFeedbackLocation: null,
+        }));
+
         try {
             const result = await startTripFromCurrentLocation(getTripStatsUserId());
+
             if (!result.ok) {
                 showTranslatedAlert(t, {
                     titleKey: 'tripStats.alert.permissionDeniedTitle',
@@ -49,37 +199,45 @@ export function useTripStatsScreen(insetsTop: number) {
                     messageKey: 'tripStats.alert.permissionDeniedMessage',
                     messageFallback: 'Location access is needed to tag your trip. Please enable it in settings.',
                 });
-                setIsLocating(false);
+
+                setState((currentState) => ({
+                    ...currentState,
+                    isLocating: false,
+                    startFeedbackLocation: null,
+                }));
                 return;
             }
 
-            setTripStartDate(result.tripStartDate);
-            setSafeCount(0);
-            setCurrentLocation(result.currentLocation);
-            triggerToast();
-        } catch (e) {
-            console.error(e);
+            setState((currentState) =>
+                buildOptimisticTripStartState(currentState, result.tripStartDate, result.currentLocation),
+            );
+
+            void refreshDataInBackground(requestId);
+        } catch (error) {
+            console.error(error);
             showTranslatedAlert(t, {
                 titleKey: 'camera.alert.errorTitle',
                 titleFallback: 'Error',
                 messageKey: 'tripStats.alert.failedToGetLocation',
                 messageFallback: 'Failed to get location. Please try again.',
             });
+            setState((currentState) => ({
+                ...currentState,
+                isLocating: false,
+                startFeedbackLocation: null,
+            }));
         } finally {
-            setIsLocating(false);
+            isStartingTripRef.current = false;
         }
-    }, [triggerToast, t]);
+    }, [beginLoadRequest, refreshDataInBackground, t]);
 
-    return {
-        loading,
-        safeCount,
-        totalCount,
-        currentLocation,
-        isLocating,
-        tripStartDate,
-        showToast,
-        toastOpacity,
-        toastTranslate,
-        handleStartNewTrip,
-    };
+    return useMemo(() => {
+        return {
+            ...state,
+            handleOpenHistory: handlers.onOpenHistory,
+            handleOpenJourneyEntry: handlers.onOpenJourneyEntry,
+            handleStartNewTrip,
+            clearStartFeedback,
+        };
+    }, [clearStartFeedback, handlers.onOpenHistory, handlers.onOpenJourneyEntry, handleStartNewTrip, state]);
 }

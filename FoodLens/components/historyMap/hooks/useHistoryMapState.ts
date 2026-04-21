@@ -22,6 +22,13 @@ export const useHistoryMapState = ({
     onReady,
     onRegionChange,
 }: Pick<HistoryMapProps, 'data' | 'initialRegion' | 'onReady' | 'onRegionChange'>) => {
+    const resolveNextClusterDelta = useCallback((value: number): number => {
+        if (!Number.isFinite(value) || value <= 0) {
+            return 0.6;
+        }
+
+        return Math.max(Math.min(value * 0.5, 8), 0.01);
+    }, []);
     const mapRef = useRef<MapView>(null);
     const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastRegionKeyRef = useRef<string | null>(null);
@@ -146,20 +153,23 @@ export const useHistoryMapState = ({
     const handleClusterPress = useCallback(
         (cluster: ClusterFeature) => {
             const [lng, lat] = cluster.geometry.coordinates;
-            const nextLatitudeDelta = Math.max(activeRegion.latitudeDelta * 0.5, 0.01);
-            const nextLongitudeDelta = Math.max(activeRegion.longitudeDelta * 0.5, 0.01);
+            const nextRegion: Region = {
+                latitude: lat,
+                longitude: lng,
+                latitudeDelta: resolveNextClusterDelta(activeRegion.latitudeDelta),
+                longitudeDelta: resolveNextClusterDelta(activeRegion.longitudeDelta),
+            };
+            const nextRegionKey = buildRegionKey(nextRegion);
+
+            activeRegionKeyRef.current = nextRegionKey;
+            setActiveRegion(nextRegion);
 
             mapRef.current?.animateToRegion(
-                {
-                    latitude: lat,
-                    longitude: lng,
-                    latitudeDelta: nextLatitudeDelta,
-                    longitudeDelta: nextLongitudeDelta,
-                },
+                nextRegion,
                 250
             );
         },
-        [activeRegion.latitudeDelta, activeRegion.longitudeDelta]
+        [activeRegion.latitudeDelta, activeRegion.longitudeDelta, resolveNextClusterDelta]
     );
 
     const handleMapReady = useCallback(() => {

@@ -81,6 +81,32 @@ describe('useHistoryScreen', () => {
     expect(onArchiveModeChange).toHaveBeenCalledWith('map');
   });
 
+  it('closes edit mode when switching to the map view', () => {
+    const onArchiveModeChange = jest.fn();
+    const { result } = renderHook(() =>
+      useHistoryScreen({
+        deleteMultipleItems: async () => undefined,
+        initialArchiveMode: 'list',
+        initialMapRegion: null,
+        onArchiveModeChange,
+      })
+    );
+
+    act(() => {
+      result.current.toggleEditMode();
+    });
+
+    expect(result.current.isEditMode).toBe(true);
+
+    act(() => {
+      result.current.handleSwitchMode('map');
+    });
+
+    expect(result.current.archiveMode).toBe('map');
+    expect(result.current.isEditMode).toBe(false);
+    expect(onArchiveModeChange).toHaveBeenCalledWith('map');
+  });
+
   it('keeps selected items in local screen state only', () => {
     const onArchiveModeChange = jest.fn();
     const { result } = renderHook(() =>

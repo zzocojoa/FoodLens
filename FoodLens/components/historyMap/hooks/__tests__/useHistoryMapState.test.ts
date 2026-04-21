@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as Location from 'expo-location';
 import { dispatchPhase2SyncQueue, enqueuePhase2Sync } from '@/services/sync/phase2SyncQueue';
 import { updateUserClientState } from '@/services/user/clientStateService';
@@ -6,6 +6,8 @@ import type { ClusterOrPoint, MapMarker } from '../../types';
 import { useHistoryMapState } from '../useHistoryMapState';
 
 const mockUseHistoryMapDerivedData = jest.fn();
+const mockAnimateToRegion = jest.fn();
+const mockFitToCoordinates = jest.fn();
 
 jest.mock('../useHistoryMapDerivedData', () => ({
   useHistoryMapDerivedData: (...args: unknown[]) => mockUseHistoryMapDerivedData(...args),
@@ -40,7 +42,14 @@ jest.mock('../../utils/historyMapUtils', () => ({
 
 jest.mock('react-native-maps', () => {
   const mockReact = jest.requireActual('react') as typeof import('react');
-  const MapView = mockReact.forwardRef(() => null);
+  const MapView = mockReact.forwardRef((_props, ref) => {
+    mockReact.useImperativeHandle(ref, () => ({
+      animateToRegion: mockAnimateToRegion,
+      fitToCoordinates: mockFitToCoordinates,
+    }));
+
+    return null;
+  });
   MapView.displayName = 'MockMapView';
   return {
     __esModule: true,
@@ -143,5 +152,48 @@ describe('useHistoryMapState', () => {
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockedUpdateUserClientState).not.toHaveBeenCalled();
+  });
+
+  it('clamps the first cluster zoom away from the oversized initial delta', () => {
+    const { result } = renderHook(() =>
+      useHistoryMapState({
+        data: [],
+        initialRegion: null,
+        onReady: undefined,
+        onRegionChange: undefined,
+      })
+    );
+
+    Object.assign(result.current.mapRef, {
+      current: {
+        animateToRegion: mockAnimateToRegion,
+      },
+    });
+
+    act(() => {
+      result.current.handleClusterPress({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [126.978, 37.5665],
+        },
+        properties: {
+          cluster: true,
+          cluster_id: 7,
+          point_count: 7,
+          point_count_abbreviated: '7',
+        },
+      });
+    });
+
+    expect(mockAnimateToRegion).toHaveBeenCalledWith(
+      {
+        latitude: 37.5665,
+        longitude: 126.978,
+        latitudeDelta: 8,
+        longitudeDelta: 8,
+      },
+      250
+    );
   });
 });

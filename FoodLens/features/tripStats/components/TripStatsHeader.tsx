@@ -24,7 +24,7 @@ export default function TripStatsHeader({ theme, onBack }: TripStatsHeaderProps)
                 </View>
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
-                {t('tripStats.header.title', 'Trip Statistics')}
+                {t('tripStats.nav.title', 'Trip Statistics')}
             </Text>
             <View style={{ width: 40 }} />
         </View>

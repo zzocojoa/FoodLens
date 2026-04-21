@@ -1,73 +1,232 @@
+import { StatusBar } from 'expo-status-bar';
+import { Stack, useRouter } from 'expo-router';
 import React from 'react';
-import { ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import TripStatsHeader from '../components/TripStatsHeader';
-import TripStatsMainCard from '../components/TripStatsMainCard';
-import TripStatsToast from '../components/TripStatsToast';
-import TripStatsTripCard from '../components/TripStatsTripCard';
-import { useTripStatsScreen } from '../hooks/useTripStatsScreen';
-import { tripStatsStyles as styles } from '../styles/tripStatsStyles';
+import { ArrowLeft } from 'lucide-react-native';
 
-export default function TripStatsScreen() {
+import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
+import TripStatsJournalRail from '../components/TripStatsJournalRail';
+import TripStatsPassportTotals from '../components/TripStatsPassportTotals';
+import TripStatsToast from '../components/TripStatsToast';
+import {
+    tripStatsDashboardColors as colors,
+    tripStatsDashboardSpacing as spacing,
+    tripStatsDashboardTypography as typography,
+} from '../components/tripStatsDashboardTokens';
+import { tripStatsDashboardStyles } from '../components/tripStatsDashboardStyles';
+import { useTripStatsScreen } from '../hooks/useTripStatsScreen';
+import { useI18n } from '@/features/i18n';
+
+export default function TripStatsScreen(): React.JSX.Element {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const colorScheme = useColorScheme() ?? 'light';
-    const theme = Colors[colorScheme];
-
+    const { t } = useI18n();
+    const handleIgnoredJourneyEntry = React.useCallback((_entryId: string): void => {}, []);
     const {
-        loading,
-        safeCount,
-        totalCount,
         currentLocation,
-        isLocating,
-        tripStartDate,
-        showToast,
-        toastOpacity,
-        toastTranslate,
+        clearStartFeedback,
+        handleOpenHistory,
         handleStartNewTrip,
-    } = useTripStatsScreen(insets.top);
+        isLocating,
+        loading,
+        startFeedbackLocation,
+        tripStartDate,
+        viewModel,
+    } = useTripStatsScreen({
+        onOpenHistory: () => {
+            router.push('/history');
+        },
+        onOpenJourneyEntry: handleIgnoredJourneyEntry,
+    });
+
+    const passportTotals = viewModel?.passportTotals ?? {
+        totalAnalyses: 0,
+        safeCount: 0,
+        cautionCount: 0,
+        dangerCount: 0,
+        currentTripCount: 0,
+        currentTripSafeCount: 0,
+        currentTripCautionCount: 0,
+        currentTripDangerCount: 0,
+        countriesVisitedCount: 0,
+        citiesVisitedCount: 0,
+    };
+    const contentPaddingBottom = Math.max(insets.bottom + 40, 48);
+    const headerSubtitle = t('tripStats.header.subtitle', 'Safety snapshot');
+    const isActionDisabled = loading || isLocating;
+    const primaryActionLabel = isLocating
+        ? t('tripStats.hero.verifyingLocation', 'Verifying location...')
+        : t('tripStats.action.primary', 'Start trip');
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <View style={styles.backgroundContainer} />
-
-            <SafeAreaView style={{ flex: 1 }}>
+        <View style={tripStatsDashboardStyles.screenBackground}>
+            <Stack.Screen options={{ headerShown: false }} />
+            <HomeBackgroundAtmosphere />
+            <SafeAreaView style={styles.safeArea} edges={['top']}>
+                <StatusBar style="dark" />
                 <ScrollView
-                    contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 24, paddingTop: 16 }}
+                    contentContainerStyle={[
+                        tripStatsDashboardStyles.scrollContent,
+                        { paddingBottom: contentPaddingBottom },
+                    ]}
                     showsVerticalScrollIndicator={false}
                 >
-                    <TripStatsHeader theme={theme} onBack={() => router.back()} />
+                    <View style={styles.navRow}>
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => router.back()}
+                            style={({ pressed }) => [
+                                styles.navButton,
+                                pressed ? styles.navButtonPressed : null,
+                            ]}
+                        >
+                            <ArrowLeft color={colors.ink} size={18} />
+                        </Pressable>
 
-                    <TripStatsMainCard
-                        loading={loading}
-                        safeCount={safeCount}
-                        totalCount={totalCount}
-                        tripStartDate={tripStartDate}
-                        colorScheme={colorScheme}
-                        theme={theme}
-                        onPressGlobalRecord={() => router.push('/history')}
-                    />
+                        <View style={styles.navCopy}>
+                            <Text style={styles.navTitle}>
+                                {t('tripStats.header.title', 'Trip Statistics')}
+                            </Text>
+                            <Text style={styles.navSubtitle}>{headerSubtitle}</Text>
+                        </View>
+                    </View>
 
-                    <TripStatsTripCard
+                    <TripStatsJournalRail
                         currentLocation={currentLocation}
                         isLocating={isLocating}
-                        colorScheme={colorScheme}
-                        theme={theme}
-                        onStartNewTrip={handleStartNewTrip}
+                        loading={loading}
+                        tripStartDate={tripStartDate}
                     />
 
-                    <TripStatsToast
-                        visible={showToast}
-                        currentLocation={currentLocation}
-                        colorScheme={colorScheme}
-                        toastOpacity={toastOpacity}
-                        toastTranslate={toastTranslate}
-                    />
+                    <TripStatsPassportTotals totals={passportTotals} />
+
+                    <View style={styles.actionRow}>
+                        <Pressable
+                            accessibilityRole="button"
+                            disabled={isActionDisabled}
+                            onPress={handleStartNewTrip}
+                            style={({ pressed }) => [
+                                styles.primaryAction,
+                                pressed && !isActionDisabled ? styles.actionPressed : null,
+                                isActionDisabled ? styles.actionDisabled : null,
+                            ]}
+                        >
+                            <Text style={styles.primaryActionText}>{primaryActionLabel}</Text>
+                        </Pressable>
+
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={handleOpenHistory}
+                            style={({ pressed }) => [
+                                styles.secondaryAction,
+                                pressed ? styles.actionPressed : null,
+                            ]}
+                        >
+                            <Text style={styles.secondaryActionText}>
+                                {t('tripStats.action.secondary', 'View history')}
+                            </Text>
+                        </Pressable>
+                    </View>
                 </ScrollView>
+                <TripStatsToast
+                    currentLocation={startFeedbackLocation}
+                    insetsTop={insets.top}
+                    onHidden={clearStartFeedback}
+                />
             </SafeAreaView>
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+    },
+    navRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing.sm,
+        justifyContent: 'space-between',
+    },
+    navButton: {
+        alignItems: 'center',
+        backgroundColor: colors.surfaceStrong,
+        borderColor: colors.line,
+        borderCurve: 'continuous',
+        borderRadius: 18,
+        borderWidth: 1,
+        height: 40,
+        justifyContent: 'center',
+        width: 40,
+    },
+    navButtonPressed: {
+        opacity: 0.84,
+        transform: [{ scale: 0.97 }],
+    },
+    navCopy: {
+        flex: 1,
+        gap: 2,
+        minWidth: 0,
+    },
+    navTitle: {
+        color: colors.ink,
+        fontSize: typography.bodyStrong,
+        fontWeight: '800',
+        lineHeight: 18,
+    },
+    navSubtitle: {
+        color: colors.inkSoft,
+        fontSize: typography.caption,
+        lineHeight: 16,
+        textTransform: 'uppercase',
+        letterSpacing: 0.7,
+    },
+    actionRow: {
+        flexDirection: 'row',
+        gap: spacing.sm,
+    },
+    primaryAction: {
+        alignItems: 'center',
+        backgroundColor: colors.accentBlue,
+        borderColor: colors.accentBlue,
+        borderCurve: 'continuous',
+        borderRadius: 18,
+        borderWidth: 1,
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 48,
+        paddingHorizontal: spacing.md,
+    },
+    secondaryAction: {
+        alignItems: 'center',
+        backgroundColor: colors.surfaceStrong,
+        borderColor: colors.line,
+        borderCurve: 'continuous',
+        borderRadius: 18,
+        borderWidth: 1,
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 48,
+        paddingHorizontal: spacing.md,
+    },
+    primaryActionText: {
+        color: colors.white,
+        fontSize: typography.bodyStrong,
+        fontWeight: '700',
+        lineHeight: 18,
+    },
+    secondaryActionText: {
+        color: colors.ink,
+        fontSize: typography.bodyStrong,
+        fontWeight: '700',
+        lineHeight: 18,
+    },
+    actionPressed: {
+        opacity: 0.84,
+        transform: [{ scale: 0.98 }],
+    },
+    actionDisabled: {
+        opacity: 0.56,
+    },
+});

@@ -1,22 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, LayoutAnimation, Platform, UIManager, Text } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useRouter, Stack } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import HistoryMap from '@/components/HistoryMap';
-import HistoryList from '@/components/HistoryList';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
 import { getHistoryUserId } from '../constants/history.constants';
 import { useHistoryScreen } from '../hooks/useHistoryScreen';
-import { historyStyles as styles } from '../styles/historyStyles';
 import { toggleCountryExpanded } from '../utils/historySelection';
-import HistoryHeader from '../components/HistoryHeader';
 import TopLevelScreenShell from '@/components/navigation/TopLevelScreenShell';
-import { useI18n } from '@/features/i18n';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
+import { navigateToResultFromHistory } from '@/components/historyList/services/historyNavigationService';
 import {
     buildHistoryFilterPatch,
     buildHistoryMapRegionPatch,
@@ -24,6 +18,19 @@ import {
     readHistoryStateSnapshot,
     updateUserClientState,
 } from '@/services/user/clientStateService';
+import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
+import HistoryAtlasPanel from '../components/HistoryAtlasPanel';
+import HistoryCountryChapters from '../components/HistoryCountryChapters';
+import HistoryFilterRail from '../components/HistoryFilterRail';
+import HistoryJournalRail from '../components/HistoryJournalRail';
+import HistorySelectionUtilityBar from '../components/HistorySelectionUtilityBar';
+import HistorySurfaceCard from '../components/HistorySurfaceCard';
+import {
+    historyDashboardColors,
+    historyDashboardSpacing,
+} from '../components/historyDashboardTokens';
+import { historyDashboardStyles } from '../components/historyDashboardStyles';
+import { useI18n } from '@/features/i18n';
 
 const HISTORY_CLIENT_STATE_REFRESH_DEBOUNCE_MS = 250;
 const HISTORY_MAP_REGION_SAVE_DEBOUNCE_MS = 250;
@@ -34,9 +41,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function HistoryScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { t } = useI18n();
-    const colorScheme = useColorScheme() ?? 'light';
-    const theme = Colors[colorScheme];
     const historyUserId = getHistoryUserId();
     const [syncedHistoryState, setSyncedHistoryState] = useState(() =>
         readHistoryStateSnapshot(historyUserId)
@@ -47,8 +53,9 @@ export default function HistoryScreen() {
 
     const {
         archiveData,
-        loading,
+        countryChapters,
         initialRegion,
+        loading,
         refreshing,
         onRefresh,
         expandedCountries,
@@ -57,7 +64,7 @@ export default function HistoryScreen() {
         deleteMultipleItems,
     } = useHistoryData(historyUserId);
 
-    const { archiveFilter, setArchiveFilter, matchesFilter, isAllowedItemType } = useHistoryFilter({
+    const { archiveFilter, setArchiveFilter, matchesFilter } = useHistoryFilter({
         initialFilter: syncedHistoryState.filter,
         onFilterChange: (nextFilter) => {
             void updateUserClientState(historyUserId, buildHistoryFilterPatch(nextFilter)).catch(() => undefined);
@@ -96,6 +103,19 @@ export default function HistoryScreen() {
     const hasAndroidGoogleMapsApiKey =
         (process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] ?? '').trim().length > 0;
     const canRenderNativeMap = Platform.OS !== 'android' || hasAndroidGoogleMapsApiKey;
+    const visibleSelectableItemIds = useMemo(() => {
+        const visibleIds = countryChapters.flatMap((chapter) =>
+            expandedCountries.has(chapter.id)
+                ? chapter.countryData.regions.flatMap((region) =>
+                      region.items
+                          .filter((item) => matchesFilter(item.type))
+                          .map((item) => item.id)
+                  )
+                : []
+        );
+
+        return Array.from(new Set(visibleIds));
+    }, [countryChapters, expandedCountries, matchesFilter]);
 
     const handleToggleCountry = useCallback((countryName: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -137,66 +157,129 @@ export default function HistoryScreen() {
         };
     }, [historyUserId]);
 
+    const handleOpenRecentEntry = useCallback((entry: { record: Parameters<typeof navigateToResultFromHistory>[1] }) => {
+        navigateToResultFromHistory(router, entry.record);
+    }, [router]);
+
+    const handleSelectAllVisible = useCallback(() => {
+        ui.replaceSelection(new Set(visibleSelectableItemIds));
+    }, [ui, visibleSelectableItemIds]);
+
+    const handleClearSelection = useCallback(() => {
+        ui.replaceSelection(new Set());
+    }, [ui]);
+
+    const scrollContentBottomPadding = ui.isEditMode
+        ? Math.max(insets.bottom + 24, 36)
+        : Math.max(insets.bottom + 92, 112);
+    const atlasBottomInset = Math.max(insets.bottom + 92, 112);
+
     return (
         <TopLevelScreenShell
             activeItem="history"
-            backgroundColor={theme.background}
+            backgroundColor={historyDashboardColors.paper}
             hideNav={ui.isEditMode}
         >
-            <View style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={historyDashboardStyles.screenBackground}>
                 <Stack.Screen options={{ headerShown: false }} />
+                <HomeBackgroundAtmosphere />
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-                    <HistoryHeader
-                        title={t('history.header.title', 'Food Passport')}
-                        theme={theme}
-                        archiveMode={ui.archiveMode}
-                        isEditMode={ui.isEditMode}
-                        isMapModeAvailable={ui.isMapModeAvailable}
-                        onBack={() => router.back()}
-                        onSwitchMode={ui.handleSwitchMode}
-                        onToggleEdit={ui.toggleEditMode}
-                    />
-
                     {ui.archiveMode === 'map' ? (
-                        canRenderNativeMap ? (
-                            <HistoryMap
-                                data={archiveData}
-                                initialRegion={ui.savedMapRegion ?? ui.savedMapRegionRef.current ?? initialRegion}
-                                onMarkerPress={handleMarkerPress}
-                                onRegionChange={handleRegionChange}
-                            />
-                        ) : (
-                            <View style={[styles.mapUnavailableContainer, { backgroundColor: theme.background }]}>
-                                <Text style={[styles.mapUnavailableTitle, { color: theme.textPrimary }]}>
-                                    {t('history.map.unavailableTitle', 'Map unavailable')}
-                                </Text>
-                                <Text style={[styles.mapUnavailableDescription, { color: theme.textSecondary }]}>
-                                    {t(
-                                        'history.map.unavailableMessage',
-                                        'Map mode is unavailable on this Android build. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild.'
-                                    )}
-                                </Text>
+                        <View style={historyDashboardStyles.atlasScreenContent}>
+                            <View style={historyDashboardStyles.atlasRailInset}>
+                                <HistoryJournalRail
+                                    archiveMode={ui.archiveMode}
+                                    isEditMode={ui.isEditMode}
+                                    isMapModeAvailable={ui.isMapModeAvailable}
+                                    onBack={() => router.back()}
+                                    onSwitchMode={ui.handleSwitchMode}
+                                    onToggleEdit={ui.toggleEditMode}
+                                />
                             </View>
-                        )
+                            <View
+                                style={[
+                                    historyDashboardStyles.atlasStage,
+                                    { paddingBottom: atlasBottomInset },
+                                ]}
+                            >
+                                <HistoryAtlasPanel
+                                    canRenderNativeMap={canRenderNativeMap}
+                                    data={archiveData}
+                                    initialRegion={ui.savedMapRegion ?? ui.savedMapRegionRef.current ?? initialRegion}
+                                    onMarkerPress={handleMarkerPress}
+                                    onRegionChange={handleRegionChange}
+                                />
+                            </View>
+                        </View>
                     ) : (
-                        <HistoryList
-                            data={archiveData}
-                            loading={loading}
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            filter={archiveFilter}
-                            setFilter={setArchiveFilter}
-                            matchesFilter={matchesFilter}
-                            isAllowedItemType={isAllowedItemType}
-                            expandedCountries={expandedCountries}
-                            onToggleCountry={handleToggleCountry}
-                            isEditMode={ui.isEditMode}
-                            selectedItems={ui.selectedItems}
-                            onReplaceSelection={ui.replaceSelection}
-                            onToggleItem={ui.toggleSelectItem}
-                            onDelete={(id) => deleteItem(id)}
-                            onBulkDelete={ui.handleBulkDelete}
-                        />
+                        <ScrollView
+                            contentContainerStyle={[
+                                historyDashboardStyles.scrollContent,
+                                { paddingBottom: scrollContentBottomPadding },
+                            ]}
+                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            <HistoryJournalRail
+                                archiveMode={ui.archiveMode}
+                                isEditMode={ui.isEditMode}
+                                isMapModeAvailable={ui.isMapModeAvailable}
+                                onBack={() => router.back()}
+                                onSwitchMode={ui.handleSwitchMode}
+                                onToggleEdit={ui.toggleEditMode}
+                            />
+
+                            <View style={{ gap: historyDashboardSpacing.sm }}>
+                                <HistoryFilterRail
+                                    filter={archiveFilter}
+                                    onChange={setArchiveFilter}
+                                />
+                                {ui.isEditMode ? (
+                                    <HistorySelectionUtilityBar
+                                        onClearSelection={handleClearSelection}
+                                        onDeleteSelection={ui.handleBulkDelete}
+                                        onSelectAll={handleSelectAllVisible}
+                                        selectedCount={ui.selectedItems.size}
+                                        totalCount={visibleSelectableItemIds.length}
+                                    />
+                                ) : null}
+                                {loading && countryChapters.length === 0 ? (
+                                    <HistorySurfaceCard accentWashColor={historyDashboardColors.pearlMist}>
+                                        <View
+                                            style={{
+                                                alignItems: 'center',
+                                                gap: historyDashboardSpacing.sm,
+                                                paddingVertical: historyDashboardSpacing.lg,
+                                            }}
+                                        >
+                                            <ActivityIndicator color={historyDashboardColors.accentBlue} />
+                                            <Text
+                                                style={{
+                                                    color: historyDashboardColors.inkSoft,
+                                                    fontSize: 15,
+                                                    fontWeight: '700',
+                                                    lineHeight: 20,
+                                                }}
+                                            >
+                                                {t('history.loading.passport', 'Loading Passport...')}
+                                            </Text>
+                                        </View>
+                                    </HistorySurfaceCard>
+                                ) : (
+                                    <HistoryCountryChapters
+                                        chapters={countryChapters}
+                                        expandedCountries={expandedCountries}
+                                        isEditMode={ui.isEditMode}
+                                        matchesFilter={matchesFilter}
+                                        onDelete={deleteItem}
+                                        onEntryPress={handleOpenRecentEntry}
+                                        onToggleCountry={handleToggleCountry}
+                                        onToggleItem={ui.toggleSelectItem}
+                                        selectedItems={ui.selectedItems}
+                                    />
+                                )}
+                            </View>
+                        </ScrollView>
                     )}
                 </SafeAreaView>
             </View>

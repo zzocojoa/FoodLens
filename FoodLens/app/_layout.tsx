@@ -25,7 +25,7 @@ import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/Them
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initSentry, setUser } from '../services/sentry';
 import {
-  isAndroidTopLevelRoute,
+  shouldUseAndroidExitFlow,
   shouldExitOnSecondBack,
 } from '../components/navigation/androidTopLevelNavigation';
 import { TOP_LEVEL_NAV_ROUTES } from '../components/navigation/topLevelNavRegistry';
@@ -206,7 +206,12 @@ function LayoutContent() {
     lastAndroidBackPressAtRef.current = 0;
 
     const onBackPress = () => {
-      if (!isAndroidTopLevelRoute(pathname)) {
+      if (appRouter.canGoBack()) {
+        appRouter.back();
+        return true;
+      }
+
+      if (!shouldUseAndroidExitFlow(pathname, false)) {
         return false;
       }
 

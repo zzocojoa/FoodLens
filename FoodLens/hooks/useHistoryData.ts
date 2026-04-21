@@ -5,8 +5,8 @@ import { useDeleteAnalysisMutation } from './mutations/useAnalysisMutations';
 import { useI18n } from '@/features/i18n';
 import {
     aggregateHistoryByCountry,
+    buildHistoryArchiveViewModel,
     buildInitialRegion,
-    removeItemsFromArchive,
 } from './historyDataUtils';
 
 export const useHistoryData = (userId: string) => {
@@ -26,17 +26,20 @@ export const useHistoryData = (userId: string) => {
     const archiveData = useMemo(() => {
         return aggregateHistoryByCountry(records, locale, t);
     }, [records, locale, t]);
+    const archiveViewModel = useMemo(() => {
+        return buildHistoryArchiveViewModel(records, archiveData, locale, t);
+    }, [archiveData, locale, records, t]);
 
     useEffect(() => {
         // Expand the first country only once on initial load.
         // Users should still be able to collapse all folders afterward.
         if (hasAutoExpandedInitialCountryRef.current) return;
-        if (archiveData.length === 0) return;
+        if (archiveViewModel.countryChapters.length === 0) return;
         if (expandedCountries.size > 0) return;
 
-        setExpandedCountries(new Set([`${archiveData[0].country}-0`]));
+        setExpandedCountries(new Set([archiveViewModel.countryChapters[0].id]));
         hasAutoExpandedInitialCountryRef.current = true;
-    }, [archiveData, expandedCountries.size]);
+    }, [archiveViewModel.countryChapters, expandedCountries.size]);
 
     const initialRegion = useMemo(() => buildInitialRegion(records), [records]);
 
@@ -55,9 +58,14 @@ export const useHistoryData = (userId: string) => {
 
     return {
         archiveData,
+        atlasSummary: archiveViewModel.atlasSummary,
+        countryChapters: archiveViewModel.countryChapters,
+        journalSummary: archiveViewModel.journalSummary,
         loading,
         initialRegion,
         refreshing,
+        recentEntries: archiveViewModel.recentEntries,
+        records,
         onRefresh,
         loadHistory: refetch,
         expandedCountries,

@@ -5,16 +5,16 @@ import HistoryMapMarkers from './historyMap/components/HistoryMapMarkers';
 import HistoryMapOverlay from './historyMap/components/HistoryMapOverlay';
 import HistoryMapStatusLayers from './historyMap/components/HistoryMapStatusLayers';
 import { useHistoryMapState } from './historyMap/hooks/useHistoryMapState';
-import { historyMapStyles as styles } from './historyMap/styles';
 import { HistoryMapProps } from './historyMap/types';
 import { resolveInitialRegion } from './historyMap/utils/historyMapView';
+import { historyMapStyles as styles } from './historyMap/styles';
 
 const MAP_MAX_ZOOM = 20;
 const MAP_MIN_ZOOM = 1;
 
 export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
     const resolvedInitialRegion = resolveInitialRegion(initialRegion);
-
+    const totalRecordCount = data.reduce((sum, country) => sum + country.total, 0);
     const {
         mapRef,
         mapReloadKey,
@@ -73,6 +73,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 isMapReady={isMapReady}
                 countryCount={data.length}
                 favoriteCountry={favoriteCountry}
+                totalRecordCount={totalRecordCount}
                 toastMessage={toastMessage}
             />
         </View>
