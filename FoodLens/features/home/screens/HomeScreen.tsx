@@ -302,7 +302,7 @@ export default function HomeScreen() {
               historyTitle={t('bottomNav.history', 'History')}
               historyValue={quickActionCopy.historyValue}
               tripStatsDescription={quickActionCopy.tripStatsDescription}
-              tripStatsTitle={t('tripStats.header.title', 'Trip Statistics')}
+              tripStatsTitle={t('home.quickActions.tripStatsTitle', 'Trip Stats')}
               tripStatsValue={quickActionCopy.tripStatsValue}
               onOpenAllergies={handleOpenAllergies}
               onOpenHistory={handleOpenHistory}
