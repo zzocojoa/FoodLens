@@ -245,6 +245,7 @@ function LayoutContent() {
             <Stack.Screen name="camera" options={{ animation: 'none' }} />
             <Stack.Screen name="result" options={{ animation: 'fade_from_bottom' }} />
             <Stack.Screen name="health-profile" />
+            <Stack.Screen name="profile-edit" />
             <Stack.Screen name="trip-stats" />
             <Stack.Screen name="emoji-picker" />
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />

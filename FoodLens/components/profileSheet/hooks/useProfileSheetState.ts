@@ -370,11 +370,18 @@ export const useProfileSheetState = (userId: string) => {
     const pickImage = useCallback(async (useCamera: boolean) => {
         try {
             const uri = await pickProfileImageUri(useCamera, {
-                title: t('profile.permission.cameraRequiredTitle', 'Camera Permission Required'),
-                message: t(
-                    'profile.permission.cameraRequiredMessage',
-                    'Camera access is required to take a profile photo.'
-                ),
+                title: useCamera
+                    ? t('profile.permission.cameraRequiredTitle', 'Camera Permission Required')
+                    : t('profile.permission.libraryRequiredTitle', 'Photo Library Permission Required'),
+                message: useCamera
+                    ? t(
+                        'profile.permission.cameraRequiredMessage',
+                        'Camera access is required to take a profile photo.'
+                    )
+                    : t(
+                        'profile.permission.libraryRequiredMessage',
+                        'Photo library access is required to choose a profile photo.'
+                    ),
                 cancelLabel: t('common.cancel', 'Cancel'),
                 settingsLabel: t('scan.permission.openSettings', 'Open Settings'),
             });

@@ -13,6 +13,7 @@ const mockSafeStorageGet = jest.fn();
 const mockSafeStorageGetSync = jest.fn();
 const mockGetUserStorageKey = jest.fn();
 const mockSetUiLanguageInStore = jest.fn();
+const mockResolveImageUri = jest.fn();
 const mockTranslations: Record<string, string> = {
   'sync.conflict.title': 'Sync conflict detected',
   'sync.conflict.message': 'Saved locally, but {count} cloud conflict(s) were found. Choose which data to keep.',
@@ -71,6 +72,10 @@ jest.mock('@/features/i18n/services/i18nStore', () => ({
   setUiLanguage: (...args: unknown[]) => mockSetUiLanguageInStore(...args),
 }));
 
+jest.mock('@/services/imageStorage', () => ({
+  resolveImageUri: (...args: unknown[]) => mockResolveImageUri(...args),
+}));
+
 const renderProfileHubState = async (flushInitialEffects: boolean = true) => {
   const rendered = renderHook(() => useProfileHubState('usr_profile'));
 
@@ -101,6 +106,17 @@ describe('useProfileHubState conflict handling', () => {
     mockGetUserStorageKey.mockImplementation((userId: string) => `@foodlens_user_profile:${userId}`);
     mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
+    mockResolveImageUri.mockImplementation((value: string) => {
+      if (typeof value !== 'string' || value.length === 0) {
+        return null;
+      }
+
+      if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('file://')) {
+        return value;
+      }
+
+      return `file:///documents/foodlens_images/${value}`;
+    });
     mockUpdateSettingsLanguage.mockResolvedValue(undefined);
     mockUpdateTravelerLanguage.mockResolvedValue(undefined);
     mockUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
@@ -190,6 +206,25 @@ describe('useProfileHubState conflict handling', () => {
     });
 
     expect(result.current.name).toBe('Typing New Name');
+  });
+
+  it('resolves managed profile image filename from initial snapshot', async () => {
+    mockSafeStorageGetSync.mockReturnValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: 'profile_123.jpg',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    mockLoadProfile.mockResolvedValue(null);
+
+    const { result } = await renderProfileHubState(false);
+
+    expect(result.current.image).toBe('file:///documents/foodlens_images/profile_123.jpg');
+    expect(mockResolveImageUri).toHaveBeenCalledWith('profile_123.jpg');
   });
 
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {

@@ -8,6 +8,7 @@ import { DEFAULT_NAME } from '../constants';
 import { profileHubService } from '../services/profileHubService';
 import { pickProfileImageUri } from '../utils/profileHubStateUtils';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { resolveImageUri } from '@/services/imageStorage';
 import {
     getManualMergeConflictOperationsForUser,
     resolveManualMergeConflictsForUser,
@@ -48,12 +49,25 @@ const shouldKeepExistingProfileImage = (
 const readInitialProfileSnapshot = (userId: string): UserProfile | null =>
     SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
 
+const resolveProfileImageReference = (value: string | undefined): string | undefined => {
+    if (!value) {
+        return undefined;
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+        return undefined;
+    }
+
+    return resolveImageUri(trimmedValue) ?? trimmedValue;
+};
+
 export const useProfileHubState = (userId: string) => {
     const { t } = useI18n();
     const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot(userId));
     const initialProfile = initialProfileSnapshotRef.current;
     const initialName = initialProfile?.name?.trim() || DEFAULT_NAME;
-    const initialImage = initialProfile?.profileImage?.trim() || undefined;
+    const initialImage = resolveProfileImageReference(initialProfile?.profileImage);
     const initialTravelerLanguage = initialProfile?.settings?.targetLanguage;
     const initialUiLanguage = initialProfile?.settings?.language
         ? normalizeCanonicalLocale(initialProfile.settings.language)
@@ -83,7 +97,7 @@ export const useProfileHubState = (userId: string) => {
             const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
             if (cancelled || !profile) return;
 
-            const localImage = profile.profileImage?.trim() || undefined;
+            const localImage = resolveProfileImageReference(profile.profileImage);
             if (localImage) {
                 setImageState((previous) => {
                     if (imageDirtyRef.current) return previous;
@@ -271,7 +285,7 @@ export const useProfileHubState = (userId: string) => {
             if (!nameDirtyRef.current) {
                 setNameState(profile.name || DEFAULT_NAME);
             }
-            const nextImage = profile.profileImage?.trim() || undefined;
+            const nextImage = resolveProfileImageReference(profile.profileImage);
             const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
             setImageState((previous) => {
                 if (imageDirtyRef.current) return previous;
@@ -370,11 +384,18 @@ export const useProfileHubState = (userId: string) => {
     const pickImage = useCallback(async (useCamera: boolean) => {
         try {
             const uri = await pickProfileImageUri(useCamera, {
-                title: t('profile.permission.cameraRequiredTitle', 'Camera Permission Required'),
-                message: t(
-                    'profile.permission.cameraRequiredMessage',
-                    'Camera access is required to take a profile photo.'
-                ),
+                title: useCamera
+                    ? t('profile.permission.cameraRequiredTitle', 'Camera Permission Required')
+                    : t('profile.permission.libraryRequiredTitle', 'Photo Library Permission Required'),
+                message: useCamera
+                    ? t(
+                        'profile.permission.cameraRequiredMessage',
+                        'Camera access is required to take a profile photo.'
+                    )
+                    : t(
+                        'profile.permission.libraryRequiredMessage',
+                        'Photo library access is required to choose a profile photo.'
+                    ),
                 cancelLabel: t('common.cancel', 'Cancel'),
                 settingsLabel: t('scan.permission.openSettings', 'Open Settings'),
             });
