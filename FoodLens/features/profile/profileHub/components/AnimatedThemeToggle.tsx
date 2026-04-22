@@ -1,101 +1,96 @@
-import React, { useEffect, useState } from 'react';
-import { Text, TouchableOpacity, View, Animated as RNAnimated } from 'react-native';
+import React from 'react';
+import { Animated as RNAnimated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+import type { ColorSchemeName } from '@/constants/theme';
+import {
+    homeDashboardColors,
+    homeDashboardRadii,
+} from '@/features/home/components/homeDashboardTokens';
 import { useI18n } from '@/features/i18n';
-import { profileHubStyles as styles } from '../styles';
+
+type ThemeSelection = 'light' | 'dark' | 'system';
 
 type AnimatedThemeToggleProps = {
-    theme: any;
-    currentTheme: string;
-    setTheme: (theme: 'light' | 'dark' | 'system') => void;
-    colorScheme: string;
+    colorScheme: ColorSchemeName;
+    currentTheme: ThemeSelection;
+    setTheme: (theme: ThemeSelection) => void;
 };
 
 export default function AnimatedThemeToggle({
-    theme,
+    colorScheme,
     currentTheme,
     setTheme,
-    colorScheme,
-}: AnimatedThemeToggleProps) {
+}: AnimatedThemeToggleProps): React.JSX.Element {
     const { t } = useI18n();
-    const [containerWidth, setContainerWidth] = useState(0);
-    const translateX = React.useRef(new RNAnimated.Value(0)).current;
+    const [containerWidth, setContainerWidth] = React.useState<number>(0);
+    const translateX = React.useRef<RNAnimated.Value>(new RNAnimated.Value(0)).current;
 
-    const options = ['light', 'dark', 'system'] as const;
-    const activeIndex = options.indexOf(currentTheme as any);
-    const optionLabels = {
+    const options: ThemeSelection[] = ['light', 'dark', 'system'];
+    const activeIndex = options.indexOf(currentTheme);
+    const isDarkTheme = colorScheme === 'dark';
+    const segmentWidth = containerWidth > 0 ? (containerWidth - 6) / options.length : 0;
+    const optionLabels: Record<ThemeSelection, string> = {
         light: t('profileHub.theme.light', 'Light'),
         dark: t('profileHub.theme.dark', 'Dark'),
         system: t('profileHub.theme.system', 'System'),
     };
 
-    useEffect(() => {
-        if (containerWidth > 0) {
-            const tabWidth = (containerWidth - 8) / 3;
-            RNAnimated.spring(translateX, {
-                toValue: activeIndex * tabWidth,
-                useNativeDriver: true,
-                friction: 7,
-                tension: 50,
-            }).start();
+    React.useEffect(() => {
+        if (segmentWidth <= 0 || activeIndex < 0) {
+            return;
         }
-    }, [activeIndex, containerWidth, translateX]);
+
+        RNAnimated.spring(translateX, {
+            toValue: activeIndex * segmentWidth,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 70,
+        }).start();
+    }, [activeIndex, segmentWidth, translateX]);
 
     return (
         <View
-            style={[
-                styles.menuContainer,
-                {
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
-                    padding: 4,
-                    height: 56,
-                    justifyContent: 'center',
-                },
-            ]}
-            onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+            onLayout={(event) => {
+                setContainerWidth(event.nativeEvent.layout.width);
+            }}
+            style={[styles.container, isDarkTheme ? styles.containerDark : styles.containerLight]}
         >
-            {containerWidth > 0 && (
+            {segmentWidth > 0 ? (
                 <RNAnimated.View
-                    style={{
-                        position: 'absolute',
-                        left: 4,
-                        top: 4,
-                        bottom: 4,
-                        width: (containerWidth - 8) / 3,
-                        backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'white',
-                        borderRadius: 24,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 3,
-                        elevation: 2,
-                        transform: [{ translateX }],
-                    }}
+                    style={[
+                        styles.activeDeck,
+                        isDarkTheme ? styles.activeDeckDark : styles.activeDeckLight,
+                        {
+                            width: segmentWidth,
+                            transform: [{ translateX }],
+                        },
+                    ]}
                 />
-            )}
+            ) : null}
 
-            <View style={{ flexDirection: 'row', flex: 1 }}>
+            <View style={styles.segmentRow}>
                 {options.map((value) => {
                     const isActive = currentTheme === value;
+
                     return (
                         <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isActive }}
+                            activeOpacity={0.9}
                             key={value}
                             onPress={() => setTheme(value)}
-                            style={{
-                                flex: 1,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: 24,
-                            }}
-                            activeOpacity={0.7}
+                            style={styles.segmentButton}
                         >
                             <Text
-                                style={{
-                                    fontSize: 14,
-                                    fontWeight: isActive ? '700' : '500',
-                                    color: isActive ? theme.textPrimary : theme.textSecondary,
-                                    textTransform: 'capitalize',
-                                }}
+                                style={[
+                                    styles.segmentLabel,
+                                    isDarkTheme ? styles.segmentLabelDark : styles.segmentLabelLight,
+                                    isActive
+                                        ? isDarkTheme
+                                            ? styles.segmentLabelDarkActive
+                                            : styles.segmentLabelLightActive
+                                        : null,
+                                ]}
                             >
                                 {optionLabels[value]}
                             </Text>
@@ -106,3 +101,69 @@ export default function AnimatedThemeToggle({
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        minHeight: 42,
+        overflow: 'hidden',
+        padding: 3,
+        position: 'relative',
+    },
+    containerLight: {
+        backgroundColor: 'rgba(255, 251, 246, 0.92)',
+        borderColor: homeDashboardColors.line,
+    },
+    containerDark: {
+        backgroundColor: 'rgba(12, 18, 30, 0.92)',
+        borderColor: 'rgba(255, 255, 255, 0.10)',
+    },
+    activeDeck: {
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        bottom: 3,
+        boxShadow: '0 8px 18px rgba(12, 18, 30, 0.18)',
+        left: 3,
+        position: 'absolute',
+        top: 3,
+    },
+    activeDeckLight: {
+        backgroundColor: homeDashboardColors.accentBlue,
+        borderColor: 'rgba(255, 255, 255, 0.18)',
+    },
+    activeDeckDark: {
+        backgroundColor: homeDashboardColors.pearlIvory,
+        borderColor: 'rgba(255, 255, 255, 0.16)',
+    },
+    segmentRow: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    segmentButton: {
+        alignItems: 'center',
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 36,
+    },
+    segmentLabel: {
+        fontSize: 13,
+        fontWeight: '800',
+        letterSpacing: -0.2,
+        lineHeight: 16,
+    },
+    segmentLabelLight: {
+        color: homeDashboardColors.inkSoft,
+    },
+    segmentLabelDark: {
+        color: 'rgba(255, 255, 255, 0.72)',
+    },
+    segmentLabelLightActive: {
+        color: homeDashboardColors.white,
+    },
+    segmentLabelDarkActive: {
+        color: homeDashboardColors.accentBlue,
+    },
+});

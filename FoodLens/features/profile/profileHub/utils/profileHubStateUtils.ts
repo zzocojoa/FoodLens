@@ -1,9 +1,11 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import { Platform } from 'react-native';
 import { saveImagePermanentlyOrThrow } from '@/services/imageStorage';
+import { pickGalleryImage } from '@/services/native/galleryPicker';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 
-type CameraPermissionDialogTexts = {
+type ImagePickerPermissionDialogTexts = {
   title: string;
   message: string;
   cancelLabel: string;
@@ -53,40 +55,49 @@ export const persistProfileImageIfNeeded = async (image: string): Promise<string
 
 export const pickProfileImageUri = async (
   useCamera: boolean,
-  cameraPermissionDialogTexts: CameraPermissionDialogTexts
+  permissionDialogTexts: ImagePickerPermissionDialogTexts
 ): Promise<string | null> => {
-  let result: ImagePicker.ImagePickerResult;
-
   if (useCamera) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      showOpenSettingsAlert(cameraPermissionDialogTexts);
+      showOpenSettingsAlert(permissionDialogTexts);
       return null;
     }
-    result = await ImagePicker.launchCameraAsync({
+    const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
     });
-  } else {
-    result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-  }
+    if (result.canceled || !result.assets[0]?.uri) return null;
 
-  if (result.canceled || !result.assets[0]?.uri) return null;
-
-  const uri = await resolveAssetUriForPersistence(result.assets[0]);
-  if (useCamera) {
+    const uri = await resolveAssetUriForPersistence(result.assets[0]);
     try {
       await MediaLibrary.saveToLibraryAsync(uri);
     } catch (error) {
       console.error('Failed to save profile photo to gallery:', error);
     }
+    return uri;
   }
-  return uri;
+
+  if (Platform.OS === 'android') {
+    return pickGalleryImage();
+  }
+
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) {
+    showOpenSettingsAlert(permissionDialogTexts);
+    return null;
+  }
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: [1, 1],
+    quality: 0.5,
+    legacy: false,
+  });
+
+  if (result.canceled || !result.assets[0]?.uri) return null;
+
+  return await resolveAssetUriForPersistence(result.assets[0]);
 };

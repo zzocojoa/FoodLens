@@ -71,6 +71,13 @@ jest.mock('@/features/i18n/services/i18nStore', () => ({
   setUiLanguage: (...args: unknown[]) => mockSetUiLanguageInStore(...args),
 }));
 
+const flushProfileSheetEffects = async () => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+};
+
 describe('useProfileSheetState conflict handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -95,6 +102,7 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
     const onUpdate = jest.fn();
     const onClose = jest.fn();
 
@@ -131,6 +139,7 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     act(() => {
       result.current.setImage('https://cdn.example.com/local-selected.jpg');
@@ -156,6 +165,7 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     act(() => {
       result.current.setName('Typing New Name');
@@ -190,6 +200,7 @@ describe('useProfileSheetState conflict handling', () => {
 
     mockLoadProfile.mockResolvedValueOnce(firstProfile).mockResolvedValueOnce(secondProfile);
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     await act(async () => {
       await result.current.loadProfile();
@@ -225,6 +236,7 @@ describe('useProfileSheetState conflict handling', () => {
     mockLoadProfile.mockResolvedValue(null);
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     await act(async () => {
       await Promise.resolve();
@@ -235,6 +247,7 @@ describe('useProfileSheetState conflict handling', () => {
 
   it('applies selected settings language to global i18n store immediately', async () => {
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     act(() => {
       result.current.setUiLanguage('ko-KR');
@@ -250,6 +263,7 @@ describe('useProfileSheetState conflict handling', () => {
 
   it('applies selected traveler language to server immediately', async () => {
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     act(() => {
       result.current.setTravelerLanguage('ja-JP');
@@ -273,6 +287,7 @@ describe('useProfileSheetState conflict handling', () => {
     );
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     act(() => {
       result.current.setTravelerLanguage('en-US');
@@ -327,9 +342,7 @@ describe('useProfileSheetState conflict handling', () => {
 
     expect(result.current.travelerLanguage).toBe('ja-JP');
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushProfileSheetEffects();
 
     expect(result.current.travelerLanguage).toBeUndefined();
   });
@@ -347,6 +360,7 @@ describe('useProfileSheetState conflict handling', () => {
     });
 
     const { result } = renderHook(() => useProfileSheetState('usr_profile'));
+    await flushProfileSheetEffects();
 
     await act(async () => {
       await result.current.loadProfile();

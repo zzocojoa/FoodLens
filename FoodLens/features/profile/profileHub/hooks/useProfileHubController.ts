@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useProfileHubState } from './useProfileHubState';
 import { useModalSheetGesture } from './useModalSheetGesture';
 import { ProfileHubControllerParams } from '../types';
@@ -44,6 +45,12 @@ export const useProfileHubController = ({ userId }: ProfileHubControllerParams) 
             invalidateProfileLoad();
         };
     }, [invalidateProfileLoad, loadProfile, resetLocalEdits]);
+
+    useFocusEffect(
+        useCallback(() => {
+            void loadProfile();
+        }, [loadProfile]),
+    );
 
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {

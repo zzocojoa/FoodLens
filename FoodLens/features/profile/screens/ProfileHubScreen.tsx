@@ -3,15 +3,17 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-nativ
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Globe, LogOut, Shield, User } from 'lucide-react-native';
+import { LogOut } from 'lucide-react-native';
 
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import TopLevelScreenShell, {
     getTopLevelScreenBottomPadding,
 } from '@/components/navigation/TopLevelScreenShell';
+import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useI18n } from '@/features/i18n';
-import { CanonicalLocale } from '@/features/i18n';
+import { CanonicalLocale, useI18n } from '@/features/i18n';
+import { HomeBackgroundAtmosphere } from '@/features/home/components/HomeBackgroundAtmosphere';
+import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { AuthApi } from '@/services/auth/authApi';
@@ -20,89 +22,111 @@ import { clearSession } from '@/services/auth/sessionManager';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
-import { Colors } from '@/constants/theme';
-import AnimatedThemeToggle from '../profileHub/components/AnimatedThemeToggle';
+
 import LanguageSelectorModal from '../profileHub/components/LanguageSelectorModal';
-import ProfileIdentitySection from '../profileHub/components/ProfileIdentitySection';
-import ProfileMenuItem from '../profileHub/components/ProfileMenuItem';
+import ProfileDeveloperSheet from '../profileHub/components/ProfileDeveloperSheet';
+import ProfileIdentitySummaryCard from '../profileHub/components/ProfileIdentitySummaryCard';
+import ProfileSafetyPassportSection from '../profileHub/components/ProfileSafetyPassportSection';
+import ProfileSupportDeskCard from '../profileHub/components/ProfileSupportDeskCard';
+import ProfileTravelModeSection from '../profileHub/components/ProfileTravelModeSection';
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../profileHub/constants';
 import { useProfileHubController } from '../profileHub/hooks/useProfileHubController';
-import { profileHubStyles as sharedProfileHubStyles } from '../profileHub/styles';
 import { toLanguageLabel, toTargetLanguage, toUiLanguageLabel } from '../profileHub/utils/profileHubUtils';
 
 const profileHubStyles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: homeDashboardColors.paper,
     },
-    header: {
-        paddingHorizontal: 24,
+    containerDark: {
+        backgroundColor: Colors.dark.background,
+    },
+    safeArea: {
+        flex: 1,
+        backgroundColor: homeDashboardColors.paper,
+    },
+    safeAreaDark: {
+        backgroundColor: Colors.dark.background,
+    },
+    scrollContent: {
+        gap: 12,
+        paddingHorizontal: 20,
         paddingTop: 8,
-        paddingBottom: 12,
+    },
+    topChrome: {
+        paddingHorizontal: 20,
+        paddingTop: 6,
+        paddingBottom: 6,
+    },
+    navigationRow: {
         alignItems: 'center',
-        justifyContent: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        minHeight: 44,
     },
-    title: {
-        fontSize: 24,
-        fontWeight: '900',
-        letterSpacing: -0.4,
+    navigationSlot: {
+        flex: 1,
     },
-    content: {
-        paddingHorizontal: 24,
-        paddingTop: 8,
+    navigationTitle: {
+        color: homeDashboardColors.ink,
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: -0.3,
+        lineHeight: 20,
+        textAlign: 'center',
+    },
+    navigationTitleDark: {
+        color: Colors.dark.textPrimary,
     },
     logoutButton: {
-        marginTop: 16,
-        borderRadius: 20,
-        paddingVertical: 15,
         alignItems: 'center',
+        alignSelf: 'center',
+        backgroundColor: 'rgba(255, 252, 247, 0.72)',
+        borderColor: 'rgba(185, 70, 62, 0.18)',
+        borderCurve: 'continuous',
+        borderRadius: 18,
         borderWidth: 1,
+        marginTop: 2,
+        minHeight: 44,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
     },
-    logoutButtonText: {
+    logoutButtonDark: {
+        backgroundColor: 'rgba(16, 23, 37, 0.82)',
+        borderColor: 'rgba(185, 70, 62, 0.24)',
+    },
+    logoutButtonDisabled: {
+        opacity: 0.72,
+    },
+    logoutContent: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    logoutText: {
+        color: homeDashboardColors.accentRed,
         fontSize: 15,
         fontWeight: '700',
-    },
-    buildSection: {
-        marginTop: 16,
-        borderRadius: 24,
-        borderWidth: 1,
-        paddingHorizontal: 20,
-        paddingVertical: 18,
-        gap: 10,
-    },
-    buildSectionTitle: {
-        fontSize: 14,
-        fontWeight: '800',
-        letterSpacing: 0.2,
-    },
-    buildRow: {
-        gap: 4,
-        paddingBottom: 10,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    buildLabel: {
-        fontSize: 12,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: 0.4,
-    },
-    buildValue: {
-        fontSize: 13,
-        fontWeight: '600',
         lineHeight: 18,
+    },
+    logoutTextDark: {
+        color: 'rgba(255, 231, 229, 0.92)',
     },
 });
 
-export default function ProfileHubScreen() {
+export default function ProfileHubScreen(): React.JSX.Element {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
     const { theme: currentTheme, setTheme, colorScheme } = useTheme();
     const resolvedColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
-    const theme = Colors[resolvedColorScheme];
+    const isDarkTheme = resolvedColorScheme === 'dark';
+    const palette = Colors[resolvedColorScheme];
     const userId = getCurrentUserIdSnapshot();
     const { state, travelerLanguageSheet, uiLanguageSheet } = useProfileHubController({ userId });
-    const [logoutLoading, setLogoutLoading] = React.useState(false);
-    const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState(false);
+    const [logoutLoading, setLogoutLoading] = React.useState<boolean>(false);
+    const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState<boolean>(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
     const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
 
@@ -122,28 +146,38 @@ export default function ProfileHubScreen() {
             })),
         [t],
     );
-    const travelerAutoLabel = React.useMemo(
-        () => {
-            const autoOption = travelerOptions.find((option) => option.code === 'auto');
-            if (!autoOption) {
-                throw new Error('profileHub traveler auto option is missing');
-            }
+    const travelerAutoLabel = React.useMemo(() => {
+        const autoOption = travelerOptions.find((option) => option.code === 'auto');
 
-            return autoOption.label;
-        },
-        [travelerOptions],
-    );
-    const settingsAutoLabel = React.useMemo(
-        () => {
-            const autoOption = settingsLanguageOptions.find((option) => option.code === 'auto');
-            if (!autoOption) {
-                throw new Error('profileHub settings auto option is missing');
-            }
+        if (!autoOption) {
+            throw new Error('profileHub traveler auto option is missing');
+        }
 
-            return autoOption.label;
-        },
-        [settingsLanguageOptions],
-    );
+        return autoOption.label;
+    }, [travelerOptions]);
+    const settingsAutoLabel = React.useMemo(() => {
+        const autoOption = settingsLanguageOptions.find((option) => option.code === 'auto');
+
+        if (!autoOption) {
+            throw new Error('profileHub settings auto option is missing');
+        }
+
+        return autoOption.label;
+    }, [settingsLanguageOptions]);
+    const travelerLanguageLabel = React.useMemo(() => {
+        return toLanguageLabel({
+            language: state.travelerLanguage,
+            fallbackLabel: travelerAutoLabel,
+            options: travelerOptions,
+        });
+    }, [state.travelerLanguage, travelerAutoLabel, travelerOptions]);
+    const settingsLanguageLabel = React.useMemo(() => {
+        return toUiLanguageLabel({
+            language: state.uiLanguage,
+            fallbackLabel: settingsAutoLabel,
+            options: settingsLanguageOptions,
+        });
+    }, [settingsAutoLabel, settingsLanguageOptions, state.uiLanguage]);
     const buildFingerprintRows = React.useMemo(
         () => [
             { label: t('profileHub.buildFingerprint.version', 'Version'), value: buildFingerprint.version },
@@ -158,7 +192,9 @@ export default function ProfileHubScreen() {
             { label: t('profileHub.buildFingerprint.commit', 'Commit'), value: buildFingerprint.gitCommitShortSha },
             {
                 label: t('profileHub.buildFingerprint.dirty', 'Dirty worktree'),
-                value: buildFingerprint.gitDirty ? t('profileHub.buildFingerprint.yes', 'Yes') : t('profileHub.buildFingerprint.no', 'No'),
+                value: buildFingerprint.gitDirty
+                    ? t('profileHub.buildFingerprint.yes', 'Yes')
+                    : t('profileHub.buildFingerprint.no', 'No'),
             },
             { label: t('profileHub.buildFingerprint.builtAt', 'Built at'), value: buildFingerprint.builtAtIso },
         ],
@@ -173,12 +209,20 @@ export default function ProfileHubScreen() {
         router.push('/support-policies');
     }, [router]);
 
-    const handleUpdateProfile = React.useCallback(() => {
-        void state.handleUpdate(() => undefined, () => undefined);
-    }, [state]);
+    const handleOpenEditProfile = React.useCallback(() => {
+        router.push('/profile-edit');
+    }, [router]);
 
-    const handleToggleBuildFingerprint = React.useCallback(() => {
-        setIsBuildFingerprintVisible((previous) => !previous);
+    const handleRevealBuildFingerprint = React.useCallback(() => {
+        if (!canRevealBuildFingerprint) {
+            return;
+        }
+
+        setIsBuildFingerprintVisible(true);
+    }, [canRevealBuildFingerprint]);
+
+    const handleCloseBuildFingerprint = React.useCallback(() => {
+        setIsBuildFingerprintVisible(false);
     }, []);
 
     const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
@@ -188,7 +232,11 @@ export default function ProfileHubScreen() {
                 t('profileHub.logout.confirmMessage', 'You will be logged out and moved to the login screen.'),
                 [
                     { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(false) },
-                    { text: t('profileSheet.menu.logout.title', 'Log out'), style: 'destructive', onPress: () => resolve(true) },
+                    {
+                        text: t('profileSheet.menu.logout.title', 'Log out'),
+                        style: 'destructive',
+                        onPress: () => resolve(true),
+                    },
                 ],
             );
         });
@@ -256,181 +304,89 @@ export default function ProfileHubScreen() {
     return (
         <TopLevelScreenShell
             activeItem="profile"
-            backgroundColor={theme.background}
+            backgroundColor={isDarkTheme ? palette.background : homeDashboardColors.paper}
             hideNav={false}
         >
-            <View style={[profileHubStyles.container, { backgroundColor: theme.background }]}>
+            <View style={[profileHubStyles.container, isDarkTheme ? profileHubStyles.containerDark : null]}>
+                {isDarkTheme ? null : <HomeBackgroundAtmosphere />}
                 <StatusBar style={resolvedColorScheme === 'dark' ? 'light' : 'dark'} />
                 <Stack.Screen options={{ headerShown: false }} />
 
-                <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-                    <View style={profileHubStyles.header}>
-                        {canRevealBuildFingerprint ? (
-                            <HapticTouchableOpacity
-                                onLongPress={handleToggleBuildFingerprint}
-                                activeOpacity={1}
-                                hapticType="selection"
+                <SafeAreaView
+                    style={[profileHubStyles.safeArea, isDarkTheme ? profileHubStyles.safeAreaDark : null]}
+                    edges={['top']}
+                >
+                    <View style={profileHubStyles.topChrome}>
+                        <View style={profileHubStyles.navigationRow}>
+                            <View style={profileHubStyles.navigationSlot} />
+                            <Text
+                                style={[
+                                    profileHubStyles.navigationTitle,
+                                    isDarkTheme ? profileHubStyles.navigationTitleDark : null,
+                                ]}
                             >
-                                <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
-                                    {t('profileHub.title', 'Profile')}
-                                </Text>
-                            </HapticTouchableOpacity>
-                        ) : (
-                            <Text style={[profileHubStyles.title, { color: theme.textPrimary }]}>
-                                {t('profileHub.title', 'Profile')}
+                                {t('profileAtelier.rail.title', 'Profile')}
                             </Text>
-                        )}
+                            <View style={profileHubStyles.navigationSlot} />
+                        </View>
                     </View>
 
                     <ScrollView
+                        contentInsetAdjustmentBehavior="automatic"
                         contentContainerStyle={[
-                            profileHubStyles.content,
-                            { paddingBottom: getTopLevelScreenBottomPadding(insets.bottom, 0) },
+                            profileHubStyles.scrollContent,
+                            { paddingBottom: getTopLevelScreenBottomPadding(insets.bottom, 12) },
                         ]}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="always"
                         keyboardDismissMode="on-drag"
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
                     >
-                        <ProfileIdentitySection
-                            theme={theme}
+                        <ProfileIdentitySummaryCard
                             colorScheme={resolvedColorScheme}
-                            name={state.name}
                             image={state.image}
-                            avatars={state.avatars}
-                            onChangeName={state.setName}
-                            onClearName={() => state.setName('')}
-                            onPickCamera={() => void state.pickImage(true)}
-                            onPickLibrary={() => void state.pickImage(false)}
-                            onSelectPreset={state.setImage}
+                            name={state.name}
+                            onLongPressPortrait={
+                                canRevealBuildFingerprint ? handleRevealBuildFingerprint : undefined
+                            }
+                            onPressEdit={handleOpenEditProfile}
                         />
 
-                        <View style={sharedProfileHubStyles.section}>
-                            <AnimatedThemeToggle
-                                theme={theme}
-                                currentTheme={currentTheme}
-                                setTheme={setTheme}
-                                colorScheme={resolvedColorScheme}
-                            />
+                        <ProfileSafetyPassportSection
+                            colorScheme={resolvedColorScheme}
+                            languageLabel={travelerLanguageLabel}
+                            onPressHealthProfile={handleOpenHealthProfile}
+                            onPressTravelerLanguage={() => state.setTravelerLangModalVisible(true)}
+                        />
 
-                            <ProfileMenuItem
-                                icon={<User size={20} color="#2563EB" />}
-                                title={t('profileHub.menu.manageProfile.title', 'Health Profile')}
-                                subtitle={t('profileHub.menu.manageProfile.subtitle', 'Allergies, severity & dietary restrictions')}
-                                iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
-                                onPress={handleOpenHealthProfile}
-                                theme={theme}
-                            />
+                        <ProfileTravelModeSection
+                            appLanguageLabel={settingsLanguageLabel}
+                            colorScheme={resolvedColorScheme}
+                            currentTheme={currentTheme}
+                            onPressAppLanguage={() => state.setUiLangModalVisible(true)}
+                            setTheme={setTheme}
+                        />
 
-                            <ProfileMenuItem
-                                icon={<Shield size={20} color="#2563EB" />}
-                                title={t('profileHub.menu.supportHub.title', 'Support & Policies')}
-                                subtitle={t('profileHub.menu.supportHub.subtitle', 'Help, legal documents & account data')}
-                                iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
-                                onPress={handleOpenSupportHub}
-                                theme={theme}
-                            />
-
-                            <ProfileMenuItem
-                                icon={<Globe size={20} color="#059669" />}
-                                title={t('profileHub.menu.travelerLanguage.title', 'Traveler Card Language')}
-                                subtitle={t('profileHub.menu.travelerLanguage.subtitleTemplate', '{language} • Result card only').replace(
-                                    '{language}',
-                                    toLanguageLabel({
-                                        language: state.travelerLanguage,
-                                        fallbackLabel: travelerAutoLabel,
-                                        options: travelerOptions,
-                                    }),
-                                )}
-                                iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5'}
-                                onPress={() => state.setTravelerLangModalVisible(true)}
-                                theme={theme}
-                            />
-
-                            <ProfileMenuItem
-                                icon={<Globe size={20} color="#2563EB" />}
-                                title={t('profileHub.menu.settingsLanguage.title', 'Settings Language')}
-                                subtitle={toUiLanguageLabel({
-                                    language: state.uiLanguage,
-                                    fallbackLabel: settingsAutoLabel,
-                                    options: settingsLanguageOptions,
-                                })}
-                                iconBgColor={resolvedColorScheme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF'}
-                                onPress={() => state.setUiLangModalVisible(true)}
-                                theme={theme}
-                            />
-                        </View>
+                        <ProfileSupportDeskCard colorScheme={resolvedColorScheme} onPress={handleOpenSupportHub} />
 
                         <HapticTouchableOpacity
-                            onPress={handleUpdateProfile}
-                            disabled={state.loading}
-                            style={[
-                                sharedProfileHubStyles.saveButton,
-                                { backgroundColor: theme.textPrimary, shadowColor: theme.shadow },
-                            ]}
-                            hapticType="success"
-                        >
-                            <Text style={[sharedProfileHubStyles.saveText, { color: theme.background }]}>
-                                {t('profileHub.action.updateProfile', 'UPDATE PROFILE')}
-                            </Text>
-                        </HapticTouchableOpacity>
-
-                        {canRevealBuildFingerprint && isBuildFingerprintVisible ? (
-                            <View
-                                style={[
-                                    profileHubStyles.buildSection,
-                                    {
-                                        backgroundColor: theme.surface,
-                                        borderColor: theme.border,
-                                    },
-                                ]}
-                            >
-                                <Text style={[profileHubStyles.buildSectionTitle, { color: theme.textPrimary }]}>
-                                    {t('profileHub.buildFingerprint.title', 'Build Fingerprint')}
-                                </Text>
-                                {buildFingerprintRows.map((row, index) => (
-                                    <View
-                                        key={row.label}
-                                        style={[
-                                            profileHubStyles.buildRow,
-                                            {
-                                                borderBottomColor: theme.border,
-                                                paddingBottom: index === buildFingerprintRows.length - 1 ? 0 : 10,
-                                                borderBottomWidth:
-                                                    index === buildFingerprintRows.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                                            },
-                                        ]}
-                                    >
-                                        <Text style={[profileHubStyles.buildLabel, { color: theme.textSecondary }]}>
-                                            {row.label}
-                                        </Text>
-                                        <Text selectable style={[profileHubStyles.buildValue, { color: theme.textPrimary }]}>
-                                            {row.value}
-                                        </Text>
-                                    </View>
-                                ))}
-                            </View>
-                        ) : null}
-
-                        <HapticTouchableOpacity
-                            onPress={() => void handleLogout()}
-                            disabled={logoutLoading}
-                            accessibilityRole="button"
                             accessibilityLabel={t('profileHub.menu.logout.title', 'Log out')}
+                            accessibilityRole="button"
+                            activeOpacity={0.9}
+                            disabled={logoutLoading}
+                            hapticType="selection"
+                            onPress={() => void handleLogout()}
                             style={[
                                 profileHubStyles.logoutButton,
-                                {
-                                    borderColor: resolvedColorScheme === 'dark' ? 'rgba(248, 113, 113, 0.4)' : '#FCA5A5',
-                                    backgroundColor: resolvedColorScheme === 'dark' ? 'rgba(248, 113, 113, 0.08)' : '#FEF2F2',
-                                },
+                                isDarkTheme ? profileHubStyles.logoutButtonDark : null,
+                                logoutLoading ? profileHubStyles.logoutButtonDisabled : null,
                             ]}
-                            hapticType="selection"
                         >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <LogOut size={16} color={resolvedColorScheme === 'dark' ? '#FCA5A5' : '#B91C1C'} />
+                            <View style={profileHubStyles.logoutContent}>
+                                <LogOut color={homeDashboardColors.accentRed} size={16} />
                                 <Text
                                     style={[
-                                        profileHubStyles.logoutButtonText,
-                                        { color: resolvedColorScheme === 'dark' ? '#FCA5A5' : '#B91C1C' },
+                                        profileHubStyles.logoutText,
+                                        isDarkTheme ? profileHubStyles.logoutTextDark : null,
                                     ]}
                                 >
                                     {logoutLoading
@@ -442,36 +398,44 @@ export default function ProfileHubScreen() {
                     </ScrollView>
 
                     <LanguageSelectorModal
-                        visible={state.travelerLangModalVisible}
-                        title={t('profileHub.travelerLanguage.modalTitle', 'Traveler Card Language')}
-                        options={travelerOptions}
-                        selectedCode={state.travelerLanguage}
                         colorScheme={resolvedColorScheme}
-                        theme={theme}
-                        panY={travelerLanguageSheet.panY}
-                        panHandlers={travelerLanguageSheet.panResponder.panHandlers}
+                        normalizeForSelection={normalizeTravelerTargetLanguage}
                         onClose={travelerLanguageSheet.closeSheet}
                         onSelectLanguage={(code) => {
                             state.setTravelerLanguage(toTargetLanguage(code));
                             travelerLanguageSheet.closeSheet();
                         }}
-                        normalizeForSelection={normalizeTravelerTargetLanguage}
+                        options={travelerOptions}
+                        panHandlers={travelerLanguageSheet.panResponder.panHandlers}
+                        panY={travelerLanguageSheet.panY}
+                        selectedCode={state.travelerLanguage}
+                        theme={palette}
+                        title={t('profileAtelier.safety.cardLanguage', 'Card Language')}
+                        visible={state.travelerLangModalVisible}
                     />
 
                     <LanguageSelectorModal
-                        visible={state.uiLangModalVisible}
-                        title={t('profileHub.settingsLanguage.modalTitle', 'Settings Language')}
-                        options={settingsLanguageOptions}
-                        selectedCode={state.uiLanguage}
                         colorScheme={resolvedColorScheme}
-                        theme={theme}
-                        panY={uiLanguageSheet.panY}
-                        panHandlers={uiLanguageSheet.panResponder.panHandlers}
                         onClose={uiLanguageSheet.closeSheet}
                         onSelectLanguage={(code) => {
                             state.setUiLanguage(code as CanonicalLocale);
                             uiLanguageSheet.closeSheet();
                         }}
+                        options={settingsLanguageOptions}
+                        panHandlers={uiLanguageSheet.panResponder.panHandlers}
+                        panY={uiLanguageSheet.panY}
+                        selectedCode={state.uiLanguage}
+                        theme={palette}
+                        title={t('profileAtelier.travel.appLanguage', 'App Language')}
+                        visible={state.uiLangModalVisible}
+                    />
+
+                    <ProfileDeveloperSheet
+                        closeLabel={t('profileAtelier.developer.close', 'Close')}
+                        onClose={handleCloseBuildFingerprint}
+                        rows={buildFingerprintRows}
+                        title={t('profileAtelier.developer.title', 'Developer Info')}
+                        visible={canRevealBuildFingerprint && isBuildFingerprintVisible}
                     />
                 </SafeAreaView>
             </View>

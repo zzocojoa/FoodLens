@@ -1,10 +1,13 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+
 import ProfileHubScreen from '../ProfileHubScreen';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
-const mockHandleUpdate = jest.fn();
+const mockSetTheme = jest.fn();
+const mockSetTravelerLangModalVisible = jest.fn();
+const mockSetUiLangModalVisible = jest.fn();
 const mockBuildFingerprint = {
     version: '1.0.0',
     appName: 'FoodLens',
@@ -43,16 +46,21 @@ jest.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-jest.mock('@/components/HapticFeedback', () => ({
-    HapticTouchableOpacity: (props: Record<string, unknown>) => {
-        const ReactNative = jest.requireActual('react-native');
+jest.mock('@/components/HapticFeedback', () => {
+    const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
 
-        return <ReactNative.TouchableOpacity {...props} />;
-    },
-}));
+    return {
+        HapticTouchableOpacity: ({ children, ...props }: React.ComponentProps<typeof ReactNative.TouchableOpacity>) => (
+            <ReactNative.TouchableOpacity {...props}>{children}</ReactNative.TouchableOpacity>
+        ),
+        HapticPressable: ({ children, ...props }: React.ComponentProps<typeof ReactNative.Pressable>) => (
+            <ReactNative.Pressable {...props}>{children}</ReactNative.Pressable>
+        ),
+    };
+});
 
 jest.mock('@/components/navigation/TopLevelScreenShell', () => {
-    const ReactNative = jest.requireActual('react-native');
+    const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
 
     const MockShell = ({ children }: { children: React.ReactNode }) => <ReactNative.View>{children}</ReactNative.View>;
 
@@ -67,29 +75,8 @@ jest.mock('@/contexts/ThemeContext', () => ({
     useTheme: () => ({
         theme: 'light',
         colorScheme: 'light',
-        setTheme: jest.fn(),
+        setTheme: mockSetTheme,
     }),
-}));
-
-jest.mock('@/constants/theme', () => ({
-    Colors: {
-        light: {
-            background: '#FFFFFF',
-            surface: '#F8FAFC',
-            border: '#E2E8F0',
-            textPrimary: '#0F172A',
-            textSecondary: '#64748B',
-            shadow: '#000000',
-        },
-        dark: {
-            background: '#020617',
-            surface: '#0F172A',
-            border: '#1E293B',
-            textPrimary: '#F8FAFC',
-            textSecondary: '#94A3B8',
-            shadow: '#000000',
-        },
-    },
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -97,6 +84,16 @@ jest.mock('@/features/i18n', () => ({
         t: (_key: string, fallback?: string) => fallback ?? _key,
     }),
 }));
+
+jest.mock('@/features/home/components/HomeBackgroundAtmosphere', () => {
+    const MockHomeBackgroundAtmosphere = () => null;
+
+    return {
+        HomeBackgroundAtmosphere: MockHomeBackgroundAtmosphere,
+        __esModule: true,
+        default: MockHomeBackgroundAtmosphere,
+    };
+});
 
 jest.mock('@/services/auth/currentUser', () => ({
     getCurrentUserIdSnapshot: () => 'usr_profile',
@@ -149,10 +146,10 @@ jest.mock('../../profileHub/hooks/useProfileHubController', () => ({
             setImage: jest.fn(),
             setTravelerLanguage: jest.fn(),
             setUiLanguage: jest.fn(),
-            setTravelerLangModalVisible: jest.fn(),
-            setUiLangModalVisible: jest.fn(),
+            setTravelerLangModalVisible: mockSetTravelerLangModalVisible,
+            setUiLangModalVisible: mockSetUiLangModalVisible,
             pickImage: jest.fn(),
-            handleUpdate: mockHandleUpdate,
+            handleUpdate: jest.fn(),
         },
         travelerLanguageSheet: {
             panY: 0,
@@ -167,30 +164,83 @@ jest.mock('../../profileHub/hooks/useProfileHubController', () => ({
     }),
 }));
 
-jest.mock('../../profileHub/components/AnimatedThemeToggle', () => {
-    return function MockAnimatedThemeToggle() {
-        const ReactNative = jest.requireActual('react-native');
-
-        return <ReactNative.Text>THEME_TOGGLE</ReactNative.Text>;
-    };
-});
-
-jest.mock('../../profileHub/components/ProfileIdentitySection', () => {
-    return function MockProfileIdentitySection() {
-        const ReactNative = jest.requireActual('react-native');
-
-        return <ReactNative.Text>PROFILE_IDENTITY</ReactNative.Text>;
-    };
-});
-
-jest.mock('../../profileHub/components/ProfileMenuItem', () => {
-    return function MockProfileMenuItem(props: { title: string; subtitle?: string }) {
-        const ReactNative = jest.requireActual('react-native');
+jest.mock('../../profileHub/components/ProfileIdentitySummaryCard', () => {
+    return function MockProfileIdentitySummaryCard(props: {
+        onPressEdit: () => void;
+        onLongPressPortrait?: () => void;
+    }) {
+        const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
 
         return (
-            <ReactNative.View>
+            <ReactNative.View testID="profile-identity-summary-card">
+                <ReactNative.TouchableOpacity onLongPress={props.onLongPressPortrait} testID="profile-portrait-trigger" />
+                <ReactNative.TouchableOpacity onPress={props.onPressEdit} testID="profile-edit-action" />
+            </ReactNative.View>
+        );
+    };
+});
+
+jest.mock('../../profileHub/components/ProfileSafetyPassportSection', () => {
+    return function MockProfileSafetyPassportSection(props: {
+        onPressHealthProfile: () => void;
+        onPressTravelerLanguage: () => void;
+    }) {
+        const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+
+        return (
+            <ReactNative.View testID="profile-safety-passport-section">
+                <ReactNative.TouchableOpacity onPress={props.onPressHealthProfile} testID="profile-health-profile-action" />
+                <ReactNative.TouchableOpacity
+                    onPress={props.onPressTravelerLanguage}
+                    testID="profile-card-language-action"
+                />
+            </ReactNative.View>
+        );
+    };
+});
+
+jest.mock('../../profileHub/components/ProfileTravelModeSection', () => {
+    return function MockProfileTravelModeSection(props: { onPressAppLanguage: () => void }) {
+        const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+
+        return (
+            <ReactNative.View testID="profile-travel-mode-section">
+                <ReactNative.TouchableOpacity onPress={props.onPressAppLanguage} testID="profile-app-language-action" />
+            </ReactNative.View>
+        );
+    };
+});
+
+jest.mock('../../profileHub/components/ProfileSupportDeskCard', () => {
+    return function MockProfileSupportDeskCard(props: { onPress: () => void }) {
+        const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+
+        return (
+            <ReactNative.View testID="profile-support-desk-card">
+                <ReactNative.TouchableOpacity onPress={props.onPress} testID="profile-support-desk-action" />
+            </ReactNative.View>
+        );
+    };
+});
+
+jest.mock('../../profileHub/components/ProfileDeveloperSheet', () => {
+    return function MockProfileDeveloperSheet(props: {
+        rows: { label: string; value: string }[];
+        title: string;
+        visible: boolean;
+    }) {
+        const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+
+        if (!props.visible) {
+            return null;
+        }
+
+        return (
+            <ReactNative.View testID="profile-developer-sheet">
                 <ReactNative.Text>{props.title}</ReactNative.Text>
-                {props.subtitle ? <ReactNative.Text>{props.subtitle}</ReactNative.Text> : null}
+                {props.rows.map((row) => (
+                    <ReactNative.Text key={row.label}>{row.value}</ReactNative.Text>
+                ))}
             </ReactNative.View>
         );
     };
@@ -203,10 +253,7 @@ jest.mock('../../profileHub/components/LanguageSelectorModal', () => {
 });
 
 jest.mock('lucide-react-native', () => ({
-    Globe: () => null,
     LogOut: () => null,
-    Shield: () => null,
-    User: () => null,
 }));
 
 describe('ProfileHubScreen', () => {
@@ -232,30 +279,58 @@ describe('ProfileHubScreen', () => {
         });
     });
 
-    it('does not reveal build fingerprint in production even after long press', () => {
-        const { getByText, queryByText } = render(<ProfileHubScreen />);
+    it('renders the redesigned sections and opens the edit page', () => {
+        const { getByTestId, getByText } = render(<ProfileHubScreen />);
 
-        expect(queryByText('Build Fingerprint')).toBeNull();
+        expect(getByText('Profile')).toBeTruthy();
+        expect(getByTestId('profile-identity-summary-card')).toBeTruthy();
+        expect(getByTestId('profile-safety-passport-section')).toBeTruthy();
+        expect(getByTestId('profile-travel-mode-section')).toBeTruthy();
+        expect(getByTestId('profile-support-desk-card')).toBeTruthy();
 
-        fireEvent(getByText('Profile'), 'longPress');
+        fireEvent.press(getByTestId('profile-edit-action'));
 
-        expect(queryByText('Build Fingerprint')).toBeNull();
+        expect(mockPush).toHaveBeenCalledWith('/profile-edit');
     });
 
-    it('reveals build fingerprint after long press outside production track', () => {
+    it('does not reveal developer info in production even after portrait long press', () => {
+        const { getByTestId, queryByTestId } = render(<ProfileHubScreen />);
+
+        expect(queryByTestId('profile-developer-sheet')).toBeNull();
+
+        fireEvent(getByTestId('profile-portrait-trigger'), 'longPress');
+
+        expect(queryByTestId('profile-developer-sheet')).toBeNull();
+    });
+
+    it('reveals developer info after portrait long press outside production track', () => {
         Object.assign(mockBuildFingerprint, {
             installTrack: 'workspace',
             buildSourceLabel: 'workspace:next-feature-main',
             androidPackage: 'com.hoihou.foodlens.nextfeaturemain',
         });
 
-        const { getByText, queryByText } = render(<ProfileHubScreen />);
+        const { getByTestId, getByText, queryByTestId } = render(<ProfileHubScreen />);
 
-        expect(queryByText('Build Fingerprint')).toBeNull();
+        expect(queryByTestId('profile-developer-sheet')).toBeNull();
 
-        fireEvent(getByText('Profile'), 'longPress');
+        fireEvent(getByTestId('profile-portrait-trigger'), 'longPress');
 
-        expect(getByText('Build Fingerprint')).toBeTruthy();
+        expect(getByTestId('profile-developer-sheet')).toBeTruthy();
         expect(getByText('workspace:next-feature-main')).toBeTruthy();
+    });
+
+    it('opens the health profile, support desk, and language actions from the new sections', () => {
+        const { getByTestId } = render(<ProfileHubScreen />);
+
+        fireEvent.press(getByTestId('profile-health-profile-action'));
+        fireEvent.press(getByTestId('profile-support-desk-action'));
+        fireEvent.press(getByTestId('profile-card-language-action'));
+        fireEvent.press(getByTestId('profile-app-language-action'));
+
+        expect(mockPush).toHaveBeenCalledWith('/health-profile');
+        expect(mockPush).toHaveBeenCalledWith('/support-policies');
+        expect(mockSetTravelerLangModalVisible).toHaveBeenCalledWith(true);
+        expect(mockSetUiLangModalVisible).toHaveBeenCalledWith(true);
     });
 });
