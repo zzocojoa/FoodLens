@@ -227,6 +227,30 @@ describe('useProfileHubState conflict handling', () => {
     expect(mockResolveImageUri).toHaveBeenCalledWith('profile_123.jpg');
   });
 
+  it('prefers route-provided initial state over stale local snapshot on first paint', async () => {
+    mockSafeStorageGetSync.mockReturnValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler Joy',
+      email: 'user@example.com',
+      profileImage: 'profile_old.jpg',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    mockLoadProfile.mockResolvedValue(null);
+
+    const { result } = renderHook(() =>
+      useProfileHubState('usr_profile', {
+        name: '유준',
+        image: 'https://cdn.example.com/profile-current.jpg',
+      })
+    );
+
+    expect(result.current.name).toBe('유준');
+    expect(result.current.image).toBe('https://cdn.example.com/profile-current.jpg');
+  });
+
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
     const firstProfile = {
       uid: 'usr_profile',

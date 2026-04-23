@@ -290,7 +290,12 @@ describe('ProfileHubScreen', () => {
 
         fireEvent.press(getByTestId('profile-edit-action'));
 
-        expect(mockPush).toHaveBeenCalledWith('/profile-edit');
+        expect(mockPush).toHaveBeenCalledWith({
+            pathname: '/profile-edit',
+            params: {
+                initialName: 'Traveler',
+            },
+        });
     });
 
     it('does not reveal developer info in production even after portrait long press', () => {

@@ -7,7 +7,7 @@ import 'react-native-reanimated';
 import { useEffect, useRef } from 'react';
 import { AppState, BackHandler, Platform, ToastAndroid } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
 import { SafeStorage, initializeSafeStorage } from '../services/storage';
 import { cleanupOrphanedImages } from '../services/imageStorage';
@@ -20,6 +20,7 @@ import { AnalysisService } from '../services/analysisService';
 import { UserService } from '../services/userService';
 import { initializeGoogleAdsRuntime } from '../services/ads/googleAdsRuntime';
 import { syncReleasePresentationStateVersion } from '../services/appVersionState';
+import { Colors } from '../constants/theme';
 
 import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -30,6 +31,7 @@ import {
 } from '../components/navigation/androidTopLevelNavigation';
 import { TOP_LEVEL_NAV_ROUTES } from '../components/navigation/topLevelNavRegistry';
 import { useI18n } from '../features/i18n';
+import { homeDashboardColors } from '../features/home/components/homeDashboardTokens';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -94,6 +96,16 @@ function LayoutContent() {
   const { t } = useI18n();
   const pathname = usePathname();
   const lastAndroidBackPressAtRef = useRef<number>(0);
+  const androidProfileEditScreenOptions =
+    Platform.OS === 'android'
+      ? {
+          animation: 'none' as const,
+          contentStyle: {
+            backgroundColor:
+              colorScheme === 'dark' ? Colors.dark.background : homeDashboardColors.paper,
+          },
+        }
+      : undefined;
   const runWithAuthenticatedUser = (run: (userId: string) => void | Promise<void>) => {
     const userId = getCurrentUserIdSnapshot();
     if (userId && userId !== 'auth-required') {
@@ -245,7 +257,7 @@ function LayoutContent() {
             <Stack.Screen name="camera" options={{ animation: 'none' }} />
             <Stack.Screen name="result" options={{ animation: 'fade_from_bottom' }} />
             <Stack.Screen name="health-profile" />
-            <Stack.Screen name="profile-edit" />
+            <Stack.Screen name="profile-edit" options={androidProfileEditScreenOptions} />
             <Stack.Screen name="trip-stats" />
             <Stack.Screen name="emoji-picker" />
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
@@ -267,7 +279,7 @@ function LayoutContent() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <QueryClientProvider client={queryClient}>
         <CustomThemeProvider>
           <LayoutContent />

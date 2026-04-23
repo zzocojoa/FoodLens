@@ -17,6 +17,7 @@ import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types'
 import { SafeStorage } from '@/services/storage';
 import { getUserStorageKey } from '@/services/user/constants';
 import type { UserProfile } from '@/models/User';
+import type { ProfileHubInitialState } from '../types';
 
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
 
@@ -62,12 +63,19 @@ const resolveProfileImageReference = (value: string | undefined): string | undef
     return resolveImageUri(trimmedValue) ?? trimmedValue;
 };
 
-export const useProfileHubState = (userId: string) => {
+export const useProfileHubState = (
+    userId: string,
+    initialState?: ProfileHubInitialState,
+) => {
     const { t } = useI18n();
+    const initialStateRef = useRef<ProfileHubInitialState | undefined>(initialState);
     const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot(userId));
+    const routeInitialState = initialStateRef.current;
     const initialProfile = initialProfileSnapshotRef.current;
-    const initialName = initialProfile?.name?.trim() || DEFAULT_NAME;
-    const initialImage = resolveProfileImageReference(initialProfile?.profileImage);
+    const initialName = routeInitialState?.name?.trim() || initialProfile?.name?.trim() || DEFAULT_NAME;
+    const initialImage =
+        resolveProfileImageReference(routeInitialState?.image) ??
+        resolveProfileImageReference(initialProfile?.profileImage);
     const initialTravelerLanguage = initialProfile?.settings?.targetLanguage;
     const initialUiLanguage = initialProfile?.settings?.language
         ? normalizeCanonicalLocale(initialProfile.settings.language)

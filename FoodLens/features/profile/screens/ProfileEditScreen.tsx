@@ -1,6 +1,7 @@
 import React from 'react';
 import {
     ActivityIndicator,
+    InteractionManager,
     Modal,
     Platform,
     Pressable,
@@ -10,7 +11,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Camera, ChevronRight, X } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +35,8 @@ import { resolveImageUri } from '@/services/imageStorage';
 
 import ProfileDeveloperSheet from '../profileHub/components/ProfileDeveloperSheet';
 import { useProfileHubController } from '../profileHub/hooks/useProfileHubController';
+import { parseProfileEditSearchParams } from '../profileHub/utils/profileEditRoute';
+import type { ProfileEditSearchParams } from '../profileHub/utils/profileEditRoute';
 
 const getInitialGlyph = (name: string): string => {
     const trimmedName = name.trim();
@@ -59,6 +62,9 @@ const styles = StyleSheet.create({
     },
     safeAreaDark: {
         backgroundColor: Colors.dark.background,
+    },
+    contentRoot: {
+        flex: 1,
     },
     topChrome: {
         paddingBottom: 6,
@@ -351,15 +357,18 @@ const styles = StyleSheet.create({
 
 export default function ProfileEditScreen(): React.JSX.Element {
     const router = useRouter();
+    const params = useLocalSearchParams<ProfileEditSearchParams>();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
     const { colorScheme } = useTheme();
     const resolvedColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
     const isDarkTheme = resolvedColorScheme === 'dark';
     const userId = getCurrentUserIdSnapshot();
-    const { state } = useProfileHubController({ userId });
+    const initialState = parseProfileEditSearchParams(params);
+    const { state } = useProfileHubController({ userId, initialState });
     const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState<boolean>(false);
     const [isImageActionSheetVisible, setIsImageActionSheetVisible] = React.useState<boolean>(false);
+    const [shouldRenderAtmosphere, setShouldRenderAtmosphere] = React.useState<boolean>(Platform.OS !== 'android');
     const nameInputRef = React.useRef<TextInput>(null);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
     const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
@@ -436,6 +445,26 @@ export default function ProfileEditScreen(): React.JSX.Element {
         nameInputRef.current?.focus();
     }, []);
 
+    React.useEffect(() => {
+        if (Platform.OS !== 'android') {
+            return undefined;
+        }
+
+        let isMounted = true;
+        const task = InteractionManager.runAfterInteractions(() => {
+            if (!isMounted) {
+                return;
+            }
+
+            setShouldRenderAtmosphere(true);
+        });
+
+        return () => {
+            isMounted = false;
+            task.cancel?.();
+        };
+    }, []);
+
     return (
         <TopLevelScreenShell
             activeItem="profile"
@@ -443,11 +472,18 @@ export default function ProfileEditScreen(): React.JSX.Element {
             hideNav
         >
             <View style={[styles.container, isDarkTheme ? styles.containerDark : null]}>
-                {isDarkTheme ? null : <HomeBackgroundAtmosphere />}
+                {isDarkTheme || !shouldRenderAtmosphere ? null : <HomeBackgroundAtmosphere />}
                 <StatusBar style={isDarkTheme ? 'light' : 'dark'} />
                 <Stack.Screen options={{ headerShown: false }} />
 
-                <SafeAreaView style={[styles.safeArea, isDarkTheme ? styles.safeAreaDark : null]} edges={['top']}>
+                <View
+                    style={[
+                        styles.safeArea,
+                        styles.contentRoot,
+                        isDarkTheme ? styles.safeAreaDark : null,
+                        { paddingTop: insets.top },
+                    ]}
+                >
                     <View style={styles.topChrome}>
                         <View style={styles.navigationRow}>
                             <HapticTouchableOpacity
@@ -713,7 +749,7 @@ export default function ProfileEditScreen(): React.JSX.Element {
                             </SafeAreaView>
                         </View>
                     </Modal>
-                </SafeAreaView>
+                </View>
             </View>
         </TopLevelScreenShell>
     );
