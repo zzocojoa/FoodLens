@@ -31,6 +31,7 @@ import ProfileSupportDeskCard from '../profileHub/components/ProfileSupportDeskC
 import ProfileTravelModeSection from '../profileHub/components/ProfileTravelModeSection';
 import { LANGUAGE_OPTIONS, UI_LANGUAGE_OPTIONS } from '../profileHub/constants';
 import { useProfileHubController } from '../profileHub/hooks/useProfileHubController';
+import { buildProfileEditRoute } from '../profileHub/utils/profileEditRoute';
 import { toLanguageLabel, toTargetLanguage, toUiLanguageLabel } from '../profileHub/utils/profileHubUtils';
 
 const profileHubStyles = StyleSheet.create({
@@ -210,8 +211,13 @@ export default function ProfileHubScreen(): React.JSX.Element {
     }, [router]);
 
     const handleOpenEditProfile = React.useCallback(() => {
-        router.push('/profile-edit');
-    }, [router]);
+        router.push(
+            buildProfileEditRoute({
+                name: state.name,
+                image: state.image,
+            }),
+        );
+    }, [router, state.image, state.name]);
 
     const handleRevealBuildFingerprint = React.useCallback(() => {
         if (!canRevealBuildFingerprint) {
