@@ -35,7 +35,7 @@ export default function TripStatsScreen(): React.JSX.Element {
         viewModel,
     } = useTripStatsScreen({
         onOpenHistory: () => {
-            router.push('/history');
+            router.navigate('/history');
         },
         onOpenJourneyEntry: handleIgnoredJourneyEntry,
     });

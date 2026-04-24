@@ -55,6 +55,8 @@ npx expo start --dev-client --clear
 # 로그 기록용
 npm run ios:device:logs
 npm run ios:release:device:logs
+npx expo run:ios --configuration Release --no-bundler -d 00008140-000E5DAE1ABB001C
+
 
 npm run android:device:logs
 npm run android:release:device:logs

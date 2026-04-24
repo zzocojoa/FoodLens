@@ -6,8 +6,10 @@ import {
     StyleSheet,
     View,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { completeTopLevelTabSwitchTrace } from '../../../components/navigation/tabSwitchTrace';
 import TopLevelScreenShell, {
     getTopLevelScreenBottomPadding,
 } from '../../../components/navigation/TopLevelScreenShell';
@@ -53,6 +55,12 @@ type TravelerCardViewModel = Readonly<{
     isPersonalized: boolean;
     languageLabel: string;
 }>;
+
+const AllergiesScreenStatusBar = (): React.JSX.Element => {
+    const colorScheme = useColorScheme() ?? 'light';
+
+    return <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />;
+};
 
 const TRAVELER_ALLERGIES_PREFIX = '⚠️ My Allergies:';
 
@@ -324,8 +332,8 @@ const getTravelerCardCopy = (
 
 export default function AllergiesScreen() {
     const router = useRouter();
+    const isFocused = useIsFocused();
     const insets = useSafeAreaInsets();
-    const colorScheme = useColorScheme() ?? 'light';
     const { t } = useI18n();
     const {
         allergies,
@@ -377,6 +385,7 @@ export default function AllergiesScreen() {
         [summary.trackedItemCount, t],
     );
     const homeContentBottomPadding = getTopLevelScreenBottomPadding(insets.bottom, 24);
+    const isAllergiesReady = !loading || summary.trackedItemCount > 0;
 
     const handleEditProfile = React.useCallback(() => {
         router.push('/health-profile' as never);
@@ -393,6 +402,21 @@ export default function AllergiesScreen() {
     const modalCardState =
         heroState === 'personalized' || heroState === 'generic' ? heroState : 'generic';
 
+    React.useEffect(() => {
+        if (!isFocused || !isAllergiesReady) {
+            return;
+        }
+
+        completeTopLevelTabSwitchTrace({
+            target: 'allergies',
+            details: {
+                hasSavedItems,
+                heroState,
+                trackedItemCount: summary.trackedItemCount,
+            },
+        });
+    }, [hasSavedItems, heroState, isAllergiesReady, isFocused, summary.trackedItemCount]);
+
     return (
         <TopLevelScreenShell
             activeItem="allergies"
@@ -401,7 +425,7 @@ export default function AllergiesScreen() {
         >
             <View style={screenStyles.container}>
                 <HomeBackgroundAtmosphere />
-                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                <AllergiesScreenStatusBar />
                 <Stack.Screen options={{ headerShown: false }} />
 
                 <SafeAreaView style={screenStyles.safeArea} edges={['top']}>

@@ -4,7 +4,6 @@ export type TopLevelNavRouteDefinition = {
   activeItem: FloatingBottomNavItemKey;
   href: '/(tabs)' | '/history' | '/allergies' | '/profile';
   pathname: '/' | '/history' | '/allergies' | '/profile';
-  stackName: '(tabs)' | 'history' | 'allergies' | 'profile';
 };
 
 export const TOP_LEVEL_NAV_ROUTES: readonly TopLevelNavRouteDefinition[] = [
@@ -12,25 +11,21 @@ export const TOP_LEVEL_NAV_ROUTES: readonly TopLevelNavRouteDefinition[] = [
     activeItem: 'home',
     href: '/(tabs)',
     pathname: '/',
-    stackName: '(tabs)',
   },
   {
     activeItem: 'allergies',
     href: '/allergies',
     pathname: '/allergies',
-    stackName: 'allergies',
   },
   {
     activeItem: 'history',
     href: '/history',
     pathname: '/history',
-    stackName: 'history',
   },
   {
     activeItem: 'profile',
     href: '/profile',
     pathname: '/profile',
-    stackName: 'profile',
   },
 ];
 

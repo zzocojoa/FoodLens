@@ -8,6 +8,8 @@ import { useTravelerAllergyCardModel } from '../../../../components/travelerAlle
 
 const mockedBack = jest.fn();
 const mockedPush = jest.fn();
+const mockedNavigate = jest.fn();
+const mockedPrefetch = jest.fn();
 
 jest.mock('expo-router', () => ({
     Stack: {
@@ -15,8 +17,14 @@ jest.mock('expo-router', () => ({
     },
     useRouter: () => ({
         back: mockedBack,
+        navigate: mockedNavigate,
+        prefetch: mockedPrefetch,
         push: mockedPush,
     }),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+    useIsFocused: () => true,
 }));
 
 jest.mock('react-native-safe-area-context', () => ({

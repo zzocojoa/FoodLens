@@ -10,6 +10,7 @@ const mockBuildHistoryArchiveViewModel = jest.fn();
 const mockBuildInitialRegion = jest.fn();
 
 jest.mock('../queries/useHistoryQuery', () => ({
+  HISTORY_QUERY_REFRESH_INTERVAL_MS: 15_000,
   useHistoryQuery: (...args: unknown[]) => mockUseHistoryQuery(...args),
 }));
 
@@ -51,6 +52,7 @@ describe('useHistoryData', () => {
     jest.clearAllMocks();
     mockUseHistoryQuery.mockReturnValue({
       data: [{ id: 'record_1' }],
+      dataUpdatedAt: Date.now() - 20_000,
       isLoading: false,
       refetch: jest.fn(),
       isRefetching: false,
@@ -130,7 +132,9 @@ describe('useHistoryData', () => {
   });
 
   it('keeps expanded countries in local hook state only', async () => {
-    const { result } = renderHook(() => useHistoryData('usr_history'));
+    const { result } = renderHook(() =>
+      useHistoryData('usr_history', { isPollingEnabled: true })
+    );
 
     await waitFor(() => {
       expect(Array.from(result.current.expandedCountries)).toEqual(['Korea']);
@@ -144,5 +148,56 @@ describe('useHistoryData', () => {
     expect(mockedEnqueuePhase2Sync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockedUpdateUserClientState).not.toHaveBeenCalled();
+  });
+
+  it('refetches when polling becomes active again after the tab regains focus', async () => {
+    const refetch = jest.fn();
+    mockUseHistoryQuery.mockReturnValue({
+      data: [{ id: 'record_1' }],
+      dataUpdatedAt: Date.now() - 20_000,
+      isLoading: false,
+      refetch,
+      isRefetching: false,
+    });
+
+    const { rerender } = renderHook(
+      ({ isPollingEnabled }: { isPollingEnabled: boolean }) =>
+        useHistoryData('usr_history', { isPollingEnabled }),
+      {
+        initialProps: { isPollingEnabled: false },
+      }
+    );
+
+    expect(mockUseHistoryQuery).toHaveBeenLastCalledWith('usr_history', { isPollingEnabled: false });
+
+    rerender({ isPollingEnabled: true });
+
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalledTimes(1);
+    });
+    expect(mockUseHistoryQuery).toHaveBeenLastCalledWith('usr_history', { isPollingEnabled: true });
+  });
+
+  it('does not refetch on focus regain when cached history is still fresh', () => {
+    const refetch = jest.fn();
+    mockUseHistoryQuery.mockReturnValue({
+      data: [{ id: 'record_1' }],
+      dataUpdatedAt: Date.now(),
+      isLoading: false,
+      refetch,
+      isRefetching: false,
+    });
+
+    const { rerender } = renderHook(
+      ({ isPollingEnabled }: { isPollingEnabled: boolean }) =>
+        useHistoryData('usr_history', { isPollingEnabled }),
+      {
+        initialProps: { isPollingEnabled: false },
+      }
+    );
+
+    rerender({ isPollingEnabled: true });
+
+    expect(refetch).not.toHaveBeenCalled();
   });
 });

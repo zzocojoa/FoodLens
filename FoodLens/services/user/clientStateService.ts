@@ -91,7 +91,7 @@ export const updateUserClientState = async (
     },
   };
   await saveProfileSnapshot(userId, nextProfile);
-  publishUserProfileUpdated(userId, 'local_write');
+  publishUserProfileUpdated(userId, 'client_state_write');
 
   startPhase2SyncRuntime();
   const payload = buildProfileWritePayload(nextProfile).settings as Record<string, unknown>;

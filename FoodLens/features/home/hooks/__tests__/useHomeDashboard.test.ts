@@ -15,13 +15,11 @@ const mockBuildHomeSelectedDatePatch = jest.fn();
 const mockUpdateUserClientState = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
 const mockDeleteAnalysis = jest.fn();
+let mockIsFocused = true;
 
 jest.mock('@react-navigation/native', () => {
-  const React = require('react');
   return {
-    useFocusEffect: (effect: () => (() => void) | void) => {
-      React.useEffect(() => effect(), [effect]);
-    },
+    useIsFocused: () => mockIsFocused,
   };
 });
 
@@ -87,6 +85,8 @@ describe('useHomeDashboard profile update subscription', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-24T12:00:00.000Z'));
+    mockIsFocused = true;
     jest
       .spyOn(InteractionManager, 'runAfterInteractions')
       .mockImplementation(((task?: (() => any) | { run?: () => any }) => {
@@ -117,6 +117,7 @@ describe('useHomeDashboard profile update subscription', () => {
     mockSafeStorageGet.mockResolvedValue(null);
     mockReadHomeSelectedDateSnapshot.mockReturnValue(null);
     mockBuildHomeSelectedDatePatch.mockImplementation((date: Date) => buildSelectedDatePatch(date));
+    mockSubscribeUserProfileUpdated.mockReturnValue(jest.fn());
     mockUpdateUserClientState.mockResolvedValue({});
     mockDeleteAnalysis.mockResolvedValue(undefined);
     mockFetchHomeDashboardData.mockResolvedValue({
@@ -148,9 +149,102 @@ describe('useHomeDashboard profile update subscription', () => {
     jest.restoreAllMocks();
   });
 
+  it('skips the first focus refresh while the initial dashboard load is still pending', async () => {
+    const runAfterInteractionsSpy = jest.spyOn(InteractionManager, 'runAfterInteractions');
+    mockFetchHomeDashboardData.mockImplementation(
+      async () =>
+        new Promise(() => {
+          return undefined;
+        })
+    );
+
+    renderHook(() => useHomeDashboard());
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    expect(runAfterInteractionsSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not commit dashboard data after home loses focus during the initial load', async () => {
+    let resolveFetch:
+      | ((value: {
+          recentData: Array<{ id: string }>;
+          allHistory: Array<{ id: string }>;
+          profile: {
+            uid: string;
+            name: string;
+            email: string;
+            safetyProfile: {
+              allergies: string[];
+              dietaryRestrictions: string[];
+              severityMap: Record<string, string>;
+            };
+            settings: {
+              language: string;
+              autoPlayAudio: boolean;
+            };
+            createdAt: string;
+            updatedAt: string;
+          };
+          weeklyStats: [];
+          safeCount: number;
+        }) => void)
+      | null = null;
+    mockFetchHomeDashboardData.mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve as typeof resolveFetch;
+        }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ focused }: { focused: boolean }) => {
+        mockIsFocused = focused;
+        return useHomeDashboard();
+      },
+      {
+        initialProps: { focused: true },
+      },
+    );
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+
+    rerender({ focused: false });
+
+    await act(async () => {
+      resolveFetch?.({
+        recentData: [{ id: 'analysis_recent_1' }],
+        allHistory: [{ id: 'analysis_all_1' }],
+        profile: {
+          uid: 'usr_home',
+          name: 'Tester',
+          email: 'user@example.com',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: ['vegan'],
+            severityMap: {},
+          },
+          settings: {
+            language: 'en',
+            autoPlayAudio: false,
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        weeklyStats: [],
+        safeCount: 1,
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.recentScans).toEqual([]);
+    expect(result.current.filteredScans).toEqual([]);
+    expect(result.current.userProfile).toBeNull();
+    expect(result.current.safeCount).toBe(0);
+  });
+
   it('reloads dashboard once for rapid profile update events (debounced)', async () => {
-    let listener: (() => void) | null = null;
-    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: () => void) => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
       listener = cb;
       return jest.fn();
     });
@@ -163,9 +257,10 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(mockSubscribeUserProfileUpdated).toHaveBeenCalledWith('usr_home', expect.any(Function));
 
     act(() => {
-      listener?.();
-      listener?.();
-      listener?.();
+      jest.advanceTimersByTime(3_000);
+      listener?.('server_pull');
+      listener?.('server_pull');
+      listener?.('server_pull');
     });
 
     act(() => {
@@ -182,10 +277,93 @@ describe('useHomeDashboard profile update subscription', () => {
     });
   });
 
+  it('skips immediate server_pull reloads right after dashboard load', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+
+    renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      listener?.('server_pull');
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.advanceTimersByTime(3_000);
+      listener?.('server_pull');
+      jest.advanceTimersByTime(250);
+    });
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('skips immediate client_state_write reloads right after dashboard load', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+
+    renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      listener?.('client_state_write');
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload dashboard from profile updates while blurred', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+
+    const { rerender } = renderHook(
+      ({ focused }: { focused: boolean }) => {
+        mockIsFocused = focused;
+        return useHomeDashboard();
+      },
+      {
+        initialProps: { focused: true },
+      }
+    );
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ focused: false });
+
+    act(() => {
+      listener?.('server_pull');
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
+
   it('cancels pending refresh timer on unmount', async () => {
     const unsubscribe = jest.fn();
-    let listener: (() => void) | null = null;
-    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: () => void) => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
       listener = cb;
       return unsubscribe;
     });
@@ -197,7 +375,8 @@ describe('useHomeDashboard profile update subscription', () => {
     });
 
     act(() => {
-      listener?.();
+      jest.advanceTimersByTime(3_000);
+      listener?.('server_pull');
     });
 
     unmount();
@@ -208,6 +387,38 @@ describe('useHomeDashboard profile update subscription', () => {
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run background dashboard polling while blurred', async () => {
+    const { rerender } = renderHook(
+      ({ focused }: { focused: boolean }) => {
+        mockIsFocused = focused;
+        return useHomeDashboard();
+      },
+      {
+        initialProps: { focused: true },
+      }
+    );
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ focused: false });
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+
+    rerender({ focused: true });
+
+    act(() => {
+      jest.advanceTimersByTime(15_000);
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
   });
 
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
@@ -380,6 +591,34 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(mockBuildHomeSelectedDatePatch).toHaveBeenCalledWith(nextDay);
     expect(mockUpdateUserClientState).toHaveBeenCalledTimes(1);
     expect(mockUpdateUserClientState).toHaveBeenCalledWith('usr_home', nextDayPatch);
+  });
+
+  it('does not reload dashboard for a selected date client_state_write after the reload guard window', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+    mockReadHomeSelectedDateSnapshot.mockReturnValue(new Date(2026, 2, 24, 9, 0, 0));
+    mockUpdateUserClientState.mockImplementation(async () => {
+      listener?.('client_state_write');
+      return {};
+    });
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(3_001);
+      result.current.setSelectedDate(new Date(2026, 2, 25, 8, 15, 0));
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockUpdateUserClientState).toHaveBeenCalledTimes(1);
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
 
   it('shows translated delete failure alert without inline fallback strings', async () => {

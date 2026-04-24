@@ -5,8 +5,10 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { completeTopLevelTabSwitchTrace } from '../../../components/navigation/tabSwitchTrace';
 import TopLevelScreenShell, {
   getTopLevelScreenBottomPadding,
 } from '../../../components/navigation/TopLevelScreenShell';
@@ -30,7 +32,14 @@ import {
 } from '../utils/homeStatusCard';
 import { useI18n } from '@/features/i18n';
 import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 type TranslationFunction = (key: string, fallback?: string) => string;
+
+const HomeScreenStatusBar = (): React.JSX.Element => {
+  const colorScheme = useColorScheme() ?? 'light';
+
+  return <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />;
+};
 
 const getStatusLabel = (
   t: TranslationFunction,
@@ -154,10 +163,10 @@ const getQuickActionCopy = (
 };
 
 export default function HomeScreen() {
+  const isFocused = useIsFocused();
   const { t, locale } = useI18n();
   const insets = useSafeAreaInsets();
   const {
-    colorScheme,
     isConnected,
     dashboard,
     handleOpenAllergies,
@@ -249,12 +258,31 @@ export default function HomeScreen() {
   }, [selectedDate]);
 
   React.useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
+    completeTopLevelTabSwitchTrace({
+      target: 'home',
+      details: {
+        filteredScansCount: filteredScans.length,
+        hasProfile: userProfile !== null,
+        recentScansCount: recentScans.length,
+      },
+    });
+  }, [filteredScans.length, isFocused, recentScans.length, userProfile]);
+
+  React.useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
     const today = new Date();
 
     if (!isSameDay(selectedDate, today)) {
       setSelectedDate(today);
     }
-  }, [selectedDate, setSelectedDate]);
+  }, [isFocused, selectedDate, setSelectedDate]);
 
   const handleSignalPress = React.useCallback((signal: HomeStatusSignal) => {
     setActiveSignal((previous) => (previous === signal ? null : signal));
@@ -269,7 +297,7 @@ export default function HomeScreen() {
       <View style={screenStyles.container}>
         <HomeBackgroundAtmosphere />
         <SafeAreaView style={screenStyles.safeArea} edges={['top']}>
-          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+          <HomeScreenStatusBar />
           <ScrollView
             contentInsetAdjustmentBehavior="automatic"
             contentContainerStyle={[

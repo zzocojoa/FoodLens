@@ -2,18 +2,20 @@ import React from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
 
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import { completeTopLevelTabSwitchTrace } from '@/components/navigation/tabSwitchTrace';
 import TopLevelScreenShell, {
     getTopLevelScreenBottomPadding,
 } from '@/components/navigation/TopLevelScreenShell';
 import { Colors } from '@/constants/theme';
-import { useTheme } from '@/contexts/ThemeContext';
 import { CanonicalLocale, useI18n } from '@/features/i18n';
 import { HomeBackgroundAtmosphere } from '@/features/home/components/HomeBackgroundAtmosphere';
 import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { AuthApi } from '@/services/auth/authApi';
@@ -116,16 +118,37 @@ const profileHubStyles = StyleSheet.create({
     },
 });
 
+const MemoizedProfileIdentitySummaryCard = React.memo(ProfileIdentitySummaryCard);
+const MemoizedProfileSafetyPassportSection = React.memo(ProfileSafetyPassportSection);
+const MemoizedProfileSupportDeskCard = React.memo(ProfileSupportDeskCard);
+
+MemoizedProfileIdentitySummaryCard.displayName = 'ProfileHubIdentitySummaryCard';
+MemoizedProfileSafetyPassportSection.displayName = 'ProfileHubSafetyPassportSection';
+MemoizedProfileSupportDeskCard.displayName = 'ProfileHubSupportDeskCard';
+
 export default function ProfileHubScreen(): React.JSX.Element {
     const router = useRouter();
+    const isFocused = useIsFocused();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
-    const { theme: currentTheme, setTheme, colorScheme } = useTheme();
+    const colorScheme = useColorScheme();
     const resolvedColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
     const isDarkTheme = resolvedColorScheme === 'dark';
     const palette = Colors[resolvedColorScheme];
     const userId = getCurrentUserIdSnapshot();
     const { state, travelerLanguageSheet, uiLanguageSheet } = useProfileHubController({ userId });
+    const {
+        image,
+        name,
+        setTravelerLanguage,
+        setTravelerLangModalVisible,
+        setUiLanguage,
+        setUiLangModalVisible,
+        travelerLanguage,
+        travelerLangModalVisible,
+        uiLanguage,
+        uiLangModalVisible,
+    } = state;
     const [logoutLoading, setLogoutLoading] = React.useState<boolean>(false);
     const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState<boolean>(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
@@ -167,18 +190,18 @@ export default function ProfileHubScreen(): React.JSX.Element {
     }, [settingsLanguageOptions]);
     const travelerLanguageLabel = React.useMemo(() => {
         return toLanguageLabel({
-            language: state.travelerLanguage,
+            language: travelerLanguage,
             fallbackLabel: travelerAutoLabel,
             options: travelerOptions,
         });
-    }, [state.travelerLanguage, travelerAutoLabel, travelerOptions]);
+    }, [travelerAutoLabel, travelerLanguage, travelerOptions]);
     const settingsLanguageLabel = React.useMemo(() => {
         return toUiLanguageLabel({
-            language: state.uiLanguage,
+            language: uiLanguage,
             fallbackLabel: settingsAutoLabel,
             options: settingsLanguageOptions,
         });
-    }, [settingsAutoLabel, settingsLanguageOptions, state.uiLanguage]);
+    }, [settingsAutoLabel, settingsLanguageOptions, uiLanguage]);
     const buildFingerprintRows = React.useMemo(
         () => [
             { label: t('profileHub.buildFingerprint.version', 'Version'), value: buildFingerprint.version },
@@ -210,14 +233,22 @@ export default function ProfileHubScreen(): React.JSX.Element {
         router.push('/support-policies');
     }, [router]);
 
+    const handleOpenTravelerLanguage = React.useCallback(() => {
+        setTravelerLangModalVisible(true);
+    }, [setTravelerLangModalVisible]);
+
+    const handleOpenUiLanguage = React.useCallback(() => {
+        setUiLangModalVisible(true);
+    }, [setUiLangModalVisible]);
+
     const handleOpenEditProfile = React.useCallback(() => {
         router.push(
             buildProfileEditRoute({
-                name: state.name,
-                image: state.image,
+                name,
+                image,
             }),
         );
-    }, [router, state.image, state.name]);
+    }, [image, name, router]);
 
     const handleRevealBuildFingerprint = React.useCallback(() => {
         if (!canRevealBuildFingerprint) {
@@ -230,6 +261,21 @@ export default function ProfileHubScreen(): React.JSX.Element {
     const handleCloseBuildFingerprint = React.useCallback(() => {
         setIsBuildFingerprintVisible(false);
     }, []);
+
+    React.useEffect(() => {
+        if (!isFocused) {
+            return;
+        }
+
+        completeTopLevelTabSwitchTrace({
+            target: 'profile',
+            details: {
+                hasImage: Boolean(image),
+                travelerLanguage: travelerLanguage ?? null,
+                uiLanguage,
+            },
+        });
+    }, [image, isFocused, travelerLanguage, uiLanguage]);
 
     const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -347,32 +393,33 @@ export default function ProfileHubScreen(): React.JSX.Element {
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
                     >
-                        <ProfileIdentitySummaryCard
+                        <MemoizedProfileIdentitySummaryCard
                             colorScheme={resolvedColorScheme}
-                            image={state.image}
-                            name={state.name}
+                            image={image}
+                            name={name}
                             onLongPressPortrait={
                                 canRevealBuildFingerprint ? handleRevealBuildFingerprint : undefined
                             }
                             onPressEdit={handleOpenEditProfile}
                         />
 
-                        <ProfileSafetyPassportSection
+                        <MemoizedProfileSafetyPassportSection
                             colorScheme={resolvedColorScheme}
                             languageLabel={travelerLanguageLabel}
                             onPressHealthProfile={handleOpenHealthProfile}
-                            onPressTravelerLanguage={() => state.setTravelerLangModalVisible(true)}
+                            onPressTravelerLanguage={handleOpenTravelerLanguage}
                         />
 
                         <ProfileTravelModeSection
                             appLanguageLabel={settingsLanguageLabel}
                             colorScheme={resolvedColorScheme}
-                            currentTheme={currentTheme}
-                            onPressAppLanguage={() => state.setUiLangModalVisible(true)}
-                            setTheme={setTheme}
+                            onPressAppLanguage={handleOpenUiLanguage}
                         />
 
-                        <ProfileSupportDeskCard colorScheme={resolvedColorScheme} onPress={handleOpenSupportHub} />
+                        <MemoizedProfileSupportDeskCard
+                            colorScheme={resolvedColorScheme}
+                            onPress={handleOpenSupportHub}
+                        />
 
                         <HapticTouchableOpacity
                             accessibilityLabel={t('profileHub.menu.logout.title', 'Log out')}
@@ -408,32 +455,32 @@ export default function ProfileHubScreen(): React.JSX.Element {
                         normalizeForSelection={normalizeTravelerTargetLanguage}
                         onClose={travelerLanguageSheet.closeSheet}
                         onSelectLanguage={(code) => {
-                            state.setTravelerLanguage(toTargetLanguage(code));
+                            setTravelerLanguage(toTargetLanguage(code));
                             travelerLanguageSheet.closeSheet();
                         }}
                         options={travelerOptions}
                         panHandlers={travelerLanguageSheet.panResponder.panHandlers}
                         panY={travelerLanguageSheet.panY}
-                        selectedCode={state.travelerLanguage}
+                        selectedCode={travelerLanguage}
                         theme={palette}
                         title={t('profileAtelier.safety.cardLanguage', 'Card Language')}
-                        visible={state.travelerLangModalVisible}
+                        visible={travelerLangModalVisible}
                     />
 
                     <LanguageSelectorModal
                         colorScheme={resolvedColorScheme}
                         onClose={uiLanguageSheet.closeSheet}
                         onSelectLanguage={(code) => {
-                            state.setUiLanguage(code as CanonicalLocale);
+                            setUiLanguage(code as CanonicalLocale);
                             uiLanguageSheet.closeSheet();
                         }}
                         options={settingsLanguageOptions}
                         panHandlers={uiLanguageSheet.panResponder.panHandlers}
                         panY={uiLanguageSheet.panY}
-                        selectedCode={state.uiLanguage}
+                        selectedCode={uiLanguage}
                         theme={palette}
                         title={t('profileAtelier.travel.appLanguage', 'App Language')}
-                        visible={state.uiLangModalVisible}
+                        visible={uiLangModalVisible}
                     />
 
                     <ProfileDeveloperSheet

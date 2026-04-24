@@ -41,6 +41,10 @@ jest.mock('expo-status-bar', () => ({
     StatusBar: () => null,
 }));
 
+jest.mock('@react-navigation/native', () => ({
+    useIsFocused: () => true,
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
     SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
     useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -83,6 +87,10 @@ jest.mock('@/features/i18n', () => ({
     useI18n: () => ({
         t: (_key: string, fallback?: string) => fallback ?? _key,
     }),
+}));
+
+jest.mock('@/hooks/use-color-scheme', () => ({
+    useColorScheme: () => 'light',
 }));
 
 jest.mock('@/features/home/components/HomeBackgroundAtmosphere', () => {

@@ -11,8 +11,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
 import RestrictionInput from '../components/RestrictionInput';
@@ -28,7 +28,7 @@ export default function ProfileScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ fromProfileSheet?: string }>();
     const { t } = useI18n();
-    const { colorScheme } = useTheme();
+    const colorScheme = useColorScheme();
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
     const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);

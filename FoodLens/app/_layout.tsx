@@ -22,14 +22,14 @@ import { initializeGoogleAdsRuntime } from '../services/ads/googleAdsRuntime';
 import { syncReleasePresentationStateVersion } from '../services/appVersionState';
 import { Colors } from '../constants/theme';
 
-import { useTheme, ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
+import { ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
+import { useColorScheme } from '../hooks/use-color-scheme';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initSentry, setUser } from '../services/sentry';
 import {
   shouldUseAndroidExitFlow,
   shouldExitOnSecondBack,
 } from '../components/navigation/androidTopLevelNavigation';
-import { TOP_LEVEL_NAV_ROUTES } from '../components/navigation/topLevelNavRegistry';
 import { useI18n } from '../features/i18n';
 import { homeDashboardColors } from '../features/home/components/homeDashboardTokens';
 
@@ -38,22 +38,72 @@ SplashScreen.preventAutoHideAsync();
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 15_000;
 const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
+export const PROFILE_SYNC_STARTUP_DELAY_MS = 5_000;
 const ANDROID_TOP_LEVEL_SCREEN_OPTIONS =
   Platform.OS === 'android' ? { animation: 'none' as const } : undefined;
 
-const useAppActivePolling = (callback: () => void, intervalMs: number): void => {
+type AppActivePollingOptions = {
+  initialDelayMs: number;
+  minimumGapMs: number;
+  runImmediately: boolean;
+};
+
+const shouldSkipPollingRun = (
+  lastRunAtMs: number | null,
+  nowMs: number,
+  minimumGapMs: number
+): boolean => {
+  if (typeof lastRunAtMs !== 'number') {
+    return false;
+  }
+
+  return nowMs - lastRunAtMs < minimumGapMs;
+};
+
+const useAppActivePolling = (
+  callback: () => void,
+  intervalMs: number,
+  options: AppActivePollingOptions
+): void => {
   const callbackRef = useRef(callback);
+  const lastRunAtRef = useRef<number | null>(null);
   callbackRef.current = callback;
 
   useEffect(() => {
     let isMounted = true;
+    let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let startupDelayEndsAtMs: number | null =
+      options.runImmediately || options.initialDelayMs <= 0
+        ? null
+        : Date.now() + options.initialDelayMs;
 
     const syncNow = () => {
       if (!isMounted) return;
+      const nowMs = Date.now();
+      if (typeof startupDelayEndsAtMs === 'number') {
+        if (nowMs < startupDelayEndsAtMs) {
+          return;
+        }
+        startupDelayEndsAtMs = null;
+      }
+
+      if (shouldSkipPollingRun(lastRunAtRef.current, nowMs, options.minimumGapMs)) {
+        return;
+      }
+
+      lastRunAtRef.current = nowMs;
       callbackRef.current();
     };
 
-    syncNow();
+    if (options.runImmediately) {
+      syncNow();
+    } else if (options.initialDelayMs > 0) {
+      initialTimeoutId = setTimeout(() => {
+        startupDelayEndsAtMs = null;
+        syncNow();
+      }, options.initialDelayMs);
+    }
+
     const intervalId = setInterval(syncNow, intervalMs);
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
@@ -63,10 +113,13 @@ const useAppActivePolling = (callback: () => void, intervalMs: number): void => 
 
     return () => {
       isMounted = false;
+      if (initialTimeoutId) {
+        clearTimeout(initialTimeoutId);
+      }
       clearInterval(intervalId);
       appStateSubscription.remove();
     };
-  }, [intervalMs]);
+  }, [intervalMs, options.initialDelayMs, options.minimumGapMs, options.runImmediately]);
 };
 
 // Generate or retrieve a persistent device ID
@@ -92,7 +145,7 @@ export const unstable_settings = {
 };
 
 function LayoutContent() {
-  const { colorScheme } = useTheme();
+  const colorScheme = useColorScheme();
   const { t } = useI18n();
   const pathname = usePathname();
   const lastAndroidBackPressAtRef = useRef<number>(0);
@@ -129,13 +182,21 @@ function LayoutContent() {
   useAppActivePolling(() => {
     // Keep i18n in sync globally even when user stays off profile-related screens.
     void syncI18nSettingsFromProfile({ pullFromServer: true });
-  }, I18N_PROFILE_SYNC_INTERVAL_MS);
+  }, I18N_PROFILE_SYNC_INTERVAL_MS, {
+    initialDelayMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    minimumGapMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    runImmediately: false,
+  });
 
   useAppActivePolling(() => {
     runWithAuthenticatedUser((userId) => {
       void AnalysisService.syncHistoryFromCloud(userId, { force: false });
     });
-  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS, {
+    initialDelayMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    minimumGapMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    runImmediately: false,
+  });
 
   useAppActivePolling(() => {
     runWithAuthenticatedUser((userId) => {
@@ -143,7 +204,11 @@ function LayoutContent() {
         void syncI18nSettingsFromProfile({ pullFromServer: false });
       });
     });
-  }, CROSS_DEVICE_SYNC_INTERVAL_MS);
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS, {
+    initialDelayMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    minimumGapMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    runImmediately: false,
+  });
 
   useEffect(() => {
     let active = true;
@@ -262,13 +327,7 @@ function LayoutContent() {
             <Stack.Screen name="emoji-picker" />
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
             <Stack.Screen name="oauth/kakao-callback" options={{ animation: 'none' }} />
-            {TOP_LEVEL_NAV_ROUTES.map((route) => (
-              <Stack.Screen
-                key={route.stackName}
-                name={route.stackName}
-                options={ANDROID_TOP_LEVEL_SCREEN_OPTIONS}
-              />
-            ))}
+            <Stack.Screen name="(tabs)" options={ANDROID_TOP_LEVEL_SCREEN_OPTIONS} />
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>

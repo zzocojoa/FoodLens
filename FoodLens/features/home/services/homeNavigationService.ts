@@ -2,6 +2,7 @@ import { AnalysisRecord } from '../../../services/analysisService';
 import { navigateToStoredResult } from '@/services/navigation/resultEntryNavigation';
 
 type RouterLike = {
+  navigate: (route: any) => void;
   push: (route: any) => void;
 };
 
@@ -14,7 +15,7 @@ export const navigateToEmojiPicker = (router: RouterLike) => {
 };
 
 export const navigateToHistory = (router: RouterLike) => {
-  router.push('/history');
+  router.navigate('/history');
 };
 
 export const navigateToTripStats = (router: RouterLike) => {
@@ -22,7 +23,7 @@ export const navigateToTripStats = (router: RouterLike) => {
 };
 
 export const navigateToAllergies = (router: RouterLike) => {
-  router.push('/allergies');
+  router.navigate('/allergies');
 };
 
 export const navigateToResultFromHome = (router: RouterLike, item: AnalysisRecord) => {

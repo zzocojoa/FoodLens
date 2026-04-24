@@ -3,17 +3,23 @@ import { Platform } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 
 import FloatingBottomNav, {
-  getAndroidBarHeight,
-  getAndroidBarWidth,
-  getAndroidBottomNavInteractivePadding,
-  getAndroidBottomNavOuterGutter,
+  getBottomNavBarHeight,
+  getBottomNavInteractivePadding,
+  getBottomNavOuterGutter,
+  getBottomNavPosition,
+  getBottomNavWidth,
 } from '../FloatingBottomNav';
 
 const mockedPush = jest.fn();
 const mockedReplace = jest.fn();
+const mockedNavigate = jest.fn();
+const mockedPrefetch = jest.fn();
+const mockedStartTopLevelTabSwitchTrace = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
+    navigate: mockedNavigate,
+    prefetch: mockedPrefetch,
     push: mockedPush,
     replace: mockedReplace,
   }),
@@ -50,6 +56,10 @@ jest.mock('@/services/haptics', () => ({
   },
 }));
 
+jest.mock('../tabSwitchTrace', () => ({
+  startTopLevelTabSwitchTrace: (...args: unknown[]) => mockedStartTopLevelTabSwitchTrace(...args),
+}));
+
 const collectAccessibilityLabels = (node: unknown): string[] => {
   if (!node || typeof node !== 'object') {
     return [];
@@ -79,7 +89,16 @@ describe('FloatingBottomNav', () => {
     Platform.OS = 'android';
   });
 
-  it('switches Android top-level destinations with replace semantics', () => {
+  it('prefetches inactive top-level destinations on mount', () => {
+    render(<FloatingBottomNav activeItem="home" />);
+
+    expect(mockedPrefetch).toHaveBeenCalledTimes(3);
+    expect(mockedPrefetch).toHaveBeenNthCalledWith(1, '/allergies');
+    expect(mockedPrefetch).toHaveBeenNthCalledWith(2, '/history');
+    expect(mockedPrefetch).toHaveBeenNthCalledWith(3, '/profile');
+  });
+
+  it('switches top-level destinations with navigate semantics', () => {
     const { getByLabelText } = render(<FloatingBottomNav activeItem="home" />);
 
     fireEvent.press(getByLabelText('Start analysis'));
@@ -87,8 +106,16 @@ describe('FloatingBottomNav', () => {
     fireEvent.press(getByLabelText('Profile'));
 
     expect(mockedPush).toHaveBeenNthCalledWith(1, '/scan/camera');
-    expect(mockedReplace).toHaveBeenNthCalledWith(1, '/history');
-    expect(mockedReplace).toHaveBeenNthCalledWith(2, '/profile');
+    expect(mockedStartTopLevelTabSwitchTrace).toHaveBeenNthCalledWith(1, {
+      source: 'home',
+      target: 'history',
+    });
+    expect(mockedStartTopLevelTabSwitchTrace).toHaveBeenNthCalledWith(2, {
+      source: 'home',
+      target: 'profile',
+    });
+    expect(mockedNavigate).toHaveBeenNthCalledWith(1, '/history');
+    expect(mockedNavigate).toHaveBeenNthCalledWith(2, '/profile');
   });
 
   it('does not re-push the active item', () => {
@@ -97,17 +124,24 @@ describe('FloatingBottomNav', () => {
     fireEvent.press(getByLabelText('History'));
 
     expect(mockedPush).not.toHaveBeenCalled();
+    expect(mockedNavigate).not.toHaveBeenCalled();
     expect(mockedReplace).not.toHaveBeenCalled();
+    expect(mockedStartTopLevelTabSwitchTrace).not.toHaveBeenCalled();
   });
 
-  it('returns to home with replace semantics on Android', () => {
+  it('returns to home with navigate semantics', () => {
     const { getByLabelText } = render(<FloatingBottomNav activeItem="history" />);
 
     fireEvent.press(getByLabelText('Home'));
 
-    expect(mockedReplace).toHaveBeenCalledTimes(1);
-    expect(mockedReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockedStartTopLevelTabSwitchTrace).toHaveBeenCalledWith({
+      source: 'history',
+      target: 'home',
+    });
+    expect(mockedNavigate).toHaveBeenCalledTimes(1);
+    expect(mockedNavigate).toHaveBeenCalledWith('/(tabs)');
     expect(mockedPush).not.toHaveBeenCalled();
+    expect(mockedReplace).not.toHaveBeenCalled();
   });
 
   it('renders short labels for every anchored nav item', () => {
@@ -127,21 +161,22 @@ describe('FloatingBottomNav', () => {
     expect(buttonLabels).toEqual(['Home', 'Allergies', 'Start analysis', 'History', 'Profile']);
   });
 
-  it('derives Android width from width-class gutter rules instead of slot math', () => {
-    expect(getAndroidBottomNavOuterGutter(384)).toBe(0);
-    expect(getAndroidBottomNavOuterGutter(700)).toBe(16);
-    expect(getAndroidBottomNavOuterGutter(900)).toBe(24);
+  it('uses the Android width-class gutter rules across platforms', () => {
+    expect(getBottomNavOuterGutter(384)).toBe(0);
+    expect(getBottomNavOuterGutter(700)).toBe(16);
+    expect(getBottomNavOuterGutter(900)).toBe(24);
 
-    expect(getAndroidBarWidth(384)).toBe(384);
-    expect(getAndroidBarWidth(700)).toBe(668);
-    expect(getAndroidBarWidth(900)).toBe(852);
+    expect(getBottomNavWidth(384)).toBe(384);
+    expect(getBottomNavWidth(700)).toBe(668);
+    expect(getBottomNavWidth(900)).toBe(852);
   });
 
-  it('keeps Android interactive content above the navigation inset area', () => {
-    expect(getAndroidBottomNavInteractivePadding(0)).toBe(12);
-    expect(getAndroidBottomNavInteractivePadding(24)).toBe(24);
-
-    expect(getAndroidBarHeight(0)).toBe(70);
-    expect(getAndroidBarHeight(24)).toBe(82);
+  it('keeps the flat bar content above the safe-area inset', () => {
+    expect(getBottomNavPosition(0)).toBe(0);
+    expect(getBottomNavPosition(24)).toBe(0);
+    expect(getBottomNavInteractivePadding(0)).toBe(12);
+    expect(getBottomNavInteractivePadding(24)).toBe(24);
+    expect(getBottomNavBarHeight(0)).toBe(70);
+    expect(getBottomNavBarHeight(24)).toBe(82);
   });
 });

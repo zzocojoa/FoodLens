@@ -1,6 +1,10 @@
-export type UserProfileUpdateReason = 'local_write' | 'server_pull' | 'sync_apply';
+export type UserProfileUpdateReason =
+  | 'local_write'
+  | 'server_pull'
+  | 'sync_apply'
+  | 'client_state_write';
 
-type UserProfileListener = () => void;
+type UserProfileListener = (reason: UserProfileUpdateReason) => void;
 
 const listenersByUserId = new Map<string, Set<UserProfileListener>>();
 
@@ -29,7 +33,7 @@ export const subscribeUserProfileUpdated = (
 
 export const publishUserProfileUpdated = (
   userId: string,
-  _reason: UserProfileUpdateReason
+  reason: UserProfileUpdateReason
 ): void => {
   const normalized = userId.trim();
   if (!normalized) {
@@ -43,9 +47,9 @@ export const publishUserProfileUpdated = (
 
   listeners.forEach((listener) => {
     try {
-      listener();
+      listener(reason);
     } catch {
-      // Listener errors must not interrupt publish flow.
+      // 리스너 오류가 publish 흐름을 끊으면 안 된다.
     }
   });
 };

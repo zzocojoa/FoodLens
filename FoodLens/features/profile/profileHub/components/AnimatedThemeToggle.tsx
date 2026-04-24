@@ -8,28 +8,28 @@ import {
 } from '@/features/home/components/homeDashboardTokens';
 import { useI18n } from '@/features/i18n';
 
-type ThemeSelection = 'light' | 'dark' | 'system';
+export type ThemePreference = 'light' | 'dark' | 'system';
+
+const THEME_OPTIONS: ThemePreference[] = ['light', 'dark', 'system'];
 
 type AnimatedThemeToggleProps = {
     colorScheme: ColorSchemeName;
-    currentTheme: ThemeSelection;
-    setTheme: (theme: ThemeSelection) => void;
+    themePreference: ThemePreference;
+    onChangeThemePreference: (theme: ThemePreference) => void;
 };
 
-export default function AnimatedThemeToggle({
+function AnimatedThemeToggle({
     colorScheme,
-    currentTheme,
-    setTheme,
+    themePreference,
+    onChangeThemePreference,
 }: AnimatedThemeToggleProps): React.JSX.Element {
     const { t } = useI18n();
     const [containerWidth, setContainerWidth] = React.useState<number>(0);
     const translateX = React.useRef<RNAnimated.Value>(new RNAnimated.Value(0)).current;
-
-    const options: ThemeSelection[] = ['light', 'dark', 'system'];
-    const activeIndex = options.indexOf(currentTheme);
+    const activeIndex = THEME_OPTIONS.indexOf(themePreference);
     const isDarkTheme = colorScheme === 'dark';
-    const segmentWidth = containerWidth > 0 ? (containerWidth - 6) / options.length : 0;
-    const optionLabels: Record<ThemeSelection, string> = {
+    const segmentWidth = containerWidth > 0 ? (containerWidth - 6) / THEME_OPTIONS.length : 0;
+    const optionLabels: Record<ThemePreference, string> = {
         light: t('profileHub.theme.light', 'Light'),
         dark: t('profileHub.theme.dark', 'Dark'),
         system: t('profileHub.theme.system', 'System'),
@@ -69,8 +69,8 @@ export default function AnimatedThemeToggle({
             ) : null}
 
             <View style={styles.segmentRow}>
-                {options.map((value) => {
-                    const isActive = currentTheme === value;
+                {THEME_OPTIONS.map((value) => {
+                    const isActive = themePreference === value;
 
                     return (
                         <TouchableOpacity
@@ -78,7 +78,7 @@ export default function AnimatedThemeToggle({
                             accessibilityState={{ selected: isActive }}
                             activeOpacity={0.9}
                             key={value}
-                            onPress={() => setTheme(value)}
+                            onPress={() => onChangeThemePreference(value)}
                             style={styles.segmentButton}
                         >
                             <Text
@@ -101,6 +101,12 @@ export default function AnimatedThemeToggle({
         </View>
     );
 }
+
+const MemoizedAnimatedThemeToggle = React.memo(AnimatedThemeToggle);
+
+MemoizedAnimatedThemeToggle.displayName = 'AnimatedThemeToggle';
+
+export default MemoizedAnimatedThemeToggle;
 
 const styles = StyleSheet.create({
     container: {
