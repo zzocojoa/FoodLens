@@ -146,7 +146,18 @@ describe('phase2Mappers', () => {
       request_id: 'req-1',
       prompt_version: 'food-v3.2',
       used_model: 'gemini-2.5-pro',
-      ingredients: [],
+      ingredients: [
+        {
+          name: 'cabbage',
+          name_en: 'cabbage',
+          name_ko: '배추',
+          isAllergen: false,
+        },
+      ],
+      translationCard: {
+        language: 'ko-KR',
+        text: '김치',
+      },
       timestamp: new Date('2026-02-25T01:00:00Z'),
     });
 
@@ -166,7 +177,117 @@ describe('phase2Mappers', () => {
     expect(parsed?.request_id).toBe('req-1');
     expect(parsed?.prompt_version).toBe('food-v3.2');
     expect(parsed?.used_model).toBe('gemini-2.5-pro');
+    expect(parsed?.ingredients).toEqual([
+      {
+        name: 'cabbage',
+        name_en: 'cabbage',
+        name_ko: '배추',
+        isAllergen: false,
+        confidence_score: undefined,
+        box_2d: undefined,
+        bbox: undefined,
+        nutrition: undefined,
+      },
+    ]);
+    expect(parsed?.translationCard).toEqual({
+      language: 'ko-KR',
+      text: '김치',
+      audio_query: undefined,
+    });
     expect(parsed?.timestamp.toISOString()).toBe('2026-02-25T01:00:00.000Z');
+  });
+
+  it('rejects remote history payloads with malformed ingredients', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        ingredients: [{ name: 'cabbage' }],
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).toBeNull();
+  });
+
+  it('rejects remote history payloads with malformed translation cards', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        ingredients: [],
+        translationCard: { language: 'ko-KR', text: 7 },
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).toBeNull();
+  });
+
+  it('rejects remote history payloads with invalid safety status values', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'UNKNOWN',
+        ingredients: [],
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed).toBeNull();
+  });
+
+  it('preserves valid ingredient nutrition from remote history payloads', () => {
+    const parsed = deserializeHistoryItem({
+      id: 'his_1',
+      user_id: 'usr_1',
+      entry: {
+        id: 'rec_1',
+        foodName: 'Kimchi',
+        safetyStatus: 'SAFE',
+        ingredients: [
+          {
+            name: 'cabbage',
+            isAllergen: false,
+            nutrition: {
+              calories: 15,
+              protein: 1,
+              carbs: 3,
+              fat: 0,
+              fiber: 2,
+              sodium: 100,
+              sugar: 1,
+              servingSize: '100g',
+              dataSource: 'remote',
+            },
+          },
+        ],
+        timestamp: '2026-02-25T01:00:00Z',
+      },
+    });
+
+    expect(parsed?.ingredients[0]?.nutrition).toEqual({
+      calories: 15,
+      protein: 1,
+      carbs: 3,
+      fat: 0,
+      fiber: 2,
+      sodium: 100,
+      sugar: 1,
+      servingSize: '100g',
+      dataSource: 'remote',
+      description: undefined,
+      fdcId: undefined,
+    });
   });
 
   it('ignores invalid decision metadata values from remote history payloads', () => {
