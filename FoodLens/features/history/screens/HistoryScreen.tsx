@@ -33,9 +33,14 @@ import {
 import { historyDashboardStyles } from '../components/historyDashboardStyles';
 import { useI18n } from '@/features/i18n';
 import { completeTopLevelTabSwitchTrace } from '@/components/navigation/tabSwitchTrace';
+import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
 
 const HISTORY_CLIENT_STATE_REFRESH_DEBOUNCE_MS = 250;
 const HISTORY_MAP_REGION_SAVE_DEBOUNCE_MS = 250;
+
+const shouldRefreshSyncedHistoryState = (reason: UserProfileUpdateReason): boolean => {
+    return reason !== 'client_state_write';
+};
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -85,7 +90,11 @@ export default function HistoryScreen() {
     const { savedMapRegionRef, setSavedMapRegion } = ui;
 
     useEffect(() => {
-        const unsubscribe = subscribeUserProfileUpdated(historyUserId, () => {
+        const unsubscribe = subscribeUserProfileUpdated(historyUserId, (reason) => {
+            if (!shouldRefreshSyncedHistoryState(reason)) {
+                return;
+            }
+
             if (clientStateRefreshTimerRef.current) {
                 clearTimeout(clientStateRefreshTimerRef.current);
             }

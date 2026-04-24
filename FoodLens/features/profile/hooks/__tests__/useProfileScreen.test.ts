@@ -7,6 +7,7 @@ const mockSaveTestUserProfile = jest.fn();
 const mockGetManualMergeConflictOperationsForUser = jest.fn();
 const mockResolveManualMergeConflictsForUser = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
+const mockSubscribeUserProfileUpdated = jest.fn();
 
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: () => {},
@@ -56,7 +57,7 @@ jest.mock('@/services/sync/phase2ConflictResolution', () => ({
 }));
 
 jest.mock('@/services/user/userProfileStore', () => ({
-  subscribeUserProfileUpdated: () => () => {},
+  subscribeUserProfileUpdated: (...args: unknown[]) => mockSubscribeUserProfileUpdated(...args),
 }));
 
 describe('useProfileScreen saveProfile sync handling', () => {
@@ -72,6 +73,7 @@ describe('useProfileScreen saveProfile sync handling', () => {
       resolved: 1,
       remaining: 0,
     });
+    mockSubscribeUserProfileUpdated.mockReturnValue(() => {});
   });
 
   it('shows sync pending alert when save is not confirmed and no conflicts exist', async () => {
@@ -193,5 +195,39 @@ describe('useProfileScreen saveProfile sync handling', () => {
     });
     expect(result.current.allergies).not.toContain('Kiwi');
     expect(result.current.severityMap['Kiwi']).toBeUndefined();
+  });
+
+  it('ignores client_state_write profile updates', async () => {
+    jest.useFakeTimers();
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null =
+      null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, callback: typeof listener) => {
+      listener = callback;
+      return jest.fn();
+    });
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockLoadTestUserProfile).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      listener?.('client_state_write');
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockLoadTestUserProfile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      listener?.('server_pull');
+      jest.advanceTimersByTime(250);
+      await Promise.resolve();
+    });
+
+    expect(mockLoadTestUserProfile).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(false);
   });
 });

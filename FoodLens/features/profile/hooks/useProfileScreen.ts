@@ -15,10 +15,15 @@ import {
 } from '@/services/sync/phase2ConflictResolution';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import type { Phase2ConflictResolution } from '@/services/sync/phase2Sync.types';
+import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
 
 const normalizeAllergyKey = (value: string) => value.trim().toLowerCase();
 const PROFILE_SCREEN_REFRESH_INTERVAL_MS = 5000;
 const PROFILE_SCREEN_REFRESH_DEBOUNCE_MS = 250;
+
+const shouldRefreshProfileScreen = (reason: UserProfileUpdateReason): boolean => {
+    return reason !== 'client_state_write';
+};
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
@@ -90,7 +95,11 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
     useEffect(() => {
         const userId = getProfileUserId();
-        const unsubscribe = subscribeUserProfileUpdated(userId, () => {
+        const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
+            if (!shouldRefreshProfileScreen(reason)) {
+                return;
+            }
+
             if (profileRefreshTimerRef.current) {
                 clearTimeout(profileRefreshTimerRef.current);
             }
