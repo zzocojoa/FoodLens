@@ -4,6 +4,7 @@ import { ChevronRight, Globe } from 'lucide-react-native';
 
 import { HapticPressable } from '@/components/HapticFeedback';
 import type { ColorSchemeName } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 import HomePearlSurfaceOverlay from '@/features/home/components/PearlSurfaceOverlay';
 import { homeDashboardStyles } from '@/features/home/components/homeDashboardStyles';
 import {
@@ -16,31 +17,60 @@ import { useI18n } from '@/features/i18n';
 
 import AnimatedThemeToggle from './AnimatedThemeToggle';
 
-type ThemeSelection = 'light' | 'dark' | 'system';
-
 type ProfileTravelModeSectionProps = {
     colorScheme: ColorSchemeName;
-    currentTheme: ThemeSelection;
-    setTheme: (theme: ThemeSelection) => void;
     appLanguageLabel: string;
     onPressAppLanguage: () => void;
 };
 
-export default function ProfileTravelModeSection({
+type ProfileThemePreferenceRowProps = {
+    colorScheme: ColorSchemeName;
+};
+
+function ProfileThemePreferenceRow({ colorScheme }: ProfileThemePreferenceRowProps): React.JSX.Element {
+    const { t } = useI18n();
+    const { theme: themePreference, setTheme } = useTheme();
+    const isDarkTheme = colorScheme === 'dark';
+    const currentThemeLabel =
+        themePreference === 'light'
+            ? t('profileHub.theme.light', 'Light')
+            : themePreference === 'dark'
+                ? t('profileHub.theme.dark', 'Dark')
+                : t('profileHub.theme.system', 'System');
+
+    return (
+        <View style={[styles.themeRow, isDarkTheme ? styles.rowDividerDark : styles.rowDividerLight]}>
+            <View style={styles.themeRowHeader}>
+                <Text style={[styles.rowLabel, isDarkTheme ? styles.rowLabelDark : null]}>
+                    {t('profileAtelier.travel.theme', 'Theme')}
+                </Text>
+                <Text style={[styles.rowDetail, isDarkTheme ? styles.rowDetailDark : null]}>
+                    {currentThemeLabel}
+                </Text>
+            </View>
+
+            <View style={styles.toggleWrap}>
+                <AnimatedThemeToggle
+                    colorScheme={colorScheme}
+                    onChangeThemePreference={setTheme}
+                    themePreference={themePreference}
+                />
+            </View>
+        </View>
+    );
+}
+
+const MemoizedProfileThemePreferenceRow = React.memo(ProfileThemePreferenceRow);
+
+MemoizedProfileThemePreferenceRow.displayName = 'ProfileThemePreferenceRow';
+
+function ProfileTravelModeSection({
     colorScheme,
-    currentTheme,
-    setTheme,
     appLanguageLabel,
     onPressAppLanguage,
 }: ProfileTravelModeSectionProps): React.JSX.Element {
     const { t } = useI18n();
     const isDarkTheme = colorScheme === 'dark';
-    const currentThemeLabel =
-        currentTheme === 'light'
-            ? t('profileHub.theme.light', 'Light')
-            : currentTheme === 'dark'
-                ? t('profileHub.theme.dark', 'Dark')
-                : t('profileHub.theme.system', 'System');
 
     return (
         <View style={styles.section}>
@@ -68,24 +98,7 @@ export default function ProfileTravelModeSection({
                 )}
 
                 <View style={styles.groupContent}>
-                    <View style={[styles.themeRow, isDarkTheme ? styles.rowDividerDark : styles.rowDividerLight]}>
-                        <View style={styles.themeRowHeader}>
-                            <Text style={[styles.rowLabel, isDarkTheme ? styles.rowLabelDark : null]}>
-                                {t('profileAtelier.travel.theme', 'Theme')}
-                            </Text>
-                            <Text style={[styles.rowDetail, isDarkTheme ? styles.rowDetailDark : null]}>
-                                {currentThemeLabel}
-                            </Text>
-                        </View>
-
-                        <View style={styles.toggleWrap}>
-                            <AnimatedThemeToggle
-                                colorScheme={colorScheme}
-                                currentTheme={currentTheme}
-                                setTheme={setTheme}
-                            />
-                        </View>
-                    </View>
+                    <MemoizedProfileThemePreferenceRow colorScheme={colorScheme} />
 
                     <HapticPressable
                         accessibilityRole="button"
@@ -124,6 +137,12 @@ export default function ProfileTravelModeSection({
         </View>
     );
 }
+
+const MemoizedProfileTravelModeSection = React.memo(ProfileTravelModeSection);
+
+MemoizedProfileTravelModeSection.displayName = 'ProfileTravelModeSection';
+
+export default MemoizedProfileTravelModeSection;
 
 const styles = StyleSheet.create({
     section: {

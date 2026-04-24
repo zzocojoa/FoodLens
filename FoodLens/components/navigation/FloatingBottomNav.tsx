@@ -1,22 +1,20 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Camera, Clock3, House, ShieldAlert, UserRound } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  FLOATING_BOTTOM_NAV_ANDROID_HEIGHT,
   FLOATING_BOTTOM_NAV_BOTTOM_OFFSET,
   FLOATING_BOTTOM_NAV_HEIGHT,
   FLOATING_BOTTOM_NAV_HORIZONTAL_PADDING,
   FLOATING_BOTTOM_NAV_ICON_SIZE,
   FLOATING_BOTTOM_NAV_ICON_SURFACE_SIZE,
   FLOATING_BOTTOM_NAV_LABEL_SIZE,
-  FLOATING_BOTTOM_NAV_MAX_WIDTH,
-  FLOATING_BOTTOM_NAV_SCAN_SURFACE_SIZE,
   FloatingBottomNavItemKey,
 } from './floatingBottomNav.constants';
 import { TOP_LEVEL_NAV_ROUTES } from './topLevelNavRegistry';
+import { startTopLevelTabSwitchTrace } from './tabSwitchTrace';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useI18n } from '@/features/i18n';
 import { HapticsService } from '@/services/haptics';
@@ -133,11 +131,7 @@ const getNavItems = (): NavItemDefinition[] => {
   ];
 };
 
-const getIconColor = (isActive: boolean, isScan: boolean): string => {
-  if (Platform.OS !== 'android' && isScan) {
-    return '#BE185D';
-  }
-
+const getIconColor = (isActive: boolean): string => {
   if (isActive) {
     return '#E11D63';
   }
@@ -145,11 +139,7 @@ const getIconColor = (isActive: boolean, isScan: boolean): string => {
   return '#6B7280';
 };
 
-const getLabelColor = (isActive: boolean, isScan: boolean): string => {
-  if (Platform.OS !== 'android' && isScan) {
-    return '#9D174D';
-  }
-
+const getLabelColor = (isActive: boolean): string => {
   if (isActive) {
     return '#E11D63';
   }
@@ -157,39 +147,22 @@ const getLabelColor = (isActive: boolean, isScan: boolean): string => {
   return '#6B7280';
 };
 
-const getNavBottomPosition = (insetBottom: number): number => {
-  if (Platform.OS === 'android') {
-    return FLOATING_BOTTOM_NAV_BOTTOM_OFFSET;
-  }
-
-  return insetBottom + FLOATING_BOTTOM_NAV_BOTTOM_OFFSET;
-};
+export const getBottomNavPosition = (insetBottom: number): number =>
+  FLOATING_BOTTOM_NAV_BOTTOM_OFFSET;
 
 const getBarBackgroundColor = (colorScheme: 'light' | 'dark'): string => {
-  if (Platform.OS === 'android') {
-    return colorScheme === 'dark' ? 'rgba(15,23,42,0.96)' : '#FFFFFF';
-  }
-
-  return colorScheme === 'dark' ? 'rgba(15,23,42,0.94)' : 'rgba(255,255,255,0.94)';
+  return colorScheme === 'dark' ? 'rgba(15,23,42,0.96)' : '#FFFFFF';
 };
 
 const getBarBorderColor = (colorScheme: 'light' | 'dark'): string => {
-  if (Platform.OS === 'android') {
-    return colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.04)';
-  }
-
-  return colorScheme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
+  return colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.04)';
 };
 
 const getBarShadowColor = (colorScheme: 'light' | 'dark'): string => {
-  if (Platform.OS === 'android') {
-    return colorScheme === 'dark' ? '#000000' : 'rgba(15, 23, 42, 0.03)';
-  }
-
-  return colorScheme === 'dark' ? '#000000' : 'rgba(15, 23, 42, 0.16)';
+  return colorScheme === 'dark' ? '#000000' : 'rgba(15, 23, 42, 0.03)';
 };
 
-export const getAndroidBottomNavOuterGutter = (windowWidth: number): number => {
+export const getBottomNavOuterGutter = (windowWidth: number): number => {
   if (windowWidth >= 840) {
     return 24;
   }
@@ -201,28 +174,17 @@ export const getAndroidBottomNavOuterGutter = (windowWidth: number): number => {
   return 0;
 };
 
-export const getAndroidBarWidth = (windowWidth: number): number => {
-  const gutter = getAndroidBottomNavOuterGutter(windowWidth);
+export const getBottomNavWidth = (windowWidth: number): number => {
+  const gutter = getBottomNavOuterGutter(windowWidth);
   return windowWidth - gutter * 2;
 };
 
-export const getAndroidBottomNavInteractivePadding = (insetBottom: number): number => {
+export const getBottomNavInteractivePadding = (insetBottom: number): number => {
   return Math.max(insetBottom, 12);
 };
 
-export const getAndroidBarHeight = (insetBottom: number): number => {
-  return FLOATING_BOTTOM_NAV_ANDROID_HEIGHT + getAndroidBottomNavInteractivePadding(insetBottom);
-};
-
-const getBarWidth = (windowWidth: number): number => {
-  if (Platform.OS === 'android') {
-    return getAndroidBarWidth(windowWidth);
-  }
-
-  return Math.min(
-    FLOATING_BOTTOM_NAV_MAX_WIDTH,
-    windowWidth - FLOATING_BOTTOM_NAV_HORIZONTAL_PADDING * 2,
-  );
+export const getBottomNavBarHeight = (insetBottom: number): number => {
+  return FLOATING_BOTTOM_NAV_HEIGHT + getBottomNavInteractivePadding(insetBottom);
 };
 
 export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps) {
@@ -232,48 +194,25 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
   const colorScheme = useColorScheme() ?? 'light';
   const { t } = useI18n();
   const navItems = React.useMemo(() => getNavItems(), []);
-  const isAndroid = Platform.OS === 'android';
-  const activeSurfaceStyle = React.useMemo(() => {
-    if (Platform.OS === 'android') {
-      return {
-        backgroundColor:
-          colorScheme === 'dark' ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.05)',
-      };
-    }
-
-    return {
-      backgroundColor: 'rgba(15, 23, 42, 0.07)',
-    };
-  }, [colorScheme]);
-  const scanSurfaceStyle = React.useMemo(() => {
-    if (Platform.OS === 'android') {
-      return {
-        backgroundColor:
-          colorScheme === 'dark' ? 'rgba(190,24,93,0.12)' : 'rgba(190,24,93,0.08)',
-      };
-    }
-
-    return {
-      backgroundColor: 'rgba(190, 24, 93, 0.12)',
-    };
-  }, [colorScheme]);
   const barWidth = React.useMemo(() => {
-    return getBarWidth(windowWidth);
+    return getBottomNavWidth(windowWidth);
   }, [windowWidth]);
-  const androidInteractivePadding = React.useMemo(() => {
-    if (!isAndroid) {
-      return 0;
-    }
+  const bottomPadding = React.useMemo(() => {
+    return getBottomNavInteractivePadding(insets.bottom);
+  }, [insets.bottom]);
+  const barHeight = React.useMemo(() => {
+    return getBottomNavBarHeight(insets.bottom);
+  }, [insets.bottom]);
 
-    return getAndroidBottomNavInteractivePadding(insets.bottom);
-  }, [insets.bottom, isAndroid]);
-  const androidBarHeight = React.useMemo(() => {
-    if (!isAndroid) {
-      return FLOATING_BOTTOM_NAV_HEIGHT;
-    }
+  React.useEffect(() => {
+    TOP_LEVEL_NAV_ROUTES.forEach((route) => {
+      if (route.activeItem === activeItem) {
+        return;
+      }
 
-    return getAndroidBarHeight(insets.bottom);
-  }, [insets.bottom, isAndroid]);
+      router.prefetch(route.href);
+    });
+  }, [activeItem, router]);
 
   const handlePrimaryAction = React.useCallback(() => {
     HapticsService.tickTick();
@@ -291,14 +230,14 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
         return;
       }
 
+      const targetItemKey = item.key as FloatingBottomNavItemKey;
+
+      startTopLevelTabSwitchTrace({
+        source: activeItem,
+        target: targetItemKey,
+      });
       HapticsService.light();
-
-      if (Platform.OS === 'android') {
-        router.replace(item.href);
-        return;
-      }
-
-      router.push(item.href);
+      router.navigate(item.href);
     },
     [activeItem, handlePrimaryAction, router]
   );
@@ -309,36 +248,28 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
       style={[
         styles.wrapper,
         {
-          bottom: getNavBottomPosition(insets.bottom),
+          bottom: getBottomNavPosition(insets.bottom),
         },
       ]}
     >
-      <View
-        style={[
-          styles.container,
-          isAndroid ? styles.containerAndroid : null,
-          { width: barWidth },
-        ]}
-      >
+      <View style={[styles.container, { width: barWidth }]}>
         <View
           style={[
             styles.bar,
-            isAndroid ? styles.barAndroid : null,
             {
               backgroundColor: getBarBackgroundColor(colorScheme),
               borderColor: getBarBorderColor(colorScheme),
               shadowColor: getBarShadowColor(colorScheme),
-              height: androidBarHeight,
-              paddingBottom: androidInteractivePadding,
+              height: barHeight,
+              paddingBottom: bottomPadding,
               width: barWidth,
             },
           ]}
         >
           {navItems.map((item) => {
             const isActive = item.key === activeItem;
-            const isScan = item.mode === 'scan';
-            const iconColor = getIconColor(isActive, isScan);
-            const labelColor = getLabelColor(isActive, isScan);
+            const iconColor = getIconColor(isActive);
+            const labelColor = getLabelColor(isActive);
 
             return (
               <Pressable
@@ -353,14 +284,7 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
                 ]}
               >
                 <View style={styles.itemContent}>
-                  <View
-                    style={[
-                      styles.iconSurface,
-                      isAndroid ? styles.iconSurfaceAndroid : null,
-                      !isAndroid && isActive ? activeSurfaceStyle : null,
-                      !isAndroid && isScan ? [styles.scanSurface, scanSurfaceStyle] : null,
-                    ]}
-                  >
+                  <View style={styles.iconSurface}>
                     <item.Icon color={iconColor} size={FLOATING_BOTTOM_NAV_ICON_SIZE} strokeWidth={2.15} />
                   </View>
                   <Text
@@ -369,7 +293,6 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
                       styles.label,
                       { color: labelColor },
                       isActive ? styles.labelActive : null,
-                      !isAndroid && isScan ? styles.scanLabel : null,
                     ]}
                   >
                     {t(item.shortLabelKey, item.shortFallbackLabel)}
@@ -396,26 +319,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: FLOATING_BOTTOM_NAV_HEIGHT + 6,
   },
-  containerAndroid: {
-    minHeight: FLOATING_BOTTOM_NAV_HEIGHT,
-    width: '100%',
-  },
   bar: {
     alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: 'row',
     height: FLOATING_BOTTOM_NAV_HEIGHT,
     justifyContent: 'space-between',
     paddingHorizontal: FLOATING_BOTTOM_NAV_HORIZONTAL_PADDING,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-  },
-  barAndroid: {
-    borderRadius: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderWidth: 0,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -438,20 +350,10 @@ const styles = StyleSheet.create({
   },
   iconSurface: {
     alignItems: 'center',
-    borderRadius: FLOATING_BOTTOM_NAV_ICON_SURFACE_SIZE / 2,
+    borderRadius: 0,
     height: FLOATING_BOTTOM_NAV_ICON_SURFACE_SIZE,
     justifyContent: 'center',
     width: FLOATING_BOTTOM_NAV_ICON_SURFACE_SIZE,
-  },
-  iconSurfaceAndroid: {
-    borderRadius: 0,
-    height: FLOATING_BOTTOM_NAV_ICON_SIZE,
-    width: FLOATING_BOTTOM_NAV_ICON_SIZE,
-  },
-  scanSurface: {
-    borderRadius: FLOATING_BOTTOM_NAV_SCAN_SURFACE_SIZE / 2,
-    height: FLOATING_BOTTOM_NAV_SCAN_SURFACE_SIZE,
-    width: FLOATING_BOTTOM_NAV_SCAN_SURFACE_SIZE,
   },
   label: {
     fontSize: FLOATING_BOTTOM_NAV_LABEL_SIZE,
@@ -462,8 +364,5 @@ const styles = StyleSheet.create({
   },
   labelActive: {
     fontWeight: '700',
-  },
-  scanLabel: {
-    fontWeight: '600',
   },
 });

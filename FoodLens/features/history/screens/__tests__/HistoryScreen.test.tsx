@@ -1,17 +1,23 @@
 /// <reference types="jest" />
 
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import HistoryScreen from '../HistoryScreen';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
 import { navigateToResultFromHistory } from '@/components/historyList/services/historyNavigationService';
 import { useHistoryScreen } from '../../hooks/useHistoryScreen';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
+import { readHistoryStateSnapshot } from '@/services/user/clientStateService';
 
 const mockRouterBack = jest.fn();
 const mockRouterPush = jest.fn();
 const mockTopLevelShell = jest.fn();
+
+type ProfileUpdateListener = (
+  reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write'
+) => void;
 
 jest.mock('expo-router', () => ({
   Stack: {
@@ -21,6 +27,10 @@ jest.mock('expo-router', () => ({
     back: mockRouterBack,
     push: mockRouterPush,
   }),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  useIsFocused: () => true,
 }));
 
 jest.mock('react-native-safe-area-context', () => {
@@ -300,6 +310,10 @@ describe('HistoryScreen', () => {
   const mockedUseHistoryData = useHistoryData as jest.MockedFunction<typeof useHistoryData>;
   const mockedUseHistoryFilter = useHistoryFilter as jest.MockedFunction<typeof useHistoryFilter>;
   const mockedUseHistoryScreen = useHistoryScreen as jest.MockedFunction<typeof useHistoryScreen>;
+  const mockedSubscribeUserProfileUpdated =
+    subscribeUserProfileUpdated as jest.MockedFunction<typeof subscribeUserProfileUpdated>;
+  const mockedReadHistoryStateSnapshot =
+    readHistoryStateSnapshot as jest.MockedFunction<typeof readHistoryStateSnapshot>;
   const originalGoogleMapsKey = historyScreenTestEnv.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   beforeEach(() => {
@@ -548,5 +562,64 @@ describe('HistoryScreen', () => {
     fireEvent.press(screen.getByTestId('history-selection-select-all'));
 
     expect(replaceSelection).toHaveBeenCalledWith(new Set<string>(['visible-item']));
+  });
+
+  it('ignores client_state_write profile updates', () => {
+    jest.useFakeTimers();
+    let listener: ProfileUpdateListener | null = null;
+    mockedSubscribeUserProfileUpdated.mockImplementation((_userId: string, callback: ProfileUpdateListener) => {
+      listener = callback;
+      return jest.fn();
+    });
+
+    mockedUseHistoryData.mockReturnValue(createHistoryDataMock());
+    mockedUseHistoryFilter.mockReturnValue({
+      archiveFilter: 'all',
+      getFilteredItemsCount: jest.fn(() => 1),
+      isAllowedItemType: ((type: string | undefined): type is 'ask' | 'avoid' | 'ok' => Boolean(type)),
+      matchesFilter: jest.fn(() => true),
+      setArchiveFilter: jest.fn(),
+    });
+    mockedUseHistoryScreen.mockReturnValue({
+      archiveMode: 'list',
+      handleBulkDelete: jest.fn(),
+      handleSwitchMode: jest.fn(),
+      isEditMode: false,
+      isMapModeAvailable: true,
+      replaceSelection: jest.fn(),
+      savedMapRegion: null,
+      savedMapRegionRef: { current: null },
+      selectedItems: new Set<string>(),
+      setSavedMapRegion: jest.fn(),
+      toggleEditMode: jest.fn(),
+      toggleSelectItem: jest.fn(),
+    });
+
+    render(<HistoryScreen />);
+
+    const invokeListener = (
+      reason: Parameters<ProfileUpdateListener>[0]
+    ): void => {
+      if (listener === null) {
+        throw new Error('Expected history profile listener to be registered');
+      }
+
+      (listener as ProfileUpdateListener)(reason);
+    };
+
+    act(() => {
+      invokeListener('client_state_write');
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockedReadHistoryStateSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      invokeListener('sync_apply');
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(mockedReadHistoryStateSnapshot).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
   });
 });

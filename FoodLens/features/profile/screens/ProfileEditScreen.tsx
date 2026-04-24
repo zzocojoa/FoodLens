@@ -20,7 +20,6 @@ import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { SecureImage } from '@/components/SecureImage';
 import TopLevelScreenShell from '@/components/navigation/TopLevelScreenShell';
 import { Colors } from '@/constants/theme';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
 import { HomeBackgroundAtmosphere } from '@/features/home/components/HomeBackgroundAtmosphere';
 import ProfilePearlSurfaceOverlay from '@/features/home/components/PearlSurfaceOverlay';
@@ -29,6 +28,7 @@ import {
     homeDashboardRadii,
     homeDashboardSpacing,
 } from '@/features/home/components/homeDashboardTokens';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
 import { resolveImageUri } from '@/services/imageStorage';
@@ -360,7 +360,7 @@ export default function ProfileEditScreen(): React.JSX.Element {
     const params = useLocalSearchParams<ProfileEditSearchParams>();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
-    const { colorScheme } = useTheme();
+    const colorScheme = useColorScheme();
     const resolvedColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
     const isDarkTheme = resolvedColorScheme === 'dark';
     const userId = getCurrentUserIdSnapshot();

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { AnalysisRecord, AnalysisService } from '../../../services/analysisService';
 import { UserProfile } from '../../../models/User';
 import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
@@ -11,7 +11,10 @@ import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
-import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
+import {
+  subscribeUserProfileUpdated,
+  UserProfileUpdateReason,
+} from '@/services/user/userProfileStore';
 import { SafeStorage } from '@/services/storage';
 import { getUserStorageKey } from '@/services/user/constants';
 import {
@@ -22,6 +25,7 @@ import {
 import { fromLocalDateString, toLocalDateString } from '@/services/sync/clientState';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
+const PROFILE_UPDATE_RELOAD_GUARD_MS = 3_000;
 const DASHBOARD_BACKGROUND_REFRESH_MS = 15_000;
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
 
@@ -70,8 +74,42 @@ const readInitialProfileSnapshot = (): UserProfile | null => {
   return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
 };
 
+const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolean => {
+  if (lastLoadedAtMs <= 0) {
+    return true;
+  }
+
+  return Date.now() - lastLoadedAtMs >= refreshWindowMs;
+};
+
+const shouldReloadFromProfileUpdate = (
+  lastLoadedAtMs: number,
+  reason: UserProfileUpdateReason
+): boolean => {
+  if (reason === 'client_state_write') {
+    return false;
+  }
+
+  if (lastLoadedAtMs <= 0) {
+    return true;
+  }
+
+  return Date.now() - lastLoadedAtMs >= PROFILE_UPDATE_RELOAD_GUARD_MS;
+};
+
+const consumePendingSelectedDateWrite = (pendingWriteIds: Set<number>): boolean => {
+  const pendingWriteResult = pendingWriteIds.values().next();
+  if (pendingWriteResult.done) {
+    return false;
+  }
+
+  pendingWriteIds.delete(pendingWriteResult.value);
+  return true;
+};
+
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const { t } = useI18n();
+  const isFocused = useIsFocused();
   const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialProfileSnapshot());
   const initialUserId = getCurrentUserIdSnapshot();
   const initialSelectedDate =
@@ -96,10 +134,40 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const loadInFlightRef = useRef(false);
   const profileHydrationInFlightRef = useRef(false);
   const hasRequestedInitialLoadRef = useRef(false);
+  const hasSkippedInitialFocusRefreshRef = useRef(false);
+  const lastLoadedAtRef = useRef(0);
+  const isFocusedRef = useRef(isFocused);
+  const dashboardRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dashboardRefreshTaskRef = useRef<{ cancel?: () => void } | null>(null);
+  const pendingSelectedDateWriteIdsRef = useRef<Set<number>>(new Set<number>());
+  const nextSelectedDateWriteIdRef = useRef(0);
 
   useEffect(() => {
     setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
   }, [allHistoryCache, selectedDate]);
+
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+
+    if (isFocused) {
+      return;
+    }
+
+    if (dashboardRefreshTaskRef.current) {
+      dashboardRefreshTaskRef.current.cancel?.();
+      dashboardRefreshTaskRef.current = null;
+    }
+
+    if (dashboardRefreshIntervalRef.current) {
+      clearInterval(dashboardRefreshIntervalRef.current);
+      dashboardRefreshIntervalRef.current = null;
+    }
+
+    if (profileRefreshTimerRef.current) {
+      clearTimeout(profileRefreshTimerRef.current);
+      profileRefreshTimerRef.current = null;
+    }
+  }, [isFocused]);
 
   const loadDashboardData = useCallback(async () => {
     if (loadInFlightRef.current) {
@@ -108,7 +176,12 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     loadInFlightRef.current = true;
     try {
       const snapshot = await fetchHomeDashboardData(getCurrentUserIdSnapshot());
+      if (!isFocusedRef.current) {
+        return;
+      }
+
       const { recentData: fetchedRecent, allHistory, profile, weeklyStats, safeCount } = snapshot;
+      lastLoadedAtRef.current = Date.now();
 
       console.log(`[Dashboard] Loaded: ${allHistory.length} total items from storage`);
 
@@ -154,6 +227,10 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       const userId = getCurrentUserIdSnapshot();
       const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
       if (!profile) return;
+      if (!isFocusedRef.current) {
+        return;
+      }
+
       setUserProfile((previous) => {
         if (!shouldKeepExistingProfileImage(previous, profile)) {
           return profile;
@@ -173,39 +250,119 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    const loadInitialDashboardState = async (): Promise<void> => {
+      void hydrateProfileFromCache();
+      await loadDashboardData();
+
+      if (
+        !active ||
+        !isFocusedRef.current ||
+        !hasSkippedInitialFocusRefreshRef.current ||
+        lastLoadedAtRef.current > 0
+      ) {
+        return;
+      }
+
+      await loadDashboardData();
+    };
+
     if (hasRequestedInitialLoadRef.current) {
       return;
     }
     hasRequestedInitialLoadRef.current = true;
-    void hydrateProfileFromCache();
-    void loadDashboardData();
+    void loadInitialDashboardState();
+
+    return () => {
+      active = false;
+    };
   }, [hydrateProfileFromCache, loadDashboardData]);
 
-  useFocusEffect(
-    useCallback(() => {
-      let task: { cancel?: () => void } | null = null;
-      if (hasRequestedInitialLoadRef.current) {
-        task = InteractionManager.runAfterInteractions(() => {
-          void loadDashboardData();
-        });
-      }
-      const intervalId = setInterval(() => {
+  useEffect(() => {
+    if (dashboardRefreshTaskRef.current) {
+      dashboardRefreshTaskRef.current.cancel?.();
+      dashboardRefreshTaskRef.current = null;
+    }
+
+    if (dashboardRefreshIntervalRef.current) {
+      clearInterval(dashboardRefreshIntervalRef.current);
+      dashboardRefreshIntervalRef.current = null;
+    }
+
+    if (!isFocused) {
+      return;
+    }
+
+    const shouldSkipInitialFocusRefresh =
+      hasRequestedInitialLoadRef.current &&
+      !hasSkippedInitialFocusRefreshRef.current &&
+      lastLoadedAtRef.current <= 0;
+
+    if (shouldSkipInitialFocusRefresh) {
+      hasSkippedInitialFocusRefreshRef.current = true;
+    } else if (
+      hasRequestedInitialLoadRef.current &&
+      isRefreshStale(lastLoadedAtRef.current, DASHBOARD_BACKGROUND_REFRESH_MS)
+    ) {
+      dashboardRefreshTaskRef.current = InteractionManager.runAfterInteractions(() => {
+        if (!isFocusedRef.current) {
+          return;
+        }
+
         void loadDashboardData();
-      }, DASHBOARD_BACKGROUND_REFRESH_MS);
-      return () => {
-        task?.cancel?.();
-        clearInterval(intervalId);
-      };
-    }, [loadDashboardData]),
-  );
+      });
+    }
+
+    dashboardRefreshIntervalRef.current = setInterval(() => {
+      if (!isFocusedRef.current) {
+        return;
+      }
+
+      void loadDashboardData();
+    }, DASHBOARD_BACKGROUND_REFRESH_MS);
+
+    return () => {
+      if (dashboardRefreshTaskRef.current) {
+        dashboardRefreshTaskRef.current.cancel?.();
+        dashboardRefreshTaskRef.current = null;
+      }
+
+      if (dashboardRefreshIntervalRef.current) {
+        clearInterval(dashboardRefreshIntervalRef.current);
+        dashboardRefreshIntervalRef.current = null;
+      }
+    };
+  }, [isFocused, loadDashboardData]);
 
   useEffect(() => {
     const userId = getCurrentUserIdSnapshot();
-    const unsubscribe = subscribeUserProfileUpdated(userId, () => {
+    const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
+      if (consumePendingSelectedDateWrite(pendingSelectedDateWriteIdsRef.current)) {
+        return;
+      }
+
+      if (!isFocusedRef.current) {
+        return;
+      }
+
+      if (loadInFlightRef.current) {
+        return;
+      }
+
+      if (!shouldReloadFromProfileUpdate(lastLoadedAtRef.current, reason)) {
+        return;
+      }
+
       if (profileRefreshTimerRef.current) {
         clearTimeout(profileRefreshTimerRef.current);
       }
       profileRefreshTimerRef.current = setTimeout(() => {
+        if (!isFocusedRef.current) {
+          profileRefreshTimerRef.current = null;
+          return;
+        }
+
         void loadDashboardData();
       }, PROFILE_REFRESH_DEBOUNCE_MS);
     });
@@ -248,8 +405,13 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     }
     selectedDateKeyRef.current = nextKey;
     setSelectedDateState(date);
+    nextSelectedDateWriteIdRef.current += 1;
+    const selectedDateWriteId = nextSelectedDateWriteIdRef.current;
+    pendingSelectedDateWriteIdsRef.current.add(selectedDateWriteId);
     const userId = getCurrentUserIdSnapshot();
-    void updateUserClientState(userId, buildHomeSelectedDatePatch(date)).catch(() => undefined);
+    void updateUserClientState(userId, buildHomeSelectedDatePatch(date)).catch(() => {
+      pendingSelectedDateWriteIdsRef.current.delete(selectedDateWriteId);
+    });
   }, []);
 
   return {

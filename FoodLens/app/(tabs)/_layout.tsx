@@ -1,29 +1,42 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useI18n } from '@/features/i18n';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const { t } = useI18n();
 
   return (
     <Tabs
+      backBehavior="none"
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        freezeOnBlur: true,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarStyle: { display: 'none' },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: t('tabs.home', 'Home'),
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-          tabBarStyle: { display: 'none' }, // Hide tab bar for full screen custom UI
+        }}
+      />
+      <Tabs.Screen
+        name="allergies"
+        options={{
+          title: t('tabs.allergies', 'Allergies'),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: t('tabs.history', 'History'),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t('tabs.profile', 'Profile'),
         }}
       />
     </Tabs>

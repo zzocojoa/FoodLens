@@ -27,6 +27,10 @@ jest.mock('@/contexts/ThemeContext', () => ({
     }),
 }));
 
+jest.mock('@/hooks/use-color-scheme', () => ({
+    useColorScheme: () => 'light',
+}));
+
 jest.mock('@/features/i18n', () => ({
     useI18n: () => ({
         t: (_key: string, fallback?: string) => fallback ?? _key,

@@ -1,6 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { Region } from 'react-native-maps';
-import { useHistoryQuery } from './queries/useHistoryQuery';
+import {
+    HISTORY_QUERY_REFRESH_INTERVAL_MS,
+    useHistoryQuery,
+} from './queries/useHistoryQuery';
 import { useDeleteAnalysisMutation } from './mutations/useAnalysisMutations';
 import { useI18n } from '@/features/i18n';
 import {
@@ -9,19 +12,34 @@ import {
     buildInitialRegion,
 } from './historyDataUtils';
 
-export const useHistoryData = (userId: string) => {
+type UseHistoryDataOptions = {
+    isPollingEnabled: boolean;
+};
+
+const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolean => {
+    if (lastLoadedAtMs <= 0) {
+        return true;
+    }
+
+    return Date.now() - lastLoadedAtMs >= refreshWindowMs;
+};
+
+export const useHistoryData = (userId: string, options: UseHistoryDataOptions) => {
+    const { isPollingEnabled } = options;
     const { locale, t } = useI18n();
     const { 
         data: records = [], 
+        dataUpdatedAt,
         isLoading: loading, 
         refetch, 
         isRefetching: refreshing 
-    } = useHistoryQuery(userId);
+    } = useHistoryQuery(userId, { isPollingEnabled });
 
     const deleteMutation = useDeleteAnalysisMutation(userId);
 
     const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
     const hasAutoExpandedInitialCountryRef = useRef(false);
+    const previousPollingEnabledRef = useRef(isPollingEnabled);
 
     const archiveData = useMemo(() => {
         return aggregateHistoryByCountry(records, locale, t);
@@ -40,6 +58,19 @@ export const useHistoryData = (userId: string) => {
         setExpandedCountries(new Set([archiveViewModel.countryChapters[0].id]));
         hasAutoExpandedInitialCountryRef.current = true;
     }, [archiveViewModel.countryChapters, expandedCountries.size]);
+
+    useEffect(() => {
+        const wasPollingEnabled = previousPollingEnabledRef.current;
+        previousPollingEnabledRef.current = isPollingEnabled;
+
+        if (
+            !wasPollingEnabled &&
+            isPollingEnabled &&
+            isRefreshStale(dataUpdatedAt, HISTORY_QUERY_REFRESH_INTERVAL_MS)
+        ) {
+            void refetch();
+        }
+    }, [dataUpdatedAt, isPollingEnabled, refetch]);
 
     const initialRegion = useMemo(() => buildInitialRegion(records), [records]);
 

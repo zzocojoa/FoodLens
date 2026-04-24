@@ -12,7 +12,7 @@ import Svg, {
 import { homeDashboardColors } from './homeDashboardTokens';
 import PearlGrainOverlay from './PearlGrainOverlay';
 
-export function HomeBackgroundAtmosphere(): React.JSX.Element {
+const HomeBackgroundAtmosphereComponent = (): React.JSX.Element => {
   const rawId = React.useId();
   const safeId = rawId.replace(/:/g, '');
   const baseId = `home-bg-base-${safeId}`;
@@ -82,7 +82,11 @@ export function HomeBackgroundAtmosphere(): React.JSX.Element {
       />
     </View>
   );
-}
+};
+
+export const HomeBackgroundAtmosphere = React.memo(HomeBackgroundAtmosphereComponent);
+
+HomeBackgroundAtmosphere.displayName = 'HomeBackgroundAtmosphere';
 
 const styles = StyleSheet.create({
   container: {

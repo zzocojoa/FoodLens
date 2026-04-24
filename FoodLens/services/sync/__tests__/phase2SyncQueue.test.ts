@@ -880,6 +880,48 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].state).toBe('synced');
   });
 
+  it('preserves content uris during history media upload preparation', async () => {
+    const contentUri = 'content://media/external/images/media/12345';
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-content-uri',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        kind: 'create',
+        entry: {
+          id: 'analysis_content_1',
+          foodName: 'Kimchi',
+          imageUri: contentUri,
+        },
+      },
+      idempotencyKey: 'analysis_content_1',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
+    const uploadPayload = mockedPhase2Api.postMediaUpload.mock.calls[0][0] as {
+      fileUri: string;
+      contentType: string;
+      fileName: string;
+      scope: 'history' | 'profile';
+      linkedEntryId?: string;
+    };
+    expect(uploadPayload.fileUri).toBe(contentUri);
+    expect(uploadPayload.fileUri.startsWith('file://content://')).toBe(false);
+    expect(uploadPayload.contentType).toBe('image/jpeg');
+    expect(uploadPayload.fileName).toBe('foodlens-history.jpg');
+    expect(uploadPayload.scope).toBe('history');
+    expect(uploadPayload.linkedEntryId).toBe('analysis_content_1');
+    expect(queueState[0].state).toBe('synced');
+  });
+
   it('continues profile sync without image when media upload is non-blocking failure', async () => {
     queueState = [
       {

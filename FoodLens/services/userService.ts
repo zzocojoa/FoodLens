@@ -412,6 +412,12 @@ type UserProfilePatch = Omit<Partial<UserProfile>, 'settings' | 'safetyProfile'>
   safetyProfile?: Partial<UserProfile['safetyProfile']>;
 };
 
+type PreparedProfileWrite = {
+  resolvedUserId: string;
+  profile: UserProfile;
+  operationIds: string[];
+};
+
 const mergeProfileSettingsPatch = (
   existingSettings: UserProfile['settings'],
   nextSettingsPatch?: UserProfilePatch['settings']
@@ -441,6 +447,86 @@ const mergeProfileSettingsPatch = (
   }
 
   return nextSettings;
+};
+
+const finalizeProfileWrites = async (uid: string, operationIds: string[]): Promise<void> => {
+  if (operationIds.length === 0) {
+    return;
+  }
+
+  await flushProfileWrites(uid, operationIds);
+  await SafeStorage.set(profileServerSyncMarkerKey(uid), true);
+  publishUserProfileUpdated(uid, 'sync_apply');
+};
+
+const finalizeProfileWritesInBackground = (uid: string, operationIds: string[]): void => {
+  if (operationIds.length === 0) {
+    return;
+  }
+
+  void finalizeProfileWrites(uid, operationIds).catch(() => undefined);
+};
+
+const prepareProfileWrite = async (
+  uid: string,
+  email: string,
+  profileData: UserProfilePatch
+): Promise<PreparedProfileWrite> => {
+  const resolvedUserId = await resolveScopedUserId(uid);
+  const now = new Date().toISOString();
+  startPhase2SyncRuntime();
+  const existing =
+    (await migrateLegacyProfileIfNeeded(resolvedUserId)) ||
+    (await loadScopedProfile(resolvedUserId)) ||
+    buildDefaultProfile(resolvedUserId);
+  const isNew = !existing.createdAt;
+  const hasIncomingProfileImage = typeof profileData.profileImage === 'string';
+  const profileImageChanged =
+    hasIncomingProfileImage && profileData.profileImage !== existing.profileImage;
+  const nextProfileImageAssetId = profileData.profileImageAssetId
+    ? profileData.profileImageAssetId
+    : profileImageChanged
+      ? undefined
+      : existing.profileImageAssetId;
+  const candidateProfile: UserProfile = {
+    ...existing,
+    uid: resolvedUserId,
+    email: email || existing.email,
+    ...profileData,
+    profileImageAssetId: nextProfileImageAssetId,
+    safetyProfile: {
+      ...existing.safetyProfile,
+      ...(profileData.safetyProfile || {}),
+    },
+    settings: mergeProfileSettingsPatch(existing.settings, profileData.settings),
+  };
+  if (isProfileSyncNoop(existing, candidateProfile)) {
+    return {
+      resolvedUserId,
+      profile: existing,
+      operationIds: [],
+    };
+  }
+
+  const newProfile: UserProfile = {
+    ...candidateProfile,
+    updatedAt: now,
+    createdAt: isNew ? now : existing.createdAt,
+  };
+
+  await saveScopedProfile(resolvedUserId, newProfile);
+  publishUserProfileUpdated(resolvedUserId, 'local_write');
+  await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
+  const changedEntities = resolveChangedProfileWriteEntities(existing, newProfile);
+
+  return {
+    resolvedUserId,
+    profile: newProfile,
+    operationIds:
+      changedEntities.length > 0
+        ? await queueProfileWrites(resolvedUserId, newProfile, changedEntities)
+        : [],
+  };
 };
 
 export const UserService = {
@@ -538,52 +624,24 @@ export const UserService = {
    */
   async CreateOrUpdateProfile(uid: string, email: string, profileData: UserProfilePatch = {}) {
     try {
-      const resolvedUserId = await resolveScopedUserId(uid);
-      const now = new Date().toISOString();
-      startPhase2SyncRuntime();
-      const existing = (await migrateLegacyProfileIfNeeded(resolvedUserId)) || (await loadScopedProfile(resolvedUserId)) || buildDefaultProfile(resolvedUserId);
-      const isNew = !existing.createdAt;
-      const hasIncomingProfileImage = typeof profileData.profileImage === 'string';
-      const profileImageChanged =
-        hasIncomingProfileImage && profileData.profileImage !== existing.profileImage;
-      const nextProfileImageAssetId = profileData.profileImageAssetId
-        ? profileData.profileImageAssetId
-        : profileImageChanged
-          ? undefined
-          : existing.profileImageAssetId;
-      const candidateProfile: UserProfile = {
-        ...existing,
-        uid: resolvedUserId,
-        email: email || existing.email,
-        ...profileData,
-        profileImageAssetId: nextProfileImageAssetId,
-        safetyProfile: {
-          ...existing.safetyProfile,
-          ...(profileData.safetyProfile || {}),
-        },
-        settings: mergeProfileSettingsPatch(existing.settings, profileData.settings),
-      };
-      if (isProfileSyncNoop(existing, candidateProfile)) {
-        return existing;
-      }
+      const preparedWrite = await prepareProfileWrite(uid, email, profileData);
+      await finalizeProfileWrites(preparedWrite.resolvedUserId, preparedWrite.operationIds);
+      return preparedWrite.profile;
+    } catch (error) {
+      logger.error('Error saving user profile', error, 'UserService');
+      throw error;
+    }
+  },
 
-      const newProfile: UserProfile = {
-        ...candidateProfile,
-        updatedAt: now,
-        createdAt: isNew ? now : existing.createdAt,
-      };
-
-      await saveScopedProfile(resolvedUserId, newProfile);
-      publishUserProfileUpdated(resolvedUserId, 'local_write');
-      await SafeStorage.set(profileMigrationMarkerKey(resolvedUserId), true);
-      const changedEntities = resolveChangedProfileWriteEntities(existing, newProfile);
-      if (changedEntities.length > 0) {
-        const operationIds = await queueProfileWrites(resolvedUserId, newProfile, changedEntities);
-        await flushProfileWrites(resolvedUserId, operationIds);
-        await SafeStorage.set(profileServerSyncMarkerKey(resolvedUserId), true);
-        publishUserProfileUpdated(resolvedUserId, 'sync_apply');
-      }
-      return newProfile;
+  async CreateOrUpdateProfileDeferredSync(
+    uid: string,
+    email: string,
+    profileData: UserProfilePatch = {}
+  ) {
+    try {
+      const preparedWrite = await prepareProfileWrite(uid, email, profileData);
+      finalizeProfileWritesInBackground(preparedWrite.resolvedUserId, preparedWrite.operationIds);
+      return preparedWrite.profile;
     } catch (error) {
       logger.error('Error saving user profile', error, 'UserService');
       throw error;

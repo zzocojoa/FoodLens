@@ -54,22 +54,25 @@ export const profileHubService = {
     travelerLanguage?: string;
     uiLanguage?: string;
   }) {
-    const existing = await UserService.getUserProfile(params.userId, {
-      allowBackgroundRefresh: false,
-    });
     const imageInput = params.image?.trim() || '';
-    const imageToPersist = imageInput || existing.profileImage || '';
+    const shouldLoadExistingProfile = !imageInput || !params.uiLanguage;
+    const existing = shouldLoadExistingProfile
+      ? await UserService.getUserProfile(params.userId, {
+          allowBackgroundRefresh: false,
+        })
+      : null;
+    const imageToPersist = imageInput || existing?.profileImage || '';
     const profileImageToSave = imageToPersist
       ? await persistProfileImageIfNeeded(imageToPersist)
       : '';
     const normalizedUiLanguage = normalizeCanonicalLocale(
-      params.uiLanguage || existing.settings?.language || 'auto'
+      params.uiLanguage || existing?.settings?.language || 'auto'
     );
 
     try {
       // Settings are auto-saved by dedicated handlers (ui/traveler language).
       // Avoid resending potentially stale settings payload from profile update path.
-      await UserService.CreateOrUpdateProfile(params.userId, 'user@example.com', {
+      await UserService.CreateOrUpdateProfileDeferredSync(params.userId, 'user@example.com', {
         name: params.name,
         profileImage: profileImageToSave,
       });

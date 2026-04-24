@@ -20,13 +20,15 @@ type PearlSurfaceOverlayProps = {
   warmWashColor: string;
 };
 
-export function PearlSurfaceOverlay({
+const MemoizedPearlGrainOverlay = React.memo(PearlGrainOverlay);
+
+const PearlSurfaceOverlayComponent = ({
   accentWashColor,
   baseBottomColor,
   baseTopColor,
   coolWashColor,
   warmWashColor,
-}: PearlSurfaceOverlayProps): React.JSX.Element {
+}: PearlSurfaceOverlayProps): React.JSX.Element => {
   const rawId = React.useId();
   const safeId = rawId.replace(/:/g, '');
   const baseId = `pearl-base-${safeId}`;
@@ -86,7 +88,7 @@ export function PearlSurfaceOverlay({
         <Rect fill={`url(#${reverseSheenId})`} height="100" width="100" x="0" y="0" />
         <Rect fill={`url(#${sheenId})`} height="100" width="100" x="0" y="0" />
       </Svg>
-      <PearlGrainOverlay
+      <MemoizedPearlGrainOverlay
         highlightColor={homeDashboardColors.grainHighlight}
         highlightOpacity={0.11}
         shadowColor={homeDashboardColors.grainShadow}
@@ -94,7 +96,11 @@ export function PearlSurfaceOverlay({
       />
     </View>
   );
-}
+};
+
+export const PearlSurfaceOverlay = React.memo(PearlSurfaceOverlayComponent);
+
+PearlSurfaceOverlay.displayName = 'PearlSurfaceOverlay';
 
 const styles = StyleSheet.create({
   container: {

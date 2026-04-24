@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useRouter, Stack } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
@@ -31,9 +32,15 @@ import {
 } from '../components/historyDashboardTokens';
 import { historyDashboardStyles } from '../components/historyDashboardStyles';
 import { useI18n } from '@/features/i18n';
+import { completeTopLevelTabSwitchTrace } from '@/components/navigation/tabSwitchTrace';
+import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
 
 const HISTORY_CLIENT_STATE_REFRESH_DEBOUNCE_MS = 250;
 const HISTORY_MAP_REGION_SAVE_DEBOUNCE_MS = 250;
+
+const shouldRefreshSyncedHistoryState = (reason: UserProfileUpdateReason): boolean => {
+    return reason !== 'client_state_write';
+};
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -41,6 +48,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function HistoryScreen() {
     const router = useRouter();
+    const isFocused = useIsFocused();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
     const historyUserId = getHistoryUserId();
@@ -62,7 +70,7 @@ export default function HistoryScreen() {
         setExpandedCountries,
         deleteItem,
         deleteMultipleItems,
-    } = useHistoryData(historyUserId);
+    } = useHistoryData(historyUserId, { isPollingEnabled: isFocused });
 
     const { archiveFilter, setArchiveFilter, matchesFilter } = useHistoryFilter({
         initialFilter: syncedHistoryState.filter,
@@ -82,7 +90,11 @@ export default function HistoryScreen() {
     const { savedMapRegionRef, setSavedMapRegion } = ui;
 
     useEffect(() => {
-        const unsubscribe = subscribeUserProfileUpdated(historyUserId, () => {
+        const unsubscribe = subscribeUserProfileUpdated(historyUserId, (reason) => {
+            if (!shouldRefreshSyncedHistoryState(reason)) {
+                return;
+            }
+
             if (clientStateRefreshTimerRef.current) {
                 clearTimeout(clientStateRefreshTimerRef.current);
             }
@@ -173,6 +185,23 @@ export default function HistoryScreen() {
         ? Math.max(insets.bottom + 24, 36)
         : Math.max(insets.bottom + 92, 112);
     const atlasBottomInset = Math.max(insets.bottom + 92, 112);
+    const isHistoryReady = !loading || countryChapters.length > 0;
+
+    useEffect(() => {
+        if (!isFocused || !isHistoryReady) {
+            return;
+        }
+
+        completeTopLevelTabSwitchTrace({
+            target: 'history',
+            details: {
+                archiveMode: ui.archiveMode,
+                chapterCount: countryChapters.length,
+                loading,
+                refreshing,
+            },
+        });
+    }, [countryChapters.length, isFocused, isHistoryReady, loading, refreshing, ui.archiveMode]);
 
     return (
         <TopLevelScreenShell

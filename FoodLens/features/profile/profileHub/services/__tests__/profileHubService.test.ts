@@ -2,6 +2,7 @@ import { profileHubService } from '../profileHubService';
 
 const mockGetUserProfile = jest.fn();
 const mockCreateOrUpdateProfile = jest.fn();
+const mockCreateOrUpdateProfileDeferredSync = jest.fn();
 const mockPersistProfileImageIfNeeded = jest.fn();
 const mockNormalizeCanonicalLocale = jest.fn();
 const mockInitializeI18nStore = jest.fn();
@@ -12,6 +13,8 @@ jest.mock('@/services/userService', () => ({
   UserService: {
     getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
     CreateOrUpdateProfile: (...args: unknown[]) => mockCreateOrUpdateProfile(...args),
+    CreateOrUpdateProfileDeferredSync: (...args: unknown[]) =>
+      mockCreateOrUpdateProfileDeferredSync(...args),
   },
 }));
 
@@ -47,6 +50,9 @@ describe('profileHubService.updateProfile', () => {
     mockCreateOrUpdateProfile.mockResolvedValue({
       uid: 'usr_1',
     });
+    mockCreateOrUpdateProfileDeferredSync.mockResolvedValue({
+      uid: 'usr_1',
+    });
   });
 
   it('applies i18n ui language after profile update succeeds', async () => {
@@ -57,24 +63,102 @@ describe('profileHubService.updateProfile', () => {
       uiLanguage: 'ko-KR',
     });
 
-    expect(mockCreateOrUpdateProfile).toHaveBeenCalledTimes(1);
+    expect(mockCreateOrUpdateProfileDeferredSync).toHaveBeenCalledTimes(1);
     expect(mockSetI18nSettings).toHaveBeenCalledWith({
       language: 'ko-KR',
       targetLanguage: null,
     });
   });
 
-  it('still applies i18n ui language when sync confirmation is deferred', async () => {
-    mockCreateOrUpdateProfile.mockRejectedValue(new Error('PHASE2_SYNC_NOT_CONFIRMED'));
+  it('sends the persisted Android local image URI to the profile update payload', async () => {
+    const androidLocalImageUri = 'content://media/external/images/media/123';
+    const persistedImageUri = 'file:///data/user/0/com.hoihou.foodlens/files/profile/profile-photo.jpg';
+    mockPersistProfileImageIfNeeded.mockResolvedValueOnce(persistedImageUri);
 
-    await expect(
-      profileHubService.updateProfile({
-        userId: 'usr_1',
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: androidLocalImageUri,
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockPersistProfileImageIfNeeded).toHaveBeenCalledWith(androidLocalImageUri);
+    expect(mockCreateOrUpdateProfileDeferredSync).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
         name: 'Tester',
-        image: 'file:///tmp/new.jpg',
-        uiLanguage: 'ko-KR',
+        profileImage: persistedImageUri,
       })
-    ).rejects.toThrow('PHASE2_SYNC_NOT_CONFIRMED');
+    );
+  });
+
+  it('skips the profile reload when save inputs already include image and ui language', async () => {
+    const androidLocalImageUri = 'content://media/external/images/media/321';
+    const persistedImageUri = 'file:///tmp/persisted.jpg';
+
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: androidLocalImageUri,
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockGetUserProfile).not.toHaveBeenCalled();
+    expect(mockPersistProfileImageIfNeeded).toHaveBeenCalledWith(androidLocalImageUri);
+    expect(mockCreateOrUpdateProfileDeferredSync).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
+        name: 'Tester',
+        profileImage: persistedImageUri,
+      })
+    );
+  });
+
+  it('keeps the original Android local image URI when persistence falls back to the source URI', async () => {
+    const androidLocalImageUri = 'content://media/external/images/media/456';
+    mockPersistProfileImageIfNeeded.mockResolvedValueOnce(androidLocalImageUri);
+
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: androidLocalImageUri,
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockPersistProfileImageIfNeeded).toHaveBeenCalledWith(androidLocalImageUri);
+    expect(mockCreateOrUpdateProfileDeferredSync).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      expect.objectContaining({
+        name: 'Tester',
+        profileImage: androidLocalImageUri,
+      })
+    );
+  });
+
+  it('loads the existing profile when save inputs need fallback values', async () => {
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: '',
+      uiLanguage: undefined,
+    });
+
+    expect(mockGetUserProfile).toHaveBeenCalledWith('usr_1', {
+      allowBackgroundRefresh: false,
+    });
+    expect(mockPersistProfileImageIfNeeded).toHaveBeenCalledWith('file:///tmp/current.jpg');
+  });
+
+  it('still applies i18n ui language when deferred profile save resolves immediately', async () => {
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: 'file:///tmp/new.jpg',
+      uiLanguage: 'ko-KR',
+    });
 
     expect(mockSetI18nSettings).toHaveBeenCalledWith({
       language: 'ko-KR',

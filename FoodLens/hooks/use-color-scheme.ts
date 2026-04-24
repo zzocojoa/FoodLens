@@ -1,6 +1,5 @@
-import { useTheme } from '../contexts/ThemeContext';
+import { useResolvedColorScheme } from '../contexts/ThemeContext';
 
-export function useColorScheme() {
-  const { colorScheme } = useTheme();
-  return colorScheme;
+export function useColorScheme(): 'light' | 'dark' {
+  return useResolvedColorScheme();
 }

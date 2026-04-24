@@ -1,7 +1,5 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { Colors } from '../../../constants/theme';
-import { useColorScheme } from '../../../hooks/use-color-scheme';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { useHomeDashboard } from './useHomeDashboard';
 import {
@@ -13,8 +11,6 @@ import {
 
 export const useHomeScreenController = () => {
   const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
-  const theme = Colors[colorScheme];
   const { isConnected } = useNetworkStatus();
   const dashboard = useHomeDashboard();
 
@@ -38,8 +34,6 @@ export const useHomeScreenController = () => {
   }, [router]);
 
   return {
-    colorScheme,
-    theme,
     isConnected,
     dashboard,
     handleOpenHistory,

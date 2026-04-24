@@ -9,6 +9,7 @@ import {
 } from '../sync/phase2SyncQueue';
 import { restoreSession } from '../auth/sessionManager';
 import { getCurrentUserId, hasAuthenticatedUser } from '../auth/currentUser';
+import { publishUserProfileUpdated } from '../user/userProfileStore';
 
 jest.mock('../storage', () => ({
   SafeStorage: {
@@ -99,6 +100,8 @@ const mockedGetPhase2OperationsByIds =
 const mockedRestoreSession = restoreSession as jest.MockedFunction<typeof restoreSession>;
 const mockedHasAuthenticatedUser = hasAuthenticatedUser as jest.MockedFunction<typeof hasAuthenticatedUser>;
 const mockedGetCurrentUserId = getCurrentUserId as jest.MockedFunction<typeof getCurrentUserId>;
+const mockedPublishUserProfileUpdated =
+  publishUserProfileUpdated as jest.MockedFunction<typeof publishUserProfileUpdated>;
 
 const scopedProfileKey = '@foodlens_user_profile:usr_a';
 const migrationMarkerKey = '@foodlens_phase2_profile_migrated:usr_a';
@@ -724,5 +727,69 @@ describe('UserService bootstrap sync guard', () => {
         display_name: 'New Name',
       })
     );
+    expect(mockedPublishUserProfileUpdated).toHaveBeenNthCalledWith(1, 'usr_a', 'local_write');
+    expect(mockedPublishUserProfileUpdated).toHaveBeenNthCalledWith(2, 'usr_a', 'sync_apply');
+  });
+
+  it('returns after local save while deferred sync confirmation continues in background', async () => {
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === scopedProfileKey) {
+        return {
+          uid: 'usr_a',
+          email: 'local@example.com',
+          name: 'Old Name',
+          profileImage: '',
+          profileImageAssetId: '',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: [],
+            severityMap: { egg: 'moderate' },
+            dislikedIngredients: [],
+          },
+          settings: {
+            language: 'ko-KR',
+            targetLanguage: 'en-US',
+            autoPlayAudio: false,
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        } as unknown;
+      }
+      if (key === migrationMarkerKey) return true as unknown;
+      if (key === serverSyncMarkerKey) return true as unknown;
+      return fallback as unknown;
+    });
+
+    mockedEnqueuePhase2Sync.mockImplementation(async (_uid, entity) => `op-${entity}` as never);
+    let releaseDispatch: ((value: void | PromiseLike<void>) => void) | undefined;
+    const dispatchPromise = new Promise<void>((resolve) => {
+      releaseDispatch = resolve;
+    });
+    mockedDispatchPhase2SyncQueue.mockReturnValue(dispatchPromise as never);
+    mockedGetPhase2OperationsByIds.mockResolvedValue([
+      {
+        id: 'op-profile',
+        entity: 'profile',
+        state: 'synced',
+        lastError: null,
+      },
+    ] as never);
+
+    await expect(
+      UserService.CreateOrUpdateProfileDeferredSync('usr_a', 'local@example.com', {
+        name: 'Deferred Name',
+      })
+    ).resolves.toMatchObject({
+      name: 'Deferred Name',
+    });
+
+    expect(mockedEnqueuePhase2Sync).toHaveBeenCalledTimes(1);
+    expect(mockedDispatchPhase2SyncQueue).toHaveBeenCalledWith({ force: true });
+    expect(mockedSafeStorage.set).not.toHaveBeenCalledWith(serverSyncMarkerKey, true);
+
+    if (releaseDispatch) {
+      releaseDispatch();
+    }
+    await Promise.resolve();
   });
 });

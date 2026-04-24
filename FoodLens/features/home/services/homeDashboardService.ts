@@ -1,13 +1,12 @@
 import { UserProfile } from '../../../models/User';
-import { AnalysisService } from '../../../services/analysisService';
 import { loadUserProfileWithHistory } from '../../../services/user/profileAnalysisLoader';
 import { buildWeeklyStats } from '../utils/homeDashboard';
 
 export const fetchHomeDashboardData = async (uid: string) => {
-  const [recentData, { allHistory, profile }] = await Promise.all([
-    AnalysisService.getRecentAnalyses(uid, 3),
-    loadUserProfileWithHistory(uid, { allowBackgroundRefresh: false }),
-  ]);
+  const { allHistory, profile } = await loadUserProfileWithHistory(uid, {
+    allowBackgroundRefresh: false,
+  });
+  const recentData = allHistory.slice(0, 3);
 
   return {
     recentData,

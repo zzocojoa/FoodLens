@@ -1,17 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { AnalysisService, AnalysisRecord } from '@/services/analysisService';
 
-const HISTORY_QUERY_REFRESH_INTERVAL_MS = 15_000;
+export const HISTORY_QUERY_REFRESH_INTERVAL_MS = 15_000;
 
 export const historyKeys = {
   all: ['history'] as const,
   user: (userId: string) => [...historyKeys.all, userId] as const,
 };
 
+type UseHistoryQueryOptions = {
+  isPollingEnabled: boolean;
+};
+
 /**
  * Hook for fetching all analysis records
  */
-export const useHistoryQuery = (userId: string) => {
+export const useHistoryQuery = (userId: string, options: UseHistoryQueryOptions) => {
+  const { isPollingEnabled } = options;
+
   return useQuery({
     queryKey: historyKeys.user(userId),
     queryFn: async (): Promise<AnalysisRecord[]> => {
@@ -21,8 +27,8 @@ export const useHistoryQuery = (userId: string) => {
     },
     // Keep history screen live-updated while open for cross-device writes.
     staleTime: HISTORY_QUERY_REFRESH_INTERVAL_MS,
-    refetchOnMount: 'always',
-    refetchInterval: HISTORY_QUERY_REFRESH_INTERVAL_MS,
+    refetchOnMount: isPollingEnabled,
+    refetchInterval: isPollingEnabled ? HISTORY_QUERY_REFRESH_INTERVAL_MS : false,
     refetchIntervalInBackground: false,
   });
 };

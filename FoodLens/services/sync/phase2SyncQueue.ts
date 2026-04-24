@@ -333,6 +333,16 @@ const isUnsupportedHistoryImageScheme = (uri: string): boolean => {
   return normalized.startsWith('barcode://');
 };
 
+const hasLocalUploadUriScheme = (uri: string): boolean => {
+  const normalized = uri.toLowerCase();
+  return (
+    normalized.startsWith('file://') ||
+    normalized.startsWith('content://') ||
+    normalized.startsWith('ph://') ||
+    normalized.startsWith('assets-library://')
+  );
+};
+
 const isStableManagedLocalProfileImage = (uri: string): boolean => {
   const normalized = uri.toLowerCase();
   if (
@@ -364,13 +374,7 @@ const resolveHistoryImageFileUri = (rawUri: string): string | null => {
   }
 
   const resolved = resolveImageUri(rawUri) || rawUri;
-  if (
-    resolved.startsWith('file://') ||
-    resolved.startsWith('/') ||
-    resolved.startsWith('content://') ||
-    resolved.startsWith('ph://') ||
-    resolved.startsWith('assets-library://')
-  ) {
+  if (hasLocalUploadUriScheme(resolved) || resolved.startsWith('/')) {
     return resolved;
   }
   return null;
@@ -436,7 +440,7 @@ const prepareUploadSource = async (rawUri: string): Promise<PreparedUploadSource
   const resolved = resolveHistoryImageFileUri(trimmed);
   if (!resolved) return null;
   const contentType = inferContentTypeFromUri(resolved);
-  const fileUri = resolved.startsWith('file://') ? resolved : `file://${resolved}`;
+  const fileUri = hasLocalUploadUriScheme(resolved) ? resolved : `file://${resolved}`;
   return { fileUri, contentType };
 };
 

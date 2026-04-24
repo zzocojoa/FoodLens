@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { UserService } from '@/services/userService';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
+import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
+
+const shouldRefreshTravelerAllergens = (reason: UserProfileUpdateReason): boolean => {
+  return reason !== 'client_state_write';
+};
 
 export const useTravelerAllergens = () => {
   const [allergens, setAllergens] = useState<string[]>([]);
@@ -26,7 +31,11 @@ export const useTravelerAllergens = () => {
     };
 
     void syncAllergens();
-    const unsubscribe = subscribeUserProfileUpdated(userId, () => {
+    const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
+      if (!shouldRefreshTravelerAllergens(reason)) {
+        return;
+      }
+
       void syncAllergens();
     });
 
