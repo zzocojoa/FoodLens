@@ -36,34 +36,77 @@ export function useAnalysisData() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
+
     async function loadData() {
       if (isRestoring) {
         console.log("[useAnalysisData] Restoring from backup...");
       }
 
-      const loadedData = await analysisDataService.load({
-        isRestoring,
-        fromStore,
-        data,
-        location,
-        isBarcode,
-      });
+      try {
+        const loadedData = await analysisDataService.load({
+          isRestoring,
+          fromStore,
+          data,
+          location,
+          isBarcode,
+        });
 
-      if (isRestoring) {
-        console.log("[useAnalysisData] Restore success:", !!loadedData.result);
+        if (!isActive) {
+          return;
+        }
+
+        if (isRestoring) {
+          console.log("[useAnalysisData] Restore success:", !!loadedData.result);
+        }
+
+        setIsRestoring(loadedData.isRestoring);
+        setResult(loadedData.result);
+        setLocationData(loadedData.locationData);
+        setStoredImageRef(loadedData.storedImageRef);
+        setImageSource(loadedData.imageSource);
+        setImageDimensions(loadedData.imageDimensions);
+        setRecordId(loadedData.recordId);
+        setLoaded(true);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorName = error instanceof Error ? error.name : typeof error;
+        const errorStack = error instanceof Error ? error.stack : undefined;
+
+        console.error('[useAnalysisData] Failed to load analysis data', {
+          request_id: `result-load-${Date.now().toString(36)}`,
+          route: {
+            fromStore,
+            isBarcode,
+            hasData: typeof data === 'string' || Array.isArray(data),
+            hasLocation: typeof location === 'string' || Array.isArray(location),
+            isRestoring,
+          },
+          error: errorMessage,
+          error_name: errorName,
+          error_stack: errorStack,
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        setIsRestoring(false);
+        setResult(null);
+        setLocationData(null);
+        setStoredImageRef(undefined);
+        setImageSource(null);
+        setImageDimensions(null);
+        setRecordId(null);
+        setLoaded(true);
       }
-
-      setIsRestoring(loadedData.isRestoring);
-      setResult(loadedData.result);
-      setLocationData(loadedData.locationData);
-      setStoredImageRef(loadedData.storedImageRef);
-      setImageSource(loadedData.imageSource);
-      setImageDimensions(loadedData.imageDimensions);
-      setRecordId(loadedData.recordId);
-      setLoaded(true);
     }
     
     void loadData();
+
+    return () => {
+      isActive = false;
+    };
   }, [data, fromStore, isBarcode, isRestoring, location]);
 
   // Reactive timestamp state

@@ -4,6 +4,7 @@ import type {
   AnalysisOrigin,
   DecisionStatus,
   RecommendedAction,
+  SafetyStatus,
   UncertaintyReason,
 } from '@/services/aiCore/types';
 import {
@@ -236,6 +237,9 @@ const normalizeStringArray = (values: unknown): string[] => {
     .filter((value) => value.length > 0);
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 const toSeverity = (value: unknown): AllergySeverity | null => {
   if (value === 'mild' || value === 'moderate' || value === 'severe') {
     return value;
@@ -290,6 +294,11 @@ const normalizeRecommendedAction = (value: unknown): RecommendedAction | undefin
   return undefined;
 };
 
+const normalizeSafetyStatus = (value: unknown): SafetyStatus | null => {
+  if (value === 'SAFE' || value === 'CAUTION' || value === 'DANGER') return value;
+  return null;
+};
+
 const normalizeUncertaintyReason = (value: unknown): UncertaintyReason | undefined => {
   if (
     value === 'image_ambiguity' ||
@@ -318,6 +327,84 @@ const normalizeLocation = (value: unknown): AnalysisRecord['location'] | undefin
     subregion: toStringOrNull(payload['subregion']) ?? undefined,
     formattedAddress: toStringOrNull(payload['formattedAddress']) ?? undefined,
     isoCountryCode: toStringOrNull(payload['isoCountryCode']) ?? undefined,
+  };
+};
+
+const normalizeNumberArray = (value: unknown): number[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value.every((item) => typeof item === 'number' && Number.isFinite(item))
+    ? value
+    : undefined;
+};
+
+const normalizeNutrition = (
+  value: unknown
+): AnalysisRecord['ingredients'][number]['nutrition'] | AnalysisRecord['nutrition'] | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  return {
+    calories: typeof value['calories'] === 'number' ? value['calories'] : null,
+    protein: typeof value['protein'] === 'number' ? value['protein'] : null,
+    carbs: typeof value['carbs'] === 'number' ? value['carbs'] : null,
+    fat: typeof value['fat'] === 'number' ? value['fat'] : null,
+    fiber: typeof value['fiber'] === 'number' ? value['fiber'] : null,
+    sodium: typeof value['sodium'] === 'number' ? value['sodium'] : null,
+    sugar: typeof value['sugar'] === 'number' ? value['sugar'] : null,
+    servingSize: toStringOrNull(value['servingSize']) ?? '',
+    dataSource: toStringOrNull(value['dataSource']) ?? '',
+    description: toStringOrNull(value['description']) ?? undefined,
+    fdcId: typeof value['fdcId'] === 'number' ? value['fdcId'] : undefined,
+  };
+};
+
+const normalizeIngredient = (
+  value: unknown
+): AnalysisRecord['ingredients'][number] | null => {
+  if (!isRecord(value)) return null;
+  const name = toStringOrNull(value['name']);
+  if (!name || typeof value['isAllergen'] !== 'boolean') return null;
+
+  return {
+    name,
+    name_en: toStringOrNull(value['name_en']) ?? undefined,
+    name_ko: toStringOrNull(value['name_ko']) ?? undefined,
+    isAllergen: value['isAllergen'],
+    confidence_score:
+      typeof value['confidence_score'] === 'number' && Number.isFinite(value['confidence_score'])
+        ? value['confidence_score']
+        : undefined,
+    box_2d: normalizeNumberArray(value['box_2d']),
+    bbox: normalizeNumberArray(value['bbox']),
+    nutrition: normalizeNutrition(value['nutrition']),
+  };
+};
+
+const isNormalizedIngredient = (
+  value: AnalysisRecord['ingredients'][number] | null
+): value is AnalysisRecord['ingredients'][number] => value !== null;
+
+const normalizeIngredients = (values: unknown[]): AnalysisRecord['ingredients'] | null => {
+  const ingredients = values.map((value) => normalizeIngredient(value));
+  if (!ingredients.every(isNormalizedIngredient)) return null;
+  return ingredients;
+};
+
+const normalizeTranslationCard = (
+  value: unknown
+): AnalysisRecord['translationCard'] | null | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) return null;
+
+  const language = toStringOrNull(value['language']);
+  const text = value['text'];
+  if (!language || (text !== undefined && text !== null && typeof text !== 'string')) {
+    return null;
+  }
+
+  return {
+    language,
+    text: typeof text === 'string' ? text : null,
+    audio_query: toStringOrNull(value['audio_query']) ?? undefined,
   };
 };
 
@@ -499,28 +586,33 @@ export const deserializeHistoryItem = (item: MeHistoryItemResponse): AnalysisRec
 
   const id = toStringOrNull(entry['id']) || item.id;
   const foodName = toStringOrNull(entry['foodName']);
-  const safetyStatus = toStringOrNull(entry['safetyStatus']);
+  const safetyStatus = normalizeSafetyStatus(entry['safetyStatus']);
   const ingredientsRaw = entry['ingredients'];
 
   if (!foodName || !safetyStatus || !Array.isArray(ingredientsRaw)) {
     return null;
   }
 
-  const ingredients = ingredientsRaw.filter((value) => typeof value === 'object' && value !== null) as AnalysisRecord['ingredients'];
+  const ingredients = normalizeIngredients(ingredientsRaw);
+  const translationCard = normalizeTranslationCard(entry['translationCard']);
+  if (!ingredients || translationCard === null) {
+    return null;
+  }
+
   return {
     id,
     foodName,
     foodName_en: toStringOrNull(entry['foodName_en']) ?? undefined,
     foodName_ko: toStringOrNull(entry['foodName_ko']) ?? undefined,
-    safetyStatus: safetyStatus as AnalysisRecord['safetyStatus'],
+    safetyStatus,
     decisionStatus: normalizeDecisionStatus(entry['decisionStatus']),
     analysisOrigin: normalizeAnalysisOrigin(entry['analysisOrigin']),
     recommendedAction: normalizeRecommendedAction(entry['recommendedAction']),
     uncertaintyReason: normalizeUncertaintyReason(entry['uncertaintyReason']),
     confidence: typeof entry['confidence'] === 'number' ? entry['confidence'] : undefined,
     ingredients,
-    nutrition: (entry['nutrition'] as AnalysisRecord['nutrition']) || undefined,
-    translationCard: (entry['translationCard'] as AnalysisRecord['translationCard']) || undefined,
+    nutrition: normalizeNutrition(entry['nutrition']),
+    translationCard,
     raw_result: toStringOrNull(entry['raw_result']) ?? undefined,
     raw_result_en: toStringOrNull(entry['raw_result_en']) ?? undefined,
     raw_result_ko: toStringOrNull(entry['raw_result_ko']) ?? undefined,

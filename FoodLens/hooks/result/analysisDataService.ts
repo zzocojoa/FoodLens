@@ -1,5 +1,6 @@
 import { dataStore } from '@/services/dataStore';
 import type { AnalyzedData } from '@/services/ai';
+import type { DecisionStatus, RecommendedAction, SafetyStatus } from '@/services/aiCore/types';
 import { parseResultRouteFlags, type ResultSearchParams } from '@/services/contracts/resultRoute';
 import type { ImageSourcePropType } from 'react-native';
 import {
@@ -11,6 +12,7 @@ import {
 
 type AnalysisLocationData = Record<string, unknown> | null;
 type AnalysisResultData = (AnalyzedData & { raw_data?: Record<string, unknown> }) | null;
+type IngredientData = AnalyzedData['ingredients'][number];
 
 type ImageResolution = {
   imageSource: ImageSourcePropType | null;
@@ -88,11 +90,53 @@ const buildLoadedAnalysisData = ({
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+const isSafetyStatus = (value: unknown): value is SafetyStatus =>
+  value === 'SAFE' || value === 'CAUTION' || value === 'DANGER';
+
+const isDecisionStatus = (value: unknown): value is DecisionStatus =>
+  value === undefined || value === 'OK' || value === 'ASK' || value === 'AVOID';
+
+const isRecommendedAction = (value: unknown): value is RecommendedAction =>
+  value === undefined ||
+  value === 'eat' ||
+  value === 'verify_label' ||
+  value === 'ask_staff' ||
+  value === 'avoid';
+
+const isIngredientData = (value: unknown): value is IngredientData =>
+  isObjectRecord(value) &&
+  typeof value['name'] === 'string' &&
+  typeof value['isAllergen'] === 'boolean';
+
+const isTranslationCard = (value: unknown): boolean => {
+  if (value === undefined || value === null) {
+    return true;
+  }
+
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  if (typeof value['language'] !== 'string') {
+    return false;
+  }
+
+  return (
+    value['text'] === undefined ||
+    value['text'] === null ||
+    typeof value['text'] === 'string'
+  );
+};
+
 const isAnalyzedData = (value: unknown): value is AnalyzedData =>
   isObjectRecord(value) &&
   typeof value['foodName'] === 'string' &&
-  typeof value['safetyStatus'] === 'string' &&
-  Array.isArray(value['ingredients']);
+  isSafetyStatus(value['safetyStatus']) &&
+  isDecisionStatus(value['decisionStatus']) &&
+  isRecommendedAction(value['recommendedAction']) &&
+  Array.isArray(value['ingredients']) &&
+  value['ingredients'].every(isIngredientData) &&
+  isTranslationCard(value['translationCard']);
 
 const toResultData = (value: unknown): AnalysisResultData =>
   isAnalyzedData(value) ? (value as AnalysisResultData) : null;
@@ -114,7 +158,7 @@ export const analysisDataService = {
       if (success) {
         const stored = dataStore.getData();
         return buildLoadedAnalysisData({
-          resultData: stored.result,
+          resultData: toResultData(stored.result),
           locationData: toLocationData(stored.location),
           storedImageRef: stored.imageUri,
           barcodeParam: params.isBarcode,
@@ -128,7 +172,7 @@ export const analysisDataService = {
     if (fromStoreMode) {
       const stored = dataStore.getData();
       return buildLoadedAnalysisData({
-        resultData: stored.result,
+        resultData: toResultData(stored.result),
         locationData: toLocationData(stored.location),
         storedImageRef: stored.imageUri,
         barcodeParam: params.isBarcode,
