@@ -250,12 +250,33 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    const loadInitialDashboardState = async (): Promise<void> => {
+      void hydrateProfileFromCache();
+      await loadDashboardData();
+
+      if (
+        !active ||
+        !isFocusedRef.current ||
+        !hasSkippedInitialFocusRefreshRef.current ||
+        lastLoadedAtRef.current > 0
+      ) {
+        return;
+      }
+
+      await loadDashboardData();
+    };
+
     if (hasRequestedInitialLoadRef.current) {
       return;
     }
     hasRequestedInitialLoadRef.current = true;
-    void hydrateProfileFromCache();
-    void loadDashboardData();
+    void loadInitialDashboardState();
+
+    return () => {
+      active = false;
+    };
   }, [hydrateProfileFromCache, loadDashboardData]);
 
   useEffect(() => {

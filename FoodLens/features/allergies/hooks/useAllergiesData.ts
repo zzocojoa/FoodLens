@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { UserService } from '../../../services/userService';
 import { getAllergiesUserId } from '../constants/allergies.constants';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
@@ -65,6 +65,7 @@ const shouldReloadFromProfileUpdate = (
 };
 
 export const useAllergiesData = (): AllergiesState => {
+    const isFocused = useIsFocused();
     const initialProfileSnapshotRef = useRef<UserProfile | null>(readInitialAllergiesProfileSnapshot());
     const initialSnapshotStateRef = useRef<AllergiesSnapshotState>(
         buildAllergiesSnapshotState(initialProfileSnapshotRef.current),
@@ -82,6 +83,11 @@ export const useAllergiesData = (): AllergiesState => {
     const lastLoadedAtRef = useRef(0);
     const hasRequestedInitialLoadRef = useRef(false);
     const hasSkippedInitialFocusRefreshRef = useRef(false);
+    const isFocusedRef = useRef(isFocused);
+
+    useEffect(() => {
+        isFocusedRef.current = isFocused;
+    }, [isFocused]);
 
     const loadAllergies = useCallback(async (options: { silent: boolean }) => {
         if (loadInFlightRef.current) {
@@ -113,10 +119,27 @@ export const useAllergiesData = (): AllergiesState => {
     }, []);
 
     useEffect(() => {
+        let active = true;
         hasRequestedInitialLoadRef.current = true;
-        void loadAllergies({ silent: initialProfileSnapshotRef.current !== null });
+        const loadInitialAllergies = async (): Promise<void> => {
+            await loadAllergies({ silent: initialProfileSnapshotRef.current !== null });
+
+            if (
+                !active ||
+                !isFocusedRef.current ||
+                !hasSkippedInitialFocusRefreshRef.current ||
+                lastLoadedAtRef.current > 0
+            ) {
+                return;
+            }
+
+            await loadAllergies({ silent: true });
+        };
+
+        void loadInitialAllergies();
 
         return () => {
+            active = false;
             if (refreshTimerRef.current) {
                 clearTimeout(refreshTimerRef.current);
                 refreshTimerRef.current = null;

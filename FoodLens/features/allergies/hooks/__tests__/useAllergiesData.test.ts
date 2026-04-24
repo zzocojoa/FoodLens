@@ -12,6 +12,7 @@ jest.mock('@react-navigation/native', () => ({
     useFocusEffect: (callback: () => void | (() => void)) => {
         mockedFocusEffectCallback = callback;
     },
+    useIsFocused: () => true,
 }));
 
 jest.mock('../../constants/allergies.constants', () => ({
@@ -168,6 +169,43 @@ describe('useAllergiesData', () => {
         });
 
         expect(mockedGetUserProfile).toHaveBeenCalledTimes(1);
+    });
+
+    test('retries once after the skipped first-focus path when the initial load fails', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        mockedGetUserProfile
+            .mockRejectedValueOnce(new Error('temporary read failure'))
+            .mockResolvedValueOnce({
+                uid: 'test-user-v1',
+                email: 'test@foodlens.ai',
+                safetyProfile: {
+                    allergies: ['Peanuts'],
+                    dietaryRestrictions: ['Vegan'],
+                    severityMap: { Peanuts: 'severe' },
+                },
+                settings: {
+                    language: 'ko',
+                    autoPlayAudio: false,
+                },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            } as never);
+
+        const { result } = renderHook(() => useAllergiesData());
+
+        act(() => {
+            mockedFocusEffectCallback?.();
+        });
+
+        await waitFor(() => {
+            expect(mockedGetUserProfile).toHaveBeenCalledTimes(2);
+        });
+
+        await waitFor(() => {
+            expect(result.current.allergies).toEqual(['Peanuts']);
+        });
+
+        errorSpy.mockRestore();
     });
 
     test('returns empty list when loading fails', async () => {

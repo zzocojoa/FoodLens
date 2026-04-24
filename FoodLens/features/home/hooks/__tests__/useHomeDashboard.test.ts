@@ -242,6 +242,54 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(result.current.safeCount).toBe(0);
   });
 
+  it('retries once after the skipped first-focus path when the initial dashboard load fails', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const successfulTimestamp = new Date('2026-04-24T12:00:00.000Z');
+    mockFetchHomeDashboardData
+      .mockRejectedValueOnce(new Error('temporary dashboard failure'))
+      .mockResolvedValueOnce({
+        recentData: [],
+        allHistory: [
+          {
+            id: 'analysis_all_1',
+            timestamp: successfulTimestamp,
+            safetyStatus: 'SAFE',
+          },
+        ],
+        profile: {
+          uid: 'usr_home',
+          name: 'Tester',
+          email: 'user@example.com',
+          safetyProfile: {
+            allergies: ['egg'],
+            dietaryRestrictions: ['vegan'],
+            severityMap: {},
+          },
+          settings: {
+            language: 'en',
+            autoPlayAudio: false,
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        weeklyStats: [],
+        safeCount: 1,
+      });
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.safeCount).toBe(1);
+      expect(result.current.userProfile?.uid).toBe('usr_home');
+    });
+
+    errorSpy.mockRestore();
+  });
+
   it('reloads dashboard once for rapid profile update events (debounced)', async () => {
     let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
     mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
