@@ -76,4 +76,22 @@ describe('AllergyListSection', () => {
         expect(getByText('Severe')).toBeTruthy();
         expect(getByText('Mild')).toBeTruthy();
     });
+
+    test('renders canonical and custom restriction display labels without storage prefixes', () => {
+        const { getAllByText, getByText, queryByText } = render(
+            <AllergyListSection
+                loading={false}
+                allergies={['peanut']}
+                dietaryRestrictions={['gluten_free', 'custom:no raw onion']}
+                severityMap={{ peanut: 'moderate' }}
+                theme={theme}
+                onPressEdit={() => undefined}
+            />
+        );
+
+        expect(getAllByText('Peanut')).toHaveLength(2);
+        expect(getAllByText('Gluten Free')).toHaveLength(2);
+        expect(getAllByText('no raw onion')).toHaveLength(2);
+        expect(queryByText('custom:no raw onion')).toBeNull();
+    });
 });

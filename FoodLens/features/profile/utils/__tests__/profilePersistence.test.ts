@@ -20,7 +20,7 @@ describe('profilePersistence', () => {
   });
 
   it('does not overwrite language settings when saving profile restrictions', async () => {
-    await saveTestUserProfile(['egg'], ['vegan'], { egg: 'moderate' });
+    await saveTestUserProfile(['egg'], ['vegan', 'peach'], { egg: 'moderate' });
 
     expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
       'usr_profile',
@@ -29,7 +29,7 @@ describe('profilePersistence', () => {
         safetyProfile: {
           allergies: ['egg'],
           severityMap: { egg: 'moderate' },
-          dietaryRestrictions: ['vegan'],
+          dietaryRestrictions: ['vegan', 'peach'],
         },
       }
     );

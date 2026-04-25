@@ -40,6 +40,10 @@ import { translateAllergenToKorean } from '../utils/translateAllergen';
 import { useTravelerAllergyCardModel } from '@/components/travelerAllergyCard/hooks/useTravelerAllergyCardModel';
 import { TravelerAllergensProvider } from '@/components/travelerAllergyCard/hooks/useTravelerAllergens';
 import { AllergySeverity } from '@/features/profile/types/profile.types';
+import {
+    getRestrictionDefaultLabel,
+    resolveRestrictionDisplayName,
+} from '@/features/profile/utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
@@ -261,15 +265,26 @@ const getSavedCountLabel = (
     );
 };
 
-const getPrimaryLabel = (value: string): string => {
-    return translateAllergenToKorean(value, ALLERGEN_TERMS);
+const getPrimaryLabel = (value: string, t: TranslationFunction): string => {
+    const ingredientLabel = resolveRestrictionDisplayName(value, t);
+    const defaultLabel = getRestrictionDefaultLabel(value);
+    if (ingredientLabel !== value) return ingredientLabel;
+    if (defaultLabel !== value) return t(`profile.allergen.${value}`, defaultLabel);
+
+    const staticLabel = translateAllergenToKorean(value, ALLERGEN_TERMS);
+    if (staticLabel !== value) return staticLabel;
+    return t(`profile.allergen.${value}`, defaultLabel);
 };
 
-const getLedgerItems = (values: string[]): LedgerItem[] => {
+const getSecondaryLabel = (value: string): string => {
+    return getRestrictionDefaultLabel(value);
+};
+
+const getLedgerItems = (values: string[], t: TranslationFunction): LedgerItem[] => {
     return values.map((value) => ({
         id: value,
-        primaryLabel: getPrimaryLabel(value),
-        secondaryLabel: value,
+        primaryLabel: getPrimaryLabel(value, t),
+        secondaryLabel: getSecondaryLabel(value),
     }));
 };
 
@@ -277,6 +292,7 @@ const getSeverityItems = (
     allergies: string[],
     severityMap: Record<string, AllergySeverity>,
     severity: AllergySeverity,
+    t: TranslationFunction,
 ): LedgerItem[] => {
     return allergies
         .filter((item) => {
@@ -288,8 +304,8 @@ const getSeverityItems = (
         })
         .map((item) => ({
             id: item,
-            primaryLabel: getPrimaryLabel(item),
-            secondaryLabel: item,
+            primaryLabel: getPrimaryLabel(item, t),
+            secondaryLabel: getSecondaryLabel(item),
         }));
 };
 
@@ -303,22 +319,22 @@ const getLedgerSections = (
         {
             kind: 'severe',
             title: t('allergies.ledger.severe', 'Severe'),
-            items: getSeverityItems(allergies, severityMap, 'severe'),
+            items: getSeverityItems(allergies, severityMap, 'severe', t),
         },
         {
             kind: 'moderate',
             title: t('allergies.ledger.moderate', 'Moderate'),
-            items: getSeverityItems(allergies, severityMap, 'moderate'),
+            items: getSeverityItems(allergies, severityMap, 'moderate', t),
         },
         {
             kind: 'mild',
             title: t('allergies.ledger.mild', 'Mild'),
-            items: getSeverityItems(allergies, severityMap, 'mild'),
+            items: getSeverityItems(allergies, severityMap, 'mild', t),
         },
         {
             kind: 'dietaryRestrictions',
             title: t('allergies.ledger.restrictions', 'Restrictions'),
-            items: getLedgerItems(dietaryRestrictions),
+            items: getLedgerItems(dietaryRestrictions, t),
         },
     ];
 };

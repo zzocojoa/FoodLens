@@ -8,6 +8,10 @@ import { AllergiesTheme } from '../types/allergies.types';
 import { allergiesStyles as styles } from '../styles/allergiesStyles';
 import { useI18n } from '@/features/i18n';
 import { AllergySeverity } from '@/features/profile/types/profile.types';
+import {
+    getRestrictionDefaultLabel,
+    resolveRestrictionDisplayName,
+} from '@/features/profile/utils/profileSuggestions';
 
 type AllergyListSectionProps = {
     loading: boolean;
@@ -18,7 +22,21 @@ type AllergyListSectionProps = {
     onPressEdit: () => void;
 };
 
-const renderDisplayName = (item: string): string => translateAllergenToKorean(item, ALLERGEN_TERMS);
+const renderDisplayName = (
+    item: string,
+    t: (key: string, fallback: string) => string,
+): string => {
+    const ingredientLabel = resolveRestrictionDisplayName(item, t);
+    const defaultLabel = getRestrictionDefaultLabel(item);
+    if (ingredientLabel !== item) return ingredientLabel;
+    if (defaultLabel !== item) return t(`profile.allergen.${item}`, defaultLabel);
+
+    const staticLabel = translateAllergenToKorean(item, ALLERGEN_TERMS);
+    if (staticLabel !== item) return staticLabel;
+    return t(`profile.allergen.${item}`, defaultLabel);
+};
+
+const renderSecondaryName = (item: string): string => getRestrictionDefaultLabel(item);
 
 const getSeverityTone = (
     severity: AllergySeverity,
@@ -109,9 +127,11 @@ export default function AllergyListSection({
                                 </View>
                                 <View style={styles.itemContent}>
                                     <Text style={[styles.allergyNameKr, { color: theme.textPrimary }]}>
-                                        {renderDisplayName(item)}
+                                        {renderDisplayName(item, t)}
                                     </Text>
-                                    <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>{item}</Text>
+                                    <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>
+                                        {renderSecondaryName(item)}
+                                    </Text>
                                 </View>
                                 <View
                                     style={[
@@ -147,9 +167,11 @@ export default function AllergyListSection({
                             </View>
                             <View style={styles.itemContent}>
                                 <Text style={[styles.allergyNameKr, { color: theme.textPrimary }]}>
-                                    {renderDisplayName(item)}
+                                    {renderDisplayName(item, t)}
                                 </Text>
-                                <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>{item}</Text>
+                                <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>
+                                    {renderSecondaryName(item)}
+                                </Text>
                             </View>
                         </View>
                     ))}

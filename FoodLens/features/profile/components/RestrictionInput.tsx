@@ -3,11 +3,12 @@ import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CirclePlus, Plus, Search } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { IngredientSuggestion } from '../utils/profileSuggestions';
 
 type RestrictionInputProps = {
     theme: ProfileTheme;
     inputValue: string;
-    suggestions: string[];
+    suggestions: IngredientSuggestion[];
     t: (key: string, fallback?: string) => string;
     onChangeText: (text: string) => void;
     onSubmit: () => void;
@@ -56,12 +57,12 @@ export default function RestrictionInput({
                 >
                     {suggestions.map((item, index) => (
                         <TouchableOpacity
-                            key={`${item}-${index}`}
+                            key={`${item.value}-${index}`}
                             style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
-                            onPress={() => onSelectSuggestion(item)}
+                            onPress={() => onSelectSuggestion(item.value)}
                         >
                             <Plus size={16} color={theme.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>{item}</Text>
+                            <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>{item.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>

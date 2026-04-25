@@ -29,6 +29,11 @@ jest.mock('../useProfileRestrictionHandlers', () => ({
 
 jest.mock('../../utils/profileSuggestions', () => ({
   buildSuggestions: jest.fn(() => []),
+  createCustomRestrictionValue: (value: string) => {
+    const item = value.trim();
+    return item ? `custom:${item}` : '';
+  },
+  resolveSuggestionStorageValue: (value: string) => value.trim(),
 }));
 
 jest.mock('@/data/ingredients', () => ({
@@ -187,14 +192,14 @@ describe('useProfileScreen saveProfile sync handling', () => {
     await act(async () => {
       result.current.addCustomAllergen('Kiwi');
     });
-    expect(result.current.allergies).toContain('Kiwi');
-    expect(result.current.severityMap['Kiwi']).toBe('moderate');
+    expect(result.current.allergies).toContain('custom:Kiwi');
+    expect(result.current.severityMap['custom:Kiwi']).toBe('moderate');
 
     await act(async () => {
-      result.current.toggleAllergen('Kiwi');
+      result.current.toggleAllergen('custom:Kiwi');
     });
-    expect(result.current.allergies).not.toContain('Kiwi');
-    expect(result.current.severityMap['Kiwi']).toBeUndefined();
+    expect(result.current.allergies).not.toContain('custom:Kiwi');
+    expect(result.current.severityMap['custom:Kiwi']).toBeUndefined();
   });
 
   it('ignores client_state_write profile updates', async () => {

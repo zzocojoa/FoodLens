@@ -21,6 +21,7 @@ import SaveProfileFooter from '../components/SaveProfileFooter';
 import { COMMON_ALLERGENS, SEVERITY_LEVELS } from '../constants/profile.constants';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { resolveRestrictionDisplayName } from '../utils/profileSuggestions';
 
 const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
 
@@ -48,6 +49,7 @@ export default function ProfileScreen() {
         handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
+        selectCustomAllergenSuggestion,
         addOtherRestriction,
         removeRestriction,
         selectSuggestion,
@@ -134,7 +136,7 @@ export default function ProfileScreen() {
                                     suggestions={customAllergenSuggestions}
                                     onChangeText={handleCustomAllergenInputChange}
                                     onSubmit={() => addCustomAllergen(customAllergenInputValue)}
-                                    onSelectSuggestion={addCustomAllergen}
+                                    onSelectSuggestion={selectCustomAllergenSuggestion}
                                     t={t}
                                 />
                             </View>
@@ -170,7 +172,7 @@ export default function ProfileScreen() {
                                         )}
                                     >
                                         <Text style={[styles.tagText, { color: theme.textPrimary }]}>
-                                            {t(`profile.allergen.${id}`, id)}
+                                            {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
                                         </Text>
                                         <CircleX size={16} color={theme.textSecondary} />
                                     </TouchableOpacity>
@@ -205,6 +207,7 @@ export default function ProfileScreen() {
                             <RestrictionTags
                                 theme={theme}
                                 items={otherRestrictions}
+                                t={t}
                                 onRemove={removeRestriction}
                             />
                         </View>
@@ -231,14 +234,14 @@ export default function ProfileScreen() {
                                         onPress={() => cycleSeverity(id)}
                                         activeOpacity={0.7}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`${t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
+                                        accessibilityLabel={`${t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
                                         accessibilityHint={t(
                                             'onboarding.accessibility.severityCycleHint',
                                             'Tap to cycle severity level',
                                         )}
                                     >
                                         <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                                            {t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)}
+                                            {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
                                         </Text>
                                         <View
                                             style={[
