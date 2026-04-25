@@ -45,14 +45,6 @@ jest.mock('../../../../components/TravelerAllergyCard', () => {
     };
 });
 
-jest.mock('@expo/vector-icons', () => {
-    const React = require('react');
-    const { Text } = require('react-native');
-    return {
-        Ionicons: () => <Text>MOCK_ICON</Text>,
-    };
-});
-
 jest.mock('../../../../hooks/use-color-scheme', () => ({
     useColorScheme: () => 'light',
 }));
@@ -76,6 +68,10 @@ jest.mock('../../hooks/useAllergiesData', () => ({
 
 jest.mock('../../../../components/travelerAllergyCard/hooks/useTravelerAllergyCardModel', () => ({
     useTravelerAllergyCardModel: jest.fn(),
+}));
+
+jest.mock('../../../../components/travelerAllergyCard/hooks/useTravelerAllergens', () => ({
+    TravelerAllergensProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 jest.mock('../../../home/components/HomeBackgroundAtmosphere', () => {

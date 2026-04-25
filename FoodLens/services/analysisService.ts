@@ -172,6 +172,19 @@ const flushHistoryWrites = async (userId: string): Promise<void> => {
   }
 };
 
+const refreshHistoryAfterLocalRead = async (userId: string, local: AnalysisRecord[]): Promise<void> => {
+  try {
+    await dispatchPhase2SyncQueue();
+    await syncHistoryFromServer(userId, local, { force: false });
+  } catch (error) {
+    logger.warn('[Phase2Sync] history background refresh failed', {
+      request_id: 'unknown',
+      user_id: userId,
+      code: error instanceof Error ? error.message : 'PHASE2_HISTORY_BACKGROUND_REFRESH_FAILED',
+    });
+  }
+};
+
 const deleteHistoryItemsFromServer = async (
   userId: string,
   analysisIds: string[]
@@ -339,16 +352,7 @@ export const AnalysisService = {
             startPhase2SyncRuntime();
             const local = await getStoredAnalyses(userId);
             await enqueueHistoryMigrationIfNeeded(userId, local);
-            await dispatchPhase2SyncQueue();
-
-            if (local.length === 0) {
-              // Avoid hard-force polling loops when local cache is empty.
-              // First call still pulls immediately because cooldown has no last-pull timestamp yet.
-              const remote = await syncHistoryFromServer(userId, local, { force: false });
-              if (Array.isArray(remote)) return remote;
-            } else {
-              void syncHistoryFromServer(userId, local, { force: false });
-            }
+            void refreshHistoryAfterLocalRead(userId, local);
             return local;
         } catch (error) {
             logger.error('Error fetching all analyses', error, 'AnalysisService');

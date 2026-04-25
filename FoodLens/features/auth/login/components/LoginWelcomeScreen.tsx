@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated, Platform, Pressable, Text } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { ArrowRight } from 'lucide-react-native';
 import { LoginCopy } from '../constants/login.constants';
 import { loginStyles } from '../styles/loginStyles';
 
@@ -45,7 +45,7 @@ export default function LoginWelcomeScreen({
         >
           <Text style={loginStyles.continueText}>{copy.continueLabel}</Text>
           <Animated.View style={loginStyles.arrowCircle}>
-            <Feather name="arrow-right" size={22} color="#ffffff" />
+            <ArrowRight size={22} color="#ffffff" />
           </Animated.View>
         </Pressable>
       </Animated.View>

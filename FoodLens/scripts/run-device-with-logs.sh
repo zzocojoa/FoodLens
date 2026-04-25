@@ -25,6 +25,7 @@ LOG_FILE=""
 ANDROID_MANIFEST_PATH="${PROJECT_DIR}/android/app/src/main/AndroidManifest.xml"
 MAPS_KEY_PLACEHOLDER="__MISSING_GOOGLE_MAPS_API_KEY__"
 ANDROID_METRO_PORT="${ANDROID_METRO_PORT:-8081}"
+DEFAULT_ANDROID_METRO_PORT="8081"
 
 enforce_clean_worktree() {
   if [[ "${ALLOW_DIRTY_DEVICE_BUILD:-0}" == "1" ]]; then
@@ -227,6 +228,140 @@ resolve_android_device_name() {
   printf '%s' "${line}" | awk '{ print $1 }'
 }
 
+is_valid_tcp_port() {
+  local port="$1"
+
+  if [[ ! "${port}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  if (( port < 1 || port > 65535 )); then
+    return 1
+  fi
+
+  return 0
+}
+
+append_unique_port() {
+  local port="$1"
+  shift
+
+  local existing_port=""
+  if ! is_valid_tcp_port "${port}"; then
+    return 0
+  fi
+
+  for existing_port in "$@"; do
+    if [[ "${existing_port}" == "${port}" ]]; then
+      return 0
+    fi
+  done
+
+  printf '%s\n' "${port}"
+}
+
+resolve_metro_port_from_expo_command() {
+  local index=0
+  local command_arg=""
+  local next_arg=""
+
+  for ((index = 0; index < ${#EXPO_CMD[@]}; index += 1)); do
+    command_arg="${EXPO_CMD[index]}"
+    case "${command_arg}" in
+      --port=*)
+        next_arg="${command_arg#--port=}"
+        if is_valid_tcp_port "${next_arg}"; then
+          printf '%s\n' "${next_arg}"
+          return 0
+        fi
+        ;;
+      --port)
+        if (( index + 1 < ${#EXPO_CMD[@]} )); then
+          next_arg="${EXPO_CMD[index + 1]}"
+          if is_valid_tcp_port "${next_arg}"; then
+            printf '%s\n' "${next_arg}"
+            return 0
+          fi
+        fi
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+metro_status_is_active() {
+  local port="$1"
+  local metro_status=""
+
+  if ! command -v curl >/dev/null 2>&1; then
+    return 1
+  fi
+
+  metro_status="$(
+    curl --silent --show-error --max-time 2 "http://127.0.0.1:${port}/status" 2>/dev/null || true
+  )"
+
+  [[ "${metro_status}" == "packager-status:running" ]]
+}
+
+list_local_listening_ports() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+
+  lsof -nP -iTCP -sTCP:LISTEN -F n 2>/dev/null \
+    | sed -nE 's/^n.*:([0-9]+)$/\1/p' \
+    | sort -n -u
+}
+
+resolve_android_metro_port() {
+  local command_port=""
+  local candidate_port=""
+  local detected_port=""
+  local fallback_port=""
+  local ports=()
+
+  command_port="$(resolve_metro_port_from_expo_command || true)"
+  if [[ -n "${command_port}" ]]; then
+    detected_port="$(append_unique_port "${command_port}" "${ports[@]}")"
+    if [[ -n "${detected_port}" ]]; then
+      ports+=("${detected_port}")
+    fi
+  fi
+
+  detected_port="$(append_unique_port "${ANDROID_METRO_PORT}" "${ports[@]}")"
+  if [[ -n "${detected_port}" ]]; then
+    ports+=("${detected_port}")
+  fi
+
+  detected_port="$(append_unique_port "${DEFAULT_ANDROID_METRO_PORT}" "${ports[@]}")"
+  if [[ -n "${detected_port}" ]]; then
+    ports+=("${detected_port}")
+  fi
+
+  while IFS= read -r candidate_port; do
+    detected_port="$(append_unique_port "${candidate_port}" "${ports[@]}")"
+    if [[ -n "${detected_port}" ]]; then
+      ports+=("${detected_port}")
+    fi
+  done < <(list_local_listening_ports)
+
+  for candidate_port in "${ports[@]}"; do
+    if metro_status_is_active "${candidate_port}"; then
+      if [[ "${candidate_port}" != "${ANDROID_METRO_PORT}" ]]; then
+        echo "[run-with-logs] Detected active Metro status on port ${candidate_port}; using it for adb reverse." >&2
+      fi
+      printf '%s\n' "${candidate_port}"
+      return 0
+    fi
+  done
+
+  fallback_port="${command_port:-${ANDROID_METRO_PORT}}"
+  echo "[run-with-logs] Active Metro status endpoint not found. Using tcp:${fallback_port} for adb reverse." >&2
+  printf '%s\n' "${fallback_port}"
+}
+
 ensure_android_debug_metro_reverse() {
   if [[ "${PLATFORM}" != "android" || "${BUILD_TYPE}" != "debug" ]]; then
     return
@@ -244,24 +379,45 @@ ensure_android_debug_metro_reverse() {
     exit 1
   fi
 
-  echo "[run-with-logs] Configuring Metro reverse tunnel via adb reverse tcp:${ANDROID_METRO_PORT} -> tcp:${ANDROID_METRO_PORT}"
-  if ! adb -s "${android_device_serial}" reverse "tcp:${ANDROID_METRO_PORT}" "tcp:${ANDROID_METRO_PORT}"; then
-    echo "[run-with-logs] ERROR: Failed to configure adb reverse for Metro on ${android_device_serial}."
-    echo "[run-with-logs] Run manually: adb -s ${android_device_serial} reverse tcp:${ANDROID_METRO_PORT} tcp:${ANDROID_METRO_PORT}"
-    exit 1
+  local metro_port=""
+  metro_port="$(resolve_android_metro_port)"
+  local reverse_ports=("${metro_port}")
+  local fallback_reverse_port=""
+
+  fallback_reverse_port="$(append_unique_port "${DEFAULT_ANDROID_METRO_PORT}" "${reverse_ports[@]}")"
+  if [[ -n "${fallback_reverse_port}" ]]; then
+    reverse_ports+=("${fallback_reverse_port}")
   fi
+
+  fallback_reverse_port="$(append_unique_port "${ANDROID_METRO_PORT}" "${reverse_ports[@]}")"
+  if [[ -n "${fallback_reverse_port}" ]]; then
+    reverse_ports+=("${fallback_reverse_port}")
+  fi
+
+  local reverse_port=""
+  for reverse_port in "${reverse_ports[@]}"; do
+    echo "[run-with-logs] Configuring Metro reverse tunnel via adb reverse tcp:${reverse_port} -> tcp:${metro_port}"
+    if ! adb -s "${android_device_serial}" reverse "tcp:${reverse_port}" "tcp:${metro_port}"; then
+      echo "[run-with-logs] ERROR: Failed to configure adb reverse for Metro on ${android_device_serial}."
+      echo "[run-with-logs] Run manually: adb -s ${android_device_serial} reverse tcp:${reverse_port} tcp:${metro_port}"
+      exit 1
+    fi
+  done
 
   local reverse_list=""
   reverse_list="$(adb -s "${android_device_serial}" reverse --list 2>/dev/null || true)"
-  if printf '%s\n' "${reverse_list}" | grep -Fq "tcp:${ANDROID_METRO_PORT} tcp:${ANDROID_METRO_PORT}"; then
-    echo "[run-with-logs] Metro reverse tunnel is active for ${android_device_serial}."
-    return
-  fi
 
-  echo "[run-with-logs] ERROR: adb reverse verification failed for ${android_device_serial}."
-  echo "[run-with-logs] Current reverse list:"
-  printf '%s\n' "${reverse_list}"
-  exit 1
+  for reverse_port in "${reverse_ports[@]}"; do
+    if ! printf '%s\n' "${reverse_list}" | grep -Fq "tcp:${reverse_port} tcp:${metro_port}"; then
+      echo "[run-with-logs] ERROR: adb reverse verification failed for ${android_device_serial}."
+      echo "[run-with-logs] Expected reverse mapping: tcp:${reverse_port} tcp:${metro_port}"
+      echo "[run-with-logs] Current reverse list:"
+      printf '%s\n' "${reverse_list}"
+      exit 1
+    fi
+  done
+
+  echo "[run-with-logs] Metro reverse tunnel is active for ${android_device_serial}."
 }
 
 resolve_react_native_version() {

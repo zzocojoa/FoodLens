@@ -14,6 +14,8 @@ import {
   homeDashboardSpacing,
   homeDashboardTypography,
 } from './homeDashboardTokens';
+import { markHomeNavigationTrace } from '../services/homeNavigationTrace';
+import type { HomeNavigationTraceTarget } from '../services/homeNavigationTrace';
 
 type HomeQuickActionsProps = {
   allergiesDescription: string;
@@ -34,6 +36,7 @@ type QuickActionCardProps = {
   accentBackgroundColor: string;
   accentTextColor: string;
   description: string;
+  navigationTraceTarget: HomeNavigationTraceTarget;
   overlayAccentColor: string;
   overlayCoolColor: string;
   overlayWarmColor: string;
@@ -46,6 +49,7 @@ function QuickActionCard({
   accentBackgroundColor,
   accentTextColor,
   description,
+  navigationTraceTarget,
   overlayAccentColor,
   overlayCoolColor,
   overlayWarmColor,
@@ -53,10 +57,15 @@ function QuickActionCard({
   value,
   onPress,
 }: QuickActionCardProps) {
+  const handlePress = React.useCallback((): void => {
+    markHomeNavigationTrace(navigationTraceTarget, 'card_press');
+    onPress();
+  }, [navigationTraceTarget, onPress]);
+
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         homeDashboardStyles.sectionCard,
         styles.card,
@@ -111,6 +120,7 @@ export function HomeQuickActions({
         overlayAccentColor="rgba(185, 70, 62, 0.18)"
         overlayCoolColor={homeDashboardColors.pearlGlow}
         overlayWarmColor={homeDashboardColors.pearlPeach}
+        navigationTraceTarget="allergies"
         title={allergiesTitle}
         value={allergiesValue}
         onPress={onOpenAllergies}
@@ -122,6 +132,7 @@ export function HomeQuickActions({
         overlayAccentColor="rgba(90, 111, 160, 0.22)"
         overlayCoolColor={homeDashboardColors.pearlMist}
         overlayWarmColor={homeDashboardColors.pearlGlow}
+        navigationTraceTarget="history"
         title={historyTitle}
         value={historyValue}
         onPress={onOpenHistory}
@@ -133,6 +144,7 @@ export function HomeQuickActions({
         overlayAccentColor="rgba(31, 107, 79, 0.18)"
         overlayCoolColor={homeDashboardColors.pearlSage}
         overlayWarmColor={homeDashboardColors.pearlGlow}
+        navigationTraceTarget="trip_stats"
         title={tripStatsTitle}
         value={tripStatsValue}
         onPress={onOpenTripStats}

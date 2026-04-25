@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Camera, Images, MapPin, Video } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 import type { Translate } from '../../types/onboarding.types';
@@ -76,7 +76,7 @@ export default function PermissionsStep({
                 borderColor: theme.border,
               }}
             >
-              <Ionicons name="camera" size={heroIconSize} color={theme.primary} />
+              <Camera size={heroIconSize} color={theme.primary} />
               <View
                 style={{
                   position: 'absolute',
@@ -96,7 +96,7 @@ export default function PermissionsStep({
                   shadowRadius: 4,
                 }}
               >
-                <Ionicons name="images" size={heroBadgeIconSize} color={theme.textSecondary} />
+                <Images size={heroBadgeIconSize} color={theme.textSecondary} />
               </View>
             </View>
           </View>
@@ -147,7 +147,7 @@ export default function PermissionsStep({
               },
             ]}
           >
-            <Ionicons name="videocam" size={sectionIconSize} color={theme.primary} />
+            <Video size={sectionIconSize} color={theme.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
@@ -180,7 +180,7 @@ export default function PermissionsStep({
               },
             ]}
           >
-            <Ionicons name="images" size={sectionIconSize} color={theme.textSecondary} />
+            <Images size={sectionIconSize} color={theme.textSecondary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
@@ -213,7 +213,7 @@ export default function PermissionsStep({
               },
             ]}
           >
-            <Ionicons name="location" size={sectionIconSize} color={theme.primary} />
+            <MapPin size={sectionIconSize} color={theme.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>

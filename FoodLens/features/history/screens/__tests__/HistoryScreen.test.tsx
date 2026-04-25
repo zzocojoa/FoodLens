@@ -12,6 +12,7 @@ import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { readHistoryStateSnapshot } from '@/services/user/clientStateService';
 
 const mockRouterBack = jest.fn();
+const mockRouterNavigate = jest.fn();
 const mockRouterPush = jest.fn();
 const mockTopLevelShell = jest.fn();
 
@@ -25,13 +26,21 @@ jest.mock('expo-router', () => ({
   },
   useRouter: () => ({
     back: mockRouterBack,
+    navigate: mockRouterNavigate,
     push: mockRouterPush,
   }),
 }));
 
-jest.mock('@react-navigation/native', () => ({
-  useIsFocused: () => true,
-}));
+jest.mock('@react-navigation/native', () => {
+  const React = require('react');
+
+  return {
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      React.useEffect(effect, [effect]);
+    },
+    useIsFocused: () => true,
+  };
+});
 
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');

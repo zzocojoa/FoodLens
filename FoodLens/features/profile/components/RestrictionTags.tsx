@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { X } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
 
@@ -23,7 +23,7 @@ export default function RestrictionTags({ theme, items, onRemove }: RestrictionT
                         onPress={() => onRemove(item)}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                        <Ionicons name="close" size={16} color={theme.primary} style={{ marginLeft: 6 }} />
+                        <X size={16} color={theme.primary} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
                 </View>
             ))}

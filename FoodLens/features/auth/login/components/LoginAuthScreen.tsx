@@ -9,8 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { Eye, EyeOff, Lock, Mail, Shield, type LucideIcon } from 'lucide-react-native';
 import { LOGIN_COLORS, LoginCopy } from '../constants/login.constants';
 import { GoogleIcon, KakaoIcon } from './OAuthProviderIcons';
 import {
@@ -24,11 +24,11 @@ import { loginStyles } from '../styles/loginStyles';
 type InputGroupProps = {
   label: string;
   placeholder: string;
-  iconName: React.ComponentProps<typeof Feather>['name'];
+  Icon: LucideIcon;
   value: string;
   onChangeText: (value: string) => void;
   secureTextEntry?: boolean;
-  rightIconName?: React.ComponentProps<typeof Feather>['name'];
+  RightIcon?: LucideIcon;
   onPressRightIcon?: () => void;
   style?: object;
   keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType'];
@@ -44,11 +44,11 @@ type InputGroupProps = {
 const InputGroup = ({
   label,
   placeholder,
-  iconName,
+  Icon,
   value,
   onChangeText,
   secureTextEntry,
-  rightIconName,
+  RightIcon,
   onPressRightIcon,
   style,
   keyboardType,
@@ -63,7 +63,7 @@ const InputGroup = ({
   <View style={[loginStyles.inputGroup, style]}>
     <Text style={loginStyles.inputLabel}>{label}</Text>
     <View style={loginStyles.inputRow}>
-      <Feather name={iconName} size={16} color={LOGIN_COLORS.inputIcon} />
+      <Icon size={16} color={LOGIN_COLORS.inputIcon} />
       <Text style={loginStyles.inputPipe}>|</Text>
       <TextInput
         autoCapitalize="none"
@@ -78,9 +78,9 @@ const InputGroup = ({
         returnKeyType={returnKeyType}
         blurOnSubmit={blurOnSubmit}
       />
-      {rightIconName ? (
+      {RightIcon ? (
         <Pressable onPress={onPressRightIcon} style={loginStyles.eyeButton}>
-          <Feather name={rightIconName} size={16} color={LOGIN_COLORS.inputIcon} />
+          <RightIcon size={16} color={LOGIN_COLORS.inputIcon} />
         </Pressable>
       ) : null}
       {rightActionLabel && onPressRightAction ? (
@@ -350,7 +350,7 @@ export default function LoginAuthScreen({
         <InputGroup
           label={copy.emailLabel}
           placeholder={copy.emailPlaceholder}
-          iconName="mail"
+          Icon={Mail}
           value={formValues.email}
           onChangeText={onChangeEmail}
           keyboardType="email-address"
@@ -361,11 +361,11 @@ export default function LoginAuthScreen({
         <InputGroup
           label={passwordResetStepActive ? copy.newPasswordLabel : copy.passwordLabel}
           placeholder={passwordResetStepActive ? copy.newPasswordPlaceholder : copy.passwordPlaceholder}
-          iconName="lock"
+          Icon={Lock}
           value={formValues.password}
           onChangeText={onChangePassword}
           secureTextEntry={!passwordVisible}
-          rightIconName={passwordVisible ? 'eye-off' : 'eye'}
+          RightIcon={passwordVisible ? EyeOff : Eye}
           onPressRightIcon={onTogglePasswordVisible}
           style={{ marginBottom: 0 }}
           onSubmitEditing={() => Keyboard.dismiss()}
@@ -391,11 +391,11 @@ export default function LoginAuthScreen({
             <InputGroup
               label={passwordResetStepActive ? copy.confirmNewPasswordLabel : copy.confirmPasswordLabel}
               placeholder={passwordResetStepActive ? copy.confirmNewPasswordPlaceholder : copy.confirmPasswordPlaceholder}
-              iconName="lock"
+              Icon={Lock}
               value={formValues.confirmPassword}
               onChangeText={onChangeConfirmPassword}
               secureTextEntry={!confirmPasswordVisible}
-              rightIconName={confirmPasswordVisible ? 'eye-off' : 'eye'}
+              RightIcon={confirmPasswordVisible ? EyeOff : Eye}
               onPressRightIcon={onToggleConfirmPasswordVisible}
               style={{ marginTop: 10, marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }}
               onSubmitEditing={() => Keyboard.dismiss()}
@@ -410,7 +410,7 @@ export default function LoginAuthScreen({
               <InputGroup
                 label={copy.verificationCodeLabel}
                 placeholder={copy.verificationCodePlaceholder}
-                iconName="shield"
+                Icon={Shield}
                 value={formValues.verificationCode}
                 onChangeText={onChangeVerificationCode}
                 keyboardType="number-pad"

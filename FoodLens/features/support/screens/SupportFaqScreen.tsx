@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronDown, ChevronUp, Search } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
@@ -105,7 +105,7 @@ export default function SupportFaqScreen() {
             gap: 10,
           }}
         >
-          <Ionicons name="search" size={18} color={theme.textSecondary} />
+          <Search size={18} color={theme.textSecondary} />
           <TextInput
             value={searchText}
             onChangeText={setSearchText}
@@ -170,11 +170,11 @@ export default function SupportFaqScreen() {
                     <Text style={{ flex: 1, color: theme.textPrimary, fontSize: 15, fontWeight: '700' }}>
                       {item.question}
                     </Text>
-                    <Ionicons
-                      name={isOpen ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={theme.textSecondary}
-                    />
+                    {isOpen ? (
+                      <ChevronUp size={18} color={theme.textSecondary} />
+                    ) : (
+                      <ChevronDown size={18} color={theme.textSecondary} />
+                    )}
                   </View>
                   {isOpen ? (
                     <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 20 }}>

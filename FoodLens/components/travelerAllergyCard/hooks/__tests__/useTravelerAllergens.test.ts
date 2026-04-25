@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
-import { useTravelerAllergens } from '../useTravelerAllergens';
+import React from 'react';
+import { TravelerAllergensProvider, useTravelerAllergens } from '../useTravelerAllergens';
 import { UserService } from '@/services/userService';
 
 const mockGetCurrentUserIdSnapshot = jest.fn();
@@ -84,5 +85,22 @@ describe('useTravelerAllergens', () => {
     await waitFor(() => {
       expect(mockGetUserProfile).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('uses provided allergens without loading the profile', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+      React.createElement(
+        TravelerAllergensProvider,
+        { allergens: ['Shellfish', 'Halal'] },
+        children
+      )
+    );
+
+    const { result } = renderHook(() => useTravelerAllergens(), { wrapper });
+
+    expect(result.current).toEqual(['Shellfish', 'Halal']);
+    expect(mockGetCurrentUserIdSnapshot).not.toHaveBeenCalled();
+    expect(mockGetUserProfile).not.toHaveBeenCalled();
+    expect(mockSubscribeUserProfileUpdated).not.toHaveBeenCalled();
   });
 });

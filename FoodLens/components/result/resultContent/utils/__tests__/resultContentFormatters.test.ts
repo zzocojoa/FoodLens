@@ -25,7 +25,16 @@ describe('resultContentFormatters', () => {
         const state = buildIngredientsVisibleState(items, false);
 
         expect(state.shouldCollapse).toBe(true);
-        expect(state.visible).toHaveLength(5);
-        expect(state.hiddenCount).toBe(2);
+        expect(state.visible).toHaveLength(4);
+        expect(state.hiddenCount).toBe(3);
+    });
+
+    it('does not report hidden ingredients when list is below collapse limit', () => {
+        const items = Array.from({ length: 3 }, (_, i) => ({ name: String(i), isAllergen: false }));
+        const state = buildIngredientsVisibleState(items, false);
+
+        expect(state.shouldCollapse).toBe(false);
+        expect(state.visible).toHaveLength(3);
+        expect(state.hiddenCount).toBe(0);
     });
 });

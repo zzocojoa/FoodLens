@@ -17,8 +17,10 @@ jest.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ bottom: 0 }),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-    Ionicons: () => null,
+jest.mock('lucide-react-native', () => ({
+    CircleX: () => null,
+    Search: () => null,
+    X: () => null,
 }));
 
 jest.mock('@/contexts/ThemeContext', () => ({

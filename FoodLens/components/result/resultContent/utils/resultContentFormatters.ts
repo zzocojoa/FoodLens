@@ -38,7 +38,7 @@ export const buildIngredientsVisibleState = (
     const sorted = sortIngredientsByRisk(ingredients);
     const shouldCollapse = sorted.length > INGREDIENTS_INITIAL_LIMIT;
     const visible = expanded || !shouldCollapse ? sorted : sorted.slice(0, INGREDIENTS_INITIAL_LIMIT);
-    const hiddenCount = sorted.length - INGREDIENTS_INITIAL_LIMIT;
+    const hiddenCount = shouldCollapse ? sorted.length - INGREDIENTS_INITIAL_LIMIT : 0;
 
     return { visible, hiddenCount, shouldCollapse };
 };

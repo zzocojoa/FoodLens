@@ -2,6 +2,7 @@ import { AnalysisService } from '../analysisService';
 import { getStoredAnalyses, saveAnalyses } from '../analysis/storage';
 import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue';
 import { queryClient } from '../queryClient';
+import { Phase2Api } from '../sync/phase2Api';
 
 jest.mock('../analysis/storage', () => ({
   getStoredAnalyses: jest.fn(),
@@ -16,7 +17,7 @@ jest.mock('../sync/phase2SyncQueue', () => ({
 }));
 
 jest.mock('../sync/phase2Mappers', () => ({
-  mergeRemoteHistory: jest.fn(),
+  mergeRemoteHistory: jest.fn((local) => local),
   serializeHistoryRecord: jest.fn((record) => record),
 }));
 
@@ -50,6 +51,26 @@ const mockedGetStoredAnalyses = getStoredAnalyses as jest.MockedFunction<typeof 
 const mockedSaveAnalyses = saveAnalyses as jest.MockedFunction<typeof saveAnalyses>;
 const mockedEnqueueHistorySync = enqueueHistorySync as jest.MockedFunction<typeof enqueueHistorySync>;
 const mockedDispatchPhase2SyncQueue = dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
+const mockedGetHistory = Phase2Api.getHistory as jest.MockedFunction<typeof Phase2Api.getHistory>;
+
+type DeferredPromise<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+};
+
+const createDeferredPromise = <T>(): DeferredPromise<T> => {
+  let resolvePromise: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  if (resolvePromise === null) {
+    throw new Error('Failed to initialize deferred promise resolver');
+  }
+  return {
+    promise,
+    resolve: resolvePromise,
+  };
+};
 
 describe('AnalysisService barcode dedupe', () => {
   beforeEach(() => {
@@ -140,5 +161,46 @@ describe('AnalysisService barcode dedupe', () => {
       }),
       saved.id
     );
+  });
+
+  it('returns cached history without waiting for queue dispatch', async () => {
+    const existingRecord = {
+      id: 'record-existing',
+      foodName: 'Kimchi stew',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+      timestamp: new Date('2026-03-02T14:05:09.000Z'),
+    } as any;
+    const dispatchDeferred = createDeferredPromise<void>();
+    mockedGetStoredAnalyses.mockResolvedValue([existingRecord]);
+    mockedDispatchPhase2SyncQueue.mockReturnValue(dispatchDeferred.promise);
+
+    const result = await AnalysisService.getAllAnalyses('usr_test');
+
+    expect(result).toEqual([existingRecord]);
+    expect(mockedDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    dispatchDeferred.resolve(undefined);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  });
+
+  it('returns empty local history without waiting for server pull', async () => {
+    const remoteDeferred = createDeferredPromise<{ history: []; requestId: string }>();
+    mockedGetStoredAnalyses.mockResolvedValue([]);
+    mockedDispatchPhase2SyncQueue.mockResolvedValue(undefined);
+    mockedGetHistory.mockReturnValue(remoteDeferred.promise);
+
+    const result = await AnalysisService.getAllAnalyses('usr_empty_test');
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(result).toEqual([]);
+    expect(mockedGetHistory).toHaveBeenCalledTimes(1);
+    remoteDeferred.resolve({ history: [], requestId: 'req-history' });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
   });
 });

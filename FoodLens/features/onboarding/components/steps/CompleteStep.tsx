@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ArrowRight, Check, CircleUserRound, Shield, Sparkles, TriangleAlert } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import type { Gender } from '@/features/profile/types/profile.types';
@@ -94,7 +94,7 @@ export default function CompleteStep({
             backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center',
             shadowColor: theme.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 20,
           }}>
-            <Ionicons name="checkmark" size={56} color="white" />
+            <Check size={56} color="white" />
           </View>
         </View>
         <Text style={[styles.welcomeTitle, { color: theme.textPrimary }]}>
@@ -119,7 +119,7 @@ export default function CompleteStep({
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
             justifyContent: 'space-between',
           }}>
-            <Ionicons name="person-circle" size={32} color={theme.primary} style={{ marginBottom: 8 }} />
+            <CircleUserRound size={32} color={theme.primary} style={{ marginBottom: 8 }} />
             <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
               {t('onboarding.complete.profile', 'Profile')}
             </Text>
@@ -138,7 +138,7 @@ export default function CompleteStep({
               width: 32, height: 32, borderRadius: 16,
               backgroundColor: 'rgba(245,158,11,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
             }}>
-              <Ionicons name="warning" size={18} color="#F59E0B" />
+              <TriangleAlert size={18} color="#F59E0B" />
             </View>
             <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
               {t('onboarding.complete.mildRisk', 'Mild Risk')}
@@ -179,7 +179,7 @@ export default function CompleteStep({
               width: 36, height: 36, borderRadius: 18,
               backgroundColor: 'rgba(239,68,68,0.1)', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Ionicons name="shield" size={18} color="#EF4444" />
+              <Shield size={18} color="#EF4444" />
             </View>
             <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1 }}>
               {t('onboarding.complete.severeAllergens', 'Severe Allergens')}
@@ -213,7 +213,7 @@ export default function CompleteStep({
           backgroundColor: `${theme.primary}08`, borderWidth: 1, borderColor: `${theme.primary}15`,
           flexDirection: 'row', alignItems: 'flex-start', gap: 10,
         }}>
-          <Ionicons name="sparkles" size={20} color={theme.primary} style={{ marginTop: 1 }} />
+          <Sparkles size={20} color={theme.primary} style={{ marginTop: 1 }} />
           <Text style={{ flex: 1, fontSize: 13, color: theme.textSecondary, lineHeight: 19 }}>
             <Text style={{ fontWeight: '700', color: theme.primary }}>
               {t('onboarding.complete.aiReady', 'AI Ready:')}
@@ -275,7 +275,7 @@ export default function CompleteStep({
               ? t('onboarding.complete.saving', 'Saving...')
               : t('onboarding.complete.start', 'Start Using FoodLens')}
           </Text>
-          {!loading && <Ionicons name="arrow-forward" size={20} color="white" style={{ marginLeft: 8 }} />}
+          {!loading && <ArrowRight size={20} color="white" style={{ marginLeft: 8 }} />}
         </TouchableOpacity>
       </View>
     </View>

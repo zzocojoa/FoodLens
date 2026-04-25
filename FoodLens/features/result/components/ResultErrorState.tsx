@@ -1,8 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { BlurView as ExpoBlurView } from 'expo-blur';
+import {
+    Camera,
+    Clock3,
+    Image as ImageIcon,
+    RefreshCw,
+    type LucideIcon,
+} from 'lucide-react-native';
 import { SecureImage } from '@/components/SecureImage';
 import TravelerAllergyCard from '@/components/TravelerAllergyCard';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
@@ -16,6 +22,18 @@ type ResultErrorStateProps = {
     t: (key: string, fallback?: string) => string;
 };
 
+const resolveErrorIcon = (iconName: string): LucideIcon => {
+    if (iconName === 'time-outline') {
+        return Clock3;
+    }
+
+    if (iconName === 'image-outline') {
+        return ImageIcon;
+    }
+
+    return Camera;
+};
+
 export default function ResultErrorState({
     imageSource,
     locationData,
@@ -23,6 +41,7 @@ export default function ResultErrorState({
     t,
 }: ResultErrorStateProps) {
     const router = useRouter();
+    const ErrorIcon = resolveErrorIcon(errorInfo.icon);
 
     return (
             <View style={styles.errorContainer}>
@@ -31,7 +50,7 @@ export default function ResultErrorState({
 
             <View style={styles.errorContent}>
                 <View style={styles.errorIconCircle}>
-                    <Ionicons name={errorInfo.icon as any} size={40} color="#3B82F6" />
+                    <ErrorIcon size={40} color="#3B82F6" strokeWidth={2.2} />
                 </View>
                 <Text style={styles.errorTitle}>{errorInfo.title}</Text>
                 <Text style={styles.errorDesc}>{errorInfo.desc}</Text>
@@ -59,7 +78,7 @@ export default function ResultErrorState({
                     hapticType="medium"
                     onPress={() => router.replace('/scan/camera')}
                 >
-                    <Ionicons name="refresh" size={18} color="white" style={{ marginRight: 8 }} />
+                    <RefreshCw size={18} color="white" strokeWidth={2.2} style={{ marginRight: 8 }} />
                     <Text style={styles.retryText}>{t('result.error.retry', 'Retry')}</Text>
                 </HapticTouchableOpacity>
 

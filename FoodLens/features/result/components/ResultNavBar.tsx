@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Flag } from 'lucide-react-native';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { resultStyles as styles } from '../styles/resultStyles';
 
@@ -28,7 +28,7 @@ export default function ResultNavBar({
             <View style={styles.navBar}>
                 <HapticTouchableOpacity onPress={onBack} style={styles.navButton} hapticType="light">
                     <View pointerEvents="none">
-                        <Ionicons name="chevron-back" size={28} color="#1C1C1E" />
+                        <ChevronLeft size={28} color="#1C1C1E" strokeWidth={2.4} />
                     </View>
                 </HapticTouchableOpacity>
                 <View style={{ flex: 1 }} />
@@ -40,7 +40,7 @@ export default function ResultNavBar({
                     accessibilityRole="button"
                     accessibilityLabel={reportAccessibilityLabel}
                 >
-                    <Ionicons name="flag-outline" size={18} color="#64748B" />
+                    <Flag size={18} color="#64748B" strokeWidth={2.2} />
                 </HapticTouchableOpacity>
             </View>
         </SafeAreaView>

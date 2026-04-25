@@ -7,6 +7,7 @@ import TripStatsScreen from '../TripStatsScreen';
 import { useTripStatsScreen } from '../../hooks/useTripStatsScreen';
 
 const mockedBack = jest.fn();
+const mockedNavigate = jest.fn();
 
 jest.mock('expo-router', () => ({
     Stack: {
@@ -14,10 +15,20 @@ jest.mock('expo-router', () => ({
     },
     useRouter: () => ({
         back: mockedBack,
-        navigate: jest.fn(),
+        navigate: mockedNavigate,
         push: jest.fn(),
     }),
 }));
+
+jest.mock('@react-navigation/native', () => {
+    const React = require('react');
+
+    return {
+        useFocusEffect: (effect: () => void | (() => void)) => {
+            React.useEffect(effect, [effect]);
+        },
+    };
+});
 
 jest.mock('react-native-safe-area-context', () => ({
     SafeAreaView: ({ children }: { children: React.ReactNode }) => children,

@@ -348,6 +348,24 @@ const countUniqueVisitedCities = (countryChapters: ReadonlyArray<TripStatsCountr
     return countryChapters.reduce((count, chapter) => count + chapter.cityCount, 0);
 };
 
+const buildPassportTotals = (
+    safetyTotals: TripSafetyCountTotals,
+    countryChapters: ReadonlyArray<TripStatsCountryChapter>,
+): TripStatsPassportTotals => {
+    return {
+        totalAnalyses: safetyTotals.totalCount,
+        safeCount: safetyTotals.safeCount,
+        cautionCount: safetyTotals.cautionCount,
+        dangerCount: safetyTotals.dangerCount,
+        currentTripCount: safetyTotals.currentTripCount,
+        currentTripSafeCount: safetyTotals.currentTripSafeCount,
+        currentTripCautionCount: safetyTotals.currentTripCautionCount,
+        currentTripDangerCount: safetyTotals.currentTripDangerCount,
+        countriesVisitedCount: countryChapters.length,
+        citiesVisitedCount: countUniqueVisitedCities(countryChapters),
+    };
+};
+
 const resolveHeroScope = (tripStartTime: number | null): TripStatsHeroScope => {
     if (tripStartTime !== null) {
         return 'currentTrip';
@@ -448,18 +466,7 @@ export const buildTripStatsPassportTotals = (
     const safetyTotals = countTripSafetyTotals(analyses, tripStartTime);
     const countryChapters = buildCountryChapters(analyses, null, tripStartTime);
 
-    return {
-        totalAnalyses: safetyTotals.totalCount,
-        safeCount: safetyTotals.safeCount,
-        cautionCount: safetyTotals.cautionCount,
-        dangerCount: safetyTotals.dangerCount,
-        currentTripCount: safetyTotals.currentTripCount,
-        currentTripSafeCount: safetyTotals.currentTripSafeCount,
-        currentTripCautionCount: safetyTotals.currentTripCautionCount,
-        currentTripDangerCount: safetyTotals.currentTripDangerCount,
-        countriesVisitedCount: countryChapters.length,
-        citiesVisitedCount: countUniqueVisitedCities(countryChapters),
-    };
+    return buildPassportTotals(safetyTotals, countryChapters);
 };
 
 export const buildTripStatsScreenViewModel = (
@@ -470,7 +477,8 @@ export const buildTripStatsScreenViewModel = (
     const language = user?.settings.language ?? null;
     const countryChapters = buildCountryChapters(analyses, language, tripStartTime);
     const recentJourneyEntries = buildRecentJourneyEntries(analyses, language, tripStartTime);
-    const passportTotals = buildTripStatsPassportTotals(analyses, tripStartTime);
+    const safetyTotals = countTripSafetyTotals(analyses, tripStartTime);
+    const passportTotals = buildPassportTotals(safetyTotals, countryChapters);
 
     return {
         hasActiveTrip: tripStartTime !== null,

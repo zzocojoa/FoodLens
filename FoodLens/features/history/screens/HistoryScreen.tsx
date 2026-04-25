@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
+import { ActivityIndicator, BackHandler, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useRouter, Stack } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
@@ -33,6 +33,7 @@ import {
 import { historyDashboardStyles } from '../components/historyDashboardStyles';
 import { useI18n } from '@/features/i18n';
 import { completeTopLevelTabSwitchTrace } from '@/components/navigation/tabSwitchTrace';
+import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
 import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
 
 const HISTORY_CLIENT_STATE_REFRESH_DEBOUNCE_MS = 250;
@@ -58,6 +59,27 @@ export default function HistoryScreen() {
     const clientStateRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const mapRegionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingMapRegionRef = useRef<Region | null>(null);
+    const hasMarkedFirstContentRef = useRef(false);
+    const handleReturnHome = useCallback((): void => {
+        router.navigate('/(tabs)');
+    }, [router]);
+
+    useFocusEffect(
+        useCallback(() => {
+            const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+                handleReturnHome();
+                return true;
+            });
+
+            return () => {
+                subscription.remove();
+            };
+        }, [handleReturnHome]),
+    );
+
+    useEffect(() => {
+        markHomeNavigationTrace('history', 'screen_mount');
+    }, []);
 
     const {
         archiveData,
@@ -192,6 +214,11 @@ export default function HistoryScreen() {
             return;
         }
 
+        if (!hasMarkedFirstContentRef.current) {
+            hasMarkedFirstContentRef.current = true;
+            markHomeNavigationTrace('history', 'first_content');
+        }
+
         completeTopLevelTabSwitchTrace({
             target: 'history',
             details: {
@@ -220,7 +247,7 @@ export default function HistoryScreen() {
                                     archiveMode={ui.archiveMode}
                                     isEditMode={ui.isEditMode}
                                     isMapModeAvailable={ui.isMapModeAvailable}
-                                    onBack={() => router.back()}
+                                    onBack={handleReturnHome}
                                     onSwitchMode={ui.handleSwitchMode}
                                     onToggleEdit={ui.toggleEditMode}
                                 />
@@ -253,7 +280,7 @@ export default function HistoryScreen() {
                                 archiveMode={ui.archiveMode}
                                 isEditMode={ui.isEditMode}
                                 isMapModeAvailable={ui.isMapModeAvailable}
-                                onBack={() => router.back()}
+                                onBack={handleReturnHome}
                                 onSwitchMode={ui.handleSwitchMode}
                                 onToggleEdit={ui.toggleEditMode}
                             />

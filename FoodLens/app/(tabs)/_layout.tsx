@@ -24,13 +24,22 @@ export default function TabLayout() {
       <Tabs.Screen
         name="allergies"
         options={{
+          lazy: false,
           title: t('tabs.allergies', 'Allergies'),
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
+          lazy: false,
           title: t('tabs.history', 'History'),
+        }}
+      />
+      <Tabs.Screen
+        name="trip-stats"
+        options={{
+          lazy: false,
+          title: t('tripStats.header.title', 'Trip Statistics'),
         }}
       />
       <Tabs.Screen
