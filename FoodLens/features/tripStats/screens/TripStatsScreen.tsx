@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 
@@ -17,12 +18,17 @@ import {
 import { tripStatsDashboardStyles } from '../components/tripStatsDashboardStyles';
 import { useTripStatsScreen } from '../hooks/useTripStatsScreen';
 import { useI18n } from '@/features/i18n';
+import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
 
 export default function TripStatsScreen(): React.JSX.Element {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
+    const hasMarkedFirstContentRef = React.useRef(false);
     const handleIgnoredJourneyEntry = React.useCallback((_entryId: string): void => {}, []);
+    const handleReturnHome = React.useCallback((): void => {
+        router.navigate('/(tabs)');
+    }, [router]);
     const {
         currentLocation,
         clearStartFeedback,
@@ -39,6 +45,19 @@ export default function TripStatsScreen(): React.JSX.Element {
         },
         onOpenJourneyEntry: handleIgnoredJourneyEntry,
     });
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+                handleReturnHome();
+                return true;
+            });
+
+            return () => {
+                subscription.remove();
+            };
+        }, [handleReturnHome]),
+    );
 
     const passportTotals = viewModel?.passportTotals ?? {
         totalAnalyses: 0,
@@ -59,6 +78,19 @@ export default function TripStatsScreen(): React.JSX.Element {
         ? t('tripStats.hero.verifyingLocation', 'Verifying location...')
         : t('tripStats.action.primary', 'Start trip');
 
+    React.useEffect(() => {
+        markHomeNavigationTrace('trip_stats', 'screen_mount');
+    }, []);
+
+    React.useEffect(() => {
+        if (loading || viewModel === null || hasMarkedFirstContentRef.current) {
+            return;
+        }
+
+        hasMarkedFirstContentRef.current = true;
+        markHomeNavigationTrace('trip_stats', 'first_content');
+    }, [loading, viewModel]);
+
     return (
         <View style={tripStatsDashboardStyles.screenBackground}>
             <Stack.Screen options={{ headerShown: false }} />
@@ -75,7 +107,7 @@ export default function TripStatsScreen(): React.JSX.Element {
                     <View style={styles.navRow}>
                         <Pressable
                             accessibilityRole="button"
-                            onPress={() => router.back()}
+                            onPress={handleReturnHome}
                             style={({ pressed }) => [
                                 styles.navButton,
                                 pressed ? styles.navButtonPressed : null,

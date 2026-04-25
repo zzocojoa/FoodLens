@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { CircleX } from 'lucide-react-native';
 import AllergenGrid from '@/features/profile/components/AllergenGrid';
 import RestrictionInput from '@/features/profile/components/RestrictionInput';
 import { COMMON_ALLERGENS } from '@/features/profile/constants/profile.constants';
@@ -126,7 +126,7 @@ export default function AllergiesStep({
                 <Text style={[styles.tagText, { color: theme.textPrimary }]}>
                   {t(`profile.allergen.${id}`, id)}
                 </Text>
-                <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
+                <CircleX size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             ))}
           </View>

@@ -9,7 +9,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ArrowRight,
+  Barcode,
+  BriefcaseMedical,
+  CircleCheck,
+  Clock3,
+  CloudCheck,
+  Globe,
+  Languages,
+  Lock,
+  ShieldCheck,
+  TriangleAlert,
+  User,
+  Utensils,
+  Zap,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Translate, BadgeAnimatedStyle } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
@@ -74,7 +89,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               importantForAccessibility="no-hide-descendants"
             >
               <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(60,131,246,0.15)' }]}>
-                <Ionicons name="barcode-outline" size={24} color={theme.primary} />
+                <Barcode size={24} color={theme.primary} />
               </View>
               <View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary }]}>
@@ -89,7 +104,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
             <View style={styles.bentoHalfRow}>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
-                  <Ionicons name="flash" size={20} color="#f59e0b" />
+                  <Zap size={20} color="#f59e0b" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 14, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature2', 'Detect instantly')}
@@ -97,7 +112,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               </View>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
-                  <Ionicons name="globe-outline" size={20} color="#10b981" />
+                  <Globe size={20} color="#10b981" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 14, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature3', 'Global support')}
@@ -113,7 +128,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
           <View style={[styles.bentoGrid, { width: slideWidth }]}>
             <View style={[styles.bentoCardFull, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
-                <Ionicons name="shield-checkmark-outline" size={24} color="#ef4444" />
+                <ShieldCheck size={24} color="#ef4444" />
               </View>
               <View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary }]}>
@@ -128,7 +143,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
             <View style={styles.bentoHalfRow}>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(168,85,247,0.15)' }]}>
-                  <Ionicons name="person-outline" size={20} color="#a855f7" />
+                  <User size={20} color="#a855f7" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 14, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature5', 'Personalized')}
@@ -136,7 +151,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               </View>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
-                  <Ionicons name="time-outline" size={20} color="#3b82f6" />
+                  <Clock3 size={20} color="#3b82f6" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 14, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature6', 'History Log')}
@@ -156,7 +171,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               importantForAccessibility="no-hide-descendants"
             >
               <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(168,85,247,0.15)' }]}>
-                <Ionicons name="language-outline" size={24} color="#a855f7" />
+                <Languages size={24} color="#a855f7" />
               </View>
               <View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary }]}>
@@ -171,7 +186,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
             <View style={styles.bentoHalfRow}>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(234,179,8,0.15)' }]}>
-                  <Ionicons name="restaurant-outline" size={20} color="#eab308" />
+                  <Utensils size={20} color="#eab308" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 13, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature8', 'Show to Chef')}
@@ -179,7 +194,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               </View>
               <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
-                  <Ionicons name="medkit-outline" size={20} color="#ef4444" />
+                  <BriefcaseMedical size={20} color="#ef4444" />
                 </View>
                 <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 13, marginTop: 8 }]}>
                   {t('onboarding.welcome.feature9', 'Emergency Info')}
@@ -198,7 +213,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
             importantForAccessibility="no-hide-descendants"
           >
             <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
-              <Ionicons name="shield-checkmark-outline" size={24} color="#10b981" />
+              <ShieldCheck size={24} color="#10b981" />
             </View>
             <View>
               <Text style={[styles.bentoCardTitle, { color: theme.textPrimary }]}>
@@ -213,7 +228,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
           <View style={styles.bentoHalfRow}>
             <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
-                <Ionicons name="lock-closed-outline" size={20} color="#3b82f6" />
+                <Lock size={20} color="#3b82f6" />
               </View>
               <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 13, marginTop: 8 }]}>
                 {t('onboarding.welcome.feature11', 'Privacy First')}
@@ -221,7 +236,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
             </View>
             <View style={[styles.bentoCardHalf, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={[styles.bentoIconCircle, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-                <Ionicons name="cloud-done-outline" size={20} color="#6366f1" />
+                <CloudCheck size={20} color="#6366f1" />
               </View>
               <Text style={[styles.bentoCardTitle, { color: theme.textPrimary, fontSize: 13, marginTop: 8 }]}>
                 {t('onboarding.welcome.feature12', 'Secure Cloud')}
@@ -254,7 +269,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               badgeRightStyle,
             ]}
           >
-            <Ionicons name="checkmark-circle" size={28} color="#4ade80" />
+            <CircleCheck size={28} color="#4ade80" />
           </Animated.View>
           <Animated.View
             style={[
@@ -264,7 +279,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
               badgeLeftStyle,
             ]}
           >
-            <Ionicons name="warning" size={28} color="#fb923c" />
+            <TriangleAlert size={28} color="#fb923c" />
           </Animated.View>
         </View>
       </View>
@@ -348,7 +363,7 @@ export default function WelcomeStep({ theme, t, badgeRightStyle, badgeLeftStyle,
         accessibilityHint={t('onboarding.accessibility.welcomeStartHint', 'Move to the next onboarding step')}
       >
         <Text style={styles.primaryButtonText}>{t('onboarding.welcome.start', 'Get Started')}</Text>
-        <Ionicons name="arrow-forward" size={20} color="white" style={{ marginLeft: 8 }} />
+        <ArrowRight size={20} color="white" style={{ marginLeft: 8 }} />
       </TouchableOpacity>
     </View>
   );

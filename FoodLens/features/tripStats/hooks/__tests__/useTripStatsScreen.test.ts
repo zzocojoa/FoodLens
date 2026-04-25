@@ -3,17 +3,23 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useTripStatsScreen } from '../useTripStatsScreen';
 import type { TripStatsScreenViewModel, TripStatsSnapshot } from '../../types/tripStats.types';
 import type { UserProfile } from '@/models/User';
+import { queryClient } from '@/services/queryClient';
+import type { AnalysisRecord } from '@/services/analysis/types';
 
 const mockReact = React;
 const mockLoadTripStatsSnapshot = jest.fn();
 const mockStartTripFromCurrentLocation = jest.fn();
 const mockGetCurrentUserId = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
+const mockFocusEffects: Array<() => void | (() => void)> = [];
 
 jest.mock('@react-navigation/native', () => {
   return {
     useFocusEffect: (effect: () => void | (() => void)) => {
-      mockReact.useEffect(() => effect(), [effect]);
+      mockReact.useEffect(() => {
+        mockFocusEffects.push(effect);
+        return effect();
+      }, [effect]);
     },
   };
 });
@@ -115,11 +121,118 @@ const buildSnapshot = (
   viewModel: buildViewModel(locationLabel),
 });
 
+const buildCachedAnalysisRecord = (): AnalysisRecord => ({
+  id: 'cached-analysis-1',
+  foodName: 'Bibimbap',
+  ingredients: [],
+  safetyStatus: 'SAFE',
+  timestamp: new Date('2026-04-21T00:00:00.000Z'),
+  location: {
+    latitude: 37.5665,
+    longitude: 126.978,
+    country: 'South Korea',
+    city: 'Seoul',
+  },
+});
+
 describe('useTripStatsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFocusEffects.length = 0;
+    queryClient.clear();
     mockGetCurrentUserId.mockReturnValue('usr_tripstats');
     mockShowTranslatedAlert.mockImplementation(() => undefined);
+  });
+
+  it('keeps cached trip stats visible while focus refresh runs', async () => {
+    const refreshedSnapshot = buildSnapshot('Busan, South Korea', 'Busan, South Korea');
+    const refreshDeferred = createDeferred<TripStatsSnapshot>();
+    const onOpenHistory = jest.fn();
+    const onOpenJourneyEntry = jest.fn();
+
+    queryClient.setQueryData(['history', 'usr_tripstats'], [buildCachedAnalysisRecord()]);
+    mockLoadTripStatsSnapshot.mockReturnValueOnce(refreshDeferred.promise);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory,
+        onOpenJourneyEntry,
+      })
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.viewModel?.passportTotals.totalAnalyses).toBe(1);
+
+    await waitFor(() => {
+      expect(mockLoadTripStatsSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.viewModel?.passportTotals.totalAnalyses).toBe(1);
+
+    await act(async () => {
+      refreshDeferred.resolve(refreshedSnapshot);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.currentLocation).toBe('Busan, South Korea');
+    });
+
+    expect(onOpenHistory).not.toHaveBeenCalled();
+    expect(onOpenJourneyEntry).not.toHaveBeenCalled();
+  });
+
+  it('hydrates cached trip stats on focus when premounted before cache is ready', async () => {
+    const initialDeferred = createDeferred<TripStatsSnapshot>();
+    const refreshDeferred = createDeferred<TripStatsSnapshot>();
+    const initialSnapshot = buildSnapshot(null, null);
+    const refreshedSnapshot = buildSnapshot('Busan, South Korea', 'Busan, South Korea');
+
+    mockLoadTripStatsSnapshot
+      .mockReturnValueOnce(initialDeferred.promise)
+      .mockReturnValueOnce(refreshDeferred.promise);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory: jest.fn(),
+        onOpenJourneyEntry: jest.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockLoadTripStatsSnapshot).toHaveBeenCalledTimes(1);
+      expect(mockFocusEffects.length).toBeGreaterThan(0);
+    });
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.viewModel).toBeNull();
+
+    queryClient.setQueryData(['history', 'usr_tripstats'], [buildCachedAnalysisRecord()]);
+
+    act(() => {
+      const latestFocusEffect = mockFocusEffects[mockFocusEffects.length - 1];
+      latestFocusEffect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.viewModel?.passportTotals.totalAnalyses).toBe(1);
+    });
+
+    expect(mockLoadTripStatsSnapshot).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      initialDeferred.resolve(initialSnapshot);
+      refreshDeferred.resolve(refreshedSnapshot);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.currentLocation).toBe('Busan, South Korea');
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   it('keeps location and loading states separate while starting a trip', async () => {

@@ -38,9 +38,11 @@ import { ALLERGIES_COPY } from '../constants/allergies.constants';
 import { useAllergiesData } from '../hooks/useAllergiesData';
 import { translateAllergenToKorean } from '../utils/translateAllergen';
 import { useTravelerAllergyCardModel } from '@/components/travelerAllergyCard/hooks/useTravelerAllergyCardModel';
+import { TravelerAllergensProvider } from '@/components/travelerAllergyCard/hooks/useTravelerAllergens';
 import { AllergySeverity } from '@/features/profile/types/profile.types';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
 
 type TranslationFunction = (key: string, fallback?: string) => string;
 
@@ -54,6 +56,13 @@ type TravelerCardViewModel = Readonly<{
     finalMessage: string;
     isPersonalized: boolean;
     languageLabel: string;
+}>;
+
+type AllergiesScreenContentProps = Readonly<{
+    allergies: string[];
+    dietaryRestrictions: string[];
+    severityMap: Record<string, AllergySeverity>;
+    loading: boolean;
 }>;
 
 const AllergiesScreenStatusBar = (): React.JSX.Element => {
@@ -330,19 +339,47 @@ const getTravelerCardCopy = (
     };
 };
 
-export default function AllergiesScreen() {
-    const router = useRouter();
-    const isFocused = useIsFocused();
-    const insets = useSafeAreaInsets();
-    const { t } = useI18n();
+export default function AllergiesScreen(): React.JSX.Element {
     const {
         allergies,
         dietaryRestrictions,
         severityMap,
         loading,
     } = useAllergiesData();
+    const travelerAllergens = React.useMemo(
+        () => [...allergies, ...dietaryRestrictions],
+        [allergies, dietaryRestrictions],
+    );
+
+    return (
+        <TravelerAllergensProvider allergens={travelerAllergens}>
+            <AllergiesScreenContent
+                allergies={allergies}
+                dietaryRestrictions={dietaryRestrictions}
+                severityMap={severityMap}
+                loading={loading}
+            />
+        </TravelerAllergensProvider>
+    );
+}
+
+const AllergiesScreenContent = ({
+    allergies,
+    dietaryRestrictions,
+    severityMap,
+    loading,
+}: AllergiesScreenContentProps): React.JSX.Element => {
+    const router = useRouter();
+    const isFocused = useIsFocused();
+    const insets = useSafeAreaInsets();
+    const { t } = useI18n();
     const travelerCardModel = useTravelerAllergyCardModel(undefined, undefined);
     const [isTravelerCardExpanded, setIsTravelerCardExpanded] = React.useState(false);
+    const hasMarkedFirstContentRef = React.useRef(false);
+
+    React.useEffect(() => {
+        markHomeNavigationTrace('allergies', 'screen_mount');
+    }, []);
 
     const summary = React.useMemo(
         () => getAllergiesSummary(allergies, dietaryRestrictions, severityMap),
@@ -405,6 +442,11 @@ export default function AllergiesScreen() {
     React.useEffect(() => {
         if (!isFocused || !isAllergiesReady) {
             return;
+        }
+
+        if (!hasMarkedFirstContentRef.current) {
+            hasMarkedFirstContentRef.current = true;
+            markHomeNavigationTrace('allergies', 'first_content');
         }
 
         completeTopLevelTabSwitchTrace({
@@ -487,7 +529,7 @@ export default function AllergiesScreen() {
             </AllergiesTravelerCardModal>
         </TopLevelScreenShell>
     );
-}
+};
 
 const screenStyles = StyleSheet.create({
     container: {

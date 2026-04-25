@@ -5,17 +5,17 @@ describe('analysisLoadingFormatters', () => {
         expect(getMainMessage(true, false, 0)).toBe('ANALYSIS FAILED');
     });
 
-    it('returns warmup message on long wait at AI step', () => {
-        expect(getMainMessage(false, true, 2)).toBe('SERVER WARMING UP...');
+    it('returns long wait message at AI inference step', () => {
+        expect(getMainMessage(false, true, 4)).toBe('ANALYSIS IS TAKING LONGER THAN USUAL...');
     });
 
     it('calculates automatic progress by step', () => {
-        expect(getProgressWidth(false, false, 0)).toBe('25%');
-        expect(getProgressWidth(false, false, 3)).toBe('100%');
+        expect(getProgressWidth(false, false, 0)).toBe('14.285714285714285%');
+        expect(getProgressWidth(false, false, 6)).toBe('100%');
     });
 
     it('calculates manual upload progress with cap', () => {
-        expect(getProgressWidth(false, true, 1, 0.5)).toBe('50%');
-        expect(getProgressWidth(false, true, 1, 1)).toBe('75%');
+        expect(getProgressWidth(false, true, 1, 0.5)).toBe('25%');
+        expect(getProgressWidth(false, true, 1, 1)).toBe('36%');
     });
 });

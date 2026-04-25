@@ -1,17 +1,47 @@
-import { useEffect, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { UserService } from '@/services/userService';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
 
+type TravelerAllergensProviderProps = Readonly<{
+  allergens: string[];
+  children?: ReactNode;
+}>;
+
+const TravelerAllergensContext = createContext<string[] | null>(null);
+
 const shouldRefreshTravelerAllergens = (reason: UserProfileUpdateReason): boolean => {
   return reason !== 'client_state_write';
 };
 
-export const useTravelerAllergens = () => {
+export const TravelerAllergensProvider = (
+  props: TravelerAllergensProviderProps
+): ReactElement => {
+  return createElement(
+    TravelerAllergensContext.Provider,
+    { value: props.allergens },
+    props.children
+  );
+};
+
+export const useTravelerAllergens = (): string[] => {
+  const providedAllergens = useContext(TravelerAllergensContext);
   const [allergens, setAllergens] = useState<string[]>([]);
 
   useEffect(() => {
+    if (providedAllergens !== null) {
+      return undefined;
+    }
+
     const userId = getCurrentUserIdSnapshot();
     if (!userId || userId === 'auth-required') {
       setAllergens([]);
@@ -43,7 +73,7 @@ export const useTravelerAllergens = () => {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [providedAllergens]);
 
-  return allergens;
+  return providedAllergens ?? allergens;
 };

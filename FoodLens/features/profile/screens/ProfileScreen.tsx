@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { CircleX } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -172,7 +172,7 @@ export default function ProfileScreen() {
                                         <Text style={[styles.tagText, { color: theme.textPrimary }]}>
                                             {t(`profile.allergen.${id}`, id)}
                                         </Text>
-                                        <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
+                                        <CircleX size={16} color={theme.textSecondary} />
                                     </TouchableOpacity>
                                 ))}
                             </View>

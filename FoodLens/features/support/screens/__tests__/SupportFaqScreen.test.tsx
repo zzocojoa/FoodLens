@@ -30,8 +30,10 @@ jest.mock('@/features/i18n', () => ({
   }),
 }));
 
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
+jest.mock('lucide-react-native', () => ({
+  ChevronDown: () => null,
+  ChevronUp: () => null,
+  Search: () => null,
 }));
 
 describe('SupportFaqScreen', () => {

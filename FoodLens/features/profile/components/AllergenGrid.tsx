@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Check } from 'lucide-react-native';
 import { COMMON_ALLERGENS } from '../constants/profile.constants';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
@@ -47,7 +47,7 @@ export default function AllergenGrid({ theme, selectedAllergies, onToggle, t }: 
                         </Text>
                         {isSelected && (
                             <View style={styles.checkBadge}>
-                                <Ionicons name="checkmark" size={12} color={theme.primary} />
+                                <Check size={12} color={theme.primary} />
                             </View>
                         )}
                     </TouchableOpacity>

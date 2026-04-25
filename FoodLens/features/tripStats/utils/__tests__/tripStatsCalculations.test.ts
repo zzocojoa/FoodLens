@@ -1,5 +1,6 @@
 import {
     buildLocationLabel,
+    buildTripStatsPassportTotals,
     buildTripStatsScreenViewModel,
     countSafeAnalysesFromStart,
     countSafeAnalysesTotal,
@@ -129,10 +130,13 @@ describe('tripStatsCalculations', () => {
         ];
 
         const viewModel = buildTripStatsScreenViewModel(user, analyses);
+        const tripStartTime = new Date('2026-01-10T00:00:00.000Z').getTime();
+        const passportTotals = buildTripStatsPassportTotals(analyses, tripStartTime);
 
         expect(viewModel.hasActiveTrip).toBe(true);
         expect(viewModel.hero.scope).toBe('currentTrip');
         expect(viewModel.hero.analysisCount).toBe(2);
+        expect(viewModel.passportTotals).toEqual(passportTotals);
         expect(viewModel.passportTotals.countriesVisitedCount).toBe(2);
         expect(viewModel.passportTotals.citiesVisitedCount).toBe(2);
         expect(viewModel.countryChapters[0]?.countryCode).toBe('JP');

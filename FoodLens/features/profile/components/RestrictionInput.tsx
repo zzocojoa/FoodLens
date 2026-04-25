@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { CirclePlus, Plus, Search } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
 
@@ -26,7 +26,7 @@ export default function RestrictionInput({
     return (
         <View style={{ zIndex: 10 }}>
             <View style={[styles.inputWrapper, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}>
-                <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 10 }} />
+                <Search size={20} color={theme.textSecondary} style={{ marginRight: 10 }} />
                 <TextInput
                     style={[styles.input, { color: theme.textPrimary }]}
                     placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
@@ -38,7 +38,7 @@ export default function RestrictionInput({
                 />
                 {inputValue.length > 0 && (
                     <TouchableOpacity onPress={onSubmit}>
-                        <Ionicons name="add-circle" size={28} color={theme.primary} />
+                        <CirclePlus size={28} color={theme.primary} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -60,7 +60,7 @@ export default function RestrictionInput({
                             style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
                             onPress={() => onSelectSuggestion(item)}
                         >
-                            <Ionicons name="add" size={16} color={theme.primary} style={{ marginRight: 8 }} />
+                            <Plus size={16} color={theme.primary} style={{ marginRight: 8 }} />
                             <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>{item}</Text>
                         </TouchableOpacity>
                     ))}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
 import { useI18n } from '@/features/i18n';
@@ -18,7 +18,7 @@ export default function ProfileHeader({ theme, onBack, title }: ProfileHeaderPro
     return (
         <View style={styles.navBar}>
             <TouchableOpacity onPress={onBack} style={styles.navButton}>
-                <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
+                <ChevronLeft size={28} color={theme.textPrimary} />
             </TouchableOpacity>
             <Text style={[styles.navTitle, { color: theme.textPrimary }]}>
                 {resolvedTitle}

@@ -84,7 +84,9 @@ describe('useColorScheme', () => {
     });
     expect(getByText('scheme: light')).toBeTruthy();
     expect(renderSpy).toHaveBeenCalledTimes(1);
-    expect(mockStorageSet).toHaveBeenCalledWith('@user_theme_preference', 'system');
+    await waitFor(() => {
+      expect(mockStorageSet).toHaveBeenCalledWith('@user_theme_preference', 'system');
+    });
     expect(mockStorageGet).toHaveBeenCalledWith('@user_theme_preference', null);
   });
 });

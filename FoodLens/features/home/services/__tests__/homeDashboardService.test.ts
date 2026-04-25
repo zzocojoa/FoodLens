@@ -1,4 +1,5 @@
 import { fetchHomeDashboardData } from '../homeDashboardService';
+import { AnalysisRecord } from '@/services/analysis/types';
 
 const mockLoadUserProfileWithHistory = jest.fn();
 const mockBuildWeeklyStats = jest.fn();
@@ -17,11 +18,35 @@ describe('fetchHomeDashboardData', () => {
   });
 
   it('derives recent scans from the single history snapshot load', async () => {
-    const allHistory = [
-      { id: 'record_1', safetyStatus: 'SAFE' },
-      { id: 'record_2', safetyStatus: 'CAUTION' },
-      { id: 'record_3', safetyStatus: 'SAFE' },
-      { id: 'record_4', safetyStatus: 'DANGER' },
+    const allHistory: AnalysisRecord[] = [
+      {
+        id: 'record_1',
+        foodName: 'Record 1',
+        ingredients: [],
+        safetyStatus: 'SAFE',
+        timestamp: new Date('2026-04-24T12:00:00.000Z'),
+      },
+      {
+        id: 'record_2',
+        foodName: 'Record 2',
+        ingredients: [],
+        safetyStatus: 'CAUTION',
+        timestamp: new Date('2026-04-23T12:00:00.000Z'),
+      },
+      {
+        id: 'record_3',
+        foodName: 'Record 3',
+        ingredients: [],
+        safetyStatus: 'SAFE',
+        timestamp: new Date('2026-04-22T12:00:00.000Z'),
+      },
+      {
+        id: 'record_4',
+        foodName: 'Record 4',
+        ingredients: [],
+        safetyStatus: 'DANGER',
+        timestamp: new Date('2026-04-21T12:00:00.000Z'),
+      },
     ];
     const weeklyStats = [{ label: 'Mon', count: 2 }];
     const profile = { uid: 'usr_home' };

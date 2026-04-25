@@ -27,12 +27,16 @@ jest.mock('@react-navigation/native', () => ({
   },
 }));
 
-jest.mock('@expo/vector-icons', () => {
+jest.mock('lucide-react-native', () => {
   const ReactModule = jest.requireActual<typeof import('react')>('react');
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
-    Feather: ({ name }: { name: string }) =>
-      ReactModule.createElement(Text, null, `icon-${name}`),
+    ArrowRight: () => ReactModule.createElement(Text, null, 'icon-arrow-right'),
+    Eye: () => ReactModule.createElement(Text, null, 'icon-eye'),
+    EyeOff: () => ReactModule.createElement(Text, null, 'icon-eye-off'),
+    Lock: () => ReactModule.createElement(Text, null, 'icon-lock'),
+    Mail: () => ReactModule.createElement(Text, null, 'icon-mail'),
+    Shield: () => ReactModule.createElement(Text, null, 'icon-shield'),
   };
 });
 

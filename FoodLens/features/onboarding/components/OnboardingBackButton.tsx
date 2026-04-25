@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft } from 'lucide-react-native';
 import type { Translate } from '../types/onboarding.types';
 import { onboardingStyles as styles } from '../styles/onboarding.styles';
 
@@ -20,7 +20,7 @@ export default function OnboardingBackButton({ onPress, theme, t }: Props) {
       accessibilityLabel={t('onboarding.back', 'Back')}
       accessibilityHint={t('onboarding.accessibility.backHint', 'Go to the previous onboarding step')}
     >
-      <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
+      <ChevronLeft size={24} color={theme.textPrimary} />
       <Text style={[styles.backText, { color: theme.textPrimary }]}>{t('onboarding.back', 'Back')}</Text>
     </TouchableOpacity>
   );

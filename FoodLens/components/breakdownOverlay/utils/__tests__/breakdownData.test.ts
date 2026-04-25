@@ -35,6 +35,6 @@ describe('buildBreakdownViewModel', () => {
 
         expect(model.hasNutrition).toBe(false);
         expect(model.calories).toBe(0);
-        expect(model.macroRows[0].value).toBe('0.0');
+        expect(model.macroRows[0].value).toBe(0);
     });
 });

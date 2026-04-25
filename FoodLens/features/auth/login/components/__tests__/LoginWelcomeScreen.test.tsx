@@ -6,12 +6,11 @@ import LoginWelcomeScreen from '../LoginWelcomeScreen';
 import { loginStyles } from '../../styles/loginStyles';
 import { LOGIN_COPY } from '../../constants/login.constants';
 
-jest.mock('@expo/vector-icons', () => {
+jest.mock('lucide-react-native', () => {
   const ReactModule = require('react');
   const { Text } = require('react-native');
   return {
-    Feather: ({ name }: { name: string }) =>
-      ReactModule.createElement(Text, null, `icon-${name}`),
+    ArrowRight: () => ReactModule.createElement(Text, null, 'icon-arrow-right'),
   };
 });
 
