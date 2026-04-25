@@ -1,15 +1,21 @@
 import { ALLERGEN_TERMS, ALLERGY_TRANSLATIONS } from '@/services/staticTranslations';
 import { TravelerLanguageMode, mapAiLanguageToTravelerCode } from '@/services/travelerCardLanguage';
+import { getRestrictionDefaultLabel } from '@/features/profile/utils/profileSuggestions';
 import { AiTranslation } from './types';
 
 export const isNullAiTranslation = (aiTranslation: AiTranslation, isAiLoaded: boolean) =>
   isAiLoaded && (aiTranslation === null || aiTranslation?.text === null);
 
+const getAllergenDefaultDisplayLabel = (allergen: string): string => {
+  return getRestrictionDefaultLabel(allergen);
+};
+
 export const translateAllergen = (allergen: string, targetCode: string) => {
-  const lower = allergen.trim().toLowerCase();
+  const defaultLabel = getAllergenDefaultDisplayLabel(allergen);
+  const lower = defaultLabel.trim().toLowerCase();
   const titleCase = lower.charAt(0).toUpperCase() + lower.slice(1);
-  const dict = ALLERGEN_TERMS[allergen] || ALLERGEN_TERMS[titleCase];
-  return dict ? dict[targetCode] || allergen : allergen;
+  const dict = ALLERGEN_TERMS[defaultLabel] || ALLERGEN_TERMS[titleCase];
+  return dict ? dict[targetCode] || defaultLabel : defaultLabel;
 };
 
 export const buildDisplayData = (

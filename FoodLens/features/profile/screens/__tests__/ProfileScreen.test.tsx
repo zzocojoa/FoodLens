@@ -95,6 +95,7 @@ jest.mock('../../hooks/useProfileScreen', () => ({
         handleInputChange: jest.fn(),
         handleCustomAllergenInputChange: jest.fn(),
         addCustomAllergen: jest.fn(),
+        selectCustomAllergenSuggestion: jest.fn(),
         addOtherRestriction: jest.fn(),
         removeRestriction: jest.fn(),
         selectSuggestion: jest.fn(),

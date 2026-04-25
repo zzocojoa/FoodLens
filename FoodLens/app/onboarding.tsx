@@ -106,6 +106,7 @@ export default function OnboardingScreen() {
             customSuggestions={flow.customSuggestions}
             onCustomInputChange={flow.handleCustomInputChange}
             onAddCustomAllergen={flow.addCustomAllergen}
+            onSelectCustomAllergenSuggestion={flow.selectCustomAllergenSuggestion}
           />
         )}
         {flow.step === 5 && (

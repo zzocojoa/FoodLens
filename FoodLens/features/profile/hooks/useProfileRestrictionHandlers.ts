@@ -1,16 +1,22 @@
 import { MutableRefObject, useCallback } from 'react';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { addUniqueItem, removeStringItem, toggleStringItem } from '../utils/profileSelection';
-import { buildSuggestions } from '../utils/profileSuggestions';
+import {
+  IngredientSuggestion,
+  buildSuggestions,
+  createCustomRestrictionValue,
+  resolveSuggestionStorageValue,
+} from '../utils/profileSuggestions';
 
 type UseProfileRestrictionHandlersParams = {
   inputValue: string;
   otherRestrictions: string[];
   setInputValue: (value: string) => void;
-  setSuggestions: (value: string[]) => void;
+  setSuggestions: (value: IngredientSuggestion[]) => void;
   setAllergies: React.Dispatch<React.SetStateAction<string[]>>;
   setOtherRestrictions: React.Dispatch<React.SetStateAction<string[]>>;
   shouldScrollRef: MutableRefObject<boolean>;
+  t: (key: string, fallback: string) => string;
 };
 
 export const useProfileRestrictionHandlers = ({
@@ -21,6 +27,7 @@ export const useProfileRestrictionHandlers = ({
   setAllergies,
   setOtherRestrictions,
   shouldScrollRef,
+  t,
 }: UseProfileRestrictionHandlersParams) => {
   const toggleAllergen = useCallback(
     (id: string) => {
@@ -51,7 +58,11 @@ export const useProfileRestrictionHandlers = ({
   );
 
   const addOtherRestriction = useCallback(() => {
-    addItemToRestrictions(inputValue);
+    const item = inputValue.trim();
+    if (!item) {
+      return;
+    }
+    addItemToRestrictions(createCustomRestrictionValue(item));
   }, [addItemToRestrictions, inputValue]);
 
   const removeRestriction = useCallback(
@@ -64,14 +75,20 @@ export const useProfileRestrictionHandlers = ({
   const handleInputChange = useCallback(
     (text: string) => {
       setInputValue(text);
-      setSuggestions(buildSuggestions(text, SEARCHABLE_INGREDIENTS, otherRestrictions));
+      setSuggestions(buildSuggestions({
+        keyword: text,
+        searchable: SEARCHABLE_INGREDIENTS,
+        selected: otherRestrictions,
+        limit: 5,
+        translate: t,
+      }));
     },
-    [otherRestrictions, setInputValue, setSuggestions]
+    [otherRestrictions, setInputValue, setSuggestions, t]
   );
 
   const selectSuggestion = useCallback(
     (item: string) => {
-      addItemToRestrictions(item);
+      addItemToRestrictions(resolveSuggestionStorageValue(item));
     },
     [addItemToRestrictions]
   );

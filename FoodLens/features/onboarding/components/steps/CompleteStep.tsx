@@ -4,6 +4,7 @@ import { ArrowRight, Check, CircleUserRound, Shield, Sparkles, TriangleAlert } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import type { Gender } from '@/features/profile/types/profile.types';
+import { resolveRestrictionDisplayName } from '@/features/profile/utils/profileSuggestions';
 import type { PermissionStatusMap, SeverityMap, Translate } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 
@@ -17,6 +18,10 @@ type Props = {
   permissionStatusMap: PermissionStatusMap;
   loading: boolean;
   onComplete: () => void;
+};
+
+const getAllergenDisplayLabel = (id: string, t: Translate): string => {
+  return t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t));
 };
 
 export default function CompleteStep({
@@ -146,7 +151,7 @@ export default function CompleteStep({
             {[...mildAllergies, ...moderateAllergies].length > 0 ? (
               <Text style={{ fontSize: 16, fontWeight: '700', color: theme.textPrimary }} numberOfLines={2}>
                 {[...mildAllergies, ...moderateAllergies]
-                  .map((id) => t(`profile.allergen.${id}`, id.charAt(0).toUpperCase() + id.slice(1)))
+                  .map((id) => getAllergenDisplayLabel(id, t))
                   .join(', ')}
               </Text>
             ) : (
@@ -195,7 +200,7 @@ export default function CompleteStep({
                 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' }} />
                   <Text style={{ fontWeight: '700', color: theme.textPrimary }}>
-                    {t(`profile.allergen.${id}`, id.charAt(0).toUpperCase() + id.slice(1))}
+                    {getAllergenDisplayLabel(id, t)}
                   </Text>
                 </View>
               ))}

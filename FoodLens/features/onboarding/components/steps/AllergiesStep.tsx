@@ -3,6 +3,10 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { CircleX } from 'lucide-react-native';
 import AllergenGrid from '@/features/profile/components/AllergenGrid';
 import RestrictionInput from '@/features/profile/components/RestrictionInput';
+import {
+  IngredientSuggestion,
+  resolveRestrictionDisplayName,
+} from '@/features/profile/utils/profileSuggestions';
 import { COMMON_ALLERGENS } from '@/features/profile/constants/profile.constants';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
@@ -18,9 +22,10 @@ type Props = {
   onToggleAllergen: (id: string) => void;
   onCycleSeverity: (id: string) => void;
   customInputValue: string;
-  customSuggestions: string[];
+  customSuggestions: IngredientSuggestion[];
   onCustomInputChange: (text: string) => void;
   onAddCustomAllergen: (item: string) => void;
+  onSelectCustomAllergenSuggestion: (item: string) => void;
 };
 
 export default function AllergiesStep({
@@ -34,6 +39,7 @@ export default function AllergiesStep({
   customSuggestions,
   onCustomInputChange,
   onAddCustomAllergen,
+  onSelectCustomAllergenSuggestion,
 }: Props) {
   const [showSearch, setShowSearch] = React.useState(false);
   const customAllergies = React.useMemo(
@@ -92,7 +98,7 @@ export default function AllergiesStep({
               t={t}
               onChangeText={onCustomInputChange}
               onSubmit={() => onAddCustomAllergen(customInputValue)}
-              onSelectSuggestion={onAddCustomAllergen}
+              onSelectSuggestion={onSelectCustomAllergenSuggestion}
             />
           </View>
         )}
@@ -124,7 +130,7 @@ export default function AllergiesStep({
                 )}
               >
                 <Text style={[styles.tagText, { color: theme.textPrimary }]}>
-                  {t(`profile.allergen.${id}`, id)}
+                  {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
                 </Text>
                 <CircleX size={16} color={theme.textSecondary} />
               </TouchableOpacity>
@@ -154,11 +160,11 @@ export default function AllergiesStep({
                 onPress={() => onCycleSeverity(id)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={`${t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
+                accessibilityLabel={`${t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
                 accessibilityHint={t('onboarding.accessibility.severityCycleHint', 'Tap to cycle severity level')}
               >
                 <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                  {t(`profile.allergen.${id}`, `${id.charAt(0).toUpperCase()}${id.slice(1)}`)}
+                  {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
                 </Text>
                 <View
                   style={[

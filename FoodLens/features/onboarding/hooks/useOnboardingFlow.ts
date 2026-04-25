@@ -8,7 +8,12 @@ import {
 import { completeOnboardingProfile } from '../services/onboardingProfileService';
 import type { OnboardingStep, PermissionStatusMap } from '../types/onboarding.types';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
-import { buildSuggestions } from '@/features/profile/utils/profileSuggestions';
+import {
+  IngredientSuggestion,
+  buildSuggestions,
+  createCustomRestrictionValue,
+  resolveSuggestionStorageValue,
+} from '@/features/profile/utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 
@@ -36,7 +41,7 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
   const [permissionStatusMap, setPermissionStatusMap] = useState<PermissionStatusMap>(DEFAULT_PERMISSION_STATUS);
   const [loading, setLoading] = useState(false);
   const [customInputValue, setCustomInputValue] = useState('');
-  const [customSuggestions, setCustomSuggestions] = useState<string[]>([]);
+  const [customSuggestions, setCustomSuggestions] = useState<IngredientSuggestion[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,14 +91,20 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
   const handleCustomInputChange = useCallback(
     (text: string) => {
       setCustomInputValue(text);
-      setCustomSuggestions(buildSuggestions(text, SEARCHABLE_INGREDIENTS, selectedAllergies));
+      setCustomSuggestions(buildSuggestions({
+        keyword: text,
+        searchable: SEARCHABLE_INGREDIENTS,
+        selected: selectedAllergies,
+        limit: 5,
+        translate: t,
+      }));
     },
-    [selectedAllergies]
+    [selectedAllergies, t]
   );
 
-  const addCustomAllergen = useCallback(
-    (name: string) => {
-      const item = name.trim();
+  const addAllergenStorageValue = useCallback(
+    (value: string) => {
+      const item = value.trim();
       if (!item) return;
 
       const normalizedItem = normalizeAllergyKey(item);
@@ -108,6 +119,22 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
       setCustomSuggestions([]);
     },
     []
+  );
+
+  const addCustomAllergen = useCallback(
+    (name: string) => {
+      const item = name.trim();
+      if (!item) return;
+      addAllergenStorageValue(createCustomRestrictionValue(item));
+    },
+    [addAllergenStorageValue]
+  );
+
+  const selectCustomAllergenSuggestion = useCallback(
+    (item: string) => {
+      addAllergenStorageValue(resolveSuggestionStorageValue(item));
+    },
+    [addAllergenStorageValue]
   );
 
   const handleRequestPermissions = useCallback(async (camera: boolean, library: boolean, location: boolean) => {
@@ -188,6 +215,7 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     cycleSeverity,
     handleCustomInputChange,
     addCustomAllergen,
+    selectCustomAllergenSuggestion,
     handleRequestPermissions,
     handleSkipPermissions,
     handleComplete,

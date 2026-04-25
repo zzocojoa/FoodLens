@@ -4,7 +4,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { AllergySeverity, UseProfileScreenResult } from '../types/profile.types';
 import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
-import { buildSuggestions } from '../utils/profileSuggestions';
+import {
+    IngredientSuggestion,
+    buildSuggestions,
+    createCustomRestrictionValue,
+    resolveSuggestionStorageValue,
+} from '../utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
@@ -33,8 +38,8 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const [allergies, setAllergies] = useState<string[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
     const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
-    const [suggestions, setSuggestions] = useState<string[]>([]);
-    const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<string[]>([]);
+    const [suggestions, setSuggestions] = useState<IngredientSuggestion[]>([]);
+    const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<IngredientSuggestion[]>([]);
     const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
     const hasLocalEditsRef = useRef(false);
@@ -171,6 +176,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setAllergies,
         setOtherRestrictions,
         shouldScrollRef,
+        t,
     });
 
     const toggleAllergen = useCallback((id: string) => {
@@ -206,13 +212,19 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const handleCustomAllergenInputChange = useCallback(
         (text: string) => {
             setCustomAllergenInputValue(text);
-            setCustomAllergenSuggestions(buildSuggestions(text, SEARCHABLE_INGREDIENTS, allergies));
+            setCustomAllergenSuggestions(buildSuggestions({
+                keyword: text,
+                searchable: SEARCHABLE_INGREDIENTS,
+                selected: allergies,
+                limit: 5,
+                translate: t,
+            }));
         },
-        [allergies]
+        [allergies, t]
     );
 
-    const addCustomAllergen = useCallback((name: string) => {
-        const item = name.trim();
+    const addAllergenStorageValue = useCallback((value: string) => {
+        const item = value.trim();
         if (!item) {
             return;
         }
@@ -232,6 +244,18 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setCustomAllergenInputValue('');
         setCustomAllergenSuggestions([]);
     }, []);
+
+    const addCustomAllergen = useCallback((name: string) => {
+        const item = name.trim();
+        if (!item) {
+            return;
+        }
+        addAllergenStorageValue(createCustomRestrictionValue(item));
+    }, [addAllergenStorageValue]);
+
+    const selectCustomAllergenSuggestion = useCallback((item: string) => {
+        addAllergenStorageValue(resolveSuggestionStorageValue(item));
+    }, [addAllergenStorageValue]);
 
     const saveProfile = useCallback(async () => {
         setLoading(true);
@@ -341,6 +365,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
+        selectCustomAllergenSuggestion,
         addOtherRestriction,
         removeRestriction,
         selectSuggestion,

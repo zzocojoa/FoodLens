@@ -191,4 +191,33 @@ describe('AllergiesScreen', () => {
         expect(queryByText('View larger card')).toBeNull();
         expect(queryByText('Edit profile')).toBeNull();
     });
+
+    test('renders canonical and custom values in the risk ledger without storage tokens', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue({
+            displayData: {
+                isAiLoaded: false,
+                language: 'English',
+                sub: 'Traveler Safety Card (Manual Language)',
+                text: 'I have food allergies. Please check ingredients carefully.',
+                usedAiText: false,
+            },
+            finalMessage:
+                'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeach, Gluten Free, no raw onion',
+            isAiLoaded: false,
+        });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['peach'],
+            dietaryRestrictions: ['gluten_free', 'custom:no raw onion'],
+            severityMap: { peach: 'moderate' },
+        });
+
+        const { getAllByText, queryByText } = render(<AllergiesScreen />);
+
+        expect(getAllByText('Peach').length).toBeGreaterThan(0);
+        expect(getAllByText('Gluten Free').length).toBeGreaterThan(0);
+        expect(getAllByText('no raw onion').length).toBeGreaterThan(0);
+        expect(queryByText('gluten_free')).toBeNull();
+        expect(queryByText('custom:no raw onion')).toBeNull();
+    });
 });

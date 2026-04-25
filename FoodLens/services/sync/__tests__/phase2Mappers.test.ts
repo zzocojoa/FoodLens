@@ -734,6 +734,25 @@ describe('phase2Mappers', () => {
     expect(payload.settings.expected_updated_at).toBe('2026-02-25T00:02:00Z');
   });
 
+  it('passes canonical and custom allergy payload values unchanged', () => {
+    const profile = buildDefaultProfile('usr_canonical_allergies');
+    profile.safetyProfile.allergies = ['peach', 'custom:mugwort'];
+    profile.safetyProfile.dietaryRestrictions = ['vegan', 'custom:no nightshades'];
+    profile.safetyProfile.severityMap = {
+      peach: 'severe',
+      'custom:mugwort': 'moderate',
+    };
+
+    const payload = buildProfileWritePayload(profile);
+
+    expect(payload.allergies.allergies).toEqual(['peach', 'custom:mugwort']);
+    expect(payload.allergies.dietary_restrictions).toEqual(['vegan', 'custom:no nightshades']);
+    expect(payload.allergies.severity_map).toEqual({
+      peach: 'severe',
+      'custom:mugwort': 'moderate',
+    });
+  });
+
   it('does not sync local file profile image uri to server payload', () => {
     const profile = buildDefaultProfile('usr_local_only');
     profile.profileImage = 'file:///var/mobile/Containers/Data/profile.jpg';
