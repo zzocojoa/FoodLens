@@ -343,6 +343,72 @@ describe('useTripStatsScreen', () => {
     expect(result.current.startFeedbackLocation).toBeNull();
   });
 
+  it('shows the location failure alert when the device location is unavailable', async () => {
+    const initialSnapshot = buildSnapshot(null, null);
+    const unavailableResult = { ok: false as const, reason: 'location_unavailable' as const };
+
+    mockLoadTripStatsSnapshot.mockResolvedValueOnce(initialSnapshot);
+    mockStartTripFromCurrentLocation.mockResolvedValueOnce(unavailableResult);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory: jest.fn(),
+        onOpenJourneyEntry: jest.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleStartNewTrip();
+    });
+
+    expect(mockShowTranslatedAlert).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        titleKey: 'camera.alert.errorTitle',
+        messageKey: 'tripStats.alert.failedToGetLocation',
+      })
+    );
+    expect(result.current.isLocating).toBe(false);
+    expect(result.current.startFeedbackLocation).toBeNull();
+  });
+
+  it('shows the profile save alert when trip profile persistence fails', async () => {
+    const initialSnapshot = buildSnapshot(null, null);
+    const saveFailedResult = { ok: false as const, reason: 'profile_save_failed' as const };
+
+    mockLoadTripStatsSnapshot.mockResolvedValueOnce(initialSnapshot);
+    mockStartTripFromCurrentLocation.mockResolvedValueOnce(saveFailedResult);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory: jest.fn(),
+        onOpenJourneyEntry: jest.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleStartNewTrip();
+    });
+
+    expect(mockShowTranslatedAlert).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        titleKey: 'camera.alert.errorTitle',
+        messageKey: 'tripStats.alert.failedToSaveTrip',
+      })
+    );
+    expect(result.current.isLocating).toBe(false);
+    expect(result.current.startFeedbackLocation).toBeNull();
+  });
+
   it('ignores repeated trip start requests while the first one is still running', async () => {
     const initialSnapshot = buildSnapshot(null, null);
     const refreshedSnapshot = buildSnapshot('Daegu, South Korea', 'Daegu, South Korea');
