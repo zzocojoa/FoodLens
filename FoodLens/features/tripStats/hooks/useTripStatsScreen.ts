@@ -117,6 +117,38 @@ const buildOptimisticTripStartState = (
     };
 };
 
+const showTripStartFailureAlert = (
+    t: ReturnType<typeof useI18n>['t'],
+    reason: 'permission_denied' | 'location_unavailable' | 'profile_save_failed',
+): void => {
+    if (reason === 'permission_denied') {
+        showTranslatedAlert(t, {
+            titleKey: 'tripStats.alert.permissionDeniedTitle',
+            titleFallback: 'Permission Denied',
+            messageKey: 'tripStats.alert.permissionDeniedMessage',
+            messageFallback: 'Location access is needed to tag your trip. Please enable it in settings.',
+        });
+        return;
+    }
+
+    if (reason === 'profile_save_failed') {
+        showTranslatedAlert(t, {
+            titleKey: 'camera.alert.errorTitle',
+            titleFallback: 'Error',
+            messageKey: 'tripStats.alert.failedToSaveTrip',
+            messageFallback: 'Could not save the trip start. Please try again.',
+        });
+        return;
+    }
+
+    showTranslatedAlert(t, {
+        titleKey: 'camera.alert.errorTitle',
+        titleFallback: 'Error',
+        messageKey: 'tripStats.alert.failedToGetLocation',
+        messageFallback: 'Failed to get location. Please try again.',
+    });
+};
+
 export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult {
     const { t } = useI18n();
     const tripStatsUserId = getTripStatsUserId();
@@ -261,12 +293,7 @@ export function useTripStatsScreen(handlers: Handlers): UseTripStatsScreenResult
             const result = await startTripFromCurrentLocation(tripStatsUserId);
 
             if (!result.ok) {
-                showTranslatedAlert(t, {
-                    titleKey: 'tripStats.alert.permissionDeniedTitle',
-                    titleFallback: 'Permission Denied',
-                    messageKey: 'tripStats.alert.permissionDeniedMessage',
-                    messageFallback: 'Location access is needed to tag your trip. Please enable it in settings.',
-                });
+                showTripStartFailureAlert(t, result.reason);
 
                 setState((currentState) => ({
                     ...currentState,
