@@ -1,11 +1,17 @@
 import { startTripFromCurrentLocation } from '../tripStatsScreenService';
+import { TripStatsLocationUnavailableError } from '../tripStatsService';
 
 const mockResolveCurrentLocation = jest.fn();
 const mockStartTrip = jest.fn();
 const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
 jest.mock('../tripStatsService', () => ({
-  TRIP_STATS_LOCATION_UNAVAILABLE_ERROR: 'TRIP_STATS_LOCATION_UNAVAILABLE',
+  TripStatsLocationUnavailableError: class MockTripStatsLocationUnavailableError extends Error {
+    constructor() {
+      super('TRIP_STATS_LOCATION_UNAVAILABLE');
+      this.name = 'TripStatsLocationUnavailableError';
+    }
+  },
   tripStatsService: {
     resolveCurrentLocation: (...args: unknown[]) => mockResolveCurrentLocation(...args),
     startTrip: (...args: unknown[]) => mockStartTrip(...args),
@@ -19,7 +25,7 @@ describe('startTripFromCurrentLocation', () => {
   });
 
   it('returns location unavailable when recent location lookup cannot resolve a location', async () => {
-    mockResolveCurrentLocation.mockRejectedValueOnce(new Error('TRIP_STATS_LOCATION_UNAVAILABLE'));
+    mockResolveCurrentLocation.mockRejectedValueOnce(new TripStatsLocationUnavailableError());
 
     await expect(startTripFromCurrentLocation('usr_tripstats')).resolves.toEqual({
       ok: false,
@@ -48,6 +54,16 @@ describe('startTripFromCurrentLocation', () => {
       { latitude: 35.8714, longitude: 128.6014 },
       expect.any(Date)
     );
-    expect(mockConsoleError).toHaveBeenCalledWith(expect.any(Error));
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      '[TripStats] trip profile save failed',
+      expect.objectContaining({
+        userId: 'usr_tripstats',
+        locationName: 'Daegu, South Korea',
+        error: {
+          name: 'Error',
+          message: 'PHASE2_SYNC_NOT_CONFIRMED',
+        },
+      })
+    );
   });
 });

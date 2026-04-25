@@ -1,6 +1,25 @@
 import { TripStatsSnapshot, TripStatsStartTripResult } from '../types/tripStats.types';
 import { buildTripStatsScreenViewModel } from '../utils/tripStatsCalculations';
-import { TRIP_STATS_LOCATION_UNAVAILABLE_ERROR, tripStatsService } from './tripStatsService';
+import { TripStatsLocationUnavailableError, tripStatsService } from './tripStatsService';
+
+type SerializedTripStartError = {
+    name: string;
+    message: string;
+};
+
+const serializeTripStartError = (error: unknown): SerializedTripStartError => {
+    if (error instanceof Error) {
+        return {
+            name: error.name,
+            message: error.message,
+        };
+    }
+
+    return {
+        name: 'UnknownError',
+        message: String(error),
+    };
+};
 
 export const loadTripStatsSnapshot = async (userId: string): Promise<TripStatsSnapshot> => {
     const { user, allAnalyses } = await tripStatsService.loadUserTripData(userId);
@@ -27,7 +46,7 @@ export const startTripFromCurrentLocation = async (
             return { ok: false as const, reason: 'permission_denied' as const };
         }
     } catch (error) {
-        if (error instanceof Error && error.message === TRIP_STATS_LOCATION_UNAVAILABLE_ERROR) {
+        if (error instanceof TripStatsLocationUnavailableError) {
             return { ok: false as const, reason: 'location_unavailable' as const };
         }
 
@@ -43,7 +62,11 @@ export const startTripFromCurrentLocation = async (
             now,
         );
     } catch (error) {
-        console.error(error);
+        console.error('[TripStats] trip profile save failed', {
+            userId,
+            locationName: locationResult.locationName,
+            error: serializeTripStartError(error),
+        });
         return { ok: false as const, reason: 'profile_save_failed' as const };
     }
 

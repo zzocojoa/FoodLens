@@ -5,7 +5,13 @@ import { buildLocationLabel } from '../utils/tripStatsCalculations';
 import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
 type Coordinates = { latitude: number; longitude: number };
-export const TRIP_STATS_LOCATION_UNAVAILABLE_ERROR = 'TRIP_STATS_LOCATION_UNAVAILABLE';
+
+export class TripStatsLocationUnavailableError extends Error {
+  constructor() {
+    super('TRIP_STATS_LOCATION_UNAVAILABLE');
+    this.name = 'TripStatsLocationUnavailableError';
+  }
+}
 
 type ResolvedTripLocation = {
   locationName: string;
@@ -30,7 +36,7 @@ const resolveTripLocationName = (location: LocationData): string => {
 const resolveTripLocation = async (): Promise<ResolvedTripLocation> => {
   const locationData = await getRecentLocationData();
   if (locationData === null) {
-    throw new Error(TRIP_STATS_LOCATION_UNAVAILABLE_ERROR);
+    throw new TripStatsLocationUnavailableError();
   }
 
   return {
