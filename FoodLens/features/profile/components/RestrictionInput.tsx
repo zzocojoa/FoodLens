@@ -31,13 +31,13 @@ export default function RestrictionInput({
                 <Search size={20} color={homeDashboardColors.inkSoft} style={{ marginRight: 10 }} />
                 <TextInput
                     style={[styles.input, { color: homeDashboardColors.ink }]}
-                    placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
+                    placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
                     placeholderTextColor={homeDashboardColors.inkSoft}
                     value={inputValue}
                     onChangeText={onChangeText}
                     onSubmitEditing={onSubmit}
                     returnKeyType="done"
-                    accessibilityLabel={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
+                    accessibilityLabel={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
                 />
                 {inputValue.length > 0 && (
                     <TouchableOpacity
