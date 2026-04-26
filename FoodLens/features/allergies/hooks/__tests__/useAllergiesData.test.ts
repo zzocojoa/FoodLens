@@ -164,11 +164,14 @@ describe('useAllergiesData', () => {
 
         renderHook(() => useAllergiesData());
 
+        let cleanupFocusEffect: undefined | (() => void);
         act(() => {
-            mockedFocusEffectCallback?.();
+            const cleanup = mockedFocusEffectCallback?.();
+            cleanupFocusEffect = typeof cleanup === 'function' ? cleanup : undefined;
         });
 
         expect(mockedGetUserProfile).toHaveBeenCalledTimes(1);
+        cleanupFocusEffect?.();
     });
 
     test('retries once after the skipped first-focus path when the initial load fails', async () => {
@@ -193,8 +196,10 @@ describe('useAllergiesData', () => {
 
         const { result } = renderHook(() => useAllergiesData());
 
+        let cleanupFocusEffect: undefined | (() => void);
         act(() => {
-            mockedFocusEffectCallback?.();
+            const cleanup = mockedFocusEffectCallback?.();
+            cleanupFocusEffect = typeof cleanup === 'function' ? cleanup : undefined;
         });
 
         await waitFor(() => {
@@ -205,6 +210,7 @@ describe('useAllergiesData', () => {
             expect(result.current.allergies).toEqual(['Peanuts']);
         });
 
+        cleanupFocusEffect?.();
         errorSpy.mockRestore();
     });
 

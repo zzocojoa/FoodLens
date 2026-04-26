@@ -291,6 +291,35 @@ describe('useProfileScreen saveProfile sync handling', () => {
     expect(result.current.severityMap['custom:Kiwi']).toBeUndefined();
   });
 
+  it('saves custom allergen severity through the allergy payload', async () => {
+    mockSaveTestUserProfile.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.addCustomAllergen('Kiwi');
+    });
+
+    await act(async () => {
+      result.current.cycleSeverity('custom:Kiwi');
+    });
+
+    await act(async () => {
+      await result.current.saveProfile();
+    });
+
+    expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
+      ['custom:Kiwi'],
+      [],
+      {
+        'custom:Kiwi': 'severe',
+      },
+    );
+  });
+
   it('ignores client_state_write profile updates', async () => {
     jest.useFakeTimers();
     let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null =

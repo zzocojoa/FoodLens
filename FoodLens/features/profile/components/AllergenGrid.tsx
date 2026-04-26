@@ -39,7 +39,6 @@ export default function AllergenGrid({ selectedAllergies, onToggle, t }: Allerge
                             <Image source={item.image} style={styles.cardIconImage} resizeMode="contain" />
                         </View>
                         <Text
-                            numberOfLines={2}
                             style={[
                                 styles.cardLabel,
                                 isSelected ? styles.cardLabelSelected : styles.cardLabelUnselected,

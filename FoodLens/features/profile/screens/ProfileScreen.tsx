@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { Check, CircleX, Plus, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/features/i18n';
@@ -204,6 +205,7 @@ export default function ProfileScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            <StatusBar style="dark" />
             <HomeBackgroundAtmosphere />
             <ProfileHeader
                 theme={theme}

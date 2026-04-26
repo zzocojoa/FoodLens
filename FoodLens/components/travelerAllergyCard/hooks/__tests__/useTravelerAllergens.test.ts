@@ -59,7 +59,7 @@ describe('useTravelerAllergens', () => {
     const { result } = renderHook(() => useTravelerAllergens());
 
     await waitFor(() => {
-      expect(result.current).toEqual(['Peanut', 'Vegan']);
+      expect(result.current).toEqual(['Peanut']);
     });
 
     expect(mockGetUserProfile).toHaveBeenCalledTimes(1);

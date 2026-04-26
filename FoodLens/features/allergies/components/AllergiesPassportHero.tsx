@@ -412,7 +412,7 @@ export function AllergiesPassportHero({
               style={styles.primaryActionButton}
             >
               <Text style={styles.primaryActionText}>
-                {t('allergies.action.viewTravelerCard', 'View larger card')}
+                {t('allergies.action.openTravelerCard', 'View larger')}
               </Text>
             </Pressable>
           ) : null}

@@ -53,7 +53,7 @@ export const useTravelerAllergens = (): string[] => {
       try {
         const profile = await UserService.getUserProfile(userId, { allowBackgroundRefresh: false });
         if (!active || !profile) return;
-        setAllergens([...profile.safetyProfile.allergies, ...profile.safetyProfile.dietaryRestrictions]);
+        setAllergens(profile.safetyProfile.allergies);
       } catch (error) {
         if (!active) return;
         console.warn(error);

@@ -51,6 +51,10 @@ jest.mock('lucide-react-native', () => ({
     X: () => null,
 }));
 
+jest.mock('expo-status-bar', () => ({
+    StatusBar: () => null,
+}));
+
 jest.mock('@/features/home/components/HomeBackgroundAtmosphere', () => ({
     HomeBackgroundAtmosphere: () => null,
 }));

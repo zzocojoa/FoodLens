@@ -70,6 +70,10 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             error instanceof Error && error.message === PROFILE_AUTH_REQUIRED_ERROR,
         [],
     );
+    const clearLocalEdit = useCallback((): void => {
+        hasLocalEditsRef.current = false;
+        setIsDirty(false);
+    }, []);
     const markLocalEdit = useCallback((): void => {
         hasLocalEditsRef.current = true;
         setIsDirty(true);
@@ -96,8 +100,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                     user.safetyProfile.allergies,
                     user.safetyProfile.severityMap ?? {},
                 ));
-                hasLocalEditsRef.current = false;
-                setIsDirty(false);
+                clearLocalEdit();
             }
         } catch {
             // Keep current behavior: ignore load errors.
@@ -107,7 +110,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [clearLocalEdit]);
 
     useEffect(() => {
         loadProfile();
@@ -239,8 +242,6 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         if (!item) {
             return;
         }
-        markLocalEdit();
-
         const normalizedItem = normalizeAllergyKey(item);
 
         setAllergies((prev) => {
@@ -248,6 +249,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             if (hasDuplicate) {
                 return prev;
             }
+            markLocalEdit();
             setSeverityMap((map) => ({ ...map, [item]: map[item] ?? 'moderate' }));
             return [...prev, item];
         });
@@ -273,8 +275,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         let saveError: unknown = null;
         try {
             await saveTestUserProfile(allergies, [], buildAllergySeverityMap(allergies, severityMap));
-            hasLocalEditsRef.current = false;
-            setIsDirty(false);
+            clearLocalEdit();
         } catch (error) {
             saveError = error;
         }
@@ -333,6 +334,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
             if (saveError) {
                 if (isSyncNotConfirmedError(saveError)) {
+                    clearLocalEdit();
                     showTranslatedAlert(t, {
                         titleKey: 'sync.pending.title',
                         titleFallback: 'Saved locally',
@@ -368,6 +370,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         promptConflictResolution,
         severityMap,
         t,
+        clearLocalEdit,
         isSyncNotConfirmedError,
         isProfileAuthRequiredError,
     ]);

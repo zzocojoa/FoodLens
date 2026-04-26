@@ -17,7 +17,7 @@ describe('getAllergyString', () => {
     jest.clearAllMocks();
   });
 
-  it('uses default labels for canonical ingredient values before AI analysis', async () => {
+  it('uses default labels for allergy ingredient values before AI analysis', async () => {
     mockGetUserProfile.mockResolvedValue({
       safetyProfile: {
         allergies: ['peanut'],
@@ -25,21 +25,21 @@ describe('getAllergyString', () => {
       },
     });
 
-    await expect(getAllergyString()).resolves.toBe('Peanut, Peach, Gluten Free');
+    await expect(getAllergyString()).resolves.toBe('Peanut');
   });
 
   it('projects canonical allergy keys and custom text into one AI-readable string', async () => {
     mockGetUserProfile.mockResolvedValue({
       safetyProfile: {
-        allergies: ['peach'],
+        allergies: ['peach', 'custom:my custom allergy'],
         dietaryRestrictions: ['custom:my custom restriction'],
       },
     });
 
-    await expect(getAllergyString()).resolves.toBe('Peach, my custom restriction');
+    await expect(getAllergyString()).resolves.toBe('Peach, my custom allergy');
   });
 
-  it('hides canonical and custom dietary restriction storage tokens when severity map contains them', async () => {
+  it('ignores dietary restriction storage tokens when building the AI allergy string', async () => {
     mockGetUserProfile.mockResolvedValue({
       safetyProfile: {
         allergies: ['peanut'],
@@ -54,7 +54,7 @@ describe('getAllergyString', () => {
 
     const allergyString = await getAllergyString();
 
-    expect(allergyString).toBe('Peanut, Vegan, no nightshades');
+    expect(allergyString).toBe('Peanut');
     expect(allergyString).not.toContain('custom:');
   });
 });

@@ -158,7 +158,7 @@ describe('AllergiesScreen', () => {
         expect(getByText('Your passport card is ready')).toBeTruthy();
         expect(getByText('Severe 1')).toBeTruthy();
         expect(getByText('Restrictions 1')).toBeTruthy();
-        expect(getByText('View larger card')).toBeTruthy();
+        expect(getByText('View larger')).toBeTruthy();
         expect(getByText('Edit profile')).toBeTruthy();
 
         fireEvent.press(getByText('Traveler Passport'));
