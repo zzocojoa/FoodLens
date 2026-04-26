@@ -1,56 +1,59 @@
 import React from 'react';
-import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { COMMON_ALLERGENS } from '../constants/profile.constants';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
 
 type AllergenGridProps = {
-    theme: ProfileTheme;
+    theme?: ProfileTheme;
     selectedAllergies: string[];
     onToggle: (id: string) => void;
     t: (key: string, fallback?: string) => string;
 };
 
-export default function AllergenGrid({ theme, selectedAllergies, onToggle, t }: AllergenGridProps) {
+export default function AllergenGrid({ selectedAllergies, onToggle, t }: AllergenGridProps) {
     return (
         <View style={styles.grid}>
             {COMMON_ALLERGENS.map((item) => {
                 const isSelected = selectedAllergies.includes(item.id);
                 return (
-                    <TouchableOpacity
+                    <Pressable
                         key={item.id}
                         style={[
                             styles.card,
-                            { backgroundColor: theme.surface },
-                            isSelected && { backgroundColor: theme.primary, borderColor: theme.primary },
+                            isSelected ? styles.cardSelected : styles.cardUnselected,
                         ]}
-                        activeOpacity={0.7}
                         onPress={() => onToggle(item.id)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={t(`profile.allergen.${item.id}`, item.label)}
                     >
                         <View
                             style={[
                                 styles.iconCircle,
-                                isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' },
+                                isSelected && styles.iconCircleSelected,
                             ]}
                         >
-                            <Image source={item.image} style={{ width: 40, height: 40 }} resizeMode="contain" />
+                            <Image source={item.image} style={styles.cardIconImage} resizeMode="contain" />
                         </View>
                         <Text
                             style={[
                                 styles.cardLabel,
-                                { color: theme.textPrimary },
-                                isSelected && { color: 'white' },
+                                isSelected ? styles.cardLabelSelected : styles.cardLabelUnselected,
                             ]}
                         >
                             {t(`profile.allergen.${item.id}`, item.label)}
                         </Text>
-                        {isSelected && (
-                            <View style={styles.checkBadge}>
-                                <Check size={12} color={theme.primary} />
-                            </View>
-                        )}
-                    </TouchableOpacity>
+                        <View style={styles.cardCheckSlot}>
+                            {isSelected ? (
+                                <View style={styles.checkBadge}>
+                                    <Check size={12} color={homeDashboardColors.accentGreen} />
+                                </View>
+                            ) : null}
+                        </View>
+                    </Pressable>
                 );
             })}
         </View>

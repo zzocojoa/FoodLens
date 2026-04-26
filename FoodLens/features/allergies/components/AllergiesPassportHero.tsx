@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -7,14 +8,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
+import { PearlSurfaceOverlay } from '../../home/components/PearlSurfaceOverlay';
 import {
   homeDashboardColors,
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
 } from '../../home/components/homeDashboardTokens';
-import AllergiesTravelerPassportCard from './AllergiesTravelerPassportCard';
+import { AllergiesTravelerPassportCard } from './AllergiesTravelerPassportCard';
 import { useI18n } from '@/features/i18n';
 
 export type AllergiesPassportHeroState = 'loading' | 'empty' | 'personalized' | 'generic' | 'card-unavailable';
@@ -41,6 +42,7 @@ export type AllergiesPassportHeroProps = {
   summary: AllergiesPassportSummary;
   cardCopy?: AllergiesPassportCardCopy;
   onOpenTravelerCard?: () => void;
+  onEditProfile?: () => void;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -356,6 +358,7 @@ export function AllergiesPassportHero({
   summary,
   cardCopy,
   onOpenTravelerCard,
+  onEditProfile,
   style,
 }: AllergiesPassportHeroProps): React.JSX.Element {
   const { t } = useI18n();
@@ -399,6 +402,32 @@ export function AllergiesPassportHero({
               <Text style={styles.summaryPillText}>{pill}</Text>
             </View>
           ))}
+        </View>
+
+        <View style={styles.actionRow}>
+          {(state === 'personalized' || state === 'generic') && onOpenTravelerCard ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenTravelerCard}
+              style={styles.primaryActionButton}
+            >
+              <Text style={styles.primaryActionText}>
+                {t('allergies.action.openTravelerCard', 'View larger')}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {onEditProfile ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onEditProfile}
+              style={styles.secondaryActionButton}
+            >
+              <Text style={styles.secondaryActionText}>
+                {t('allergies.action.editProfile', 'Edit profile')}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <AllergiesTravelerPassportCard state={state} copy={resolvedCardCopy} onPress={canPressCard} />
@@ -486,5 +515,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: homeDashboardColors.inkSoft,
+  },
+  actionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: homeDashboardSpacing.sm,
+  },
+  primaryActionButton: {
+    alignItems: 'center',
+    backgroundColor: homeDashboardColors.ink,
+    borderColor: homeDashboardColors.ink,
+    borderCurve: 'continuous',
+    borderRadius: homeDashboardRadii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: homeDashboardSpacing.lg,
+  },
+  primaryActionText: {
+    color: homeDashboardColors.paper,
+    fontSize: homeDashboardTypography.bodyStrong,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  secondaryActionButton: {
+    alignItems: 'center',
+    backgroundColor: homeDashboardColors.surfaceMuted,
+    borderColor: homeDashboardColors.lineStrong,
+    borderCurve: 'continuous',
+    borderRadius: homeDashboardRadii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: homeDashboardSpacing.lg,
+  },
+  secondaryActionText: {
+    color: homeDashboardColors.ink,
+    fontSize: homeDashboardTypography.bodyStrong,
+    fontWeight: '800',
+    lineHeight: 18,
   },
 });

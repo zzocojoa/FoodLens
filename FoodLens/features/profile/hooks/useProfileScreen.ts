@@ -7,12 +7,11 @@ import {
     loadTestUserProfile,
     saveTestUserProfile,
 } from '../utils/profilePersistence';
-import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import {
-    IngredientSuggestion,
     buildSuggestions,
     createCustomRestrictionValue,
     resolveSuggestionStorageValue,
+    IngredientSuggestion,
 } from '../utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
@@ -34,37 +33,26 @@ const shouldRefreshProfileScreen = (reason: UserProfileUpdateReason): boolean =>
     return reason !== 'client_state_write';
 };
 
-const buildSeverityMapWithRestrictions = (
+const buildAllergySeverityMap = (
+    allergies: string[],
     severityMap: Record<string, AllergySeverity>,
-    restrictions: string[],
 ): Record<string, AllergySeverity> => {
-    return restrictions.reduce<Record<string, AllergySeverity>>((next, restriction) => {
-        const item = restriction.trim();
-        if (!item || next[item]) {
-            return next;
-        }
-        return { ...next, [item]: 'moderate' };
-    }, { ...severityMap });
-};
-
-const buildUniqueSeverityItems = (allergies: string[], restrictions: string[]): string[] => {
-    return [...allergies, ...restrictions].reduce<string[]>((items, item) => {
-        if (items.includes(item)) {
-            return items;
-        }
-        return [...items, item];
-    }, []);
+    return allergies.reduce<Record<string, AllergySeverity>>((next, allergy) => {
+        return {
+            ...next,
+            [allergy]: severityMap[allergy] ?? 'moderate',
+        };
+    }, {});
 };
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
     const [loading, setLoading] = useState(false);
-    const [inputValue, setInputValue] = useState('');
+    const [isDirty, setIsDirty] = useState(false);
+    const [savedNoticeKey, setSavedNoticeKey] = useState(0);
     const [customAllergenInputValue, setCustomAllergenInputValue] = useState('');
     const [allergies, setAllergies] = useState<string[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
-    const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
-    const [suggestions, setSuggestions] = useState<IngredientSuggestion[]>([]);
     const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<IngredientSuggestion[]>([]);
     const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
@@ -82,6 +70,14 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             error instanceof Error && error.message === PROFILE_AUTH_REQUIRED_ERROR,
         [],
     );
+    const clearLocalEdit = useCallback((): void => {
+        hasLocalEditsRef.current = false;
+        setIsDirty(false);
+    }, []);
+    const markLocalEdit = useCallback((): void => {
+        hasLocalEditsRef.current = true;
+        setIsDirty(true);
+    }, []);
 
     const loadProfile = useCallback(async (options: { silent?: boolean } = {}) => {
         if (loadInFlightRef.current) {
@@ -100,13 +96,11 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                     return;
                 }
                 setAllergies(user.safetyProfile.allergies);
-                setSeverityMap(
-                    buildSeverityMapWithRestrictions(
-                        user.safetyProfile.severityMap ?? {},
-                        user.safetyProfile.dietaryRestrictions,
-                    ),
-                );
-                setOtherRestrictions(user.safetyProfile.dietaryRestrictions);
+                setSeverityMap(buildAllergySeverityMap(
+                    user.safetyProfile.allergies,
+                    user.safetyProfile.severityMap ?? {},
+                ));
+                clearLocalEdit();
             }
         } catch {
             // Keep current behavior: ignore load errors.
@@ -116,7 +110,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [clearLocalEdit]);
 
     useEffect(() => {
         loadProfile();
@@ -199,56 +193,35 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         [t],
     );
 
-    const {
-        addOtherRestriction,
-        removeRestriction,
-        handleInputChange,
-        selectSuggestion,
-    } = useProfileRestrictionHandlers({
-        inputValue,
-        allergies,
-        otherRestrictions,
-        setInputValue,
-        setSuggestions,
-        setAllergies,
-        setOtherRestrictions,
-        setSeverityMap,
-        shouldScrollRef,
-        hasLocalEditsRef,
-        t,
-    });
-
     const toggleAllergen = useCallback((id: string) => {
-        hasLocalEditsRef.current = true;
+        markLocalEdit();
         setCustomAllergenInputValue('');
         setCustomAllergenSuggestions([]);
 
         setAllergies((prev) => {
             if (prev.includes(id)) {
-                if (!otherRestrictions.includes(id)) {
-                    setSeverityMap((map) => {
-                        const next = { ...map };
-                        delete next[id];
-                        return next;
-                    });
-                }
+                setSeverityMap((map) => {
+                    const next = { ...map };
+                    delete next[id];
+                    return next;
+                });
                 return prev.filter((allergenId) => allergenId !== id);
             }
 
             setSeverityMap((map) => ({ ...map, [id]: map[id] ?? 'moderate' }));
             return [...prev, id];
         });
-    }, [otherRestrictions]);
+    }, [markLocalEdit]);
 
     const cycleSeverity = useCallback((id: string) => {
-        hasLocalEditsRef.current = true;
+        markLocalEdit();
         setSeverityMap((prev) => {
             const current = prev[id] || 'moderate';
             const next: AllergySeverity =
                 current === 'mild' ? 'moderate' : current === 'moderate' ? 'severe' : 'mild';
             return { ...prev, [id]: next };
         });
-    }, []);
+    }, [markLocalEdit]);
 
     const handleCustomAllergenInputChange = useCallback(
         (text: string) => {
@@ -269,8 +242,6 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         if (!item) {
             return;
         }
-        hasLocalEditsRef.current = true;
-
         const normalizedItem = normalizeAllergyKey(item);
 
         setAllergies((prev) => {
@@ -278,13 +249,14 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             if (hasDuplicate) {
                 return prev;
             }
+            markLocalEdit();
             setSeverityMap((map) => ({ ...map, [item]: map[item] ?? 'moderate' }));
             return [...prev, item];
         });
 
         setCustomAllergenInputValue('');
         setCustomAllergenSuggestions([]);
-    }, []);
+    }, [markLocalEdit]);
 
     const addCustomAllergen = useCallback((name: string) => {
         const item = name.trim();
@@ -302,8 +274,8 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setLoading(true);
         let saveError: unknown = null;
         try {
-            await saveTestUserProfile(allergies, otherRestrictions, severityMap);
-            hasLocalEditsRef.current = false;
+            await saveTestUserProfile(allergies, [], buildAllergySeverityMap(allergies, severityMap));
+            clearLocalEdit();
         } catch (error) {
             saveError = error;
         }
@@ -362,6 +334,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
             if (saveError) {
                 if (isSyncNotConfirmedError(saveError)) {
+                    clearLocalEdit();
                     showTranslatedAlert(t, {
                         titleKey: 'sync.pending.title',
                         titleFallback: 'Saved locally',
@@ -381,12 +354,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                 return;
             }
 
-            showTranslatedAlert(t, {
-                titleKey: 'profile.alert.updatedTitle',
-                titleFallback: 'Updated',
-                messageKey: 'profile.alert.updatedMessage',
-                messageFallback: 'Your profile and preferences have been saved.',
-            });
+            setSavedNoticeKey((key) => key + 1);
         } catch {
             showTranslatedAlert(t, {
                 titleKey: 'profile.alert.errorTitle',
@@ -399,36 +367,31 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         }
     }, [
         allergies,
-        otherRestrictions,
         promptConflictResolution,
         severityMap,
         t,
+        clearLocalEdit,
         isSyncNotConfirmedError,
         isProfileAuthRequiredError,
     ]);
 
     return {
         loading,
-        inputValue,
+        isDirty,
+        savedNoticeKey,
         customAllergenInputValue,
         allergies,
         severityMap,
-        otherRestrictions,
-        suggestions,
         customAllergenSuggestions,
-        severityItems: buildUniqueSeverityItems(allergies, otherRestrictions),
+        severityItems: allergies,
         scrollViewRef,
         shouldScrollRef,
         loadProfile,
         toggleAllergen,
         cycleSeverity,
-        handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
         selectCustomAllergenSuggestion,
-        addOtherRestriction,
-        removeRestriction,
-        selectSuggestion,
         saveProfile,
     };
 };

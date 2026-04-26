@@ -9,6 +9,7 @@ import ResultMetaHeader from './resultContent/components/ResultMetaHeader';
 import { useResultContentModel } from './resultContent/hooks/useResultContentModel';
 import { resultContentStyles as styles } from './resultContent/styles';
 import { ResultContentProps } from './resultContent/types';
+import { homeDashboardColors, homeDashboardSignalColors } from '@/features/home/components/homeDashboardTokens';
 
 const resolveDecisionColors = (
     decisionVariant: 'ok' | 'ask' | 'avoid'
@@ -23,40 +24,43 @@ const resolveDecisionColors = (
     helperTextColor: string;
 } => {
     if (decisionVariant === 'ok') {
+        const signal = homeDashboardSignalColors.SAFE;
         return {
-            badgeBackgroundColor: '#ECFDF5',
-            badgeBorderColor: '#D1FAE5',
-            badgeTextColor: '#047857',
-            actionTextColor: '#065F46',
-            cardBackgroundColor: '#F7FFFB',
-            cardBorderColor: '#BBF7D0',
-            helperBackgroundColor: '#ECFDF5',
-            helperTextColor: '#047857',
+            badgeBackgroundColor: signal.background,
+            badgeBorderColor: signal.background,
+            badgeTextColor: signal.text,
+            actionTextColor: signal.text,
+            cardBackgroundColor: homeDashboardColors.pearlIvory,
+            cardBorderColor: signal.background,
+            helperBackgroundColor: signal.background,
+            helperTextColor: signal.text,
         };
     }
 
     if (decisionVariant === 'ask') {
+        const signal = homeDashboardSignalColors.CAUTION;
         return {
-            badgeBackgroundColor: '#FEF3C7',
-            badgeBorderColor: '#FDE68A',
-            badgeTextColor: '#B45309',
-            actionTextColor: '#92400E',
-            cardBackgroundColor: '#FFFDF4',
-            cardBorderColor: '#FDE68A',
-            helperBackgroundColor: '#FEF3C7',
-            helperTextColor: '#B45309',
+            badgeBackgroundColor: signal.background,
+            badgeBorderColor: signal.background,
+            badgeTextColor: signal.text,
+            actionTextColor: signal.text,
+            cardBackgroundColor: homeDashboardColors.paperMuted,
+            cardBorderColor: signal.background,
+            helperBackgroundColor: signal.background,
+            helperTextColor: signal.text,
         };
     }
 
+    const signal = homeDashboardSignalColors.DANGER;
     return {
-        badgeBackgroundColor: '#FFF1F2',
-        badgeBorderColor: '#FDA4AF',
-        badgeTextColor: '#BE123C',
-        actionTextColor: '#9F1239',
-        cardBackgroundColor: '#FFF7F8',
-        cardBorderColor: '#FDA4AF',
-        helperBackgroundColor: '#FFF1F2',
-        helperTextColor: '#BE123C',
+        badgeBackgroundColor: signal.background,
+        badgeBorderColor: signal.background,
+        badgeTextColor: signal.text,
+        actionTextColor: signal.text,
+        cardBackgroundColor: homeDashboardColors.paperMuted,
+        cardBorderColor: signal.background,
+        helperBackgroundColor: signal.background,
+        helperTextColor: signal.text,
     };
 };
 

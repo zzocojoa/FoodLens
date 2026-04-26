@@ -7,25 +7,21 @@ const mockCycleSeverity = jest.fn();
 
 type MockProfileScreenState = Readonly<{
     loading: boolean;
-    inputValue: string;
+    savedNoticeKey: number;
     customAllergenInputValue: string;
     allergies: string[];
     severityMap: Record<string, string>;
-    otherRestrictions: string[];
     severityItems: string[];
-    suggestions: string[];
     customAllergenSuggestions: string[];
 }>;
 
 const createMockProfileScreenState = (): MockProfileScreenState => ({
     loading: false,
-    inputValue: '',
+    savedNoticeKey: 0,
     customAllergenInputValue: '',
     allergies: ['peanut'],
     severityMap: { peanut: 'moderate' },
-    otherRestrictions: ['Vegan'],
     severityItems: ['peanut', 'Vegan'],
-    suggestions: [],
     customAllergenSuggestions: [],
 });
 
@@ -46,8 +42,21 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('lucide-react-native', () => ({
     CircleX: () => null,
+    Check: () => null,
+    ChevronRight: () => null,
+    Pencil: () => null,
+    Plus: () => null,
     Search: () => null,
+    ShieldCheck: () => null,
     X: () => null,
+}));
+
+jest.mock('expo-status-bar', () => ({
+    StatusBar: () => null,
+}));
+
+jest.mock('@/features/home/components/HomeBackgroundAtmosphere', () => ({
+    HomeBackgroundAtmosphere: () => null,
 }));
 
 jest.mock('@/contexts/ThemeContext', () => ({
@@ -83,23 +92,19 @@ jest.mock('../../components/AllergenGrid', () => {
 
 jest.mock('../../components/ProfileHeader', () => {
     const mockReactNative = jest.requireActual('react-native');
-    const MockText = mockReactNative.Text;
-
-    return function MockProfileHeader() {
-        return <MockText>PROFILE_HEADER</MockText>;
-    };
-});
-
-jest.mock('../../components/SaveProfileFooter', () => {
-    const mockReactNative = jest.requireActual('react-native');
     const MockTouchableOpacity = mockReactNative.TouchableOpacity;
     const MockText = mockReactNative.Text;
 
-    return function MockSaveProfileFooter(props: { onSave: () => void }) {
+    return function MockProfileHeader(props: { onSave?: () => void }) {
         return (
-            <MockTouchableOpacity onPress={props.onSave}>
-                <MockText>SAVE_PROFILE</MockText>
-            </MockTouchableOpacity>
+            <>
+                <MockText>PROFILE_HEADER</MockText>
+                {props.onSave ? (
+                    <MockTouchableOpacity onPress={props.onSave}>
+                        <MockText>SAVE_PROFILE</MockText>
+                    </MockTouchableOpacity>
+                ) : null}
+            </>
         );
     };
 });
@@ -107,6 +112,7 @@ jest.mock('../../components/SaveProfileFooter', () => {
 jest.mock('../../hooks/useProfileScreen', () => ({
     useProfileScreen: () => ({
         ...mockProfileScreenState,
+        isDirty: true,
         scrollViewRef: { current: null },
         shouldScrollRef: { current: false },
         loadProfile: jest.fn(),
@@ -129,19 +135,21 @@ describe('ProfileScreen', () => {
         mockProfileScreenState = createMockProfileScreenState();
     });
 
-    it('renders health-only sections including dietary restrictions', () => {
+    it('renders allergen-only health sections', () => {
         const { getAllByText, getByText, queryByText } = render(<ProfileScreen />);
 
-        expect(getByText('What should we avoid?')).toBeTruthy();
-        expect(getByText('Common Allergens')).toBeTruthy();
-        expect(getByText('Other Restrictions')).toBeTruthy();
-        expect(getAllByText('Vegan')).toHaveLength(2);
-        expect(getByText('Set Severity Level')).toBeTruthy();
+        expect(getByText('FoodLens safety criteria')).toBeTruthy();
+        expect(getByText('Common allergens')).toBeTruthy();
+        expect(getByText('Missing from the list')).toBeTruthy();
+        expect(getAllByText('Peanut')).toHaveLength(1);
+        expect(getByText('Protection ledger')).toBeTruthy();
+        expect(queryByText('Dietary restrictions')).toBeNull();
+        expect(queryByText('Vegan')).toBeNull();
         expect(queryByText('Help & Support')).toBeNull();
         expect(queryByText('Account & Data')).toBeNull();
     });
 
-    it('saves health profile changes from the footer action', () => {
+    it('saves health profile changes from the header action', () => {
         const { getByText } = render(<ProfileScreen />);
 
         fireEvent.press(getByText('SAVE_PROFILE'));
@@ -149,35 +157,33 @@ describe('ProfileScreen', () => {
         expect(mockSaveProfile).toHaveBeenCalledTimes(1);
     });
 
-    it('renders canonical other restriction severity with display name only', () => {
+    it('does not render canonical other restriction severity', () => {
         mockProfileScreenState = {
             ...createMockProfileScreenState(),
             allergies: [],
             severityMap: { gluten_free: 'severe' },
-            otherRestrictions: ['gluten_free'],
-            severityItems: ['gluten_free'],
+            severityItems: [],
         };
 
-        const { getAllByText, getByLabelText, queryByText } = render(<ProfileScreen />);
+        const { queryByLabelText, queryByText } = render(<ProfileScreen />);
 
-        expect(getByLabelText('Gluten Free - Severe')).toBeTruthy();
-        expect(getAllByText('Gluten Free')).toHaveLength(2);
+        expect(queryByLabelText('Gluten Free, Diet, Severe')).toBeNull();
+        expect(queryByText('Gluten Free')).toBeNull();
         expect(queryByText('gluten_free')).toBeNull();
     });
 
-    it('renders custom other restriction severity without storage prefix', () => {
+    it('does not render custom other restriction severity', () => {
         mockProfileScreenState = {
             ...createMockProfileScreenState(),
             allergies: [],
             severityMap: { 'custom:no raw onion': 'mild' },
-            otherRestrictions: ['custom:no raw onion'],
-            severityItems: ['custom:no raw onion'],
+            severityItems: [],
         };
 
-        const { getAllByText, getByLabelText, queryByText } = render(<ProfileScreen />);
+        const { queryByLabelText, queryByText } = render(<ProfileScreen />);
 
-        expect(getByLabelText('no raw onion - Mild')).toBeTruthy();
-        expect(getAllByText('no raw onion')).toHaveLength(2);
+        expect(queryByLabelText('no raw onion, Diet, Mild')).toBeNull();
+        expect(queryByText('no raw onion')).toBeNull();
         expect(queryByText('custom:no raw onion')).toBeNull();
     });
 });

@@ -22,7 +22,7 @@ export type AllergiesSeveritySectionProps = Readonly<{
   kind: AllergiesSeverityGroupKind;
   title: string;
   subtitle?: string;
-  items: ReadonlyArray<AllergiesSeveritySectionItem>;
+  items: readonly AllergiesSeveritySectionItem[];
 }>;
 
 type SeverityTone = Readonly<{
@@ -126,7 +126,7 @@ export function AllergiesSeveritySection({
   const tone = getSeverityTone(kind);
 
   return (
-    <View style={[homeDashboardStyles.sectionCard, localStyles.sectionCard, { backgroundColor: tone.cardBackgroundColor }]}>
+    <View style={[localStyles.sectionCard, { backgroundColor: tone.cardBackgroundColor }]}>
       <View style={homeDashboardStyles.sectionHeaderRow}>
         <View style={homeDashboardStyles.sectionHeaderCopy}>
           <Text style={localStyles.sectionTitle}>{title}</Text>
@@ -199,8 +199,13 @@ export default AllergiesSeveritySection;
 
 const localStyles = StyleSheet.create({
   sectionCard: {
+    borderColor: homeDashboardColors.line,
+    borderCurve: 'continuous',
+    borderRadius: homeDashboardRadii.lg,
+    borderWidth: 1,
     overflow: 'hidden',
     gap: homeDashboardSpacing.md,
+    padding: homeDashboardSpacing.md,
   },
   sectionTitle: {
     color: homeDashboardColors.ink,

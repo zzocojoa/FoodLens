@@ -5,6 +5,7 @@ import type { FilterType } from '@/hooks/useHistoryFilter';
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { HISTORY_FILTERS, toFilterLabel } from '@/components/historyList/constants';
 import { useI18n } from '@/features/i18n';
+import { configureHistoryLayoutAnimation } from '../utils/historyLayoutAnimation';
 
 import {
   historyDashboardColors as colors,
@@ -16,6 +17,7 @@ import {
 
 type HistoryFilterRailProps = {
   filter: FilterType;
+  isReduceMotionEnabled: boolean;
   onChange: (filter: FilterType) => void;
 };
 
@@ -28,6 +30,7 @@ const filterToneMap: Record<FilterType, keyof typeof historyDashboardToneTokens>
 
 export default function HistoryFilterRail({
   filter,
+  isReduceMotionEnabled,
   onChange,
 }: HistoryFilterRailProps): React.JSX.Element {
   const { t } = useI18n();
@@ -40,10 +43,13 @@ export default function HistoryFilterRail({
 
         return (
           <HapticTouchableOpacity
+            accessibilityLabel={toFilterLabel(value, t)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
             key={value}
             hapticType="selection"
             onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              configureHistoryLayoutAnimation(isReduceMotionEnabled, LayoutAnimation.Presets.easeInEaseOut);
               onChange(value);
             }}
             style={[

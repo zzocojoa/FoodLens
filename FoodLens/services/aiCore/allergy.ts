@@ -12,8 +12,7 @@ export const getAllergyString = async (): Promise<string> => {
     try {
         const user = await UserService.getUserProfile(getAiUserId());
         if (user) {
-            const items = [...user.safetyProfile.allergies, ...user.safetyProfile.dietaryRestrictions]
-                .map((item) => projectAllergyItemForAi(item));
+            const items = user.safetyProfile.allergies.map((item) => projectAllergyItemForAi(item));
             if (items.length > 0) {
                 allergyString = items.join(', ');
             }

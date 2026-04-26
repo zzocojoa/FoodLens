@@ -101,7 +101,9 @@ function ProfileTravelModeSection({
                     <MemoizedProfileThemePreferenceRow colorScheme={colorScheme} />
 
                     <HapticPressable
+                        accessibilityLabel={t('profileAtelier.travel.appLanguage', 'App Language')}
                         accessibilityRole="button"
+                        accessibilityValue={{ text: appLanguageLabel }}
                         hapticType="selection"
                         onPress={onPressAppLanguage}
                         style={styles.languageRow}

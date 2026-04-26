@@ -56,7 +56,7 @@ describe('useAllergiesData', () => {
         jest.useRealTimers();
     });
 
-    test('loads and merges allergies + dietary restrictions', async () => {
+    test('loads allergies and ignores dietary restrictions', async () => {
         mockedGetUserProfile.mockResolvedValue({
             uid: 'test-user-v1',
             email: 'test@foodlens.ai',
@@ -79,7 +79,7 @@ describe('useAllergiesData', () => {
         });
 
         expect(result.current.allergies).toEqual(['Peanuts']);
-        expect(result.current.dietaryRestrictions).toEqual(['Vegan']);
+        expect(result.current.dietaryRestrictions).toEqual([]);
         expect(result.current.severityMap).toEqual({});
         expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1', {
             allowBackgroundRefresh: false,
@@ -129,7 +129,7 @@ describe('useAllergiesData', () => {
 
         expect(result.current.loading).toBe(false);
         expect(result.current.allergies).toEqual(['Milk']);
-        expect(result.current.dietaryRestrictions).toEqual(['Vegetarian']);
+        expect(result.current.dietaryRestrictions).toEqual([]);
         expect(result.current.severityMap).toEqual({ Milk: 'moderate' });
 
         await waitFor(() => {
@@ -164,11 +164,14 @@ describe('useAllergiesData', () => {
 
         renderHook(() => useAllergiesData());
 
+        let cleanupFocusEffect: undefined | (() => void);
         act(() => {
-            mockedFocusEffectCallback?.();
+            const cleanup = mockedFocusEffectCallback?.();
+            cleanupFocusEffect = typeof cleanup === 'function' ? cleanup : undefined;
         });
 
         expect(mockedGetUserProfile).toHaveBeenCalledTimes(1);
+        cleanupFocusEffect?.();
     });
 
     test('retries once after the skipped first-focus path when the initial load fails', async () => {
@@ -193,8 +196,10 @@ describe('useAllergiesData', () => {
 
         const { result } = renderHook(() => useAllergiesData());
 
+        let cleanupFocusEffect: undefined | (() => void);
         act(() => {
-            mockedFocusEffectCallback?.();
+            const cleanup = mockedFocusEffectCallback?.();
+            cleanupFocusEffect = typeof cleanup === 'function' ? cleanup : undefined;
         });
 
         await waitFor(() => {
@@ -205,6 +210,7 @@ describe('useAllergiesData', () => {
             expect(result.current.allergies).toEqual(['Peanuts']);
         });
 
+        cleanupFocusEffect?.();
         errorSpy.mockRestore();
     });
 

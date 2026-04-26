@@ -22,13 +22,12 @@ export type AllergenOption = {
 
 export type ProfileFormState = {
     loading: boolean;
-    inputValue: string;
+    isDirty: boolean;
+    savedNoticeKey: number;
     customAllergenInputValue: string;
     allergies: string[];
     severityMap: Record<string, AllergySeverity>;
-    otherRestrictions: string[];
     severityItems: string[];
-    suggestions: IngredientSuggestion[];
     customAllergenSuggestions: IngredientSuggestion[];
 };
 
@@ -38,12 +37,8 @@ export type UseProfileScreenResult = ProfileFormState & {
     loadProfile: (options?: { silent?: boolean }) => Promise<void>;
     toggleAllergen: (id: string) => void;
     cycleSeverity: (id: string) => void;
-    handleInputChange: (text: string) => void;
     handleCustomAllergenInputChange: (text: string) => void;
     addCustomAllergen: (item: string) => void;
     selectCustomAllergenSuggestion: (item: string) => void;
-    addOtherRestriction: () => void;
-    removeRestriction: (item: string) => void;
-    selectSuggestion: (item: string) => void;
     saveProfile: () => Promise<void>;
 };

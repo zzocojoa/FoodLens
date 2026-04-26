@@ -1,6 +1,8 @@
 import React from 'react';
 import {
+    Animated,
     KeyboardAvoidingView,
+    LayoutChangeEvent,
     Platform,
     ScrollView,
     Text,
@@ -9,18 +11,24 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CircleX } from 'lucide-react-native';
+import { StatusBar } from 'expo-status-bar';
+import { Check, CircleX, Plus, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { HomeBackgroundAtmosphere } from '@/features/home/components/HomeBackgroundAtmosphere';
+import { PearlSurfaceOverlay } from '@/features/home/components/PearlSurfaceOverlay';
+import {
+    homeDashboardColors,
+    homeDashboardSignalColors,
+} from '@/features/home/components/homeDashboardTokens';
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
 import RestrictionInput from '../components/RestrictionInput';
-import RestrictionTags from '../components/RestrictionTags';
-import SaveProfileFooter from '../components/SaveProfileFooter';
-import { COMMON_ALLERGENS, SEVERITY_LEVELS } from '../constants/profile.constants';
+import { COMMON_ALLERGENS } from '../constants/profile.constants';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
+import { AllergySeverity } from '../types/profile.types';
 import { resolveRestrictionDisplayName } from '../utils/profileSuggestions';
 
 const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
@@ -30,6 +38,76 @@ const resolveSeverityItemName = (
     t: (key: string, fallback: string) => string,
 ): string => t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t));
 
+const replaceCountTemplate = (template: string, count: number): string => {
+    return template.replace('{count}', String(count));
+};
+
+const replaceItemTemplate = (template: string, item: string): string => {
+    return template.replace('{item}', item);
+};
+
+const getSeverityFallback = (severity: AllergySeverity): string => {
+    if (severity === 'severe') {
+        return 'Severe';
+    }
+
+    if (severity === 'moderate') {
+        return 'Moderate';
+    }
+
+    return 'Mild';
+};
+
+type LedgerItem = {
+    id: string;
+};
+
+type SeverityTone = {
+    backgroundColor: string;
+    borderColor: string;
+    iconColor: string;
+    textColor: string;
+};
+
+const getSeverityTone = (severity: AllergySeverity): SeverityTone => {
+    if (severity === 'severe') {
+        return {
+            backgroundColor: homeDashboardSignalColors.DANGER.background,
+            borderColor: homeDashboardColors.accentRed,
+            iconColor: homeDashboardColors.accentRed,
+            textColor: homeDashboardColors.accentRed,
+        };
+    }
+
+    if (severity === 'moderate') {
+        return {
+            backgroundColor: homeDashboardSignalColors.CAUTION.background,
+            borderColor: homeDashboardColors.accentAmber,
+            iconColor: homeDashboardColors.accentAmber,
+            textColor: homeDashboardColors.accentAmber,
+        };
+    }
+
+    return {
+        backgroundColor: homeDashboardSignalColors.SAFE.background,
+        borderColor: homeDashboardColors.accentGreen,
+        iconColor: homeDashboardColors.accentGreen,
+        textColor: homeDashboardColors.accentGreen,
+    };
+};
+
+const buildLedgerItems = (allergies: string[]): LedgerItem[] => {
+    const ids = allergies.reduce<string[]>((items, item) => {
+        if (items.includes(item)) {
+            return items;
+        }
+
+        return [...items, item];
+    }, []);
+
+    return ids.map((id) => ({ id }));
+};
+
 export default function ProfileScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ fromProfileSheet?: string }>();
@@ -38,35 +116,58 @@ export default function ProfileScreen() {
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
     const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);
+    const customAllergenSectionYRef = React.useRef<number | null>(null);
 
     const {
         loading,
-        inputValue,
+        savedNoticeKey,
         customAllergenInputValue,
         allergies,
         severityMap,
-        otherRestrictions,
-        severityItems,
-        suggestions,
         customAllergenSuggestions,
         scrollViewRef,
         toggleAllergen,
         cycleSeverity,
-        handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
         selectCustomAllergenSuggestion,
-        addOtherRestriction,
-        removeRestriction,
-        selectSuggestion,
         saveProfile,
     } = useProfileScreen();
+    const savedToastOpacity = React.useRef(new Animated.Value(0)).current;
+    const [isSavedToastVisible, setIsSavedToastVisible] = React.useState(false);
 
     const customAllergies = React.useMemo(
         () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
         [allergies],
     );
-    const handleBack = React.useCallback(() => {
+    const ledgerItems = React.useMemo(
+        () => buildLedgerItems(allergies),
+        [allergies],
+    );
+    const severeCount = React.useMemo(
+        () => ledgerItems.filter((item) => (severityMap[item.id] || 'moderate') === 'severe').length,
+        [ledgerItems, severityMap],
+    );
+    const scrollToCustomAllergenSearch = React.useCallback((): void => {
+        const customAllergenSectionY = customAllergenSectionYRef.current;
+
+        if (customAllergenSectionY === null) {
+            return;
+        }
+
+        scrollViewRef.current?.scrollTo({
+            y: Math.max(customAllergenSectionY - 24, 0),
+            animated: true,
+        });
+    }, [scrollViewRef]);
+    const handleShowCustomAllergenSearch = React.useCallback((): void => {
+        setShowCustomAllergenSearch(true);
+        requestAnimationFrame(scrollToCustomAllergenSearch);
+    }, [scrollToCustomAllergenSearch]);
+    const handleCustomAllergenSectionLayout = React.useCallback((event: LayoutChangeEvent): void => {
+        customAllergenSectionYRef.current = event.nativeEvent.layout.y;
+    }, []);
+    const handleBack = React.useCallback((): void => {
         if (params.fromProfileSheet === '1') {
             router.replace({
                 pathname: '/(tabs)',
@@ -76,49 +177,237 @@ export default function ProfileScreen() {
         }
         router.back();
     }, [params.fromProfileSheet, router]);
+    React.useEffect((): (() => void) | undefined => {
+        if (savedNoticeKey === 0) {
+            return undefined;
+        }
+
+        setIsSavedToastVisible(true);
+        savedToastOpacity.stopAnimation();
+        savedToastOpacity.setValue(1);
+
+        const animation = Animated.timing(savedToastOpacity, {
+            toValue: 0,
+            duration: 3000,
+            useNativeDriver: true,
+        });
+
+        animation.start(({ finished }) => {
+            if (finished) {
+                setIsSavedToastVisible(false);
+            }
+        });
+
+        return () => {
+            animation.stop();
+        };
+    }, [savedNoticeKey, savedToastOpacity]);
 
     return (
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-            <ProfileHeader theme={theme} onBack={handleBack} />
+        <SafeAreaView style={styles.safeArea}>
+            <StatusBar style="dark" />
+            <HomeBackgroundAtmosphere />
+            <ProfileHeader
+                theme={theme}
+                onBack={handleBack}
+                onSave={saveProfile}
+                saving={loading}
+            />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                enabled={Platform.OS === 'ios'}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                enabled={true}
                 style={{ flex: 1 }}
             >
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.container}
                     contentContainerStyle={{
-                        paddingBottom: insets.bottom + 120,
+                        paddingBottom: insets.bottom + 40,
                     }}
                     keyboardShouldPersistTaps="always"
                     keyboardDismissMode="on-drag"
                 >
-                    <View style={styles.heroSection}>
-                        <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>
-                            {t('profile.hero.title', 'What should we avoid?')}
-                        </Text>
-                        <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
-                            {t('profile.hero.subtitle', 'Select ingredients you are allergic to or cannot eat.')}
-                        </Text>
+                    <View style={styles.summaryPanel}>
+                        <PearlSurfaceOverlay
+                            accentWashColor={homeDashboardColors.pearlMist}
+                            baseBottomColor={homeDashboardColors.paperStrong}
+                            baseTopColor={homeDashboardColors.pearlIvory}
+                            coolWashColor={homeDashboardColors.pearlSage}
+                            warmWashColor={homeDashboardColors.pearlPeach}
+                        />
+                        <View style={styles.summaryPanelContent}>
+                            <View style={styles.summaryPanelHeader}>
+                                <Text style={styles.summaryTitle}>
+                                    {t('profile.health.summary.title', 'FoodLens safety criteria')}
+                                </Text>
+                                <Text style={styles.summaryDescription}>
+                                    {t(
+                                        'profile.health.summary.subtitle',
+                                        'Scans use these items to flag food that needs caution.',
+                                    )}
+                                </Text>
+                            </View>
+
+                            <View style={styles.summaryMetricRow}>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.health.allergiesTemplate', '{count} allergies'),
+                                            allergies.length,
+                                        )}
+                                    </Text>
+                                </View>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.health.customTemplate', '{count} custom'),
+                                            customAllergies.length,
+                                        )}
+                                    </Text>
+                                </View>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.health.severeTemplate', '{count} severe'),
+                                            severeCount,
+                                        )}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.editActionRow}>
+                                <TouchableOpacity
+                                    style={styles.editActionButton}
+                                    onPress={handleShowCustomAllergenSearch}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t(
+                                        'profile.accessibility.editCustomAllergens',
+                                        'Edit custom allergens',
+                                    )}
+                                    accessibilityHint={t(
+                                        'profile.accessibility.editCustomAllergensHint',
+                                        'Shows the custom allergen search field',
+                                    )}
+                                >
+                                    <Plus size={17} color={homeDashboardColors.paper} />
+                                    <Text style={styles.editActionText}>
+                                        {t('profile.health.addMissingAllergen', 'Add missing allergen')}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                     </View>
 
-                    <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
-                        {t('profile.section.commonAllergens', 'Common Allergens')}
-                    </Text>
-                    <AllergenGrid
-                        theme={theme}
-                        selectedAllergies={allergies}
-                        onToggle={toggleAllergen}
-                        t={t}
-                    />
+                    <View style={styles.ledgerSection}>
+                        <View style={styles.sectionTitleRow}>
+                            <View>
+                                <Text style={styles.sectionHeader}>
+                                    {t('profile.health.selected.title', 'Protection ledger')}
+                                </Text>
+                                <Text style={styles.sectionSubtext}>
+                                    {t('profile.health.selected.subtitle', 'Review selected items and their severity.')}
+                                </Text>
+                            </View>
+                        </View>
 
-                    <View style={{ marginTop: 24, paddingBottom: 8 }}>
+                        {ledgerItems.length === 0 ? (
+                            <View style={styles.emptyLedgerCard}>
+                                <ShieldCheck size={22} color={homeDashboardColors.inkSoft} />
+                                <View style={styles.emptyLedgerTextGroup}>
+                                    <Text style={styles.emptyLedgerTitle}>
+                                        {t('profile.health.empty.title', 'No items yet')}
+                                    </Text>
+                                    <Text style={styles.emptyLedgerBody}>
+                                        {t('profile.health.empty.body', 'Add allergens before scanning.')}
+                                    </Text>
+                                </View>
+                            </View>
+                        ) : (
+                            <View style={styles.ledgerList}>
+                                {ledgerItems.map((item) => {
+                                    const severity = severityMap[item.id] || 'moderate';
+                                    const tone = getSeverityTone(severity);
+                                    const severityLabel = t(
+                                        `profile.health.severity.${severity}`,
+                                        getSeverityFallback(severity),
+                                    );
+                                    const itemName = resolveSeverityItemName(item.id, t);
+                                    const handleRemove = (): void => {
+                                        toggleAllergen(item.id);
+                                    };
+
+                                    return (
+                                        <View key={`ledger-${item.id}`} style={styles.ledgerRow}>
+                                            <TouchableOpacity
+                                                style={styles.ledgerMainButton}
+                                                onPress={() => cycleSeverity(item.id)}
+                                                activeOpacity={0.72}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={`${itemName}, ${t('profile.health.kind.allergen', 'Allergen')}, ${severityLabel}`}
+                                                accessibilityHint={t(
+                                                    'profile.health.severityHint',
+                                                    'Changes severity level',
+                                                )}
+                                            >
+                                                <View style={styles.ledgerItemTextGroup}>
+                                                    <Text style={styles.ledgerItemName}>{itemName}</Text>
+                                                    <Text style={styles.ledgerItemKind}>
+                                                        {t('profile.health.kind.allergen', 'Allergen')}
+                                                    </Text>
+                                                </View>
+                                                <View
+                                                    style={[
+                                                        styles.inlineSeverityPill,
+                                                        {
+                                                            backgroundColor: tone.backgroundColor,
+                                                            borderColor: tone.borderColor,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <Check size={13} color={tone.iconColor} />
+                                                    <Text style={[styles.inlineSeverityText, { color: tone.textColor }]}>
+                                                        {severityLabel}
+                                                    </Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={styles.ledgerRemoveButton}
+                                                onPress={handleRemove}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={replaceItemTemplate(
+                                                    t('profile.health.removeItemTemplate', 'Remove {item}'),
+                                                    itemName,
+                                                )}
+                                            >
+                                                <CircleX size={19} color={homeDashboardColors.inkSoft} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
+
+                    <View style={styles.editorSection}>
+                        <Text style={styles.sectionHeader}>
+                            {t('profile.health.commonAllergens.title', 'Common allergens')}
+                        </Text>
+                        <AllergenGrid
+                            selectedAllergies={allergies}
+                            onToggle={toggleAllergen}
+                            t={t}
+                        />
+                    </View>
+
+                    <View
+                        onLayout={handleCustomAllergenSectionLayout}
+                        style={styles.editorSection}
+                    >
                         {!showCustomAllergenSearch ? (
                             <TouchableOpacity
                                 style={styles.searchToggleButton}
-                                onPress={() => setShowCustomAllergenSearch(true)}
+                                onPress={handleShowCustomAllergenSearch}
                                 accessibilityRole="button"
                                 accessibilityLabel={t('onboarding.allergies.notFound', 'Not finding yours?')}
                                 accessibilityHint={t(
@@ -126,14 +415,21 @@ export default function ProfileScreen() {
                                     'Open search to add a custom allergen',
                                 )}
                             >
-                                <Text style={[styles.searchToggleText, { color: theme.tint }]}>
-                                    {t('onboarding.allergies.notFound', 'Not finding yours?')}
+                                <Plus size={17} color={homeDashboardColors.ink} />
+                                <Text style={styles.searchToggleText}>
+                                    {t('profile.health.customAllergen.title', 'Missing from the list')}
                                 </Text>
                             </TouchableOpacity>
                         ) : (
                             <View>
-                                <Text style={[styles.sectionHeader, { color: theme.textPrimary, fontSize: 16 }]}>
-                                    {t('onboarding.allergies.searchTitle', 'Search additional allergens')}
+                                <Text style={styles.sectionHeader}>
+                                    {t('profile.health.customAllergen.title', 'Missing from the list')}
+                                </Text>
+                                <Text style={styles.sectionSubtext}>
+                                    {t(
+                                        'profile.health.customAllergen.subtitle',
+                                        'Add an allergen FoodLens should treat as a safety risk.',
+                                    )}
                                 </Text>
                                 <RestrictionInput
                                     theme={theme}
@@ -147,133 +443,24 @@ export default function ProfileScreen() {
                             </View>
                         )}
                     </View>
-
-                    {customAllergies.length > 0 && (
-                        <View style={{ marginTop: 4, marginBottom: 8 }}>
-                            <Text style={[styles.sectionHeader, { color: theme.textPrimary, fontSize: 16 }]}>
-                                {t('profile.section.customAllergens', 'Additional Allergens')}
-                            </Text>
-                            <View style={styles.tagContainer}>
-                                {customAllergies.map((id) => (
-                                    <TouchableOpacity
-                                        key={`custom-${id}`}
-                                        style={[
-                                            styles.tag,
-                                            {
-                                                backgroundColor: theme.surface,
-                                                borderColor: theme.border,
-                                            },
-                                        ]}
-                                        onPress={() => toggleAllergen(id)}
-                                        activeOpacity={0.7}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={t(
-                                            'profile.accessibility.removeCustomAllergen',
-                                            'Remove custom allergen',
-                                        )}
-                                        accessibilityHint={t(
-                                            'profile.accessibility.removeCustomAllergenHint',
-                                            'Tap to remove this custom allergen',
-                                        )}
-                                    >
-                                        <Text style={[styles.tagText, { color: theme.textPrimary }]}>
-                                            {resolveSeverityItemName(id, t)}
-                                        </Text>
-                                        <CircleX size={16} color={theme.textSecondary} />
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
-                    )}
-
-                    <View style={{ marginTop: 16, marginBottom: 8 }}>
-                        <Text style={[styles.sectionHeader, { color: theme.textPrimary, fontSize: 16 }]}>
-                            {t('profile.section.otherRestrictions', 'Other Restrictions')}
-                        </Text>
-                        <Text style={[styles.heroSubtitle, { color: theme.textSecondary, fontSize: 14, marginBottom: 12 }]}>
-                            {t(
-                                'profile.section.otherRestrictionsSubtitle',
-                                'Add diets or ingredients you avoid, such as vegan, pork, or peach.',
-                            )}
-                        </Text>
-                        <RestrictionInput
-                            theme={theme}
-                            inputValue={inputValue}
-                            suggestions={suggestions}
-                            onChangeText={handleInputChange}
-                            onSubmit={addOtherRestriction}
-                            onSelectSuggestion={selectSuggestion}
-                            t={t}
-                        />
-                    </View>
-
-                    {otherRestrictions.length > 0 && (
-                        <View style={{ marginTop: 8, marginBottom: 8 }}>
-                            <RestrictionTags
-                                theme={theme}
-                                items={otherRestrictions}
-                                t={t}
-                                onRemove={removeRestriction}
-                            />
-                        </View>
-                    )}
-
-                    {severityItems.length > 0 && (
-                        <View style={{ marginTop: 8, marginBottom: 8 }}>
-                            <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
-                                {t('onboarding.allergies.severityTitle', 'Set Severity Level')}
-                            </Text>
-                            <Text style={[styles.severityHint, { color: theme.textSecondary }]}>
-                                {t('onboarding.allergies.severityHint', 'Tap to cycle: Mild → Moderate → Severe')}
-                            </Text>
-                            {severityItems.map((id, index) => {
-                                const severity = severityMap[id] || 'moderate';
-                                const level = SEVERITY_LEVELS.find((entry) => entry.key === severity)!;
-                                const itemName = resolveSeverityItemName(id, t);
-                                return (
-                                    <TouchableOpacity
-                                        key={`${id}-${index}`}
-                                        style={[
-                                            styles.severityRow,
-                                            { backgroundColor: theme.surface, borderColor: `${level.color}40` },
-                                        ]}
-                                        onPress={() => cycleSeverity(id)}
-                                        activeOpacity={0.7}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`${itemName} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
-                                        accessibilityHint={t(
-                                            'onboarding.accessibility.severityCycleHint',
-                                            'Tap to cycle severity level',
-                                        )}
-                                    >
-                                        <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                                            {itemName}
-                                        </Text>
-                                        <View
-                                            style={[
-                                                styles.severityBadge,
-                                                { backgroundColor: `${level.color}20`, borderColor: level.color },
-                                            ]}
-                                        >
-                                            <Text style={{ fontSize: 14 }}>{level.emoji}</Text>
-                                            <Text style={[styles.severityBadgeText, { color: level.color }]}>
-                                                {t(`onboarding.severity.${level.key}`, level.label)}
-                                            </Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-                    )}
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <SaveProfileFooter
-                theme={theme}
-                loading={loading}
-                onSave={saveProfile}
-                t={t}
-            />
+            {isSavedToastVisible ? (
+                <Animated.View
+                    pointerEvents="none"
+                    style={[styles.savedToastOverlay, { opacity: savedToastOpacity }]}
+                >
+                    <View accessibilityRole="alert" style={styles.savedToast}>
+                        <View style={styles.savedToastIcon}>
+                            <Check size={14} color={homeDashboardColors.accentGreen} />
+                        </View>
+                        <Text style={styles.savedToastText}>
+                            {t('profile.health.saved', 'Saved')}
+                        </Text>
+                    </View>
+                </Animated.View>
+            ) : null}
         </SafeAreaView>
     );
 }

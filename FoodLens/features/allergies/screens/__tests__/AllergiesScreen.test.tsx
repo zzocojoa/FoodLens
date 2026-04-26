@@ -55,7 +55,7 @@ jest.mock('../../constants/allergies.constants', () => ({
         title: { key: 'allergies.title', fallback: 'My Allergies' },
         description: {
             key: 'allergies.description',
-            fallback: '등록된 알레르기 및 식단 제한 정보입니다.',
+            fallback: '등록된 알레르기 정보입니다.',
         },
         emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
         emptyDescription: { key: 'allergies.empty.description', fallback: '등록된 알레르기 정보가 없습니다.' },
@@ -75,8 +75,14 @@ jest.mock('../../../../components/travelerAllergyCard/hooks/useTravelerAllergens
 }));
 
 jest.mock('../../../home/components/HomeBackgroundAtmosphere', () => {
-    return function MockHomeBackgroundAtmosphere() {
+    function MockHomeBackgroundAtmosphere() {
         return null;
+    }
+
+    return {
+        __esModule: true,
+        default: MockHomeBackgroundAtmosphere,
+        HomeBackgroundAtmosphere: MockHomeBackgroundAtmosphere,
     };
 });
 
@@ -152,8 +158,8 @@ describe('AllergiesScreen', () => {
         expect(getByText('Your passport card is ready')).toBeTruthy();
         expect(getByText('Severe 1')).toBeTruthy();
         expect(getByText('Restrictions 1')).toBeTruthy();
-        expect(queryByText('View larger card')).toBeNull();
-        expect(queryByText('Edit profile')).toBeNull();
+        expect(getByText('View larger')).toBeTruthy();
+        expect(getByText('Edit profile')).toBeTruthy();
 
         fireEvent.press(getByText('Traveler Passport'));
 
@@ -162,12 +168,12 @@ describe('AllergiesScreen', () => {
         expect(queryByText('Expanded view')).toBeNull();
         expect(queryByText('Close')).toBeNull();
 
-        fireEvent.press(getByTestId('allergies-traveler-card-backdrop'));
+        fireEvent.press(getByTestId('allergies-traveler-card-close'));
 
         expect(queryByTestId('allergies-traveler-card-body')).toBeNull();
     });
 
-    test('does not render redundant traveler-card action buttons', () => {
+    test('opens edit profile from the traveler hero edit CTA', () => {
         mockedUseTravelerAllergyCardModel.mockReturnValue({
             displayData: {
                 isAiLoaded: false,
@@ -186,10 +192,11 @@ describe('AllergiesScreen', () => {
             severityMap: { Peanuts: 'moderate' },
         });
 
-        const { queryByText } = render(<AllergiesScreen />);
+        const { getByText } = render(<AllergiesScreen />);
 
-        expect(queryByText('View larger card')).toBeNull();
-        expect(queryByText('Edit profile')).toBeNull();
+        fireEvent.press(getByText('Edit profile'));
+
+        expect(mockedPush).toHaveBeenCalledWith('/health-profile');
     });
 
     test('renders canonical and custom values in the risk ledger without storage tokens', () => {

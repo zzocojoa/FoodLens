@@ -34,6 +34,8 @@ export default function HistoryJournalRail({
     <View style={styles.container}>
       <View style={styles.row}>
         <Pressable
+          accessibilityLabel={t('history.accessibility.backToHome', '홈으로 돌아가기')}
+          accessibilityRole="button"
           hitSlop={8}
           onPress={onBack}
           style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
@@ -53,6 +55,13 @@ export default function HistoryJournalRail({
         <View style={styles.utilityRow}>
           {archiveMode === 'list' ? (
             <Pressable
+              accessibilityLabel={
+                isEditMode
+                  ? t('history.accessibility.finishEditing', '편집 완료')
+                  : t('history.accessibility.startEditing', '기록 편집')
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: isEditMode }}
               hitSlop={8}
               onPress={onToggleEdit}
               style={({ pressed }) => [
@@ -72,6 +81,12 @@ export default function HistoryJournalRail({
 
           <View style={styles.modeSwitch}>
             <Pressable
+              accessibilityLabel={t('history.accessibility.mapMode', '지도 보기')}
+              accessibilityRole="tab"
+              accessibilityState={{
+                disabled: !isMapModeAvailable,
+                selected: archiveMode === 'map',
+              }}
               hitSlop={8}
               disabled={!isMapModeAvailable}
               onPress={() => onSwitchMode('map')}
@@ -85,6 +100,9 @@ export default function HistoryJournalRail({
               <Globe color={archiveMode === 'map' ? colors.white : colors.inkSoft} size={16} />
             </Pressable>
             <Pressable
+              accessibilityLabel={t('history.accessibility.listMode', '저널 보기')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: archiveMode === 'list' }}
               hitSlop={8}
               onPress={() => onSwitchMode('list')}
               style={({ pressed }) => [

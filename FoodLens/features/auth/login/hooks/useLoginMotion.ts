@@ -8,7 +8,7 @@ const toPhoneStateValue = (mode: LoginAuthMode): number => (mode === 'signup' ? 
 export const shouldUseLoginNativeDriver = (platform: string): boolean => platform !== 'web';
 
 export const useLoginMotion = () => {
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const useNativeDriver = shouldUseLoginNativeDriver(Platform.OS);
 
@@ -28,17 +28,23 @@ export const useLoginMotion = () => {
   const entranceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const layoutMetrics = useMemo(() => {
+    const layoutHeight =
+      Platform.OS === 'web' &&
+      width > LOGIN_LAYOUT.phoneMaxWidth + 32 &&
+      height > LOGIN_LAYOUT.phoneMaxHeight + 24
+        ? LOGIN_LAYOUT.phoneMaxHeight
+        : height;
     const usableHeight = Math.max(
       1,
-      height - Math.max(0, insets.top) - Math.max(0, insets.bottom),
+      layoutHeight - Math.max(0, insets.top) - Math.max(0, insets.bottom),
     );
     const heightScale = Math.max(
       0.7,
       Math.min(1, usableHeight / LOGIN_LAYOUT.phoneMaxHeight),
     );
 
-    const estimatedFooterHeight = Math.round(LOGIN_LAYOUT.authFooterReservedHeight * 0.8);
-    const estimatedAuthFormHeightLogin = 290;
+    const estimatedFooterHeight = LOGIN_LAYOUT.authFooterReservedHeight;
+    const estimatedAuthFormHeightLogin = 330;
     const estimatedAuthFormHeightSignup = 350;
 
     const scaledLoginTop = Math.round(LOGIN_LAYOUT.authMarginTopLogin * heightScale);
@@ -66,7 +72,7 @@ export const useLoginMotion = () => {
       welcomeTitleMarginTop,
       footerBottom,
     };
-  }, [height, insets.bottom, insets.top]);
+  }, [height, insets.bottom, insets.top, width]);
 
   const clearEntranceTimer = useCallback(() => {
     if (entranceTimerRef.current) {

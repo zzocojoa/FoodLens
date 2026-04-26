@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AccessibilityInfo, View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -17,6 +17,31 @@ export default function ScanCameraScreen() {
     const { t } = useI18n();
     const insets = useSafeAreaInsets();
     const camera = useScanCameraGateway();
+    const [isReduceMotionEnabled, setIsReduceMotionEnabled] = React.useState<boolean>(false);
+
+    React.useEffect(() => {
+        let isMounted = true;
+
+        void AccessibilityInfo.isReduceMotionEnabled().then((isEnabled: boolean) => {
+            if (!isMounted) {
+                return;
+            }
+
+            setIsReduceMotionEnabled(isEnabled);
+        });
+
+        const subscription = AccessibilityInfo.addEventListener(
+            'reduceMotionChanged',
+            (isEnabled: boolean) => {
+                setIsReduceMotionEnabled(isEnabled);
+            },
+        );
+
+        return () => {
+            isMounted = false;
+            subscription.remove();
+        };
+    }, []);
 
     if (!camera.permission) return <View style={styles.container} />;
 
@@ -24,10 +49,20 @@ export default function ScanCameraScreen() {
         return (
             <View style={styles.permissionContainer}>
                 <Text style={styles.permissionText}>{t('scan.permission.cameraRequired', 'Camera access is required.')}</Text>
-                <TouchableOpacity style={styles.permissionButton} onPress={camera.requestPermission}>
+                <TouchableOpacity
+                    accessibilityLabel={t('scan.permission.grant', 'Grant Permission')}
+                    accessibilityRole="button"
+                    style={styles.permissionButton}
+                    onPress={camera.requestPermission}
+                >
                     <Text style={styles.permissionButtonText}>{t('scan.permission.grant', 'Grant Permission')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.closeButton} onPress={camera.handleClose}>
+                <TouchableOpacity
+                    accessibilityLabel={t('scan.action.close', 'Close camera')}
+                    accessibilityRole="button"
+                    style={styles.closeButton}
+                    onPress={camera.handleClose}
+                >
                     <X size={24} color="white" />
                 </TouchableOpacity>
             </View>
@@ -35,12 +70,12 @@ export default function ScanCameraScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.container}>
             <InfoBottomSheet isOpen={camera.showInfoSheet} onClose={() => camera.setShowInfoSheet(false)} />
 
             {camera.isAnalyzing && (
                 <>
-                    <AnalysisOrbs />
+                    {!isReduceMotionEnabled ? <AnalysisOrbs /> : null}
                     <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
                         <AnalysisLoadingScreen
                             onCancel={camera.handleCancelAnalysis}
@@ -119,13 +154,23 @@ export default function ScanCameraScreen() {
                 </View>
             </View>
 
-            <View style={styles.topBar}>
-                <TouchableOpacity style={styles.iconButton} onPress={() => camera.setShowInfoSheet(true)}>
+            <View style={[styles.topBar, { paddingTop: Math.max(18, insets.top + 10) }]}>
+                <TouchableOpacity
+                    accessibilityLabel={t('scan.action.info', 'Open scan tips')}
+                    accessibilityRole="button"
+                    style={styles.iconButton}
+                    onPress={() => camera.setShowInfoSheet(true)}
+                >
                     <Info size={24} color="white" />
                 </TouchableOpacity>
 
                 <View style={styles.topCenterControls}>
-                    <TouchableOpacity onPress={camera.toggleFlash} style={styles.iconButton}>
+                    <TouchableOpacity
+                        accessibilityLabel={t('scan.action.flash', 'Change flash mode')}
+                        accessibilityRole="button"
+                        onPress={camera.toggleFlash}
+                        style={styles.iconButton}
+                    >
                         {camera.flash === 'on' ? (
                             <Zap size={24} color="#FBBF24" fill="#FBBF24" />
                         ) : camera.flash === 'auto' ? (
@@ -136,7 +181,12 @@ export default function ScanCameraScreen() {
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity onPress={camera.handleClose} style={styles.iconButton}>
+                <TouchableOpacity
+                    accessibilityLabel={t('scan.action.close', 'Close camera')}
+                    accessibilityRole="button"
+                    onPress={camera.handleClose}
+                    style={styles.iconButton}
+                >
                     <X size={28} color="white" />
                 </TouchableOpacity>
             </View>
@@ -152,34 +202,55 @@ export default function ScanCameraScreen() {
             </View>
 
             <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.8)', 'black']}
+                colors={['transparent', 'rgba(255,252,247,0.9)', 'rgba(251,247,238,0.98)']}
                 style={[
                     styles.bottomBar,
                     {
-                        paddingBottom: Math.max(40, insets.bottom + 20),
+                        paddingBottom: Math.max(28, insets.bottom + 18),
                     },
                 ]}
             >
                 <View style={styles.contextControls}>
-                    <TouchableOpacity onPress={camera.toggleZoom} style={styles.zoomButton}>
-                        <ZoomIn size={20} color="white" />
+                    <TouchableOpacity
+                        accessibilityLabel={t('scan.action.zoom', 'Toggle camera zoom')}
+                        accessibilityRole="button"
+                        onPress={camera.toggleZoom}
+                        style={styles.zoomButton}
+                    >
+                        <ZoomIn size={20} color="#172033" />
                         <Text style={styles.zoomText}>{camera.zoom === 0 ? '1x' : '2x'}</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.shutterRow}>
-                    <TouchableOpacity onPress={camera.handleGallery} style={styles.galleryButton}>
-                        <ImageIcon size={24} color="white" />
+                    <TouchableOpacity
+                        accessibilityLabel={t('scan.action.gallery', 'Choose from photo library')}
+                        accessibilityRole="button"
+                        onPress={camera.handleGallery}
+                        style={styles.galleryButton}
+                    >
+                        <ImageIcon size={24} color="#172033" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={camera.handleCapture} style={styles.shutterButton} activeOpacity={0.8}>
+                    <TouchableOpacity
+                        accessibilityLabel={t('scan.action.capture', 'Capture food photo')}
+                        accessibilityRole="button"
+                        onPress={camera.handleCapture}
+                        style={styles.shutterButton}
+                        activeOpacity={0.8}
+                    >
                         <View
                             style={[styles.shutterInner, camera.mode === 'BARCODE' && styles.shutterInnerBarcode]}
                         />
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={camera.toggleCameraFacing} style={styles.galleryButton}>
-                        <RotateCcw size={24} color="white" />
+                    <TouchableOpacity
+                        accessibilityLabel={t('scan.action.flipCamera', 'Switch camera')}
+                        accessibilityRole="button"
+                        onPress={camera.toggleCameraFacing}
+                        style={styles.galleryButton}
+                    >
+                        <RotateCcw size={24} color="#172033" />
                     </TouchableOpacity>
                 </View>
 
@@ -187,6 +258,15 @@ export default function ScanCameraScreen() {
                     {camera.MODES.map((m) => (
                         <TouchableOpacity
                             key={m.id}
+                            accessibilityLabel={
+                                m.id === 'LABEL'
+                                    ? t('scan.mode.label', 'Label')
+                                    : m.id === 'FOOD'
+                                      ? t('scan.mode.food', 'Food')
+                                      : t('scan.mode.barcode', 'Barcode')
+                            }
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: camera.mode === m.id }}
                             onPress={() => {
                                 camera.setMode(m.id);
                                 Haptics.selectionAsync();
@@ -204,6 +284,6 @@ export default function ScanCameraScreen() {
                     ))}
                 </View>
             </LinearGradient>
-        </SafeAreaView>
+        </View>
     );
 }

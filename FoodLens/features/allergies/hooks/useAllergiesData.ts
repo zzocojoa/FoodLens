@@ -36,7 +36,7 @@ const buildAllergiesSnapshotState = (profile: UserProfile | null): AllergiesSnap
 
     return {
         allergies: profile.safetyProfile.allergies,
-        dietaryRestrictions: profile.safetyProfile.dietaryRestrictions,
+        dietaryRestrictions: [],
         severityMap: profile.safetyProfile.severityMap ?? {},
     };
 };
@@ -106,7 +106,7 @@ export const useAllergiesData = (): AllergiesState => {
             lastLoadedAtRef.current = Date.now();
 
             setAllergies(profile.safetyProfile.allergies);
-            setDietaryRestrictions(profile.safetyProfile.dietaryRestrictions);
+            setDietaryRestrictions([]);
             setSeverityMap(profile.safetyProfile.severityMap ?? {});
         } catch (e) {
             console.error('Failed to load allergies', e);

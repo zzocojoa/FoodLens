@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, BackHandler, LayoutAnimation, Platform, RefreshControl, ScrollView, Text, UIManager, View } from 'react-native';
 import type { Region } from 'react-native-maps';
 import { useRouter, Stack } from 'expo-router';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { useHistoryData } from '@/hooks/useHistoryData';
 import { useHistoryFilter } from '@/hooks/useHistoryFilter';
 import { getHistoryUserId } from '../constants/history.constants';
 import { useHistoryScreen } from '../hooks/useHistoryScreen';
+import { configureHistoryLayoutAnimation } from '../utils/historyLayoutAnimation';
 import { toggleCountryExpanded } from '../utils/historySelection';
 import TopLevelScreenShell from '@/components/navigation/TopLevelScreenShell';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
@@ -19,12 +20,13 @@ import {
     readHistoryStateSnapshot,
     updateUserClientState,
 } from '@/services/user/clientStateService';
-import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
+import HistoryHomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
 import HistoryAtlasPanel from '../components/HistoryAtlasPanel';
 import HistoryCountryChapters from '../components/HistoryCountryChapters';
 import HistoryFilterRail from '../components/HistoryFilterRail';
 import HistoryJournalRail from '../components/HistoryJournalRail';
 import HistorySelectionUtilityBar from '../components/HistorySelectionUtilityBar';
+import HistorySummaryStrip from '../components/HistorySummaryStrip';
 import HistorySurfaceCard from '../components/HistorySurfaceCard';
 import {
     historyDashboardColors,
@@ -56,6 +58,7 @@ export default function HistoryScreen() {
     const [syncedHistoryState, setSyncedHistoryState] = useState(() =>
         readHistoryStateSnapshot(historyUserId)
     );
+    const [isReduceMotionEnabled, setIsReduceMotionEnabled] = useState(false);
     const clientStateRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const mapRegionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingMapRegionRef = useRef<Region | null>(null);
@@ -81,9 +84,33 @@ export default function HistoryScreen() {
         markHomeNavigationTrace('history', 'screen_mount');
     }, []);
 
+    useEffect(() => {
+        let isMounted = true;
+        const subscription = AccessibilityInfo.addEventListener(
+            'reduceMotionChanged',
+            setIsReduceMotionEnabled
+        );
+
+        void AccessibilityInfo.isReduceMotionEnabled()
+            .then((isEnabled) => {
+                if (isMounted && isEnabled) {
+                    setIsReduceMotionEnabled(isEnabled);
+                }
+            })
+            .catch((error: unknown) => {
+                console.warn('history.reduce_motion_read_failed', { error: String(error) });
+            });
+
+        return () => {
+            isMounted = false;
+            subscription.remove();
+        };
+    }, []);
+
     const {
         archiveData,
         countryChapters,
+        journalSummary,
         initialRegion,
         loading,
         refreshing,
@@ -105,6 +132,7 @@ export default function HistoryScreen() {
         deleteMultipleItems,
         initialArchiveMode: syncedHistoryState.archiveMode,
         initialMapRegion: syncedHistoryState.mapRegion,
+        isReduceMotionEnabled,
         onArchiveModeChange: (nextMode) => {
             void updateUserClientState(historyUserId, buildHistoryModePatch(nextMode)).catch(() => undefined);
         },
@@ -152,9 +180,9 @@ export default function HistoryScreen() {
     }, [countryChapters, expandedCountries, matchesFilter]);
 
     const handleToggleCountry = useCallback((countryName: string) => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        configureHistoryLayoutAnimation(isReduceMotionEnabled, LayoutAnimation.Presets.easeInEaseOut);
         setExpandedCountries((prev) => toggleCountryExpanded(prev, countryName));
-    }, [setExpandedCountries]);
+    }, [isReduceMotionEnabled, setExpandedCountries]);
 
     const handleMarkerPress = useCallback((id: string) => {
         ui.handleSwitchMode('list');
@@ -238,7 +266,7 @@ export default function HistoryScreen() {
         >
             <View style={historyDashboardStyles.screenBackground}>
                 <Stack.Screen options={{ headerShown: false }} />
-                <HomeBackgroundAtmosphere />
+                <HistoryHomeBackgroundAtmosphere />
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                     {ui.archiveMode === 'map' ? (
                         <View style={historyDashboardStyles.atlasScreenContent}>
@@ -286,8 +314,10 @@ export default function HistoryScreen() {
                             />
 
                             <View style={{ gap: historyDashboardSpacing.sm }}>
+                                <HistorySummaryStrip summary={journalSummary} />
                                 <HistoryFilterRail
                                     filter={archiveFilter}
+                                    isReduceMotionEnabled={isReduceMotionEnabled}
                                     onChange={setArchiveFilter}
                                 />
                                 {ui.isEditMode ? (

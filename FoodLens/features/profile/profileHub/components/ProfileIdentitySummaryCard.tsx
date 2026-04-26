@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { ChevronDown, Plus } from 'lucide-react-native';
+import { Pencil } from 'lucide-react-native';
 
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
 import { SecureImage } from '@/components/SecureImage';
@@ -53,9 +53,11 @@ export default function ProfileIdentitySummaryCard({
     }, [image]);
     const hasImage = typeof resolvedImage === 'string' && resolvedImage.length > 0;
     const resolvedName = name.trim().length > 0 ? name.trim() : t('profileAtelier.hero.namePlaceholder', 'Enter name');
-    const chevronColor = isDarkTheme ? homeDashboardColors.pearlIvory : homeDashboardColors.ink;
-    const plusButtonBorderColor = isDarkTheme ? homeDashboardColors.ink : homeDashboardColors.paper;
+    const editButtonBorderColor = isDarkTheme ? homeDashboardColors.ink : homeDashboardColors.paper;
     const canUseLongPress = typeof onLongPressPortrait === 'function';
+    const avatarAccessibilityLabel = hasImage
+        ? t('profileAtelier.summary.avatar.current', 'Current profile photo')
+        : t('profileAtelier.summary.avatar.initials', 'Profile initials');
 
     const avatarStage = (
         <View style={[styles.avatarFrame, isDarkTheme ? styles.avatarFrameDark : null]}>
@@ -82,6 +84,7 @@ export default function ProfileIdentitySummaryCard({
             <View style={styles.avatarCluster}>
                 {canUseLongPress ? (
                     <HapticTouchableOpacity
+                        accessibilityLabel={avatarAccessibilityLabel}
                         activeOpacity={1}
                         hapticType="selection"
                         onLongPress={onLongPressPortrait}
@@ -97,15 +100,16 @@ export default function ProfileIdentitySummaryCard({
                 )}
 
                 <HapticTouchableOpacity
-                    accessibilityLabel={t('profileAtelier.summary.action.edit', 'Edit')}
+                    accessibilityLabel={t('profileAtelier.summary.action.editProfile', 'Edit profile')}
                     accessibilityRole="button"
                     activeOpacity={0.9}
                     hapticType="selection"
                     onPress={onPressEdit}
-                    style={[styles.plusButton, { borderColor: plusButtonBorderColor }]}
+                    style={[styles.editButton, { borderColor: editButtonBorderColor }]}
                     testID="profile-edit-action"
                 >
-                    <Plus color={homeDashboardColors.white} size={28} strokeWidth={2.8} />
+                    <Pencil color={homeDashboardColors.white} size={15} strokeWidth={2.8} />
+                    <Text style={styles.editButtonText}>{t('profileAtelier.summary.action.edit', 'Edit')}</Text>
                 </HapticTouchableOpacity>
             </View>
 
@@ -114,7 +118,6 @@ export default function ProfileIdentitySummaryCard({
                     <Text numberOfLines={1} style={[styles.name, isDarkTheme ? styles.nameDark : null]}>
                         {resolvedName}
                     </Text>
-                    <ChevronDown color={chevronColor} size={22} strokeWidth={2.6} />
                     <View style={styles.statusDot} />
                 </View>
             </View>
@@ -180,19 +183,28 @@ const styles = StyleSheet.create({
     emptyAvatarGlyphDark: {
         color: 'rgba(255, 255, 255, 0.88)',
     },
-    plusButton: {
+    editButton: {
         alignItems: 'center',
         backgroundColor: '#1FC8F2',
         borderCurve: 'continuous',
         borderRadius: homeDashboardRadii.pill,
-        borderWidth: 5,
-        bottom: 14,
+        borderWidth: 4,
+        bottom: 10,
         boxShadow: '0 10px 20px rgba(31, 200, 242, 0.18)',
-        height: 36,
+        columnGap: 4,
+        flexDirection: 'row',
+        height: 34,
         justifyContent: 'center',
+        minWidth: 74,
+        paddingHorizontal: 10,
         position: 'absolute',
-        right: 4,
-        width: 36,
+        right: -6,
+    },
+    editButtonText: {
+        color: homeDashboardColors.white,
+        fontSize: 13,
+        fontWeight: '800',
+        lineHeight: 15,
     },
     metaRow: {
         alignItems: 'center',
