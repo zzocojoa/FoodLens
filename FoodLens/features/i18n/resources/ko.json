@@ -336,6 +336,7 @@
   "profile.summary.customTemplate": "커스텀 {count}개",
   "profile.summary.restrictionsTemplate": "제한 {count}개",
   "profile.health.saved": "저장됨",
+  "profile.health.save": "저장",
   "profile.health.unsaved": "변경됨",
   "profile.health.saving": "저장 중",
   "profile.health.totalTemplate": "항목 {count}개",

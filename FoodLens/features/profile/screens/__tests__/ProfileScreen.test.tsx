@@ -86,23 +86,19 @@ jest.mock('../../components/AllergenGrid', () => {
 
 jest.mock('../../components/ProfileHeader', () => {
     const mockReactNative = jest.requireActual('react-native');
-    const MockText = mockReactNative.Text;
-
-    return function MockProfileHeader() {
-        return <MockText>PROFILE_HEADER</MockText>;
-    };
-});
-
-jest.mock('../../components/SaveProfileFooter', () => {
-    const mockReactNative = jest.requireActual('react-native');
     const MockTouchableOpacity = mockReactNative.TouchableOpacity;
     const MockText = mockReactNative.Text;
 
-    return function MockSaveProfileFooter(props: { onSave: () => void }) {
+    return function MockProfileHeader(props: { onSave?: () => void }) {
         return (
-            <MockTouchableOpacity onPress={props.onSave}>
-                <MockText>SAVE_PROFILE</MockText>
-            </MockTouchableOpacity>
+            <>
+                <MockText>PROFILE_HEADER</MockText>
+                {props.onSave ? (
+                    <MockTouchableOpacity onPress={props.onSave}>
+                        <MockText>SAVE_PROFILE</MockText>
+                    </MockTouchableOpacity>
+                ) : null}
+            </>
         );
     };
 });
@@ -147,7 +143,7 @@ describe('ProfileScreen', () => {
         expect(queryByText('Account & Data')).toBeNull();
     });
 
-    it('saves health profile changes from the footer action', () => {
+    it('saves health profile changes from the header action', () => {
         const { getByText } = render(<ProfileScreen />);
 
         fireEvent.press(getByText('SAVE_PROFILE'));

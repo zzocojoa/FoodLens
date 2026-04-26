@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-    Keyboard,
     KeyboardAvoidingView,
     LayoutChangeEvent,
     Platform,
@@ -24,7 +23,6 @@ import {
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
 import RestrictionInput from '../components/RestrictionInput';
-import SaveProfileFooter from '../components/SaveProfileFooter';
 import { COMMON_ALLERGENS } from '../constants/profile.constants';
 import { useProfileScreen } from '../hooks/useProfileScreen';
 import { profileStyles as styles } from '../styles/profileStyles';
@@ -116,12 +114,10 @@ export default function ProfileScreen() {
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
     const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);
-    const [isKeyboardVisible, setIsKeyboardVisible] = React.useState(false);
     const customAllergenSectionYRef = React.useRef<number | null>(null);
 
     const {
         loading,
-        isDirty,
         customAllergenInputValue,
         allergies,
         severityMap,
@@ -176,22 +172,15 @@ export default function ProfileScreen() {
         }
         router.back();
     }, [params.fromProfileSheet, router]);
-    React.useEffect((): (() => void) => {
-        const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-        const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-        const showSubscription = Keyboard.addListener(showEventName, () => setIsKeyboardVisible(true));
-        const hideSubscription = Keyboard.addListener(hideEventName, () => setIsKeyboardVisible(false));
-
-        return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
-        };
-    }, []);
-
     return (
         <SafeAreaView style={styles.safeArea}>
             <HomeBackgroundAtmosphere />
-            <ProfileHeader theme={theme} onBack={handleBack} />
+            <ProfileHeader
+                theme={theme}
+                onBack={handleBack}
+                onSave={saveProfile}
+                saving={loading}
+            />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -202,26 +191,11 @@ export default function ProfileScreen() {
                     ref={scrollViewRef}
                     style={styles.container}
                     contentContainerStyle={{
-                        paddingBottom: insets.bottom + 120,
+                        paddingBottom: insets.bottom + 40,
                     }}
                     keyboardShouldPersistTaps="always"
                     keyboardDismissMode="on-drag"
                 >
-                    <View style={styles.statusRail}>
-                        <Text style={styles.statusRailText}>
-                            {isDirty
-                                ? t('profile.health.unsaved', 'Unsaved changes')
-                                : t('profile.health.saved', 'Saved')}
-                        </Text>
-                        <Text style={styles.statusRailDivider}>/</Text>
-                        <Text style={styles.statusRailText}>
-                            {replaceCountTemplate(
-                                t('profile.health.totalTemplate', '{count} items'),
-                                ledgerItems.length,
-                            )}
-                        </Text>
-                    </View>
-
                     <View style={styles.summaryPanel}>
                         <PearlSurfaceOverlay
                             accentWashColor={homeDashboardColors.pearlMist}
@@ -439,16 +413,6 @@ export default function ProfileScreen() {
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
-
-            {!isKeyboardVisible && (
-                <SaveProfileFooter
-                    theme={theme}
-                    loading={loading}
-                    isDirty={isDirty}
-                    onSave={saveProfile}
-                    t={t}
-                />
-            )}
         </SafeAreaView>
     );
 }

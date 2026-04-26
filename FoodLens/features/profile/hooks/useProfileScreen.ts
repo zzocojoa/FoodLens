@@ -352,8 +352,8 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             }
 
             showTranslatedAlert(t, {
-                titleKey: 'profile.alert.updatedTitle',
-                titleFallback: 'Updated',
+                titleKey: 'profile.health.saved',
+                titleFallback: 'Saved',
                 messageKey: 'profile.alert.updatedMessage',
                 messageFallback: 'Your profile and preferences have been saved.',
             });

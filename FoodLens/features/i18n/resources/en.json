@@ -336,6 +336,7 @@
   "profile.summary.customTemplate": "{count} custom",
   "profile.summary.restrictionsTemplate": "{count} restrictions",
   "profile.health.saved": "Saved",
+  "profile.health.save": "Save",
   "profile.health.unsaved": "Unsaved changes",
   "profile.health.saving": "Saving",
   "profile.health.totalTemplate": "{count} items",
