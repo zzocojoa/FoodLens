@@ -1,6 +1,8 @@
 import React from 'react';
 import {
+    Keyboard,
     KeyboardAvoidingView,
+    LayoutChangeEvent,
     Platform,
     ScrollView,
     Text,
@@ -44,6 +46,8 @@ export default function ProfileScreen() {
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
     const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);
+    const [isKeyboardVisible, setIsKeyboardVisible] = React.useState(false);
+    const customAllergenSectionYRef = React.useRef<number | null>(null);
 
     const {
         loading,
@@ -72,10 +76,26 @@ export default function ProfileScreen() {
         () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
         [allergies],
     );
-    const handleShowCustomAllergenSearch = React.useCallback(() => {
+    const scrollToCustomAllergenSearch = React.useCallback((): void => {
+        const customAllergenSectionY = customAllergenSectionYRef.current;
+
+        if (customAllergenSectionY === null) {
+            return;
+        }
+
+        scrollViewRef.current?.scrollTo({
+            y: Math.max(customAllergenSectionY - 24, 0),
+            animated: true,
+        });
+    }, [scrollViewRef]);
+    const handleShowCustomAllergenSearch = React.useCallback((): void => {
         setShowCustomAllergenSearch(true);
+        requestAnimationFrame(scrollToCustomAllergenSearch);
+    }, [scrollToCustomAllergenSearch]);
+    const handleCustomAllergenSectionLayout = React.useCallback((event: LayoutChangeEvent): void => {
+        customAllergenSectionYRef.current = event.nativeEvent.layout.y;
     }, []);
-    const handleBack = React.useCallback(() => {
+    const handleBack = React.useCallback((): void => {
         if (params.fromProfileSheet === '1') {
             router.replace({
                 pathname: '/(tabs)',
@@ -85,14 +105,25 @@ export default function ProfileScreen() {
         }
         router.back();
     }, [params.fromProfileSheet, router]);
+    React.useEffect((): (() => void) => {
+        const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const showSubscription = Keyboard.addListener(showEventName, () => setIsKeyboardVisible(true));
+        const hideSubscription = Keyboard.addListener(hideEventName, () => setIsKeyboardVisible(false));
+
+        return () => {
+            showSubscription.remove();
+            hideSubscription.remove();
+        };
+    }, []);
 
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
             <ProfileHeader theme={theme} onBack={handleBack} />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                enabled={Platform.OS === 'ios'}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                enabled={true}
                 style={{ flex: 1 }}
             >
                 <ScrollView
@@ -215,7 +246,10 @@ export default function ProfileScreen() {
                         t={t}
                     />
 
-                    <View style={{ marginTop: 24, paddingBottom: 8 }}>
+                    <View
+                        onLayout={handleCustomAllergenSectionLayout}
+                        style={{ marginTop: 24, paddingBottom: 8 }}
+                    >
                         {!showCustomAllergenSearch ? (
                             <TouchableOpacity
                                 style={styles.searchToggleButton}
@@ -402,12 +436,14 @@ export default function ProfileScreen() {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <SaveProfileFooter
-                theme={theme}
-                loading={loading}
-                onSave={saveProfile}
-                t={t}
-            />
+            {!isKeyboardVisible && (
+                <SaveProfileFooter
+                    theme={theme}
+                    loading={loading}
+                    onSave={saveProfile}
+                    t={t}
+                />
+            )}
         </SafeAreaView>
     );
 }
