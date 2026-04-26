@@ -38,4 +38,23 @@ describe('getAllergyString', () => {
 
     await expect(getAllergyString()).resolves.toBe('Peach, my custom restriction');
   });
+
+  it('hides canonical and custom dietary restriction storage tokens when severity map contains them', async () => {
+    mockGetUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: ['peanut'],
+        dietaryRestrictions: ['vegan', 'custom:no nightshades'],
+        severityMap: {
+          peanut: 'severe',
+          vegan: 'mild',
+          'custom:no nightshades': 'moderate',
+        },
+      },
+    });
+
+    const allergyString = await getAllergyString();
+
+    expect(allergyString).toBe('Peanut, Vegan, no nightshades');
+    expect(allergyString).not.toContain('custom:');
+  });
 });

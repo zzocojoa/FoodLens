@@ -1,6 +1,7 @@
 import { MutableRefObject, useCallback } from 'react';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import { addUniqueItem, removeStringItem, toggleStringItem } from '../utils/profileSelection';
+import { AllergySeverity } from '../types/profile.types';
 import {
   IngredientSuggestion,
   buildSuggestions,
@@ -10,23 +11,29 @@ import {
 
 type UseProfileRestrictionHandlersParams = {
   inputValue: string;
+  allergies: string[];
   otherRestrictions: string[];
   setInputValue: (value: string) => void;
   setSuggestions: (value: IngredientSuggestion[]) => void;
   setAllergies: React.Dispatch<React.SetStateAction<string[]>>;
   setOtherRestrictions: React.Dispatch<React.SetStateAction<string[]>>;
+  setSeverityMap: React.Dispatch<React.SetStateAction<Record<string, AllergySeverity>>>;
   shouldScrollRef: MutableRefObject<boolean>;
+  hasLocalEditsRef: MutableRefObject<boolean>;
   t: (key: string, fallback: string) => string;
 };
 
 export const useProfileRestrictionHandlers = ({
   inputValue,
+  allergies,
   otherRestrictions,
   setInputValue,
   setSuggestions,
   setAllergies,
   setOtherRestrictions,
+  setSeverityMap,
   shouldScrollRef,
+  hasLocalEditsRef,
   t,
 }: UseProfileRestrictionHandlersParams) => {
   const toggleAllergen = useCallback(
@@ -46,7 +53,9 @@ export const useProfileRestrictionHandlers = ({
       setOtherRestrictions((prev) => {
         const next = addUniqueItem(prev, item);
         if (next.length !== prev.length) {
+          hasLocalEditsRef.current = true;
           shouldScrollRef.current = true;
+          setSeverityMap((map) => ({ ...map, [item]: map[item] ?? 'moderate' }));
         }
         return next;
       });
@@ -54,7 +63,7 @@ export const useProfileRestrictionHandlers = ({
       setInputValue('');
       setSuggestions([]);
     },
-    [setInputValue, setOtherRestrictions, setSuggestions, shouldScrollRef]
+    [hasLocalEditsRef, setInputValue, setOtherRestrictions, setSeverityMap, setSuggestions, shouldScrollRef]
   );
 
   const addOtherRestriction = useCallback(() => {
@@ -67,9 +76,22 @@ export const useProfileRestrictionHandlers = ({
 
   const removeRestriction = useCallback(
     (item: string) => {
-      setOtherRestrictions((prev) => removeStringItem(prev, item));
+      setOtherRestrictions((prev) => {
+        const next = removeStringItem(prev, item);
+        if (next.length !== prev.length) {
+          hasLocalEditsRef.current = true;
+          if (!allergies.includes(item)) {
+            setSeverityMap((map) => {
+              const nextMap = { ...map };
+              delete nextMap[item];
+              return nextMap;
+            });
+          }
+        }
+        return next;
+      });
     },
-    [setOtherRestrictions]
+    [allergies, hasLocalEditsRef, setOtherRestrictions, setSeverityMap]
   );
 
   const handleInputChange = useCallback(

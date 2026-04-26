@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AllergySeverity, UseProfileScreenResult } from '../types/profile.types';
-import { loadTestUserProfile, saveTestUserProfile } from '../utils/profilePersistence';
+import {
+    PROFILE_AUTH_REQUIRED_ERROR,
+    loadTestUserProfile,
+    saveTestUserProfile,
+} from '../utils/profilePersistence';
 import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import {
     IngredientSuggestion,
@@ -30,6 +34,28 @@ const shouldRefreshProfileScreen = (reason: UserProfileUpdateReason): boolean =>
     return reason !== 'client_state_write';
 };
 
+const buildSeverityMapWithRestrictions = (
+    severityMap: Record<string, AllergySeverity>,
+    restrictions: string[],
+): Record<string, AllergySeverity> => {
+    return restrictions.reduce<Record<string, AllergySeverity>>((next, restriction) => {
+        const item = restriction.trim();
+        if (!item || next[item]) {
+            return next;
+        }
+        return { ...next, [item]: 'moderate' };
+    }, { ...severityMap });
+};
+
+const buildUniqueSeverityItems = (allergies: string[], restrictions: string[]): string[] => {
+    return [...allergies, ...restrictions].reduce<string[]>((items, item) => {
+        if (items.includes(item)) {
+            return items;
+        }
+        return [...items, item];
+    }, []);
+};
+
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
     const [loading, setLoading] = useState(false);
@@ -51,6 +77,11 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
         [],
     );
+    const isProfileAuthRequiredError = useCallback(
+        (error: unknown): boolean =>
+            error instanceof Error && error.message === PROFILE_AUTH_REQUIRED_ERROR,
+        [],
+    );
 
     const loadProfile = useCallback(async (options: { silent?: boolean } = {}) => {
         if (loadInFlightRef.current) {
@@ -69,7 +100,12 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                     return;
                 }
                 setAllergies(user.safetyProfile.allergies);
-                setSeverityMap(user.safetyProfile.severityMap ?? {});
+                setSeverityMap(
+                    buildSeverityMapWithRestrictions(
+                        user.safetyProfile.severityMap ?? {},
+                        user.safetyProfile.dietaryRestrictions,
+                    ),
+                );
                 setOtherRestrictions(user.safetyProfile.dietaryRestrictions);
             }
         } catch {
@@ -170,12 +206,15 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         selectSuggestion,
     } = useProfileRestrictionHandlers({
         inputValue,
+        allergies,
         otherRestrictions,
         setInputValue,
         setSuggestions,
         setAllergies,
         setOtherRestrictions,
+        setSeverityMap,
         shouldScrollRef,
+        hasLocalEditsRef,
         t,
     });
 
@@ -186,18 +225,20 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
         setAllergies((prev) => {
             if (prev.includes(id)) {
-                setSeverityMap((map) => {
-                    const next = { ...map };
-                    delete next[id];
-                    return next;
-                });
+                if (!otherRestrictions.includes(id)) {
+                    setSeverityMap((map) => {
+                        const next = { ...map };
+                        delete next[id];
+                        return next;
+                    });
+                }
                 return prev.filter((allergenId) => allergenId !== id);
             }
 
-            setSeverityMap((map) => ({ ...map, [id]: 'moderate' }));
+            setSeverityMap((map) => ({ ...map, [id]: map[id] ?? 'moderate' }));
             return [...prev, id];
         });
-    }, []);
+    }, [otherRestrictions]);
 
     const cycleSeverity = useCallback((id: string) => {
         hasLocalEditsRef.current = true;
@@ -237,7 +278,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
             if (hasDuplicate) {
                 return prev;
             }
-            setSeverityMap((map) => ({ ...map, [item]: 'moderate' }));
+            setSeverityMap((map) => ({ ...map, [item]: map[item] ?? 'moderate' }));
             return [...prev, item];
         });
 
@@ -321,6 +362,16 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                     return;
                 }
 
+                if (isProfileAuthRequiredError(saveError)) {
+                    showTranslatedAlert(t, {
+                        titleKey: 'profile.alert.authRequiredTitle',
+                        titleFallback: 'Login required',
+                        messageKey: 'profile.alert.authRequiredMessage',
+                        messageFallback: 'Please log in again before saving your health profile.',
+                    });
+                    return;
+                }
+
                 showTranslatedAlert(t, {
                     titleKey: 'profile.alert.errorTitle',
                     titleFallback: 'Error',
@@ -346,7 +397,15 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         } finally {
             setLoading(false);
         }
-    }, [allergies, otherRestrictions, promptConflictResolution, severityMap, t, isSyncNotConfirmedError]);
+    }, [
+        allergies,
+        otherRestrictions,
+        promptConflictResolution,
+        severityMap,
+        t,
+        isSyncNotConfirmedError,
+        isProfileAuthRequiredError,
+    ]);
 
     return {
         loading,
@@ -357,6 +416,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         otherRestrictions,
         suggestions,
         customAllergenSuggestions,
+        severityItems: buildUniqueSeverityItems(allergies, otherRestrictions),
         scrollViewRef,
         shouldScrollRef,
         loadProfile,

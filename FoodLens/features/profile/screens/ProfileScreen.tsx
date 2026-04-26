@@ -25,6 +25,11 @@ import { resolveRestrictionDisplayName } from '../utils/profileSuggestions';
 
 const COMMON_ALLERGEN_ID_SET = new Set(COMMON_ALLERGENS.map((item) => item.id));
 
+const resolveSeverityItemName = (
+    id: string,
+    t: (key: string, fallback: string) => string,
+): string => t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t));
+
 export default function ProfileScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ fromProfileSheet?: string }>();
@@ -41,6 +46,7 @@ export default function ProfileScreen() {
         allergies,
         severityMap,
         otherRestrictions,
+        severityItems,
         suggestions,
         customAllergenSuggestions,
         scrollViewRef,
@@ -60,7 +66,6 @@ export default function ProfileScreen() {
         () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
         [allergies],
     );
-
     const handleBack = React.useCallback(() => {
         if (params.fromProfileSheet === '1') {
             router.replace({
@@ -172,7 +177,7 @@ export default function ProfileScreen() {
                                         )}
                                     >
                                         <Text style={[styles.tagText, { color: theme.textPrimary }]}>
-                                            {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
+                                            {resolveSeverityItemName(id, t)}
                                         </Text>
                                         <CircleX size={16} color={theme.textSecondary} />
                                     </TouchableOpacity>
@@ -213,7 +218,7 @@ export default function ProfileScreen() {
                         </View>
                     )}
 
-                    {allergies.length > 0 && (
+                    {severityItems.length > 0 && (
                         <View style={{ marginTop: 8, marginBottom: 8 }}>
                             <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
                                 {t('onboarding.allergies.severityTitle', 'Set Severity Level')}
@@ -221,12 +226,13 @@ export default function ProfileScreen() {
                             <Text style={[styles.severityHint, { color: theme.textSecondary }]}>
                                 {t('onboarding.allergies.severityHint', 'Tap to cycle: Mild → Moderate → Severe')}
                             </Text>
-                            {allergies.map((id) => {
+                            {severityItems.map((id, index) => {
                                 const severity = severityMap[id] || 'moderate';
                                 const level = SEVERITY_LEVELS.find((entry) => entry.key === severity)!;
+                                const itemName = resolveSeverityItemName(id, t);
                                 return (
                                     <TouchableOpacity
-                                        key={id}
+                                        key={`${id}-${index}`}
                                         style={[
                                             styles.severityRow,
                                             { backgroundColor: theme.surface, borderColor: `${level.color}40` },
@@ -234,14 +240,14 @@ export default function ProfileScreen() {
                                         onPress={() => cycleSeverity(id)}
                                         activeOpacity={0.7}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`${t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
+                                        accessibilityLabel={`${itemName} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
                                         accessibilityHint={t(
                                             'onboarding.accessibility.severityCycleHint',
                                             'Tap to cycle severity level',
                                         )}
                                     >
                                         <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                                            {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
+                                            {itemName}
                                         </Text>
                                         <View
                                             style={[

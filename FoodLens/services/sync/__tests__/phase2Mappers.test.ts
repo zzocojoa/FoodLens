@@ -82,6 +82,33 @@ describe('phase2Mappers', () => {
     expect(merged.safetyProfile.severityMap?.['peanut']).toBe('severe');
   });
 
+  it('preserves dietary restriction keys in remote severity maps without moving restrictions', () => {
+    const local = buildDefaultProfile('usr_dietary_severity_remote');
+    local.safetyProfile.allergies = ['peanut'];
+    local.safetyProfile.dietaryRestrictions = ['vegan'];
+
+    const merged = mergeRemoteUserSnapshot('usr_dietary_severity_remote', local, {
+      allergies: {
+        user_id: 'usr_dietary_severity_remote',
+        allergies: ['peanut'],
+        dietary_restrictions: ['vegan', 'custom:no nightshades'],
+        severity_map: {
+          peanut: 'severe',
+          vegan: 'mild',
+          'custom:no nightshades': 'moderate',
+        },
+      },
+    });
+
+    expect(merged.safetyProfile.allergies).toEqual(['peanut']);
+    expect(merged.safetyProfile.dietaryRestrictions).toEqual(['vegan', 'custom:no nightshades']);
+    expect(merged.safetyProfile.severityMap).toEqual({
+      peanut: 'severe',
+      vegan: 'mild',
+      'custom:no nightshades': 'moderate',
+    });
+  });
+
   it('keeps local profile image when same asset id is returned with rotated render url', () => {
     const local = buildDefaultProfile('usr_local');
     local.profileImageAssetId = 'asset_local';
@@ -750,6 +777,27 @@ describe('phase2Mappers', () => {
     expect(payload.allergies.severity_map).toEqual({
       peach: 'severe',
       'custom:mugwort': 'moderate',
+    });
+  });
+
+  it('writes dietary restriction severity keys while keeping restrictions in dietary_restrictions', () => {
+    const profile = buildDefaultProfile('usr_dietary_severity_write');
+    profile.safetyProfile.allergies = ['peanut'];
+    profile.safetyProfile.dietaryRestrictions = ['vegan', 'custom:no nightshades'];
+    profile.safetyProfile.severityMap = {
+      peanut: 'severe',
+      vegan: 'mild',
+      'custom:no nightshades': 'moderate',
+    };
+
+    const payload = buildProfileWritePayload(profile);
+
+    expect(payload.allergies.allergies).toEqual(['peanut']);
+    expect(payload.allergies.dietary_restrictions).toEqual(['vegan', 'custom:no nightshades']);
+    expect(payload.allergies.severity_map).toEqual({
+      peanut: 'severe',
+      vegan: 'mild',
+      'custom:no nightshades': 'moderate',
     });
   });
 

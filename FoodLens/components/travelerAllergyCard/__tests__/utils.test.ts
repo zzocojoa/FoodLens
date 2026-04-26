@@ -10,11 +10,13 @@ describe('travelerAllergyCard utils', () => {
       'I have food allergies. Please check ingredients carefully.',
       false,
       'US',
-      ['peanut', 'gluten_free', 'custom:no raw onion']
+      ['peanut', 'gluten_free', 'vegan', 'custom:no raw onion']
     );
 
     expect(message).toBe(
-      'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanut, Gluten Free, no raw onion'
+      'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanut, Gluten Free, Vegan, no raw onion'
     );
+    expect(message).not.toContain('custom:');
+    expect(message).not.toContain('gluten_free');
   });
 });

@@ -1,7 +1,7 @@
 import { AllergenOption, AllergySeverity, Gender } from '../types/profile.types';
-import { getCurrentUserId } from '@/services/auth/currentUser';
+import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 
-export const getProfileUserId = (): string => getCurrentUserId();
+export const getProfileUserId = (): string => getCurrentUserIdSnapshot();
 export const TEST_EMAIL = 'test@example.com';
 
 const ALLERGEN_IMAGES = {

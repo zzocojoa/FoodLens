@@ -14,17 +14,9 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 jest.mock('../../utils/profilePersistence', () => ({
+  PROFILE_AUTH_REQUIRED_ERROR: 'PROFILE_AUTH_REQUIRED',
   loadTestUserProfile: (...args: unknown[]) => mockLoadTestUserProfile(...args),
   saveTestUserProfile: (...args: unknown[]) => mockSaveTestUserProfile(...args),
-}));
-
-jest.mock('../useProfileRestrictionHandlers', () => ({
-  useProfileRestrictionHandlers: () => ({
-    addOtherRestriction: jest.fn(),
-    removeRestriction: jest.fn(),
-    handleInputChange: jest.fn(),
-    selectSuggestion: jest.fn(),
-  }),
 }));
 
 jest.mock('../../utils/profileSuggestions', () => ({
@@ -92,6 +84,20 @@ describe('useProfileScreen saveProfile sync handling', () => {
     expect(messageKeys).toContain('sync.pending.message');
     expect(messageKeys).not.toContain('profile.alert.saveFailed');
     expect(mockResolveManualMergeConflictsForUser).not.toHaveBeenCalled();
+  });
+
+  it('shows login required alert when profile save lacks an authenticated user id', async () => {
+    mockSaveTestUserProfile.mockRejectedValue(new Error('PROFILE_AUTH_REQUIRED'));
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await result.current.saveProfile();
+    });
+
+    const messageKeys = mockShowTranslatedAlert.mock.calls.map(([, payload]) => payload?.messageKey);
+    expect(messageKeys).toContain('profile.alert.authRequiredMessage');
+    expect(messageKeys).not.toContain('profile.alert.saveFailed');
   });
 
   it('shows deferred alert when user selects Later on conflict prompt', async () => {
@@ -180,6 +186,163 @@ describe('useProfileScreen saveProfile sync handling', () => {
     });
 
     expect(result.current.allergies).toContain('milk');
+  });
+
+  it('saves selected canonical and custom other restrictions', async () => {
+    mockSaveTestUserProfile.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.selectSuggestion('peach');
+      result.current.handleInputChange('no nightshades');
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addOtherRestriction();
+    });
+
+    await act(async () => {
+      await result.current.saveProfile();
+    });
+
+    expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
+      [],
+      ['peach', 'custom:no nightshades'],
+      {
+        peach: 'moderate',
+        'custom:no nightshades': 'moderate',
+      },
+    );
+  });
+
+  it('keeps local other restriction deletion when silent refresh runs before save', async () => {
+    mockLoadTestUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: [],
+        severityMap: {},
+        dietaryRestrictions: ['peach', 'custom:no nightshades'],
+      },
+    });
+    mockSaveTestUserProfile.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.removeRestriction('peach');
+    });
+
+    await act(async () => {
+      await result.current.loadProfile({ silent: true });
+    });
+
+    expect(result.current.otherRestrictions).toEqual(['custom:no nightshades']);
+
+    await act(async () => {
+      await result.current.saveProfile();
+    });
+
+    expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
+      [],
+      ['custom:no nightshades'],
+      {
+        'custom:no nightshades': 'moderate',
+      },
+    );
+  });
+
+  it('loads existing other restrictions into the severity map without moving storage fields', async () => {
+    mockLoadTestUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: ['egg'],
+        severityMap: { egg: 'severe', peach: 'mild' },
+        dietaryRestrictions: ['peach', 'custom:no nightshades'],
+      },
+    });
+    mockSaveTestUserProfile.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.allergies).toEqual(['egg']);
+    expect(result.current.otherRestrictions).toEqual(['peach', 'custom:no nightshades']);
+    expect(result.current.severityMap).toEqual({
+      egg: 'severe',
+      peach: 'mild',
+      'custom:no nightshades': 'moderate',
+    });
+
+    await act(async () => {
+      await result.current.saveProfile();
+    });
+
+    expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
+      ['egg'],
+      ['peach', 'custom:no nightshades'],
+      {
+        egg: 'severe',
+        peach: 'mild',
+        'custom:no nightshades': 'moderate',
+      },
+    );
+  });
+
+  it('deduplicates shared allergy and other restriction severity items', async () => {
+    mockLoadTestUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: ['peach'],
+        severityMap: { peach: 'severe' },
+        dietaryRestrictions: ['peach', 'custom:no nightshades'],
+      },
+    });
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.severityItems).toEqual(['peach', 'custom:no nightshades']);
+  });
+
+  it('keeps shared severity when an allergy is removed but an other restriction remains', async () => {
+    mockLoadTestUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: ['peach'],
+        severityMap: { peach: 'severe' },
+        dietaryRestrictions: ['peach'],
+      },
+    });
+
+    const { result } = renderHook(() => useProfileScreen());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.toggleAllergen('peach');
+    });
+
+    expect(result.current.allergies).toEqual([]);
+    expect(result.current.otherRestrictions).toEqual(['peach']);
+    expect(result.current.severityMap['peach']).toBe('severe');
+    expect(result.current.severityItems).toEqual(['peach']);
   });
 
   it('allows removing custom allergen by toggling it again', async () => {
