@@ -5,6 +5,7 @@ import { IngredientSuggestion } from '../../utils/profileSuggestions';
 import { useProfileRestrictionHandlers } from '../useProfileRestrictionHandlers';
 
 const translate = (_key: string, fallback: string): string => fallback;
+const markLocalEdit = (): void => {};
 
 describe('useProfileRestrictionHandlers', () => {
   it('stores canonical suggestion values when a suggestion is selected', () => {
@@ -25,6 +26,7 @@ describe('useProfileRestrictionHandlers', () => {
         setAllergies,
         setOtherRestrictions,
         setSeverityMap,
+        markLocalEdit,
         shouldScrollRef,
         hasLocalEditsRef,
         t: translate,
@@ -62,6 +64,7 @@ describe('useProfileRestrictionHandlers', () => {
         setAllergies,
         setOtherRestrictions,
         setSeverityMap,
+        markLocalEdit,
         shouldScrollRef,
         hasLocalEditsRef,
         t: translate,
@@ -103,6 +106,7 @@ describe('useProfileRestrictionHandlers', () => {
         setAllergies,
         setOtherRestrictions,
         setSeverityMap,
+        markLocalEdit,
         shouldScrollRef,
         hasLocalEditsRef,
         t: translate,
@@ -141,6 +145,7 @@ describe('useProfileRestrictionHandlers', () => {
         setAllergies,
         setOtherRestrictions,
         setSeverityMap,
+        markLocalEdit,
         shouldScrollRef,
         hasLocalEditsRef,
         t: translate,

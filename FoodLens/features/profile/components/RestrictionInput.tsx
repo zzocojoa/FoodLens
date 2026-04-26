@@ -4,6 +4,7 @@ import { CirclePlus, Plus, Search } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
 import { IngredientSuggestion } from '../utils/profileSuggestions';
+import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
 
 type RestrictionInputProps = {
     theme: ProfileTheme;
@@ -26,20 +27,25 @@ export default function RestrictionInput({
 }: RestrictionInputProps) {
     return (
         <View style={{ zIndex: 10 }}>
-            <View style={[styles.inputWrapper, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}>
-                <Search size={20} color={theme.textSecondary} style={{ marginRight: 10 }} />
+            <View style={[styles.inputWrapper, { shadowColor: theme.shadow }]}>
+                <Search size={20} color={homeDashboardColors.inkSoft} style={{ marginRight: 10 }} />
                 <TextInput
-                    style={[styles.input, { color: theme.textPrimary }]}
+                    style={[styles.input, { color: homeDashboardColors.ink }]}
                     placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={homeDashboardColors.inkSoft}
                     value={inputValue}
                     onChangeText={onChangeText}
                     onSubmitEditing={onSubmit}
                     returnKeyType="done"
+                    accessibilityLabel={t('profile.input.placeholder', 'Type (e.g. Peach, Vegan)...')}
                 />
                 {inputValue.length > 0 && (
-                    <TouchableOpacity onPress={onSubmit}>
-                        <CirclePlus size={28} color={theme.primary} />
+                    <TouchableOpacity
+                        onPress={onSubmit}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('profile.health.addTypedItem', 'Add typed item')}
+                    >
+                        <CirclePlus size={28} color={homeDashboardColors.ink} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -49,8 +55,8 @@ export default function RestrictionInput({
                     style={[
                         styles.suggestionsDropdown,
                         {
-                            borderColor: theme.border,
-                            backgroundColor: theme.surface,
+                            borderColor: homeDashboardColors.line,
+                            backgroundColor: homeDashboardColors.surfaceStrong,
                             shadowColor: theme.shadow,
                         },
                     ]}
@@ -58,11 +64,13 @@ export default function RestrictionInput({
                     {suggestions.map((item, index) => (
                         <TouchableOpacity
                             key={`${item.value}-${index}`}
-                            style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
+                            style={[styles.suggestionItem, { borderBottomColor: homeDashboardColors.line }]}
                             onPress={() => onSelectSuggestion(item.value)}
+                            accessibilityRole="button"
+                            accessibilityLabel={item.label}
                         >
-                            <Plus size={16} color={theme.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>{item.label}</Text>
+                            <Plus size={16} color={homeDashboardColors.ink} style={{ marginRight: 8 }} />
+                            <Text style={[styles.suggestionText, { color: homeDashboardColors.ink }]}>{item.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>

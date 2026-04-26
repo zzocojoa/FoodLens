@@ -22,6 +22,7 @@ export type AllergenOption = {
 
 export type ProfileFormState = {
     loading: boolean;
+    isDirty: boolean;
     inputValue: string;
     customAllergenInputValue: string;
     allergies: string[];
