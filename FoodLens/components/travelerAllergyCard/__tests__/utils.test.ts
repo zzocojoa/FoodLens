@@ -24,7 +24,7 @@ describe('travelerAllergyCard utils', () => {
     const message = buildTravelerMessage(
       '저는 식품 알레르기가 있습니다. 이 음식에 알레르기 유발 성분이 없는지 확인 부탁드립니다.',
       false,
-      'KR',
+      ' kr ',
       ['peanut', 'Venison', 'Pignoli']
     );
 

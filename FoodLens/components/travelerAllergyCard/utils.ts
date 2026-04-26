@@ -23,8 +23,15 @@ const INGREDIENT_TRANSLATION_LOCALE_BY_COUNTRY_CODE: Readonly<Record<string, Res
   GB: 'en-US',
   AU: 'en-US',
   CA: 'en-US',
+  JP: 'ja-JP',
+  CN: 'zh-Hans',
+  TW: 'zh-Hans',
+  TH: 'th-TH',
+  VN: 'vi-VN',
   DEFAULT: 'en-US',
 };
+
+const normalizeTargetCountryCode = (value: string): string => value.trim().toUpperCase() || 'DEFAULT';
 
 const normalizeIngredientMatchValue = (value: string): string => value.trim().toLowerCase();
 
@@ -53,7 +60,7 @@ const translateAllergenFromIngredientResource = (
   defaultLabel: string,
   targetCode: string
 ): string | null => {
-  const locale = INGREDIENT_TRANSLATION_LOCALE_BY_COUNTRY_CODE[targetCode || 'DEFAULT'];
+  const locale = INGREDIENT_TRANSLATION_LOCALE_BY_COUNTRY_CODE[normalizeTargetCountryCode(targetCode)];
   if (!locale) return null;
 
   const ingredient = findIngredientByAllergenValue(allergen, defaultLabel);
@@ -67,14 +74,15 @@ const translateAllergenFromIngredientResource = (
 };
 
 export const translateAllergen = (allergen: string, targetCode: string) => {
+  const normalizedTargetCode = normalizeTargetCountryCode(targetCode);
   const defaultLabel = getAllergenDefaultDisplayLabel(allergen);
   const lower = defaultLabel.trim().toLowerCase();
   const titleCase = lower.charAt(0).toUpperCase() + lower.slice(1);
   const dict = ALLERGEN_TERMS[defaultLabel] || ALLERGEN_TERMS[titleCase];
-  const staticTranslation = dict ? dict[targetCode] : undefined;
+  const staticTranslation = dict ? dict[normalizedTargetCode] : undefined;
   if (staticTranslation) return staticTranslation;
 
-  return translateAllergenFromIngredientResource(allergen, defaultLabel, targetCode) ?? defaultLabel;
+  return translateAllergenFromIngredientResource(allergen, defaultLabel, normalizedTargetCode) ?? defaultLabel;
 };
 
 export const buildDisplayData = (
