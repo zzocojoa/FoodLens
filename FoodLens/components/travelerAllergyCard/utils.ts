@@ -1,6 +1,13 @@
 import { ALLERGEN_TERMS, ALLERGY_TRANSLATIONS } from '@/services/staticTranslations';
 import { TravelerLanguageMode, mapAiLanguageToTravelerCode } from '@/services/travelerCardLanguage';
 import { getRestrictionDefaultLabel } from '@/features/profile/utils/profileSuggestions';
+import {
+  SEARCHABLE_INGREDIENTS,
+  getIngredientI18nKey,
+  type SearchableIngredient,
+} from '@/data/ingredients';
+import { TRANSLATIONS } from '@/features/i18n/constants';
+import type { ResolvedLocale } from '@/features/i18n/types';
 import { AiTranslation } from './types';
 
 export const isNullAiTranslation = (aiTranslation: AiTranslation, isAiLoaded: boolean) =>
@@ -10,12 +17,64 @@ const getAllergenDefaultDisplayLabel = (allergen: string): string => {
   return getRestrictionDefaultLabel(allergen);
 };
 
+const INGREDIENT_TRANSLATION_LOCALE_BY_COUNTRY_CODE: Readonly<Record<string, ResolvedLocale>> = {
+  KR: 'ko-KR',
+  US: 'en-US',
+  GB: 'en-US',
+  AU: 'en-US',
+  CA: 'en-US',
+  DEFAULT: 'en-US',
+};
+
+const normalizeIngredientMatchValue = (value: string): string => value.trim().toLowerCase();
+
+const findIngredientByAllergenValue = (
+  allergen: string,
+  defaultLabel: string
+): SearchableIngredient | null => {
+  const candidates = [
+    normalizeIngredientMatchValue(allergen),
+    normalizeIngredientMatchValue(defaultLabel),
+  ].filter((value) => value.length > 0);
+
+  return SEARCHABLE_INGREDIENTS.find((ingredient) => {
+    const ingredientValues = [
+      ingredient.key,
+      ingredient.defaultLabel,
+      ...ingredient.aliases,
+    ].map(normalizeIngredientMatchValue);
+
+    return candidates.some((candidate) => ingredientValues.includes(candidate));
+  }) ?? null;
+};
+
+const translateAllergenFromIngredientResource = (
+  allergen: string,
+  defaultLabel: string,
+  targetCode: string
+): string | null => {
+  const locale = INGREDIENT_TRANSLATION_LOCALE_BY_COUNTRY_CODE[targetCode || 'DEFAULT'];
+  if (!locale) return null;
+
+  const ingredient = findIngredientByAllergenValue(allergen, defaultLabel);
+  if (!ingredient) return null;
+
+  const dictionary = TRANSLATIONS[locale];
+  const translated = dictionary[getIngredientI18nKey(ingredient.key)];
+  if (typeof translated !== 'string' || translated.length === 0) return null;
+
+  return translated;
+};
+
 export const translateAllergen = (allergen: string, targetCode: string) => {
   const defaultLabel = getAllergenDefaultDisplayLabel(allergen);
   const lower = defaultLabel.trim().toLowerCase();
   const titleCase = lower.charAt(0).toUpperCase() + lower.slice(1);
   const dict = ALLERGEN_TERMS[defaultLabel] || ALLERGEN_TERMS[titleCase];
-  return dict ? dict[targetCode] || defaultLabel : defaultLabel;
+  const staticTranslation = dict ? dict[targetCode] : undefined;
+  if (staticTranslation) return staticTranslation;
+
+  return translateAllergenFromIngredientResource(allergen, defaultLabel, targetCode) ?? defaultLabel;
 };
 
 export const buildDisplayData = (

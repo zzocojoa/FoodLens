@@ -11,6 +11,7 @@ const DEFAULT_TARGET_PATHS = [
   'features/home/components',
   'features/home/utils',
   'features/home/hooks',
+  'features/allergies',
   'features/history/screens',
   'features/profile/screens',
   'features/tripStats/screens',

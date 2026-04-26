@@ -19,4 +19,19 @@ describe('travelerAllergyCard utils', () => {
     expect(message).not.toContain('custom:');
     expect(message).not.toContain('gluten_free');
   });
+
+  it('uses ingredient i18n resources for traveler card allergen labels missing from the static term map', () => {
+    const message = buildTravelerMessage(
+      '저는 식품 알레르기가 있습니다. 이 음식에 알레르기 유발 성분이 없는지 확인 부탁드립니다.',
+      false,
+      'KR',
+      ['peanut', 'Venison', 'Pignoli']
+    );
+
+    expect(message).toBe(
+      '저는 식품 알레르기가 있습니다. 이 음식에 알레르기 유발 성분이 없는지 확인 부탁드립니다.\n\n⚠️ My Allergies:\n땅콩, 사슴고기, 잣'
+    );
+    expect(message).not.toContain('Venison');
+    expect(message).not.toContain('Pignoli');
+  });
 });
