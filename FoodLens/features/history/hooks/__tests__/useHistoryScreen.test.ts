@@ -40,6 +40,7 @@ describe('useHistoryScreen', () => {
           deleteMultipleItems: async () => undefined,
           initialArchiveMode,
           initialMapRegion,
+          isReduceMotionEnabled: false,
           onArchiveModeChange: jest.fn(),
         }),
       {
@@ -69,6 +70,7 @@ describe('useHistoryScreen', () => {
         deleteMultipleItems: async () => undefined,
         initialArchiveMode: 'list',
         initialMapRegion: null,
+        isReduceMotionEnabled: false,
         onArchiveModeChange,
       })
     );
@@ -88,6 +90,7 @@ describe('useHistoryScreen', () => {
         deleteMultipleItems: async () => undefined,
         initialArchiveMode: 'list',
         initialMapRegion: null,
+        isReduceMotionEnabled: false,
         onArchiveModeChange,
       })
     );
@@ -114,6 +117,7 @@ describe('useHistoryScreen', () => {
         deleteMultipleItems: async () => undefined,
         initialArchiveMode: 'list',
         initialMapRegion: null,
+        isReduceMotionEnabled: false,
         onArchiveModeChange,
       })
     );

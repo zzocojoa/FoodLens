@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CircleX } from 'lucide-react-native';
+import { CircleX, Pencil, Plus } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { PearlSurfaceOverlay } from '@/features/home/components/PearlSurfaceOverlay';
+import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
 import RestrictionInput from '../components/RestrictionInput';
@@ -29,6 +31,10 @@ const resolveSeverityItemName = (
     id: string,
     t: (key: string, fallback: string) => string,
 ): string => t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t));
+
+const replaceCountTemplate = (template: string, count: number): string => {
+    return template.replace('{count}', String(count));
+};
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -66,6 +72,9 @@ export default function ProfileScreen() {
         () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
         [allergies],
     );
+    const handleShowCustomAllergenSearch = React.useCallback(() => {
+        setShowCustomAllergenSearch(true);
+    }, []);
     const handleBack = React.useCallback(() => {
         if (params.fromProfileSheet === '1') {
             router.replace({
@@ -95,6 +104,98 @@ export default function ProfileScreen() {
                     keyboardShouldPersistTaps="always"
                     keyboardDismissMode="on-drag"
                 >
+                    <View style={styles.summaryPanel}>
+                        <PearlSurfaceOverlay
+                            accentWashColor={homeDashboardColors.pearlMist}
+                            baseBottomColor={homeDashboardColors.paperStrong}
+                            baseTopColor={homeDashboardColors.pearlIvory}
+                            coolWashColor={homeDashboardColors.pearlSage}
+                            warmWashColor={homeDashboardColors.pearlPeach}
+                        />
+                        <View style={styles.summaryPanelContent}>
+                            <View style={styles.summaryPanelHeader}>
+                                <Text style={styles.summaryEyebrow}>
+                                    {t('profile.summary.eyebrow', 'Health profile')}
+                                </Text>
+                                <Text style={styles.summaryTitle}>
+                                    {t('profile.summary.title', 'Review what FoodLens should protect')}
+                                </Text>
+                                <Text style={styles.summaryDescription}>
+                                    {t(
+                                        'profile.summary.description',
+                                        'Keep allergies, custom allergens, and dietary restrictions current before scanning.',
+                                    )}
+                                </Text>
+                            </View>
+
+                            <View style={styles.summaryMetricRow}>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.summary.allergiesTemplate', '{count} allergies'),
+                                            allergies.length,
+                                        )}
+                                    </Text>
+                                </View>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.summary.customTemplate', '{count} custom'),
+                                            customAllergies.length,
+                                        )}
+                                    </Text>
+                                </View>
+                                <View style={styles.summaryMetricPill}>
+                                    <Text style={styles.summaryMetricText}>
+                                        {replaceCountTemplate(
+                                            t('profile.summary.restrictionsTemplate', '{count} restrictions'),
+                                            otherRestrictions.length,
+                                        )}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.editActionRow}>
+                                <TouchableOpacity
+                                    style={styles.editActionButton}
+                                    onPress={handleShowCustomAllergenSearch}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t(
+                                        'profile.accessibility.editCustomAllergens',
+                                        'Edit custom allergens',
+                                    )}
+                                    accessibilityHint={t(
+                                        'profile.accessibility.editCustomAllergensHint',
+                                        'Shows the custom allergen search field',
+                                    )}
+                                >
+                                    <Plus size={17} color={homeDashboardColors.paper} />
+                                    <Text style={styles.editActionText}>
+                                        {t('profile.action.editCustomAllergens', 'Custom allergen')}
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.editActionButton, styles.editActionButtonSecondary]}
+                                    onPress={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t(
+                                        'profile.accessibility.editRestrictions',
+                                        'Edit dietary restrictions',
+                                    )}
+                                    accessibilityHint={t(
+                                        'profile.accessibility.editRestrictionsHint',
+                                        'Moves to the dietary restrictions field',
+                                    )}
+                                >
+                                    <Pencil size={17} color={homeDashboardColors.ink} />
+                                    <Text style={[styles.editActionText, styles.editActionTextSecondary]}>
+                                        {t('profile.action.editRestrictions', 'Restrictions')}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+
                     <View style={styles.heroSection}>
                         <Text style={[styles.heroTitle, { color: theme.textPrimary }]}>
                             {t('profile.hero.title', 'What should we avoid?')}
@@ -118,7 +219,7 @@ export default function ProfileScreen() {
                         {!showCustomAllergenSearch ? (
                             <TouchableOpacity
                                 style={styles.searchToggleButton}
-                                onPress={() => setShowCustomAllergenSearch(true)}
+                                onPress={handleShowCustomAllergenSearch}
                                 accessibilityRole="button"
                                 accessibilityLabel={t('onboarding.allergies.notFound', 'Not finding yours?')}
                                 accessibilityHint={t(
@@ -246,19 +347,52 @@ export default function ProfileScreen() {
                                             'Tap to cycle severity level',
                                         )}
                                     >
-                                        <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                                            {itemName}
-                                        </Text>
-                                        <View
-                                            style={[
-                                                styles.severityBadge,
-                                                { backgroundColor: `${level.color}20`, borderColor: level.color },
-                                            ]}
-                                        >
-                                            <Text style={{ fontSize: 14 }}>{level.emoji}</Text>
-                                            <Text style={[styles.severityBadgeText, { color: level.color }]}>
-                                                {t(`onboarding.severity.${level.key}`, level.label)}
+                                        <View style={styles.severityRowHeader}>
+                                            <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
+                                                {itemName}
                                             </Text>
+                                            <View
+                                                style={[
+                                                    styles.severityBadge,
+                                                    { backgroundColor: `${level.color}20`, borderColor: level.color },
+                                                ]}
+                                            >
+                                                <Text style={{ fontSize: 14 }}>{level.emoji}</Text>
+                                                <Text style={[styles.severityBadgeText, { color: level.color }]}>
+                                                    {t(`onboarding.severity.${level.key}`, level.label)}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.severitySegmentRow}>
+                                            {SEVERITY_LEVELS.map((entry) => {
+                                                const isActive = entry.key === severity;
+
+                                                return (
+                                                    <View
+                                                        key={`${id}-${entry.key}`}
+                                                        style={[
+                                                            styles.severitySegment,
+                                                            {
+                                                                backgroundColor: isActive
+                                                                    ? `${entry.color}20`
+                                                                    : theme.background,
+                                                                borderColor: isActive ? entry.color : theme.border,
+                                                            },
+                                                        ]}
+                                                        accessibilityElementsHidden={true}
+                                                        importantForAccessibility="no-hide-descendants"
+                                                    >
+                                                        <Text
+                                                            style={[
+                                                                styles.severitySegmentText,
+                                                                { color: isActive ? entry.color : theme.textSecondary },
+                                                            ]}
+                                                        >
+                                                            {t(`onboarding.severity.${entry.key}`, entry.label)}
+                                                        </Text>
+                                                    </View>
+                                                );
+                                            })}
                                         </View>
                                     </TouchableOpacity>
                                 );

@@ -14,7 +14,7 @@ import TopLevelScreenShell, {
     getTopLevelScreenBottomPadding,
 } from '../../../components/navigation/TopLevelScreenShell';
 import { ALLERGEN_TERMS } from '../../../services/staticTranslations';
-import HomeBackgroundAtmosphere from '../../home/components/HomeBackgroundAtmosphere';
+import { HomeBackgroundAtmosphere } from '../../home/components/HomeBackgroundAtmosphere';
 import AllergiesConciergeRail from '../components/AllergiesConciergeRail';
 import {
     allergiesDashboardColors,
@@ -24,16 +24,18 @@ import {
     allergiesDashboardStyles,
 } from '../components/allergiesDashboardStyles';
 import AllergiesEmptyHero from '../components/AllergiesEmptyHero';
-import AllergiesPassportHero, {
+import {
+    AllergiesPassportHero,
     type AllergiesPassportCardCopy,
     type AllergiesPassportHeroState,
     type AllergiesPassportSummary,
 } from '../components/AllergiesPassportHero';
-import AllergiesRiskLedger, {
+import {
+    AllergiesRiskLedger,
     type AllergiesRiskLedgerSection,
 } from '../components/AllergiesRiskLedger';
 import AllergiesTravelerCardModal from '../components/AllergiesTravelerCardModal';
-import AllergiesTravelerPassportCard from '../components/AllergiesTravelerPassportCard';
+import { AllergiesTravelerPassportCard } from '../components/AllergiesTravelerPassportCard';
 import { ALLERGIES_COPY } from '../constants/allergies.constants';
 import { useAllergiesData } from '../hooks/useAllergiesData';
 import { translateAllergenToKorean } from '../utils/translateAllergen';
@@ -551,6 +553,7 @@ const AllergiesScreenContent = ({
                                 summary={summary}
                                 cardCopy={heroCardCopy}
                                 onOpenTravelerCard={handleOpenTravelerCard}
+                                onEditProfile={handleEditProfile}
                             />
                         )}
 

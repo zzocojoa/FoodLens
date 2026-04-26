@@ -1,8 +1,17 @@
 import { StyleSheet, Platform } from 'react-native';
 
+import {
+    homeDashboardColors,
+    homeDashboardRadii,
+    homeDashboardShadows,
+    homeDashboardSpacing,
+    homeDashboardTypography,
+} from '../../home/components/homeDashboardTokens';
+
 export const profileStyles = StyleSheet.create({
     safeArea: {
         flex: 1,
+        backgroundColor: homeDashboardColors.paper,
     },
     navBar: {
         flexDirection: 'row',
@@ -22,9 +31,104 @@ export const profileStyles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 20,
     },
+    summaryPanel: {
+        borderRadius: homeDashboardRadii.xl,
+        borderCurve: 'continuous',
+        borderWidth: 1,
+        borderColor: homeDashboardColors.line,
+        backgroundColor: homeDashboardColors.surfaceStrong,
+        marginTop: 18,
+        marginBottom: 24,
+        overflow: 'hidden',
+        padding: homeDashboardSpacing.lg,
+        position: 'relative',
+        boxShadow: homeDashboardShadows.card,
+    },
+    summaryPanelContent: {
+        gap: homeDashboardSpacing.md,
+        zIndex: 1,
+    },
+    summaryPanelHeader: {
+        gap: homeDashboardSpacing.xs,
+    },
+    summaryEyebrow: {
+        color: homeDashboardColors.inkSoft,
+        fontSize: homeDashboardTypography.caption,
+        fontWeight: '800',
+        letterSpacing: 0.7,
+        lineHeight: 15,
+        textTransform: 'uppercase',
+    },
+    summaryTitle: {
+        color: homeDashboardColors.ink,
+        fontSize: 25,
+        fontWeight: '900',
+        letterSpacing: -0.5,
+        lineHeight: 30,
+    },
+    summaryDescription: {
+        color: homeDashboardColors.inkSoft,
+        fontSize: homeDashboardTypography.body,
+        fontWeight: '500',
+        lineHeight: 21,
+    },
+    summaryMetricRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: homeDashboardSpacing.xs,
+    },
+    summaryMetricPill: {
+        backgroundColor: homeDashboardColors.surfaceMuted,
+        borderColor: homeDashboardColors.line,
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        minHeight: 32,
+        paddingHorizontal: homeDashboardSpacing.sm,
+        justifyContent: 'center',
+    },
+    summaryMetricText: {
+        color: homeDashboardColors.inkSoft,
+        fontSize: homeDashboardTypography.caption,
+        fontWeight: '800',
+        letterSpacing: 0.4,
+        lineHeight: 14,
+        textTransform: 'uppercase',
+    },
+    editActionRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: homeDashboardSpacing.sm,
+    },
+    editActionButton: {
+        alignItems: 'center',
+        backgroundColor: homeDashboardColors.ink,
+        borderColor: homeDashboardColors.ink,
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: homeDashboardSpacing.xs,
+        justifyContent: 'center',
+        minHeight: 44,
+        paddingHorizontal: homeDashboardSpacing.md,
+    },
+    editActionButtonSecondary: {
+        backgroundColor: homeDashboardColors.surfaceMuted,
+        borderColor: homeDashboardColors.lineStrong,
+    },
+    editActionText: {
+        color: homeDashboardColors.paper,
+        fontSize: homeDashboardTypography.bodyStrong,
+        fontWeight: '800',
+        lineHeight: 18,
+    },
+    editActionTextSecondary: {
+        color: homeDashboardColors.ink,
+    },
     heroSection: {
-        marginTop: 20,
-        marginBottom: 30,
+        marginTop: 8,
+        marginBottom: 24,
     },
     heroTitle: {
         fontSize: 28,
@@ -42,9 +146,12 @@ export const profileStyles = StyleSheet.create({
         marginTop: 10,
     },
     searchToggleButton: {
-        alignSelf: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 4,
+        alignSelf: 'flex-start',
+        borderColor: homeDashboardColors.lineStrong,
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
     },
     searchToggleText: {
         fontSize: 15,
@@ -54,18 +161,41 @@ export const profileStyles = StyleSheet.create({
         fontSize: 13,
         marginBottom: 12,
     },
-    severityRow: {
+    severitySegmentRow: {
         flexDirection: 'row',
+        gap: 6,
+        marginTop: 12,
+    },
+    severitySegment: {
         alignItems: 'center',
-        justifyContent: 'space-between',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        flex: 1,
+        minHeight: 36,
+        justifyContent: 'center',
+        paddingHorizontal: 8,
+    },
+    severitySegmentText: {
+        fontSize: 12,
+        fontWeight: '800',
+        lineHeight: 14,
+    },
+    severityRow: {
+        alignItems: 'stretch',
         padding: 14,
-        borderRadius: 14,
+        borderRadius: 20,
         marginBottom: 8,
         borderWidth: 1,
     },
     severityAllergenName: {
         fontSize: 16,
         fontWeight: '600',
+    },
+    severityRowHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 12,
+        justifyContent: 'space-between',
     },
     severityBadge: {
         flexDirection: 'row',

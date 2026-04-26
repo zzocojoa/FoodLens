@@ -23,6 +23,8 @@ type ProfileSafetyPassportSectionProps = {
 };
 
 type SafetyActionRowProps = {
+    accessibilityLabel: string;
+    accessibilityValueText?: string;
     icon: React.JSX.Element;
     label: string;
     onPress: () => void;
@@ -33,6 +35,8 @@ type SafetyActionRowProps = {
 };
 
 const SafetyActionRow = ({
+    accessibilityLabel,
+    accessibilityValueText,
     icon,
     label,
     onPress,
@@ -45,7 +49,11 @@ const SafetyActionRow = ({
 
     return (
         <HapticPressable
+            accessibilityLabel={accessibilityLabel}
             accessibilityRole="button"
+            accessibilityValue={
+                typeof accessibilityValueText === 'string' ? { text: accessibilityValueText } : undefined
+            }
             hapticType={hapticType}
             onPress={onPress}
             style={[
@@ -88,10 +96,15 @@ export default function ProfileSafetyPassportSection({
                 <Text style={[styles.sectionTitle, isDarkTheme ? styles.sectionTitleDark : null]}>
                     {t('profileAtelier.safety.title', 'Safety Passport')}
                 </Text>
+                <Text style={[styles.sectionSummary, isDarkTheme ? styles.sectionSummaryDark : null]}>
+                    {t('profileAtelier.safety.summary', 'Scan rules and travel card settings')}
+                </Text>
             </View>
 
             <View style={[styles.group, isDarkTheme ? styles.groupDark : null]}>
                 <SafetyActionRow
+                    accessibilityLabel={t('profileAtelier.safety.healthProfile', 'Health Profile')}
+                    accessibilityValueText={t('profileAtelier.safety.healthProfileValue', 'Allergies and restrictions')}
                     colorScheme={colorScheme}
                     hapticType="light"
                     icon={<Shield color={homeDashboardColors.accentGreen} size={16} />}
@@ -100,6 +113,8 @@ export default function ProfileSafetyPassportSection({
                     withDivider={false}
                 />
                 <SafetyActionRow
+                    accessibilityLabel={t('profileAtelier.safety.cardLanguage', 'Card Language')}
+                    accessibilityValueText={languageLabel}
                     colorScheme={colorScheme}
                     hapticType="selection"
                     icon={<Globe color={homeDashboardColors.accentGreen} size={16} />}
@@ -123,12 +138,23 @@ const styles = StyleSheet.create({
     sectionTitle: {
         color: homeDashboardColors.inkSoft,
         fontSize: homeDashboardTypography.caption,
-        fontWeight: '700',
-        lineHeight: 16,
-        letterSpacing: 0.2,
+        fontWeight: '800',
+        lineHeight: 14,
+        letterSpacing: 0.7,
+        textTransform: 'uppercase',
     },
     sectionTitleDark: {
         color: 'rgba(255, 255, 255, 0.70)',
+    },
+    sectionSummary: {
+        color: homeDashboardColors.ink,
+        fontSize: homeDashboardTypography.bodyStrong,
+        fontWeight: '700',
+        lineHeight: 20,
+        marginTop: 3,
+    },
+    sectionSummaryDark: {
+        color: homeDashboardColors.pearlIvory,
     },
     group: {
         backgroundColor: homeDashboardColors.surfaceStrong,

@@ -125,10 +125,11 @@ const styles = StyleSheet.create({
     },
     portraitButton: {
         alignItems: 'center',
+        gap: 10,
         justifyContent: 'center',
-        height: 116,
+        minHeight: 154,
         position: 'relative',
-        width: 116,
+        width: 150,
     },
     avatarFrame: {
         alignItems: 'center',
@@ -181,22 +182,41 @@ const styles = StyleSheet.create({
     },
     cameraButton: {
         alignItems: 'center',
-        height: 42,
+        backgroundColor: homeDashboardColors.accentBlue,
+        borderColor: homeDashboardColors.paper,
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 3,
+        bottom: 38,
+        height: 38,
         justifyContent: 'center',
         position: 'absolute',
-        left: 37,
-        top: 37,
-        width: 42,
+        right: 14,
+        width: 38,
     },
     cameraButtonDark: {
+        backgroundColor: '#16B9D4',
+        borderColor: Colors.dark.background,
         opacity: 1,
     },
     avatarActionButton: {
-        paddingHorizontal: 10,
-        paddingVertical: 2,
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 252, 247, 0.88)',
+        borderColor: homeDashboardColors.line,
+        borderCurve: 'continuous',
+        borderRadius: homeDashboardRadii.pill,
+        borderWidth: 1,
+        minHeight: 36,
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+    },
+    avatarActionButtonDark: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.10)',
     },
     avatarActionText: {
-        color: '#16B9D4',
+        color: homeDashboardColors.accentBlue,
         fontSize: 15,
         fontWeight: '700',
         letterSpacing: -0.3,
@@ -572,32 +592,38 @@ export default function ProfileEditScreen(): React.JSX.Element {
                                     <View style={[styles.cameraButton, isDarkTheme ? styles.cameraButtonDark : null]}>
                                         <Camera
                                             color="rgba(255, 249, 241, 0.98)"
-                                            size={30}
-                                            strokeWidth={3.1}
+                                            size={18}
+                                            strokeWidth={2.7}
                                         />
                                     </View>
-                                </HapticTouchableOpacity>
 
-                                <HapticTouchableOpacity
-                                    accessibilityLabel={t('profileAtelier.edit.avatarAction', 'Edit photo or avatar')}
-                                    accessibilityRole="button"
-                                    activeOpacity={0.9}
-                                    hapticType="selection"
-                                    onPress={handleOpenImageActionSheet}
-                                    style={styles.avatarActionButton}
-                                >
-                                    <Text
+                                    <View
+                                        pointerEvents="none"
                                         style={[
-                                            styles.avatarActionText,
-                                            isDarkTheme ? styles.avatarActionTextDark : null,
+                                            styles.avatarActionButton,
+                                            isDarkTheme ? styles.avatarActionButtonDark : null,
                                         ]}
                                     >
-                                        {t('profileAtelier.edit.avatarAction', 'Edit photo or avatar')}
-                                    </Text>
+                                        <Text
+                                            style={[
+                                                styles.avatarActionText,
+                                                isDarkTheme ? styles.avatarActionTextDark : null,
+                                            ]}
+                                        >
+                                            {t('profileAtelier.edit.avatarAction', 'Edit photo or avatar')}
+                                        </Text>
+                                    </View>
                                 </HapticTouchableOpacity>
                             </View>
 
-                            <Pressable onPress={handleFocusNameInput} style={styles.nameCardButton} testID="profile-edit-name-row">
+                            <Pressable
+                                accessibilityLabel={t('profileAtelier.hero.name', 'Name')}
+                                accessibilityRole="button"
+                                accessibilityValue={{ text: state.name }}
+                                onPress={handleFocusNameInput}
+                                style={styles.nameCardButton}
+                                testID="profile-edit-name-row"
+                            >
                                 <View style={[styles.nameCard, isDarkTheme ? styles.nameCardDark : null]}>
                                     <Text style={[styles.nameLabel, isDarkTheme ? styles.nameLabelDark : null]}>
                                         {t('profileAtelier.hero.name', 'Name')}
@@ -643,6 +669,7 @@ export default function ProfileEditScreen(): React.JSX.Element {
 
                     <Modal
                         animationType="fade"
+                        hardwareAccelerated
                         onRequestClose={handleCloseImageActionSheet}
                         statusBarTranslucent
                         transparent
@@ -705,6 +732,7 @@ export default function ProfileEditScreen(): React.JSX.Element {
 
                                         <View style={styles.actionSheetList}>
                                             <HapticTouchableOpacity
+                                                accessibilityLabel={t('profileAtelier.hero.action.camera', 'Camera')}
                                                 accessibilityRole="button"
                                                 activeOpacity={0.9}
                                                 hapticType="selection"
@@ -725,6 +753,7 @@ export default function ProfileEditScreen(): React.JSX.Element {
                                             </HapticTouchableOpacity>
 
                                             <HapticTouchableOpacity
+                                                accessibilityLabel={t('profileAtelier.hero.action.library', 'Photos')}
                                                 accessibilityRole="button"
                                                 activeOpacity={0.9}
                                                 hapticType="selection"

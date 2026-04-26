@@ -429,7 +429,7 @@ export default function AccountDataScreen() {
                                 marginTop: 0,
                                 marginBottom: 10,
                                 borderColor: theme.border,
-                                backgroundColor: theme.surface,
+                                backgroundColor: 'transparent',
                                 flexDirection: 'row',
                                 justifyContent: 'center',
                                 alignItems: 'center',
@@ -441,6 +441,7 @@ export default function AccountDataScreen() {
                         disabled={deletionLoadingTarget !== null}
                         accessibilityRole="button"
                         accessibilityLabel={t('profile.deletion.data.button', 'Delete My Data')}
+                        accessibilityState={{ disabled: deletionLoadingTarget !== null }}
                     >
                         {deletionLoadingTarget === 'data' ? (
                             <ActivityIndicator color={theme.textPrimary} size="small" />
@@ -455,8 +456,8 @@ export default function AccountDataScreen() {
                             styles.logoutButton,
                             {
                                 marginTop: 0,
-                                borderColor: colorScheme === 'dark' ? '#7F1D1D' : '#FECACA',
-                                backgroundColor: colorScheme === 'dark' ? 'rgba(127, 29, 29, 0.22)' : '#FEF2F2',
+                                borderColor: colorScheme === 'dark' ? 'rgba(248, 113, 113, 0.38)' : '#FECACA',
+                                backgroundColor: 'transparent',
                                 flexDirection: 'row',
                                 justifyContent: 'center',
                                 alignItems: 'center',
@@ -468,6 +469,7 @@ export default function AccountDataScreen() {
                         disabled={deletionLoadingTarget !== null}
                         accessibilityRole="button"
                         accessibilityLabel={t('profile.deletion.account.button', 'Delete Account')}
+                        accessibilityState={{ disabled: deletionLoadingTarget !== null }}
                     >
                         {deletionLoadingTarget === 'account' ? (
                             <ActivityIndicator color={colorScheme === 'dark' ? '#FCA5A5' : '#B91C1C'} size="small" />

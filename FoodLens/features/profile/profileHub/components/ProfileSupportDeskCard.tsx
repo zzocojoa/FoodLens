@@ -35,6 +35,7 @@ export default function ProfileSupportDeskCard({
 
             <View style={[styles.group, isDarkTheme ? styles.groupDark : null]}>
                 <HapticPressable
+                    accessibilityLabel={t('profileAtelier.support.policies', 'Support & Policies')}
                     accessibilityRole="button"
                     hapticType="light"
                     onPress={onPress}

@@ -80,6 +80,9 @@ export default function HistoryCountryChapters({
         return (
             <HistorySurfaceCard key={chapter.id} accentWashColor={colors.pearlPeach}>
               <Pressable
+                accessibilityLabel={chapter.country}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: isExpanded }}
                 onPress={() => onToggleCountry(chapter.id)}
                 style={({ pressed }) => [styles.chapterHead, pressed ? styles.pressed : null]}
               >

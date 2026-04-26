@@ -5,6 +5,7 @@ import { ENABLE_MAP_CLUSTERING } from '../constants';
 import { ClusterFeature, ClusterOrPoint, MapMarker } from '../types';
 import { historyMapStyles as styles } from '../styles';
 import { isClusterFeature, mapTraceLog, mapTraceWarn } from '../utils/historyMapUtils';
+import { historyDashboardColors } from '@/features/history/components/historyDashboardTokens';
 
 const THUMB_FALLBACK_FONT_SIZE = 16;
 const FOOD_MARKER_ANCHOR = { x: 0.5, y: 1 };
@@ -45,7 +46,7 @@ export default function HistoryMapMarkers({
                     anchor={FOOD_MARKER_ANCHOR}
                     tracksViewChanges={SHOULD_TRACK_VIEW_CHANGES}
                     onPress={() => onMarkerPress(marker.countryId)}
-                    pinColor="#ef4444"
+                    pinColor={historyDashboardColors.accentRed}
                 />
             );
         }
@@ -99,7 +100,7 @@ export default function HistoryMapMarkers({
                                 anchor={CLUSTER_MARKER_ANCHOR}
                                 tracksViewChanges={SHOULD_TRACK_VIEW_CHANGES}
                                 onPress={() => onClusterPress(item)}
-                                pinColor="#1d4ed8"
+                                pinColor={historyDashboardColors.accentBlue}
                                 title={`Cluster ${item.properties.point_count}`}
                             />
                         );

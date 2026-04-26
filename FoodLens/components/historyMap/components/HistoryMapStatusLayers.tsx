@@ -3,9 +3,10 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { historyMapStyles as styles } from '../styles';
 import { useI18n } from '@/features/i18n';
+import { historyDashboardColors } from '@/features/history/components/historyDashboardTokens';
 
-const GLOBE_COLOR = '#94A3B8';
-const EMPTY_HINT_COLOR = '#475569';
+const GLOBE_COLOR = historyDashboardColors.inkSoft;
+const EMPTY_HINT_COLOR = historyDashboardColors.inkSoft;
 
 const localStyles = StyleSheet.create({
     emptyStateContainer: {
@@ -17,7 +18,7 @@ const localStyles = StyleSheet.create({
     emptyStateCard: {
         padding: 20,
         borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.85)',
+        backgroundColor: historyDashboardColors.surfaceStrong,
         alignItems: 'center',
     },
     emptyStateIcon: {

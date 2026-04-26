@@ -46,6 +46,8 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('lucide-react-native', () => ({
     CircleX: () => null,
+    Pencil: () => null,
+    Plus: () => null,
     Search: () => null,
     X: () => null,
 }));

@@ -3,6 +3,7 @@ import type { Region } from 'react-native-maps';
 import { LayoutAnimation } from 'react-native';
 import { ArchiveMode } from '../types/history.types';
 import { confirmBulkDelete } from '../utils/historyDialogs';
+import { configureHistoryLayoutAnimation } from '../utils/historyLayoutAnimation';
 import { toggleInSet } from '../utils/historySelection';
 import { useI18n } from '@/features/i18n';
 
@@ -10,6 +11,7 @@ type UseHistoryScreenOptions = {
     deleteMultipleItems: (ids: Set<string>) => Promise<void>;
     initialArchiveMode: ArchiveMode;
     initialMapRegion: Region | null;
+    isReduceMotionEnabled: boolean;
     onArchiveModeChange: (mode: ArchiveMode) => void;
 };
 
@@ -17,6 +19,7 @@ export const useHistoryScreen = ({
     deleteMultipleItems,
     initialArchiveMode,
     initialMapRegion,
+    isReduceMotionEnabled,
     onArchiveModeChange,
 }: UseHistoryScreenOptions) => {
     const { t } = useI18n();
@@ -58,10 +61,10 @@ export const useHistoryScreen = ({
 
     const handleSwitchMode = useCallback((mode: ArchiveMode) => {
         if (mode === 'map') setIsEditMode(false);
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+        configureHistoryLayoutAnimation(isReduceMotionEnabled, LayoutAnimation.Presets.spring);
         setArchiveMode(mode);
         onArchiveModeChange(mode);
-    }, [onArchiveModeChange]);
+    }, [isReduceMotionEnabled, onArchiveModeChange]);
 
     const toggleEditMode = useCallback(() => {
         setIsEditMode((prev) => !prev);

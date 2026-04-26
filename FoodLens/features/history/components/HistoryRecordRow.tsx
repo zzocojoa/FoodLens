@@ -75,6 +75,9 @@ export default function HistoryRecordRow({
         }
     >
       <HapticTouchableOpacity
+        accessibilityLabel={`${entry.foodName}, ${combinedMetaLabel}`}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isEditMode ? isSelected : undefined }}
         hapticType="light"
         onPress={() => {
             if (isEditMode) {
@@ -89,7 +92,17 @@ export default function HistoryRecordRow({
           <View style={[styles.toneRail, { backgroundColor: tone.borderColor }]} />
 
           {isEditMode ? (
-            <Pressable onPress={() => onToggleSelect(entry.id)} style={styles.selectionButton}>
+            <Pressable
+              accessibilityLabel={
+                isSelected
+                  ? t('history.accessibility.unselectRecord', '기록 선택 해제')
+                  : t('history.accessibility.selectRecord', '기록 선택')
+              }
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isSelected }}
+              onPress={() => onToggleSelect(entry.id)}
+              style={styles.selectionButton}
+            >
               {isSelected ? (
                 <CheckCircle2 color={colors.accentBlue} fill={colors.white} size={20} />
               ) : (
