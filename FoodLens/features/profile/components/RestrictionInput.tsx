@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { CirclePlus, Plus, Search } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
@@ -26,30 +26,7 @@ export default function RestrictionInput({
     onSelectSuggestion,
 }: RestrictionInputProps) {
     return (
-        <View style={{ zIndex: 10 }}>
-            <View style={[styles.inputWrapper, { shadowColor: theme.shadow }]}>
-                <Search size={20} color={homeDashboardColors.inkSoft} style={{ marginRight: 10 }} />
-                <TextInput
-                    style={[styles.input, { color: homeDashboardColors.ink }]}
-                    placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
-                    placeholderTextColor={homeDashboardColors.inkSoft}
-                    value={inputValue}
-                    onChangeText={onChangeText}
-                    onSubmitEditing={onSubmit}
-                    returnKeyType="done"
-                    accessibilityLabel={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
-                />
-                {inputValue.length > 0 && (
-                    <TouchableOpacity
-                        onPress={onSubmit}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('profile.health.addTypedItem', 'Add typed item')}
-                    >
-                        <CirclePlus size={28} color={homeDashboardColors.ink} />
-                    </TouchableOpacity>
-                )}
-            </View>
-
+        <View style={styles.inputSection}>
             {suggestions.length > 0 && (
                 <View
                     style={[
@@ -62,19 +39,49 @@ export default function RestrictionInput({
                     ]}
                 >
                     {suggestions.map((item, index) => (
-                        <TouchableOpacity
+                        <Pressable
                             key={`${item.value}-${index}`}
                             style={[styles.suggestionItem, { borderBottomColor: homeDashboardColors.line }]}
                             onPress={() => onSelectSuggestion(item.value)}
                             accessibilityRole="button"
                             accessibilityLabel={item.label}
                         >
-                            <Plus size={16} color={homeDashboardColors.ink} style={{ marginRight: 8 }} />
-                            <Text style={[styles.suggestionText, { color: homeDashboardColors.ink }]}>{item.label}</Text>
-                        </TouchableOpacity>
+                            <View style={styles.suggestionIconSlot}>
+                                <Plus size={17} color={homeDashboardColors.ink} />
+                            </View>
+                            <Text numberOfLines={2} style={styles.suggestionText}>{item.label}</Text>
+                        </Pressable>
                     ))}
                 </View>
             )}
+
+            <View style={[styles.inputWrapper, { shadowColor: theme.shadow }]}>
+                <View style={styles.inputIconSlot}>
+                    <Search size={20} color={homeDashboardColors.inkSoft} />
+                </View>
+                <TextInput
+                    style={styles.input}
+                    placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
+                    placeholderTextColor={homeDashboardColors.inkSoft}
+                    value={inputValue}
+                    onChangeText={onChangeText}
+                    onSubmitEditing={onSubmit}
+                    returnKeyType="done"
+                    accessibilityLabel={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
+                />
+                <View style={styles.inputActionSlot}>
+                    {inputValue.length > 0 ? (
+                        <Pressable
+                            style={styles.inputActionButton}
+                            onPress={onSubmit}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('profile.health.addTypedItem', 'Add typed item')}
+                        >
+                            <CirclePlus size={24} color={homeDashboardColors.ink} />
+                        </Pressable>
+                    ) : null}
+                </View>
+            </View>
         </View>
     );
 }
