@@ -86,11 +86,25 @@ jest.mock('../../../home/components/HomeBackgroundAtmosphere', () => {
     };
 });
 
-jest.mock('@/features/i18n', () => ({
-    useI18n: () => ({
-        t: (_key: string, fallback?: string) => fallback ?? _key,
-    }),
-}));
+jest.mock('@/features/i18n', () => {
+    const en = jest.requireActual('../../../i18n/resources/en.json') as Record<string, string>;
+
+    const requiresResource = (key: string): boolean =>
+        key.startsWith('allergies.') || key.startsWith('onboarding.severity.') || key.startsWith('travelerCard.');
+
+    return {
+        useI18n: () => ({
+            t: (key: string, fallback?: string) => {
+                const value = en[key];
+                if (typeof value === 'string') return value;
+                if (requiresResource(key)) {
+                    throw new Error(`Missing test i18n resource: ${key}`);
+                }
+                return fallback ?? key;
+            },
+        }),
+    };
+});
 
 describe('AllergiesScreen', () => {
     const mockedUseAllergiesData = useAllergiesData as jest.MockedFunction<typeof useAllergiesData>;
@@ -113,7 +127,7 @@ describe('AllergiesScreen', () => {
         const { getByText, queryByText } = render(<AllergiesScreen />);
 
         expect(getByText('My Allergies')).toBeTruthy();
-        expect(getByText('Preparing your passport card')).toBeTruthy();
+        expect(getByText('Preparing your traveler card')).toBeTruthy();
         expect(queryByText('Add allergy info')).toBeNull();
     });
 
@@ -158,8 +172,10 @@ describe('AllergiesScreen', () => {
         expect(getByText('Your passport card is ready')).toBeTruthy();
         expect(getByText('Severe 1')).toBeTruthy();
         expect(getByText('Restrictions 1')).toBeTruthy();
-        expect(getByText('View larger')).toBeTruthy();
-        expect(getByText('Edit profile')).toBeTruthy();
+        expect(queryByText('View larger')).toBeNull();
+        expect(queryByText('Edit profile')).toBeNull();
+        expect(getByText('I have food allergies. Please check ingredients carefully.\n\n⚠️ My allergies:\nPeanuts, Vegan')).toBeTruthy();
+        expect(queryByText('I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanuts, Vegan')).toBeNull();
 
         fireEvent.press(getByText('Traveler Passport'));
 
@@ -171,32 +187,6 @@ describe('AllergiesScreen', () => {
         fireEvent.press(getByTestId('allergies-traveler-card-close'));
 
         expect(queryByTestId('allergies-traveler-card-body')).toBeNull();
-    });
-
-    test('opens edit profile from the traveler hero edit CTA', () => {
-        mockedUseTravelerAllergyCardModel.mockReturnValue({
-            displayData: {
-                isAiLoaded: false,
-                language: 'English',
-                sub: 'Traveler Safety Card (Manual Language)',
-                text: 'I have food allergies. Please check ingredients carefully.',
-                usedAiText: false,
-            },
-            finalMessage: 'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanuts',
-            isAiLoaded: false,
-        });
-        mockedUseAllergiesData.mockReturnValue({
-            loading: false,
-            allergies: ['Peanuts'],
-            dietaryRestrictions: [],
-            severityMap: { Peanuts: 'moderate' },
-        });
-
-        const { getByText } = render(<AllergiesScreen />);
-
-        fireEvent.press(getByText('Edit profile'));
-
-        expect(mockedPush).toHaveBeenCalledWith('/health-profile');
     });
 
     test('renders canonical and custom values in the risk ledger without storage tokens', () => {

@@ -32,7 +32,6 @@ type SeverityTone = Readonly<{
   cardBackgroundColor: string;
   iconBackgroundColor: string;
   iconColor: string;
-  label: string;
 }>;
 
 type SeverityIconProps = Readonly<{
@@ -51,7 +50,6 @@ const getSeverityTone = (kind: AllergiesSeverityGroupKind): SeverityTone => {
       cardBackgroundColor: 'rgba(255, 248, 246, 0.88)',
       iconBackgroundColor: 'rgba(185, 70, 62, 0.12)',
       iconColor: homeDashboardColors.accentRed,
-      label: 'Severe',
     };
   }
 
@@ -63,7 +61,6 @@ const getSeverityTone = (kind: AllergiesSeverityGroupKind): SeverityTone => {
       cardBackgroundColor: 'rgba(247, 251, 247, 0.88)',
       iconBackgroundColor: 'rgba(31, 107, 79, 0.12)',
       iconColor: homeDashboardColors.accentGreen,
-      label: 'Mild',
     };
   }
 
@@ -75,7 +72,6 @@ const getSeverityTone = (kind: AllergiesSeverityGroupKind): SeverityTone => {
       cardBackgroundColor: 'rgba(246, 248, 252, 0.90)',
       iconBackgroundColor: 'rgba(36, 56, 93, 0.11)',
       iconColor: homeDashboardColors.accentBlue,
-      label: 'Restrictions',
     };
   }
 
@@ -86,7 +82,6 @@ const getSeverityTone = (kind: AllergiesSeverityGroupKind): SeverityTone => {
     cardBackgroundColor: 'rgba(255, 249, 240, 0.88)',
     iconBackgroundColor: 'rgba(170, 106, 19, 0.12)',
     iconColor: homeDashboardColors.accentAmber,
-    label: 'Moderate',
   };
 };
 
@@ -185,7 +180,7 @@ export function AllergiesSeveritySection({
               ]}
             >
               <Text style={[homeDashboardStyles.pillText, localStyles.itemBadgeText, { color: tone.accentColor }]}>
-                {tone.label}
+                {title}
               </Text>
             </View>
           </View>

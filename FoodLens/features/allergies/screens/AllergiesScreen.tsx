@@ -553,7 +553,6 @@ const AllergiesScreenContent = ({
                                 summary={summary}
                                 cardCopy={heroCardCopy}
                                 onOpenTravelerCard={handleOpenTravelerCard}
-                                onEditProfile={handleEditProfile}
                             />
                         )}
 

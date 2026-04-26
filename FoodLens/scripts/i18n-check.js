@@ -15,6 +15,7 @@ const DEFAULT_REFERENCE_TARGET_PATHS = [
   'features/home/components',
   'features/home/utils',
   'features/home/hooks',
+  'features/allergies',
   'features/profile/screens',
   'features/profile/profileHub',
 ];

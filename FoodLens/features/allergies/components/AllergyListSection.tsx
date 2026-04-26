@@ -99,7 +99,7 @@ export default function AllergyListSection({
                     activeOpacity={0.85}
                 >
                     <Text style={styles.editButtonText}>
-                        {t('allergies.empty.action', 'Add allergy info')}
+                        {t('allergies.action.addAllergyInfo', 'Add allergy info')}
                     </Text>
                 </TouchableOpacity>
             </View>

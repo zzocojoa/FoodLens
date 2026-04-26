@@ -13,11 +13,25 @@ jest.mock('../../constants/allergies.constants', () => ({
     },
 }));
 
-jest.mock('@/features/i18n', () => ({
-    useI18n: () => ({
-        t: (_key: string, fallback?: string) => fallback ?? _key,
-    }),
-}));
+jest.mock('@/features/i18n', () => {
+    const en = jest.requireActual('../../../i18n/resources/en.json') as Record<string, string>;
+
+    const requiresResource = (key: string): boolean =>
+        key.startsWith('allergies.') || key.startsWith('onboarding.severity.');
+
+    return {
+        useI18n: () => ({
+            t: (key: string, fallback?: string) => {
+                const value = en[key];
+                if (typeof value === 'string') return value;
+                if (requiresResource(key)) {
+                    throw new Error(`Missing test i18n resource: ${key}`);
+                }
+                return fallback ?? key;
+            },
+        }),
+    };
+});
 
 describe('AllergyListSection', () => {
     const theme = Colors.light;
@@ -50,7 +64,7 @@ describe('AllergyListSection', () => {
         );
 
         expect(getByText('All Clear!')).toBeTruthy();
-        expect(getByText('등록된 알레르기 정보가 없습니다.')).toBeTruthy();
+        expect(getByText('No allergy information registered.')).toBeTruthy();
         expect(getByText('Add allergy info')).toBeTruthy();
     });
 
