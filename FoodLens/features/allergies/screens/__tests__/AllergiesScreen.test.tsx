@@ -220,4 +220,30 @@ describe('AllergiesScreen', () => {
         expect(queryByText('gluten_free')).toBeNull();
         expect(queryByText('custom:no raw onion')).toBeNull();
     });
+
+    test('surfaces explicit dietary restriction severity while keeping restrictions section', () => {
+        mockedUseTravelerAllergyCardModel.mockReturnValue({
+            displayData: {
+                isAiLoaded: false,
+                language: 'English',
+                sub: 'Traveler Safety Card (Manual Language)',
+                text: 'I have food allergies. Please check ingredients carefully.',
+                usedAiText: false,
+            },
+            finalMessage: 'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nVegan',
+            isAiLoaded: false,
+        });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: [],
+            dietaryRestrictions: ['Vegan'],
+            severityMap: { Vegan: 'severe' },
+        });
+
+        const { getByText } = render(<AllergiesScreen />);
+
+        expect(getByText('Severe 1')).toBeTruthy();
+        expect(getByText('Restrictions 1')).toBeTruthy();
+        expect(getByText('Severe · Vegan')).toBeTruthy();
+    });
 });

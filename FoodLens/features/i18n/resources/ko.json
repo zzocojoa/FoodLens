@@ -305,6 +305,8 @@
   "profile.alert.updatedMessage": "프로필과 설정이 저장되었습니다.",
   "profile.alert.errorTitle": "오류",
   "profile.alert.saveFailed": "저장에 실패했습니다.",
+  "profile.alert.authRequiredTitle": "로그인이 필요합니다",
+  "profile.alert.authRequiredMessage": "건강 프로필을 저장하려면 다시 로그인해주세요.",
   "profile.alert.imagePickFailed": "이미지를 선택하지 못했습니다.",
   "profile.permission.cameraRequiredTitle": "카메라 권한이 필요합니다",
   "profile.permission.cameraRequiredMessage": "프로필 사진 촬영을 위해 카메라 권한이 필요합니다.",

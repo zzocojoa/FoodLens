@@ -795,6 +795,113 @@ describe('phase2SyncQueue', () => {
     });
   });
 
+  it('preserves newer allergy payload queued while previous allergy payload is sending', async () => {
+    type AllergiesResult = {
+      allergies: {
+        user_id: string;
+        allergies: string[];
+        dietary_restrictions: string[];
+        updated_at: string;
+      };
+      requestId: string;
+    };
+
+    queueState = [
+      {
+        id: 'op-allergies-sending',
+        userId: 'usr_a',
+        entity: 'allergies',
+        state: 'pending',
+        payload: {
+          allergies: [],
+          dietary_restrictions: ['peach'],
+          severity_map: {},
+          expected_updated_at: '2026-03-20T00:00:00Z',
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+
+    let resolveFirstAllergies: ((value: AllergiesResult) => void) | undefined;
+    let resolveSecondAllergies: ((value: AllergiesResult) => void) | undefined;
+
+    mockedPhase2Api.putAllergies
+      .mockImplementationOnce(
+        () =>
+          new Promise<AllergiesResult>((resolve) => {
+            resolveFirstAllergies = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<AllergiesResult>((resolve) => {
+            resolveSecondAllergies = resolve;
+          })
+      );
+
+    const firstDispatch = dispatchPhase2SyncQueue();
+
+    await waitFor(() => {
+      expect(queueState[0].state).toBe('sending');
+      expect(mockedPhase2Api.putAllergies).toHaveBeenCalledTimes(1);
+    });
+
+    const secondOperationId = await enqueuePhase2Sync('usr_a', 'allergies', {
+      allergies: [],
+      dietary_restrictions: [],
+      severity_map: {},
+      expected_updated_at: '2026-03-20T00:00:01Z',
+    });
+
+    expect(secondOperationId).not.toBe('op-allergies-sending');
+    expect(queueState.some((item) => item.id === secondOperationId && item.state === 'pending')).toBe(true);
+    expect(queueState.some((item) => item.id === 'op-allergies-sending' && item.state === 'sending')).toBe(true);
+
+    expect(resolveFirstAllergies).toBeDefined();
+    const flushFirstAllergies = resolveFirstAllergies as (value: AllergiesResult) => void;
+    flushFirstAllergies({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: [],
+        dietary_restrictions: ['peach'],
+        updated_at: '2026-03-20T00:00:01Z',
+      },
+      requestId: 'req-allergies-first',
+    });
+    await firstDispatch;
+
+    await waitFor(() => {
+      expect(mockedPhase2Api.putAllergies).toHaveBeenCalledTimes(2);
+      expect(mockedPhase2Api.putAllergies.mock.calls[1][0]).toEqual({
+        allergies: [],
+        dietary_restrictions: [],
+        severity_map: {},
+        expected_updated_at: '2026-03-20T00:00:01Z',
+      });
+    });
+
+    expect(resolveSecondAllergies).toBeDefined();
+    const flushSecondAllergies = resolveSecondAllergies as (value: AllergiesResult) => void;
+    flushSecondAllergies({
+      allergies: {
+        user_id: 'usr_a',
+        allergies: [],
+        dietary_restrictions: [],
+        updated_at: '2026-03-20T00:00:02Z',
+      },
+      requestId: 'req-allergies-second',
+    });
+
+    await waitFor(() => {
+      const secondOperation = queueState.find((item) => item.id === secondOperationId);
+      expect(secondOperation?.state).toBe('synced');
+      expect(secondOperation?.requestId).toBe('req-allergies-second');
+    });
+  });
+
   it('uploads local/data history images first and dispatches image_asset_id', async () => {
     const historyOp: Phase2SyncOperation = {
       id: 'op-history-a',

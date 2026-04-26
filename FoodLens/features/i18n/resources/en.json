@@ -305,6 +305,8 @@
   "profile.alert.updatedMessage": "Your profile and preferences have been saved.",
   "profile.alert.errorTitle": "Error",
   "profile.alert.saveFailed": "Failed to save.",
+  "profile.alert.authRequiredTitle": "Login required",
+  "profile.alert.authRequiredMessage": "Please log in again before saving your health profile.",
   "profile.alert.imagePickFailed": "Failed to pick image.",
   "profile.permission.cameraRequiredTitle": "Camera Permission Required",
   "profile.permission.cameraRequiredMessage": "Camera access is required to take a profile photo.",

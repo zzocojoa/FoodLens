@@ -1,6 +1,7 @@
-import { saveTestUserProfile } from '../profilePersistence';
+import { PROFILE_AUTH_REQUIRED_ERROR, saveTestUserProfile } from '../profilePersistence';
 
 const mockCreateOrUpdateProfile = jest.fn();
+const mockGetProfileUserId = jest.fn(() => 'usr_profile');
 
 jest.mock('@/services/userService', () => ({
   UserService: {
@@ -10,12 +11,13 @@ jest.mock('@/services/userService', () => ({
 
 jest.mock('../../constants/profile.constants', () => ({
   TEST_EMAIL: 'test@foodlens.ai',
-  getProfileUserId: () => 'usr_profile',
+  getProfileUserId: () => mockGetProfileUserId(),
 }));
 
 describe('profilePersistence', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetProfileUserId.mockReturnValue('usr_profile');
     mockCreateOrUpdateProfile.mockResolvedValue(undefined);
   });
 
@@ -33,5 +35,15 @@ describe('profilePersistence', () => {
         },
       }
     );
+  });
+
+  it('blocks profile writes before UserService when no authenticated user id is available', async () => {
+    mockGetProfileUserId.mockReturnValue('auth-required');
+
+    await expect(saveTestUserProfile(['egg'], [], { egg: 'moderate' })).rejects.toThrow(
+      PROFILE_AUTH_REQUIRED_ERROR
+    );
+
+    expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
   });
 });

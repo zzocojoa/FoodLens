@@ -157,24 +157,44 @@ export default function AllergyListSection({
                     <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>
                         {t('allergies.section.otherRestrictions', 'Other Restrictions')}
                     </Text>
-                    {dietaryRestrictions.map((item) => (
-                        <View
-                            key={`restriction-${item}`}
-                            style={[styles.allergyItem, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                        >
-                            <View style={[styles.iconBox, { backgroundColor: theme.background }]}>
-                                <ShieldAlert size={20} color="#2563EB" />
+                    {dietaryRestrictions.map((item) => {
+                        const severity = severityMap[item];
+                        const tone = typeof severity === 'undefined' ? null : getSeverityTone(severity, theme, t);
+
+                        return (
+                            <View
+                                key={`restriction-${item}`}
+                                style={[styles.allergyItem, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                            >
+                                <View style={[styles.iconBox, { backgroundColor: theme.background }]}>
+                                    <ShieldAlert size={20} color="#2563EB" />
+                                </View>
+                                <View style={styles.itemContent}>
+                                    <Text style={[styles.allergyNameKr, { color: theme.textPrimary }]}>
+                                        {renderDisplayName(item, t)}
+                                    </Text>
+                                    <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>
+                                        {renderSecondaryName(item)}
+                                    </Text>
+                                </View>
+                                {tone === null ? null : (
+                                    <View
+                                        style={[
+                                            styles.severityBadge,
+                                            {
+                                                backgroundColor: tone.backgroundColor,
+                                                borderColor: tone.borderColor,
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={[styles.severityBadgeText, { color: tone.textColor }]}>
+                                            {tone.label}
+                                        </Text>
+                                    </View>
+                                )}
                             </View>
-                            <View style={styles.itemContent}>
-                                <Text style={[styles.allergyNameKr, { color: theme.textPrimary }]}>
-                                    {renderDisplayName(item, t)}
-                                </Text>
-                                <Text style={[styles.allergyNameEn, { color: theme.textSecondary }]}>
-                                    {renderSecondaryName(item)}
-                                </Text>
-                            </View>
-                        </View>
-                    ))}
+                        );
+                    })}
                 </View>
             )}
         </View>

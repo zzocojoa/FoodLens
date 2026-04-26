@@ -27,6 +27,7 @@ export type ProfileFormState = {
     allergies: string[];
     severityMap: Record<string, AllergySeverity>;
     otherRestrictions: string[];
+    severityItems: string[];
     suggestions: IngredientSuggestion[];
     customAllergenSuggestions: IngredientSuggestion[];
 };

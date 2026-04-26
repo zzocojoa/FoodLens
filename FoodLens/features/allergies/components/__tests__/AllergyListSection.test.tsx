@@ -60,7 +60,7 @@ describe('AllergyListSection', () => {
                 loading={false}
                 allergies={['Peanuts', 'Milk']}
                 dietaryRestrictions={['Vegan']}
-                severityMap={{ Peanuts: 'severe', Milk: 'mild' }}
+                severityMap={{ Peanuts: 'severe', Milk: 'mild', Vegan: 'moderate' }}
                 theme={theme}
                 onPressEdit={() => undefined}
             />
@@ -75,6 +75,7 @@ describe('AllergyListSection', () => {
         expect(getAllByText('Vegan')).toHaveLength(2);
         expect(getByText('Severe')).toBeTruthy();
         expect(getByText('Mild')).toBeTruthy();
+        expect(getByText('Moderate')).toBeTruthy();
     });
 
     test('renders canonical and custom restriction display labels without storage prefixes', () => {

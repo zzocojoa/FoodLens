@@ -86,9 +86,16 @@ const getAllergiesSummary = (
     dietaryRestrictions: string[],
     severityMap: Record<string, AllergySeverity>,
 ): AllergiesPassportSummary => {
-    const severeCount = allergies.filter((item) => severityMap[item] === 'severe').length;
-    const mildCount = allergies.filter((item) => severityMap[item] === 'mild').length;
-    const moderateCount = allergies.length - severeCount - mildCount;
+    const allergySeverities = allergies.map((item) => severityMap[item] ?? 'moderate');
+    const dietaryRestrictionSeverities = dietaryRestrictions.flatMap((item) => {
+        const severity = severityMap[item];
+
+        return typeof severity === 'undefined' ? [] : [severity];
+    });
+    const severityEntries = [...allergySeverities, ...dietaryRestrictionSeverities];
+    const severeCount = severityEntries.filter((severity) => severity === 'severe').length;
+    const mildCount = severityEntries.filter((severity) => severity === 'mild').length;
+    const moderateCount = severityEntries.filter((severity) => severity === 'moderate').length;
 
     return {
         trackedItemCount: allergies.length + dietaryRestrictions.length,
@@ -280,12 +287,38 @@ const getSecondaryLabel = (value: string): string => {
     return getRestrictionDefaultLabel(value);
 };
 
-const getLedgerItems = (values: string[], t: TranslationFunction): LedgerItem[] => {
-    return values.map((value) => ({
-        id: value,
-        primaryLabel: getPrimaryLabel(value, t),
-        secondaryLabel: getSecondaryLabel(value),
-    }));
+const getSeverityLabel = (
+    severity: AllergySeverity,
+    t: TranslationFunction,
+): string => {
+    if (severity === 'severe') {
+        return t('onboarding.severity.severe', 'Severe');
+    }
+
+    if (severity === 'mild') {
+        return t('onboarding.severity.mild', 'Mild');
+    }
+
+    return t('onboarding.severity.moderate', 'Moderate');
+};
+
+const getDietaryRestrictionLedgerItems = (
+    values: string[],
+    severityMap: Record<string, AllergySeverity>,
+    t: TranslationFunction,
+): LedgerItem[] => {
+    return values.map((value) => {
+        const severity = severityMap[value];
+        const secondaryLabel = getSecondaryLabel(value);
+
+        return {
+            id: value,
+            primaryLabel: getPrimaryLabel(value, t),
+            secondaryLabel: typeof severity === 'undefined'
+                ? secondaryLabel
+                : `${getSeverityLabel(severity, t)} · ${secondaryLabel}`,
+        };
+    });
 };
 
 const getSeverityItems = (
@@ -334,7 +367,7 @@ const getLedgerSections = (
         {
             kind: 'dietaryRestrictions',
             title: t('allergies.ledger.restrictions', 'Restrictions'),
-            items: getLedgerItems(dietaryRestrictions, t),
+            items: getDietaryRestrictionLedgerItems(dietaryRestrictions, severityMap, t),
         },
     ];
 };

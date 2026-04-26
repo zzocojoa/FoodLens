@@ -73,11 +73,10 @@ export const __resetPhase2SettingsDispatchDedupeForTests = (): void => {
   settingsDispatchDedupeCache.clear();
 };
 
-type MutableEntityState = 'pending' | 'failed' | 'sending' | 'conflicted';
+type MutableEntityState = 'pending' | 'failed' | 'conflicted';
 const MUTABLE_ENTITY_STATES = new Set<MutableEntityState>([
   'pending',
   'failed',
-  'sending',
   'conflicted',
 ]);
 
@@ -95,6 +94,13 @@ const findMutableEntityOperationIndex = (
   userId: string,
   entity: Exclude<Phase2SyncEntity, 'history'>
 ): number => queue.findIndex((item) => isMutableEntityOperation(item, userId, entity));
+
+const findSendingEntityOperation = (
+  queue: Phase2SyncOperation[],
+  userId: string,
+  entity: Exclude<Phase2SyncEntity, 'history'>
+): Phase2SyncOperation | undefined =>
+  queue.find((item) => item.userId === userId && item.entity === entity && item.state === 'sending');
 
 const findLatestSyncedEntityOperation = (
   queue: Phase2SyncOperation[],
@@ -1137,11 +1143,16 @@ export const enqueuePhase2Sync = async (
 ): Promise<string> => {
   const queue = await loadQueue();
   const incomingDedupeKey = normalizePayloadForDedupe(payload);
+  const sendingOperation = findSendingEntityOperation(queue, userId, entity);
+  if (sendingOperation && normalizePayloadForDedupe(sendingOperation.payload) === incomingDedupeKey) {
+    return sendingOperation.id;
+  }
+
   const existingIndex = findMutableEntityOperationIndex(queue, userId, entity);
   if (existingIndex >= 0) {
     const existing = queue[existingIndex];
     if (normalizePayloadForDedupe(existing.payload) === incomingDedupeKey) {
-      if (existing.state === 'pending' || existing.state === 'sending') {
+      if (existing.state === 'pending') {
         return existing.id;
       }
       // Keep retry semantics for failed/conflicted by letting caller overwrite payload and reset state below
