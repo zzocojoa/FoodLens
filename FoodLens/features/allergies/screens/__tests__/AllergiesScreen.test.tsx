@@ -55,7 +55,7 @@ jest.mock('../../constants/allergies.constants', () => ({
         title: { key: 'allergies.title', fallback: 'My Allergies' },
         description: {
             key: 'allergies.description',
-            fallback: '등록된 알레르기 및 식단 제한 정보입니다.',
+            fallback: '등록된 알레르기 정보입니다.',
         },
         emptyTitle: { key: 'allergies.empty.title', fallback: 'All Clear!' },
         emptyDescription: { key: 'allergies.empty.description', fallback: '등록된 알레르기 정보가 없습니다.' },

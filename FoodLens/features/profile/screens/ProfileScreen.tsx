@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, ChevronRight, CircleX, Plus, ShieldCheck } from 'lucide-react-native';
+import { Check, CircleX, Plus, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/features/i18n';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -60,7 +60,6 @@ const getSeverityFallback = (severity: AllergySeverity): string => {
 
 type LedgerItem = {
     id: string;
-    kind: 'allergen' | 'restriction' | 'mixed';
 };
 
 type SeverityTone = {
@@ -97,8 +96,8 @@ const getSeverityTone = (severity: AllergySeverity): SeverityTone => {
     };
 };
 
-const buildLedgerItems = (allergies: string[], otherRestrictions: string[]): LedgerItem[] => {
-    const ids = [...allergies, ...otherRestrictions].reduce<string[]>((items, item) => {
+const buildLedgerItems = (allergies: string[]): LedgerItem[] => {
+    const ids = allergies.reduce<string[]>((items, item) => {
         if (items.includes(item)) {
             return items;
         }
@@ -106,20 +105,7 @@ const buildLedgerItems = (allergies: string[], otherRestrictions: string[]): Led
         return [...items, item];
     }, []);
 
-    return ids.map((id) => {
-        const isAllergen = allergies.includes(id);
-        const isRestriction = otherRestrictions.includes(id);
-
-        if (isAllergen && isRestriction) {
-            return { id, kind: 'mixed' };
-        }
-
-        if (isAllergen) {
-            return { id, kind: 'allergen' };
-        }
-
-        return { id, kind: 'restriction' };
-    });
+    return ids.map((id) => ({ id }));
 };
 
 export default function ProfileScreen() {
@@ -136,23 +122,16 @@ export default function ProfileScreen() {
     const {
         loading,
         isDirty,
-        inputValue,
         customAllergenInputValue,
         allergies,
         severityMap,
-        otherRestrictions,
-        suggestions,
         customAllergenSuggestions,
         scrollViewRef,
         toggleAllergen,
         cycleSeverity,
-        handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
         selectCustomAllergenSuggestion,
-        addOtherRestriction,
-        removeRestriction,
-        selectSuggestion,
         saveProfile,
     } = useProfileScreen();
 
@@ -161,8 +140,8 @@ export default function ProfileScreen() {
         [allergies],
     );
     const ledgerItems = React.useMemo(
-        () => buildLedgerItems(allergies, otherRestrictions),
-        [allergies, otherRestrictions],
+        () => buildLedgerItems(allergies),
+        [allergies],
     );
     const severeCount = React.useMemo(
         () => ledgerItems.filter((item) => (severityMap[item.id] || 'moderate') === 'severe').length,
@@ -289,14 +268,6 @@ export default function ProfileScreen() {
                                         )}
                                     </Text>
                                 </View>
-                                <View style={styles.summaryMetricPill}>
-                                    <Text style={styles.summaryMetricText}>
-                                        {replaceCountTemplate(
-                                            t('profile.health.restrictionsTemplate', '{count} restrictions'),
-                                            otherRestrictions.length,
-                                        )}
-                                    </Text>
-                                </View>
                             </View>
 
                             <View style={styles.editActionRow}>
@@ -315,25 +286,7 @@ export default function ProfileScreen() {
                                 >
                                     <Plus size={17} color={homeDashboardColors.paper} />
                                     <Text style={styles.editActionText}>
-                                        {t('profile.health.addAllergen', 'Add allergen')}
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.editActionButton, styles.editActionButtonSecondary]}
-                                    onPress={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={t(
-                                        'profile.accessibility.editRestrictions',
-                                        'Edit dietary restrictions',
-                                    )}
-                                    accessibilityHint={t(
-                                        'profile.accessibility.editRestrictionsHint',
-                                        'Moves to the dietary restrictions field',
-                                    )}
-                                >
-                                    <ChevronRight size={17} color={homeDashboardColors.ink} />
-                                    <Text style={[styles.editActionText, styles.editActionTextSecondary]}>
-                                        {t('profile.health.addRestriction', 'Add restriction')}
+                                        {t('profile.health.addMissingAllergen', 'Add missing allergen')}
                                     </Text>
                                 </TouchableOpacity>
                             </View>
@@ -360,7 +313,7 @@ export default function ProfileScreen() {
                                         {t('profile.health.empty.title', 'No items yet')}
                                     </Text>
                                     <Text style={styles.emptyLedgerBody}>
-                                        {t('profile.health.empty.body', 'Add allergens or diet limits before scanning.')}
+                                        {t('profile.health.empty.body', 'Add allergens before scanning.')}
                                     </Text>
                                 </View>
                             </View>
@@ -374,17 +327,7 @@ export default function ProfileScreen() {
                                         getSeverityFallback(severity),
                                     );
                                     const itemName = resolveSeverityItemName(item.id, t);
-                                    const kindLabel = item.kind === 'restriction'
-                                        ? t('profile.health.kind.restriction', 'Diet')
-                                        : item.kind === 'mixed'
-                                            ? t('profile.health.kind.mixed', 'Allergen + diet')
-                                            : t('profile.health.kind.allergen', 'Allergen');
                                     const handleRemove = (): void => {
-                                        if (item.kind === 'restriction' || item.kind === 'mixed') {
-                                            removeRestriction(item.id);
-                                            return;
-                                        }
-
                                         toggleAllergen(item.id);
                                     };
 
@@ -395,7 +338,7 @@ export default function ProfileScreen() {
                                                 onPress={() => cycleSeverity(item.id)}
                                                 activeOpacity={0.72}
                                                 accessibilityRole="button"
-                                                accessibilityLabel={`${itemName}, ${kindLabel}, ${severityLabel}`}
+                                                accessibilityLabel={`${itemName}, ${t('profile.health.kind.allergen', 'Allergen')}, ${severityLabel}`}
                                                 accessibilityHint={t(
                                                     'profile.health.severityHint',
                                                     'Changes severity level',
@@ -403,7 +346,9 @@ export default function ProfileScreen() {
                                             >
                                                 <View style={styles.ledgerItemTextGroup}>
                                                     <Text style={styles.ledgerItemName}>{itemName}</Text>
-                                                    <Text style={styles.ledgerItemKind}>{kindLabel}</Text>
+                                                    <Text style={styles.ledgerItemKind}>
+                                                        {t('profile.health.kind.allergen', 'Allergen')}
+                                                    </Text>
                                                 </View>
                                                 <View
                                                     style={[
@@ -466,13 +411,19 @@ export default function ProfileScreen() {
                             >
                                 <Plus size={17} color={homeDashboardColors.ink} />
                                 <Text style={styles.searchToggleText}>
-                                    {t('profile.health.customAllergen.title', 'Add another allergen')}
+                                    {t('profile.health.customAllergen.title', 'Missing from the list')}
                                 </Text>
                             </TouchableOpacity>
                         ) : (
                             <View>
                                 <Text style={styles.sectionHeader}>
-                                    {t('profile.health.customAllergen.title', 'Add another allergen')}
+                                    {t('profile.health.customAllergen.title', 'Missing from the list')}
+                                </Text>
+                                <Text style={styles.sectionSubtext}>
+                                    {t(
+                                        'profile.health.customAllergen.subtitle',
+                                        'Add an allergen FoodLens should treat as a safety risk.',
+                                    )}
                                 </Text>
                                 <RestrictionInput
                                     theme={theme}
@@ -485,27 +436,6 @@ export default function ProfileScreen() {
                                 />
                             </View>
                         )}
-                    </View>
-
-                    <View style={styles.editorSection}>
-                        <Text style={styles.sectionHeader}>
-                            {t('profile.health.dietary.title', 'Dietary restrictions')}
-                        </Text>
-                        <Text style={styles.sectionSubtext}>
-                            {t(
-                                'profile.health.dietary.subtitle',
-                                'Add diets or ingredients you avoid.',
-                            )}
-                        </Text>
-                        <RestrictionInput
-                            theme={theme}
-                            inputValue={inputValue}
-                            suggestions={suggestions}
-                            onChangeText={handleInputChange}
-                            onSubmit={addOtherRestriction}
-                            onSelectSuggestion={selectSuggestion}
-                            t={t}
-                        />
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>

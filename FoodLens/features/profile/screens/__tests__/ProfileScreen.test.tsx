@@ -7,25 +7,19 @@ const mockCycleSeverity = jest.fn();
 
 type MockProfileScreenState = Readonly<{
     loading: boolean;
-    inputValue: string;
     customAllergenInputValue: string;
     allergies: string[];
     severityMap: Record<string, string>;
-    otherRestrictions: string[];
     severityItems: string[];
-    suggestions: string[];
     customAllergenSuggestions: string[];
 }>;
 
 const createMockProfileScreenState = (): MockProfileScreenState => ({
     loading: false,
-    inputValue: '',
     customAllergenInputValue: '',
     allergies: ['peanut'],
     severityMap: { peanut: 'moderate' },
-    otherRestrictions: ['Vegan'],
     severityItems: ['peanut', 'Vegan'],
-    suggestions: [],
     customAllergenSuggestions: [],
 });
 
@@ -139,14 +133,16 @@ describe('ProfileScreen', () => {
         mockProfileScreenState = createMockProfileScreenState();
     });
 
-    it('renders health-only sections including dietary restrictions', () => {
+    it('renders allergen-only health sections', () => {
         const { getAllByText, getByText, queryByText } = render(<ProfileScreen />);
 
         expect(getByText('FoodLens safety criteria')).toBeTruthy();
         expect(getByText('Common allergens')).toBeTruthy();
-        expect(getByText('Dietary restrictions')).toBeTruthy();
-        expect(getAllByText('Vegan')).toHaveLength(1);
+        expect(getByText('Missing from the list')).toBeTruthy();
+        expect(getAllByText('Peanut')).toHaveLength(1);
         expect(getByText('Protection ledger')).toBeTruthy();
+        expect(queryByText('Dietary restrictions')).toBeNull();
+        expect(queryByText('Vegan')).toBeNull();
         expect(queryByText('Help & Support')).toBeNull();
         expect(queryByText('Account & Data')).toBeNull();
     });
@@ -159,35 +155,33 @@ describe('ProfileScreen', () => {
         expect(mockSaveProfile).toHaveBeenCalledTimes(1);
     });
 
-    it('renders canonical other restriction severity with display name only', () => {
+    it('does not render canonical other restriction severity', () => {
         mockProfileScreenState = {
             ...createMockProfileScreenState(),
             allergies: [],
             severityMap: { gluten_free: 'severe' },
-            otherRestrictions: ['gluten_free'],
-            severityItems: ['gluten_free'],
+            severityItems: [],
         };
 
-        const { getAllByText, getByLabelText, queryByText } = render(<ProfileScreen />);
+        const { queryByLabelText, queryByText } = render(<ProfileScreen />);
 
-        expect(getByLabelText('Gluten Free, Diet, Severe')).toBeTruthy();
-        expect(getAllByText('Gluten Free')).toHaveLength(1);
+        expect(queryByLabelText('Gluten Free, Diet, Severe')).toBeNull();
+        expect(queryByText('Gluten Free')).toBeNull();
         expect(queryByText('gluten_free')).toBeNull();
     });
 
-    it('renders custom other restriction severity without storage prefix', () => {
+    it('does not render custom other restriction severity', () => {
         mockProfileScreenState = {
             ...createMockProfileScreenState(),
             allergies: [],
             severityMap: { 'custom:no raw onion': 'mild' },
-            otherRestrictions: ['custom:no raw onion'],
-            severityItems: ['custom:no raw onion'],
+            severityItems: [],
         };
 
-        const { getAllByText, getByLabelText, queryByText } = render(<ProfileScreen />);
+        const { queryByLabelText, queryByText } = render(<ProfileScreen />);
 
-        expect(getByLabelText('no raw onion, Diet, Mild')).toBeTruthy();
-        expect(getAllByText('no raw onion')).toHaveLength(1);
+        expect(queryByLabelText('no raw onion, Diet, Mild')).toBeNull();
+        expect(queryByText('no raw onion')).toBeNull();
         expect(queryByText('custom:no raw onion')).toBeNull();
     });
 });

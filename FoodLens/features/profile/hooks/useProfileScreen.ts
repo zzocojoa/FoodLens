@@ -7,12 +7,11 @@ import {
     loadTestUserProfile,
     saveTestUserProfile,
 } from '../utils/profilePersistence';
-import { useProfileRestrictionHandlers } from './useProfileRestrictionHandlers';
 import {
-    IngredientSuggestion,
     buildSuggestions,
     createCustomRestrictionValue,
     resolveSuggestionStorageValue,
+    IngredientSuggestion,
 } from '../utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
@@ -34,38 +33,25 @@ const shouldRefreshProfileScreen = (reason: UserProfileUpdateReason): boolean =>
     return reason !== 'client_state_write';
 };
 
-const buildSeverityMapWithRestrictions = (
+const buildAllergySeverityMap = (
+    allergies: string[],
     severityMap: Record<string, AllergySeverity>,
-    restrictions: string[],
 ): Record<string, AllergySeverity> => {
-    return restrictions.reduce<Record<string, AllergySeverity>>((next, restriction) => {
-        const item = restriction.trim();
-        if (!item || next[item]) {
-            return next;
-        }
-        return { ...next, [item]: 'moderate' };
-    }, { ...severityMap });
-};
-
-const buildUniqueSeverityItems = (allergies: string[], restrictions: string[]): string[] => {
-    return [...allergies, ...restrictions].reduce<string[]>((items, item) => {
-        if (items.includes(item)) {
-            return items;
-        }
-        return [...items, item];
-    }, []);
+    return allergies.reduce<Record<string, AllergySeverity>>((next, allergy) => {
+        return {
+            ...next,
+            [allergy]: severityMap[allergy] ?? 'moderate',
+        };
+    }, {});
 };
 
 export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
     const [loading, setLoading] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
-    const [inputValue, setInputValue] = useState('');
     const [customAllergenInputValue, setCustomAllergenInputValue] = useState('');
     const [allergies, setAllergies] = useState<string[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
-    const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
-    const [suggestions, setSuggestions] = useState<IngredientSuggestion[]>([]);
     const [customAllergenSuggestions, setCustomAllergenSuggestions] = useState<IngredientSuggestion[]>([]);
     const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadInFlightRef = useRef(false);
@@ -105,13 +91,10 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                     return;
                 }
                 setAllergies(user.safetyProfile.allergies);
-                setSeverityMap(
-                    buildSeverityMapWithRestrictions(
-                        user.safetyProfile.severityMap ?? {},
-                        user.safetyProfile.dietaryRestrictions,
-                    ),
-                );
-                setOtherRestrictions(user.safetyProfile.dietaryRestrictions);
+                setSeverityMap(buildAllergySeverityMap(
+                    user.safetyProfile.allergies,
+                    user.safetyProfile.severityMap ?? {},
+                ));
                 hasLocalEditsRef.current = false;
                 setIsDirty(false);
             }
@@ -206,26 +189,6 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         [t],
     );
 
-    const {
-        addOtherRestriction,
-        removeRestriction,
-        handleInputChange,
-        selectSuggestion,
-    } = useProfileRestrictionHandlers({
-        inputValue,
-        allergies,
-        otherRestrictions,
-        setInputValue,
-        setSuggestions,
-        setAllergies,
-        setOtherRestrictions,
-        setSeverityMap,
-        markLocalEdit,
-        shouldScrollRef,
-        hasLocalEditsRef,
-        t,
-    });
-
     const toggleAllergen = useCallback((id: string) => {
         markLocalEdit();
         setCustomAllergenInputValue('');
@@ -233,20 +196,18 @@ export const useProfileScreen = (): UseProfileScreenResult => {
 
         setAllergies((prev) => {
             if (prev.includes(id)) {
-                if (!otherRestrictions.includes(id)) {
-                    setSeverityMap((map) => {
-                        const next = { ...map };
-                        delete next[id];
-                        return next;
-                    });
-                }
+                setSeverityMap((map) => {
+                    const next = { ...map };
+                    delete next[id];
+                    return next;
+                });
                 return prev.filter((allergenId) => allergenId !== id);
             }
 
             setSeverityMap((map) => ({ ...map, [id]: map[id] ?? 'moderate' }));
             return [...prev, id];
         });
-    }, [markLocalEdit, otherRestrictions]);
+    }, [markLocalEdit]);
 
     const cycleSeverity = useCallback((id: string) => {
         markLocalEdit();
@@ -310,7 +271,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         setLoading(true);
         let saveError: unknown = null;
         try {
-            await saveTestUserProfile(allergies, otherRestrictions, severityMap);
+            await saveTestUserProfile(allergies, [], buildAllergySeverityMap(allergies, severityMap));
             hasLocalEditsRef.current = false;
             setIsDirty(false);
         } catch (error) {
@@ -408,7 +369,6 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         }
     }, [
         allergies,
-        otherRestrictions,
         promptConflictResolution,
         severityMap,
         t,
@@ -419,26 +379,19 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     return {
         loading,
         isDirty,
-        inputValue,
         customAllergenInputValue,
         allergies,
         severityMap,
-        otherRestrictions,
-        suggestions,
         customAllergenSuggestions,
-        severityItems: buildUniqueSeverityItems(allergies, otherRestrictions),
+        severityItems: allergies,
         scrollViewRef,
         shouldScrollRef,
         loadProfile,
         toggleAllergen,
         cycleSeverity,
-        handleInputChange,
         handleCustomAllergenInputChange,
         addCustomAllergen,
         selectCustomAllergenSuggestion,
-        addOtherRestriction,
-        removeRestriction,
-        selectSuggestion,
         saveProfile,
     };
 };

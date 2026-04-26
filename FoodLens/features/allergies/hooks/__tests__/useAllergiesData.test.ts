@@ -56,7 +56,7 @@ describe('useAllergiesData', () => {
         jest.useRealTimers();
     });
 
-    test('loads and merges allergies + dietary restrictions', async () => {
+    test('loads allergies and ignores dietary restrictions', async () => {
         mockedGetUserProfile.mockResolvedValue({
             uid: 'test-user-v1',
             email: 'test@foodlens.ai',
@@ -79,7 +79,7 @@ describe('useAllergiesData', () => {
         });
 
         expect(result.current.allergies).toEqual(['Peanuts']);
-        expect(result.current.dietaryRestrictions).toEqual(['Vegan']);
+        expect(result.current.dietaryRestrictions).toEqual([]);
         expect(result.current.severityMap).toEqual({});
         expect(mockedGetUserProfile).toHaveBeenCalledWith('test-user-v1', {
             allowBackgroundRefresh: false,
@@ -129,7 +129,7 @@ describe('useAllergiesData', () => {
 
         expect(result.current.loading).toBe(false);
         expect(result.current.allergies).toEqual(['Milk']);
-        expect(result.current.dietaryRestrictions).toEqual(['Vegetarian']);
+        expect(result.current.dietaryRestrictions).toEqual([]);
         expect(result.current.severityMap).toEqual({ Milk: 'moderate' });
 
         await waitFor(() => {

@@ -189,47 +189,11 @@ describe('useProfileScreen saveProfile sync handling', () => {
     expect(result.current.allergies).toContain('milk');
   });
 
-  it('saves selected canonical and custom other restrictions', async () => {
-    mockSaveTestUserProfile.mockResolvedValue(undefined);
-
-    const { result } = renderHook(() => useProfileScreen());
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    act(() => {
-      result.current.selectSuggestion('peach');
-      result.current.handleInputChange('no nightshades');
-    });
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    act(() => {
-      result.current.addOtherRestriction();
-    });
-
-    await act(async () => {
-      await result.current.saveProfile();
-    });
-
-    expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
-      [],
-      ['peach', 'custom:no nightshades'],
-      {
-        peach: 'moderate',
-        'custom:no nightshades': 'moderate',
-      },
-    );
-  });
-
-  it('keeps local other restriction deletion when silent refresh runs before save', async () => {
+  it('clears dietary restrictions when saving the allergen-only health profile', async () => {
     mockLoadTestUserProfile.mockResolvedValue({
       safetyProfile: {
-        allergies: [],
-        severityMap: {},
+        allergies: ['egg'],
+        severityMap: { egg: 'severe', peach: 'mild' },
         dietaryRestrictions: ['peach', 'custom:no nightshades'],
       },
     });
@@ -241,30 +205,20 @@ describe('useProfileScreen saveProfile sync handling', () => {
       await Promise.resolve();
     });
 
-    act(() => {
-      result.current.removeRestriction('peach');
-    });
-
-    await act(async () => {
-      await result.current.loadProfile({ silent: true });
-    });
-
-    expect(result.current.otherRestrictions).toEqual(['custom:no nightshades']);
-
     await act(async () => {
       await result.current.saveProfile();
     });
 
     expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
+      ['egg'],
       [],
-      ['custom:no nightshades'],
       {
-        'custom:no nightshades': 'moderate',
+        egg: 'severe',
       },
     );
   });
 
-  it('loads existing other restrictions into the severity map without moving storage fields', async () => {
+  it('ignores existing dietary restrictions when loading the health profile', async () => {
     mockLoadTestUserProfile.mockResolvedValue({
       safetyProfile: {
         allergies: ['egg'],
@@ -281,12 +235,10 @@ describe('useProfileScreen saveProfile sync handling', () => {
     });
 
     expect(result.current.allergies).toEqual(['egg']);
-    expect(result.current.otherRestrictions).toEqual(['peach', 'custom:no nightshades']);
     expect(result.current.severityMap).toEqual({
       egg: 'severe',
-      peach: 'mild',
-      'custom:no nightshades': 'moderate',
     });
+    expect(result.current.severityItems).toEqual(['egg']);
 
     await act(async () => {
       await result.current.saveProfile();
@@ -294,16 +246,14 @@ describe('useProfileScreen saveProfile sync handling', () => {
 
     expect(mockSaveTestUserProfile).toHaveBeenCalledWith(
       ['egg'],
-      ['peach', 'custom:no nightshades'],
+      [],
       {
         egg: 'severe',
-        peach: 'mild',
-        'custom:no nightshades': 'moderate',
       },
     );
   });
 
-  it('deduplicates shared allergy and other restriction severity items', async () => {
+  it('uses allergies only for severity items', async () => {
     mockLoadTestUserProfile.mockResolvedValue({
       safetyProfile: {
         allergies: ['peach'],
@@ -318,31 +268,6 @@ describe('useProfileScreen saveProfile sync handling', () => {
       await Promise.resolve();
     });
 
-    expect(result.current.severityItems).toEqual(['peach', 'custom:no nightshades']);
-  });
-
-  it('keeps shared severity when an allergy is removed but an other restriction remains', async () => {
-    mockLoadTestUserProfile.mockResolvedValue({
-      safetyProfile: {
-        allergies: ['peach'],
-        severityMap: { peach: 'severe' },
-        dietaryRestrictions: ['peach'],
-      },
-    });
-
-    const { result } = renderHook(() => useProfileScreen());
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    act(() => {
-      result.current.toggleAllergen('peach');
-    });
-
-    expect(result.current.allergies).toEqual([]);
-    expect(result.current.otherRestrictions).toEqual(['peach']);
-    expect(result.current.severityMap['peach']).toBe('severe');
     expect(result.current.severityItems).toEqual(['peach']);
   });
 
