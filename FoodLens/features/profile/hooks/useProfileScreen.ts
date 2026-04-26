@@ -309,6 +309,16 @@ export const useProfileScreen = (): UseProfileScreenResult => {
         }
 
         try {
+            if (saveError && isProfileAuthRequiredError(saveError)) {
+                showTranslatedAlert(t, {
+                    titleKey: 'profile.alert.authRequiredTitle',
+                    titleFallback: 'Login required',
+                    messageKey: 'profile.alert.authRequiredMessage',
+                    messageFallback: 'Please log in again before saving your health profile.',
+                });
+                return;
+            }
+
             const conflicts = await getManualMergeConflictOperationsForUser(getProfileUserId());
             if (conflicts.length > 0) {
                 const resolution = await promptConflictResolution(conflicts.length);
@@ -358,16 +368,6 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                         messageKey: 'sync.pending.message',
                         messageFallback:
                             'Your changes were saved on this device and will sync to the cloud shortly.',
-                    });
-                    return;
-                }
-
-                if (isProfileAuthRequiredError(saveError)) {
-                    showTranslatedAlert(t, {
-                        titleKey: 'profile.alert.authRequiredTitle',
-                        titleFallback: 'Login required',
-                        messageKey: 'profile.alert.authRequiredMessage',
-                        messageFallback: 'Please log in again before saving your health profile.',
                     });
                     return;
                 }

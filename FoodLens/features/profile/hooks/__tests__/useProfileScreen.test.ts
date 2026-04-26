@@ -98,6 +98,7 @@ describe('useProfileScreen saveProfile sync handling', () => {
     const messageKeys = mockShowTranslatedAlert.mock.calls.map(([, payload]) => payload?.messageKey);
     expect(messageKeys).toContain('profile.alert.authRequiredMessage');
     expect(messageKeys).not.toContain('profile.alert.saveFailed');
+    expect(mockGetManualMergeConflictOperationsForUser).not.toHaveBeenCalled();
   });
 
   it('shows deferred alert when user selects Later on conflict prompt', async () => {
