@@ -14,7 +14,7 @@ type ProfileHeaderProps = {
     saving?: boolean;
 };
 
-export default function ProfileHeader({ theme, onBack, title, onSave, saving }: ProfileHeaderProps) {
+export default function ProfileHeader({ onBack, title, onSave, saving }: ProfileHeaderProps) {
     const { t } = useI18n();
     const resolvedTitle = title ?? t('profile.header.title', 'Health Profile');
 
@@ -26,9 +26,9 @@ export default function ProfileHeader({ theme, onBack, title, onSave, saving }: 
                 accessibilityRole="button"
                 accessibilityLabel={t('common.back', 'Back')}
             >
-                <ChevronLeft size={28} color={theme.textPrimary} />
+                <ChevronLeft size={28} color={homeDashboardColors.ink} />
             </TouchableOpacity>
-            <Text style={[styles.navTitle, { color: theme.textPrimary }]}>
+            <Text style={[styles.navTitle, { color: homeDashboardColors.ink }]}>
                 {resolvedTitle}
             </Text>
             <View style={styles.navRightSlot}>
