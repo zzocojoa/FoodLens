@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+    Animated,
     KeyboardAvoidingView,
     LayoutChangeEvent,
     Platform,
@@ -118,6 +119,7 @@ export default function ProfileScreen() {
 
     const {
         loading,
+        savedNoticeKey,
         customAllergenInputValue,
         allergies,
         severityMap,
@@ -130,6 +132,8 @@ export default function ProfileScreen() {
         selectCustomAllergenSuggestion,
         saveProfile,
     } = useProfileScreen();
+    const savedToastOpacity = React.useRef(new Animated.Value(0)).current;
+    const [isSavedToastVisible, setIsSavedToastVisible] = React.useState(false);
 
     const customAllergies = React.useMemo(
         () => allergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
@@ -172,6 +176,32 @@ export default function ProfileScreen() {
         }
         router.back();
     }, [params.fromProfileSheet, router]);
+    React.useEffect((): (() => void) | undefined => {
+        if (savedNoticeKey === 0) {
+            return undefined;
+        }
+
+        setIsSavedToastVisible(true);
+        savedToastOpacity.stopAnimation();
+        savedToastOpacity.setValue(1);
+
+        const animation = Animated.timing(savedToastOpacity, {
+            toValue: 0,
+            duration: 3000,
+            useNativeDriver: true,
+        });
+
+        animation.start(({ finished }) => {
+            if (finished) {
+                setIsSavedToastVisible(false);
+            }
+        });
+
+        return () => {
+            animation.stop();
+        };
+    }, [savedNoticeKey, savedToastOpacity]);
+
     return (
         <SafeAreaView style={styles.safeArea}>
             <HomeBackgroundAtmosphere />
@@ -413,6 +443,22 @@ export default function ProfileScreen() {
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
+
+            {isSavedToastVisible ? (
+                <Animated.View
+                    pointerEvents="none"
+                    style={[styles.savedToastOverlay, { opacity: savedToastOpacity }]}
+                >
+                    <View accessibilityRole="alert" style={styles.savedToast}>
+                        <View style={styles.savedToastIcon}>
+                            <Check size={14} color={homeDashboardColors.accentGreen} />
+                        </View>
+                        <Text style={styles.savedToastText}>
+                            {t('profile.health.saved', 'Saved')}
+                        </Text>
+                    </View>
+                </Animated.View>
+            ) : null}
         </SafeAreaView>
     );
 }

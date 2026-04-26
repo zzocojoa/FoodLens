@@ -23,6 +23,7 @@ export type AllergenOption = {
 export type ProfileFormState = {
     loading: boolean;
     isDirty: boolean;
+    savedNoticeKey: number;
     customAllergenInputValue: string;
     allergies: string[];
     severityMap: Record<string, AllergySeverity>;

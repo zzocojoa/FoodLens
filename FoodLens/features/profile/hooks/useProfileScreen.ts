@@ -49,6 +49,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     const { t } = useI18n();
     const [loading, setLoading] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+    const [savedNoticeKey, setSavedNoticeKey] = useState(0);
     const [customAllergenInputValue, setCustomAllergenInputValue] = useState('');
     const [allergies, setAllergies] = useState<string[]>([]);
     const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
@@ -351,12 +352,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
                 return;
             }
 
-            showTranslatedAlert(t, {
-                titleKey: 'profile.health.saved',
-                titleFallback: 'Saved',
-                messageKey: 'profile.alert.updatedMessage',
-                messageFallback: 'Your profile and preferences have been saved.',
-            });
+            setSavedNoticeKey((key) => key + 1);
         } catch {
             showTranslatedAlert(t, {
                 titleKey: 'profile.alert.errorTitle',
@@ -379,6 +375,7 @@ export const useProfileScreen = (): UseProfileScreenResult => {
     return {
         loading,
         isDirty,
+        savedNoticeKey,
         customAllergenInputValue,
         allergies,
         severityMap,

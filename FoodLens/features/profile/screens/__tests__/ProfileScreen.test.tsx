@@ -7,6 +7,7 @@ const mockCycleSeverity = jest.fn();
 
 type MockProfileScreenState = Readonly<{
     loading: boolean;
+    savedNoticeKey: number;
     customAllergenInputValue: string;
     allergies: string[];
     severityMap: Record<string, string>;
@@ -16,6 +17,7 @@ type MockProfileScreenState = Readonly<{
 
 const createMockProfileScreenState = (): MockProfileScreenState => ({
     loading: false,
+    savedNoticeKey: 0,
     customAllergenInputValue: '',
     allergies: ['peanut'],
     severityMap: { peanut: 'moderate' },
