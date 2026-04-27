@@ -22,11 +22,6 @@ export default function SupportPoliciesScreen(): React.JSX.Element {
 
     const copy = React.useMemo<SupportPoliciesCopy>(
         () => ({
-            trustTitle: t('profile.supportPolicies.trust.title', 'FoodLens care desk'),
-            trustBody: t(
-                'profile.supportPolicies.trust.body',
-                'Help, policy, and data controls for food safety decisions.',
-            ),
             supportTitle: t('profile.supportPolicies.support.title', 'Get help'),
             helpTitle: t('profileSheet.menu.help.title', 'Help Center'),
             helpDescription: t(

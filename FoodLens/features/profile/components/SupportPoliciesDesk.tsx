@@ -22,8 +22,6 @@ import {
 import { supportPoliciesStyles as styles } from '../styles/supportPoliciesStyles';
 
 export type SupportPoliciesCopy = {
-    trustTitle: string;
-    trustBody: string;
     supportTitle: string;
     helpTitle: string;
     helpDescription: string;
@@ -205,22 +203,6 @@ export default function SupportPoliciesDesk({
                 keyboardShouldPersistTaps="always"
                 style={styles.scroll}
             >
-                <View style={[styles.trustRail, panelStyle]}>
-                    {isDarkMode ? null : (
-                        <PearlSurfaceOverlay
-                            accentWashColor={homeDashboardColors.pearlMist}
-                            baseBottomColor={homeDashboardColors.paperMuted}
-                            baseTopColor={homeDashboardColors.pearlIvory}
-                            coolWashColor={homeDashboardColors.pearlSage}
-                            warmWashColor={homeDashboardColors.pearlPeach}
-                        />
-                    )}
-                    <View style={styles.trustRailContent}>
-                        <Text style={[styles.trustTitle, primaryTextStyle]}>{copy.trustTitle}</Text>
-                        <Text style={[styles.trustBody, mutedTextStyle]}>{copy.trustBody}</Text>
-                    </View>
-                </View>
-
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, mutedTextStyle]}>{copy.supportTitle}</Text>
                     <View style={[styles.supportSurface, panelStyle]}>

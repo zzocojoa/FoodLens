@@ -25,18 +25,6 @@ export const supportPoliciesStyles = StyleSheet.create({
         paddingHorizontal: homeDashboardSpacing.lg,
         paddingTop: homeDashboardSpacing.sm,
     },
-    trustRail: {
-        backgroundColor: homeDashboardColors.surfaceStrong,
-        borderColor: homeDashboardColors.line,
-        borderCurve: 'continuous',
-        borderRadius: homeDashboardRadii.lg,
-        borderWidth: 1,
-        boxShadow: homeDashboardShadows.card,
-        gap: homeDashboardSpacing.xs,
-        overflow: 'hidden',
-        padding: homeDashboardSpacing.md,
-        position: 'relative',
-    },
     darkPanel: {
         backgroundColor: Colors.dark.surface,
         borderColor: Colors.dark.border,
@@ -46,26 +34,8 @@ export const supportPoliciesStyles = StyleSheet.create({
         backgroundColor: Colors.dark.surface,
         borderColor: Colors.dark.border,
     },
-    trustRailContent: {
-        gap: homeDashboardSpacing.xs,
-        minWidth: 0,
-        zIndex: 1,
-    },
-    trustTitle: {
-        color: homeDashboardColors.ink,
-        fontSize: homeDashboardTypography.bodyStrong,
-        fontWeight: '900',
-        lineHeight: 20,
-    },
     darkTextPrimary: {
         color: Colors.dark.textPrimary,
-    },
-    trustBody: {
-        color: homeDashboardColors.inkSoft,
-        flexShrink: 1,
-        fontSize: homeDashboardTypography.body,
-        fontWeight: '500',
-        lineHeight: 20,
     },
     darkTextSecondary: {
         color: Colors.dark.textSecondary,

@@ -78,7 +78,9 @@ describe('SupportPoliciesScreen', () => {
 
     it('routes to support, legal, and account destinations from the hub', () => {
         const openUrlSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
-        const { getByText } = render(<SupportPoliciesScreen />);
+        const { getByText, queryByText } = render(<SupportPoliciesScreen />);
+
+        expect(queryByText('FoodLens care desk')).toBeNull();
 
         fireEvent.press(getByText('Help Center'));
         fireEvent.press(getByText('Contact Support'));
