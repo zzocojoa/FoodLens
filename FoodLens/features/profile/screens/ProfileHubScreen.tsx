@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useIsFocused } from '@react-navigation/native';
@@ -24,6 +24,7 @@ import { clearSession } from '@/services/auth/sessionManager';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
+import LogoutConfirmationDialog from '@/features/profile/components/LogoutConfirmationDialog';
 
 import LanguageSelectorModal from '../profileHub/components/LanguageSelectorModal';
 import ProfileDeveloperSheet from '../profileHub/components/ProfileDeveloperSheet';
@@ -150,6 +151,7 @@ export default function ProfileHubScreen(): React.JSX.Element {
         uiLangModalVisible,
     } = state;
     const [logoutLoading, setLogoutLoading] = React.useState<boolean>(false);
+    const [logoutDialogVisible, setLogoutDialogVisible] = React.useState<boolean>(false);
     const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState<boolean>(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
     const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
@@ -277,30 +279,20 @@ export default function ProfileHubScreen(): React.JSX.Element {
         });
     }, [image, isFocused, travelerLanguage, uiLanguage]);
 
-    const confirmLogoutIntent = React.useCallback(async (): Promise<boolean> => {
-        return new Promise((resolve) => {
-            Alert.alert(
-                t('profileHub.logout.confirmTitle', 'Log out?'),
-                t('profileHub.logout.confirmMessage', 'You will be logged out and moved to the login screen.'),
-                [
-                    { text: t('common.cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(false) },
-                    {
-                        text: t('profileSheet.menu.logout.title', 'Log out'),
-                        style: 'destructive',
-                        onPress: () => resolve(true),
-                    },
-                ],
-            );
-        });
-    }, [t]);
-
-    const handleLogout = React.useCallback(async () => {
+    const handleOpenLogoutDialog = React.useCallback((): void => {
         if (logoutLoading) {
             return;
         }
 
-        const confirmed = await confirmLogoutIntent();
-        if (!confirmed) {
+        setLogoutDialogVisible(true);
+    }, [logoutLoading]);
+
+    const handleCancelLogoutDialog = React.useCallback((): void => {
+        setLogoutDialogVisible(false);
+    }, []);
+
+    const handleLogout = React.useCallback(async () => {
+        if (logoutLoading) {
             return;
         }
 
@@ -351,7 +343,12 @@ export default function ProfileHubScreen(): React.JSX.Element {
         } finally {
             setLogoutLoading(false);
         }
-    }, [confirmLogoutIntent, logoutLoading, router]);
+    }, [logoutLoading, router]);
+
+    const handleConfirmLogoutDialog = React.useCallback((): void => {
+        setLogoutDialogVisible(false);
+        void handleLogout();
+    }, [handleLogout]);
 
     return (
         <TopLevelScreenShell
@@ -422,12 +419,13 @@ export default function ProfileHubScreen(): React.JSX.Element {
                         />
 
                         <HapticTouchableOpacity
+                            accessibilityHint={t('profileHub.menu.logout.hint')}
                             accessibilityLabel={t('profileHub.menu.logout.title', 'Log out')}
                             accessibilityRole="button"
                             activeOpacity={0.9}
                             disabled={logoutLoading}
                             hapticType="selection"
-                            onPress={() => void handleLogout()}
+                            onPress={handleOpenLogoutDialog}
                             style={[
                                 profileHubStyles.logoutButton,
                                 isDarkTheme ? profileHubStyles.logoutButtonDark : null,
@@ -489,6 +487,22 @@ export default function ProfileHubScreen(): React.JSX.Element {
                         rows={buildFingerprintRows}
                         title={t('profileAtelier.developer.title', 'Developer Info')}
                         visible={canRevealBuildFingerprint && isBuildFingerprintVisible}
+                    />
+
+                    <LogoutConfirmationDialog
+                        cancelAccessibilityHint={t('profileHub.logout.cancelAccessibilityHint')}
+                        cancelAccessibilityLabel={t('profileHub.logout.cancelAccessibilityLabel')}
+                        cancelLabel={t('common.cancel')}
+                        colorScheme={resolvedColorScheme}
+                        confirmAccessibilityHint={t('profileHub.logout.confirmAccessibilityHint')}
+                        confirmAccessibilityLabel={t('profileHub.logout.confirmAccessibilityLabel')}
+                        confirmLabel={t('profileHub.menu.logout.title')}
+                        dialogAccessibilityLabel={t('profileHub.logout.dialogAccessibilityLabel')}
+                        message={t('profileHub.logout.confirmMessage')}
+                        onCancel={handleCancelLogoutDialog}
+                        onConfirm={handleConfirmLogoutDialog}
+                        title={t('profileHub.logout.confirmTitle')}
+                        visible={logoutDialogVisible}
                     />
                 </SafeAreaView>
             </View>

@@ -206,6 +206,8 @@ export default function ProfileSheetView({
 
             <ProfileMenuItem
               icon={<LogOut size={20} color="#DC2626" />}
+              accessibilityHint={t('profileSheet.menu.logout.hint')}
+              accessibilityLabel={t('profileSheet.menu.logout.title', 'Log out')}
               title={t('profileSheet.menu.logout.title', 'Log out')}
               subtitle={
                 logoutLoading

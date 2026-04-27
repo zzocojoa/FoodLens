@@ -11,6 +11,8 @@ type ProfileMenuItemProps = {
     onPress?: () => void;
     iconBgColor: string;
     theme: any;
+    accessibilityLabel?: string;
+    accessibilityHint?: string;
 };
 
 export default function ProfileMenuItem({
@@ -20,26 +22,50 @@ export default function ProfileMenuItem({
     onPress,
     iconBgColor,
     theme,
+    accessibilityLabel,
+    accessibilityHint,
 }: ProfileMenuItemProps) {
-    const handlePress = React.useCallback(() => {
+    const hasAction = onPress !== undefined;
+    const handlePress = React.useCallback((): void => {
+        if (onPress === undefined) {
+            return;
+        }
+
         Keyboard.dismiss();
         requestAnimationFrame(() => {
-            onPress?.();
+            onPress();
         });
     }, [onPress]);
 
-    return (
-        <View style={[styles.menuContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
-            <HapticPressable style={styles.menuItem} onPress={handlePress} hapticType="light">
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                    <View style={[styles.iconBox, { backgroundColor: iconBgColor }]}>{icon}</View>
-                    <View>
-                        <Text style={[styles.menuTitle, { color: theme.textPrimary }]}>{title}</Text>
-                        <Text style={[styles.menuSub, { color: theme.textSecondary }]}>{subtitle}</Text>
-                    </View>
+    const content = (
+        <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={[styles.iconBox, { backgroundColor: iconBgColor }]}>{icon}</View>
+                <View>
+                    <Text style={[styles.menuTitle, { color: theme.textPrimary }]}>{title}</Text>
+                    <Text style={[styles.menuSub, { color: theme.textSecondary }]}>{subtitle}</Text>
                 </View>
-                <ChevronRight size={18} color={theme.textSecondary} />
-            </HapticPressable>
+            </View>
+            {hasAction ? <ChevronRight size={18} color={theme.textSecondary} /> : null}
+        </>
+    );
+
+    return (
+        <View style={[styles.menuContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {hasAction ? (
+                <HapticPressable
+                    accessibilityHint={accessibilityHint}
+                    accessibilityLabel={accessibilityLabel}
+                    accessibilityRole="button"
+                    style={styles.menuItem}
+                    onPress={handlePress}
+                    hapticType="light"
+                >
+                    {content}
+                </HapticPressable>
+            ) : (
+                <View style={styles.menuItem}>{content}</View>
+            )}
         </View>
     );
 }

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Alert } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
+import LogoutConfirmationDialog from '@/features/profile/components/LogoutConfirmationDialog';
 import { AuthApi } from '@/services/auth/authApi';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
 import { clearSession } from '@/services/auth/sessionManager';
@@ -25,6 +25,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   const { theme: currentTheme, setTheme, colorScheme } = useTheme();
   const theme = Colors[colorScheme];
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [logoutDialogVisible, setLogoutDialogVisible] = useState(false);
 
   const { state, profileSheet, travelerLanguageSheet, uiLanguageSheet } = useProfileSheetController({
     isOpen,
@@ -32,6 +33,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     userId,
     onUpdate,
   });
+
+  React.useEffect((): void => {
+    if (isOpen) {
+      return;
+    }
+
+    setLogoutDialogVisible(false);
+  }, [isOpen]);
 
   const travelerOptions = React.useMemo(
     () =>
@@ -72,25 +81,20 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     [settingsLanguageOptions]
   );
 
-  const confirmLogoutIntent = async (): Promise<boolean> =>
-    new Promise((resolve) => {
-      Alert.alert(
-        t('profileSheet.logout.confirmTitle'),
-        t('profileSheet.logout.confirmMessage'),
-        [
-          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
-          { text: t('profileSheet.menu.logout.title'), style: 'destructive', onPress: () => resolve(true) },
-        ]
-      );
-    });
-
-  const handleLogout = async () => {
+  const handleOpenLogoutDialog = React.useCallback((): void => {
     if (logoutLoading) {
       return;
     }
 
-    const confirmed = await confirmLogoutIntent();
-    if (!confirmed) {
+    setLogoutDialogVisible(true);
+  }, [logoutLoading]);
+
+  const handleCancelLogoutDialog = React.useCallback((): void => {
+    setLogoutDialogVisible(false);
+  }, []);
+
+  const handleLogout = React.useCallback(async (): Promise<void> => {
+    if (logoutLoading) {
       return;
     }
 
@@ -141,7 +145,12 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     } finally {
       setLogoutLoading(false);
     }
-  };
+  }, [logoutLoading, router]);
+
+  const handleConfirmLogoutDialog = React.useCallback((): void => {
+    setLogoutDialogVisible(false);
+    void handleLogout();
+  }, [handleLogout]);
 
   const handleManageProfile = React.useCallback(() => {
     onClose();
@@ -164,13 +173,14 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
   }, [onClose, router]);
 
   return (
+    <>
     <ProfileSheetView
       isOpen={isOpen}
       closeProfile={profileSheet.closeSheet}
       onPressManageProfile={handleManageProfile}
       onPressSupportHub={handleOpenSupportHub}
       onPressUpdate={() => void state.handleUpdate(onUpdate, onClose)}
-      onPressLogout={() => void handleLogout()}
+      onPressLogout={handleOpenLogoutDialog}
       logoutLoading={logoutLoading}
       currentTheme={currentTheme}
       setTheme={setTheme}
@@ -197,5 +207,21 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       })}
       toLanguageCode={toTargetLanguage}
     />
+    <LogoutConfirmationDialog
+      cancelAccessibilityHint={t('profileSheet.logout.cancelAccessibilityHint')}
+      cancelAccessibilityLabel={t('profileSheet.logout.cancelAccessibilityLabel')}
+      cancelLabel={t('common.cancel')}
+      colorScheme={colorScheme}
+      confirmAccessibilityHint={t('profileSheet.logout.confirmAccessibilityHint')}
+      confirmAccessibilityLabel={t('profileSheet.logout.confirmAccessibilityLabel')}
+      confirmLabel={t('profileSheet.menu.logout.title')}
+      dialogAccessibilityLabel={t('profileSheet.logout.dialogAccessibilityLabel')}
+      message={t('profileSheet.logout.confirmMessage')}
+      onCancel={handleCancelLogoutDialog}
+      onConfirm={handleConfirmLogoutDialog}
+      title={t('profileSheet.logout.confirmTitle')}
+      visible={isOpen && logoutDialogVisible}
+    />
+    </>
   );
 }
