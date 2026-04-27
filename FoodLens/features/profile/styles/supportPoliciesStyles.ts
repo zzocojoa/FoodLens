@@ -40,9 +40,6 @@ export const supportPoliciesStyles = StyleSheet.create({
     darkTextSecondary: {
         color: Colors.dark.textSecondary,
     },
-    darkIcon: {
-        color: Colors.dark.textSecondary,
-    },
     section: {
         gap: homeDashboardSpacing.sm,
     },
