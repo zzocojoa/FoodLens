@@ -1,13 +1,20 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import ProfileHubScreen from '../ProfileHubScreen';
 
+const mockEnTranslations = jest.requireActual('../../../i18n/resources/en.json') as Record<string, string>;
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockSetTheme = jest.fn();
 const mockSetTravelerLangModalVisible = jest.fn();
 const mockSetUiLangModalVisible = jest.fn();
+const mockAuthLogout = jest.fn();
+const mockReadSession = jest.fn();
+const mockClearSession = jest.fn();
+const mockProviderLogout = jest.fn();
+const mockDispatchPhase2SyncQueue = jest.fn();
+const mockTranslate = jest.fn((key: string, fallback?: string): string => mockEnTranslations[key] ?? fallback ?? key);
 const mockBuildFingerprint = {
     version: '1.0.0',
     appName: 'FoodLens',
@@ -26,6 +33,23 @@ const mockBuildFingerprint = {
     gitDirty: false,
     builtAtIso: '2026-04-18T00:00:00.000Z',
 };
+type LogoutConfirmationDialogTestProps = {
+    visible: boolean;
+    colorScheme: 'light' | 'dark';
+    title: string;
+    message: string;
+    cancelLabel: string;
+    confirmLabel: string;
+    dialogAccessibilityLabel: string;
+    cancelAccessibilityLabel: string;
+    cancelAccessibilityHint: string;
+    confirmAccessibilityLabel: string;
+    confirmAccessibilityHint: string;
+    onCancel: () => void;
+    onConfirm: () => void;
+};
+
+let mockCapturedLogoutDialogProps: LogoutConfirmationDialogTestProps | null = null;
 
 jest.mock('expo-router', () => ({
     Stack: {
@@ -85,7 +109,7 @@ jest.mock('@/contexts/ThemeContext', () => ({
 
 jest.mock('@/features/i18n', () => ({
     useI18n: () => ({
-        t: (_key: string, fallback?: string) => fallback ?? _key,
+        t: mockTranslate,
     }),
 }));
 
@@ -117,26 +141,26 @@ jest.mock('@/services/travelerCardLanguage', () => ({
 
 jest.mock('@/services/auth/authApi', () => ({
     AuthApi: {
-        logout: jest.fn(),
+        logout: (...args: unknown[]) => mockAuthLogout(...args),
     },
 }));
 
 jest.mock('@/services/auth/secureSessionStore', () => ({
     AuthSecureSessionStore: {
-        read: jest.fn(),
+        read: (...args: unknown[]) => mockReadSession(...args),
     },
 }));
 
 jest.mock('@/services/auth/sessionManager', () => ({
-    clearSession: jest.fn(),
+    clearSession: (...args: unknown[]) => mockClearSession(...args),
 }));
 
 jest.mock('@/services/auth/providerLogout', () => ({
-    logoutFromOAuthProvider: jest.fn(),
+    logoutFromOAuthProvider: (...args: unknown[]) => mockProviderLogout(...args),
 }));
 
 jest.mock('@/services/sync/phase2SyncQueue', () => ({
-    dispatchPhase2SyncQueue: jest.fn(),
+    dispatchPhase2SyncQueue: (...args: unknown[]) => mockDispatchPhase2SyncQueue(...args),
 }));
 
 jest.mock('../../profileHub/hooks/useProfileHubController', () => ({
@@ -260,6 +284,13 @@ jest.mock('../../profileHub/components/LanguageSelectorModal', () => {
     };
 });
 
+jest.mock('@/features/profile/components/LogoutConfirmationDialog', () => {
+    return function MockLogoutConfirmationDialog(props: LogoutConfirmationDialogTestProps) {
+        mockCapturedLogoutDialogProps = props;
+        return null;
+    };
+});
+
 jest.mock('lucide-react-native', () => ({
     LogOut: () => null,
 }));
@@ -267,6 +298,19 @@ jest.mock('lucide-react-native', () => ({
 describe('ProfileHubScreen', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockCapturedLogoutDialogProps = null;
+        mockReadSession.mockResolvedValue({
+            accessToken: 'atk_profile_hub',
+            refreshToken: 'rtk_profile_hub',
+            user: {
+                id: 'usr_profile',
+                provider: 'google',
+            },
+        });
+        mockAuthLogout.mockResolvedValue(undefined);
+        mockClearSession.mockResolvedValue(undefined);
+        mockProviderLogout.mockResolvedValue(undefined);
+        mockDispatchPhase2SyncQueue.mockResolvedValue(undefined);
         Object.assign(mockBuildFingerprint, {
             version: '1.0.0',
             appName: 'FoodLens',
@@ -290,7 +334,7 @@ describe('ProfileHubScreen', () => {
     it('renders the redesigned sections and opens the edit page', () => {
         const { getByTestId, getByText } = render(<ProfileHubScreen />);
 
-        expect(getByText('Profile')).toBeTruthy();
+        expect(getByText(mockEnTranslations['profileAtelier.rail.title'])).toBeTruthy();
         expect(getByTestId('profile-identity-summary-card')).toBeTruthy();
         expect(getByTestId('profile-safety-passport-section')).toBeTruthy();
         expect(getByTestId('profile-travel-mode-section')).toBeTruthy();
@@ -345,5 +389,79 @@ describe('ProfileHubScreen', () => {
         expect(mockPush).toHaveBeenCalledWith('/support-policies');
         expect(mockSetTravelerLangModalVisible).toHaveBeenCalledWith(true);
         expect(mockSetUiLangModalVisible).toHaveBeenCalledWith(true);
+    });
+
+    it('passes profile hub i18n copy and accessibility labels to the logout dialog', () => {
+        render(<ProfileHubScreen />);
+
+        expect(mockCapturedLogoutDialogProps).toMatchObject({
+            visible: false,
+            colorScheme: 'light',
+            title: mockEnTranslations['profileHub.logout.confirmTitle'],
+            message: mockEnTranslations['profileHub.logout.confirmMessage'],
+            cancelLabel: mockEnTranslations['common.cancel'],
+            confirmLabel: mockEnTranslations['profileHub.menu.logout.title'],
+            dialogAccessibilityLabel: mockEnTranslations['profileHub.logout.dialogAccessibilityLabel'],
+            cancelAccessibilityLabel: mockEnTranslations['profileHub.logout.cancelAccessibilityLabel'],
+            cancelAccessibilityHint: mockEnTranslations['profileHub.logout.cancelAccessibilityHint'],
+            confirmAccessibilityLabel: mockEnTranslations['profileHub.logout.confirmAccessibilityLabel'],
+            confirmAccessibilityHint: mockEnTranslations['profileHub.logout.confirmAccessibilityHint'],
+        });
+
+        const translatedKeys = mockTranslate.mock.calls.map(([key]) => key);
+        expect(translatedKeys).toEqual(
+            expect.arrayContaining([
+                'profileHub.logout.confirmTitle',
+                'profileHub.logout.confirmMessage',
+                'profileHub.logout.dialogAccessibilityLabel',
+                'profileHub.logout.cancelAccessibilityLabel',
+                'profileHub.logout.cancelAccessibilityHint',
+                'profileHub.logout.confirmAccessibilityLabel',
+                'profileHub.logout.confirmAccessibilityHint',
+                'profileHub.menu.logout.title',
+                'common.cancel',
+            ]),
+        );
+        expect(translatedKeys).not.toContain('profileSheet.menu.logout.title');
+    });
+
+    it('keeps the session when the logout dialog is cancelled', async () => {
+        const { getByLabelText } = render(<ProfileHubScreen />);
+
+        fireEvent.press(getByLabelText(mockEnTranslations['profileHub.menu.logout.title']));
+
+        expect(mockCapturedLogoutDialogProps?.visible).toBe(true);
+
+        await act(async () => {
+            mockCapturedLogoutDialogProps?.onCancel();
+        });
+
+        expect(mockCapturedLogoutDialogProps?.visible).toBe(false);
+        expect(mockAuthLogout).not.toHaveBeenCalled();
+        expect(mockClearSession).not.toHaveBeenCalled();
+        expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it('runs the existing logout flow after confirming the custom dialog', async () => {
+        const { getByLabelText } = render(<ProfileHubScreen />);
+
+        fireEvent.press(getByLabelText(mockEnTranslations['profileHub.menu.logout.title']));
+
+        expect(mockCapturedLogoutDialogProps?.visible).toBe(true);
+
+        await act(async () => {
+            mockCapturedLogoutDialogProps?.onConfirm();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(mockAuthLogout).toHaveBeenCalledWith({
+            accessToken: 'atk_profile_hub',
+            refreshToken: 'rtk_profile_hub',
+        });
+        expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+        expect(mockClearSession).toHaveBeenCalledTimes(1);
+        expect(mockReplace).toHaveBeenCalledWith('/login');
+        expect(mockProviderLogout).toHaveBeenCalledWith('google');
     });
 });
