@@ -97,7 +97,7 @@ bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-matrix.
 - `artifacts/perf/matrix-<timestamp>/...`
 - GitHub Actions artifact: `backend-media-performance-regression-<run_id>`
 
-`Backend Media Performance Regression` workflow에서 업로드한 artifact는 `artifacts/perf` 전체를 포함한다. 단일 실행 결과는 보통 `artifacts/perf/backend-media-<run_id>/summary.json`와 `artifacts/perf/backend-media-<run_id>/k6.log`에서 확인한다. fresh URL 해석 diagnostics는 `artifacts/perf/url-resolution/diagnostics.jsonl`에 기록된다. workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret이 바로 선택된 경우에는 candidate probe를 실행하지 않으므로 diagnostics 파일이 비어 있을 수 있다.
+`Backend Media Performance Regression` workflow에서 업로드한 artifact는 runner workspace의 `artifacts/perf` 전체를 포함한다. 단일 실행 결과는 보통 `artifacts/perf/backend-media-<run_id>/summary.json`와 `artifacts/perf/backend-media-<run_id>/k6.log`에서 확인한다. fresh URL 해석 diagnostics는 runner workspace의 `artifacts/perf/url-resolution/diagnostics.jsonl`에 기록되고, 업로드된 artifact 안에서는 `url-resolution/diagnostics.jsonl`로 확인할 수 있다. workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret이 바로 선택된 경우에는 candidate probe를 실행하지 않으므로 diagnostics 파일이 비어 있을 수 있다.
 
 ## 3-1) before/after 자동 비교 리포트
 ```bash
@@ -140,7 +140,7 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
 ## 3-3) Backend Media Performance Regression 실패 분류표
 | 분류 | 확정 신호 | 의심 신호 | 1차 조치 |
 | --- | --- | --- | --- |
-| URL resolution 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `profile`, `history`, `history[n].image_render_url`, 또는 `profile.profile_image_render_url`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret 경로에서는 diagnostics가 비어 있을 수 있어 workflow 로그와 함께 봐야 한다. | 같은 backend base URL의 live readiness와 Render/GCS 상태를 먼저 확인한다. smoke 계정 데이터와 권한은 그 다음에 확인한다. |
+| URL resolution 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `profile`, `history`, `history[<index>].image_render_url`, 또는 `profile.profile_image_render_url`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret 경로에서는 diagnostics가 비어 있을 수 있어 workflow 로그와 함께 봐야 한다. | 같은 backend base URL의 live readiness와 Render/GCS 상태를 먼저 확인한다. smoke 계정 데이터와 권한은 그 다음에 확인한다. |
 | k6 threshold failure | `summary.json`의 `thresholds` 항목 또는 `k6.log`에 threshold 실패가 기록되고, 실행 자체는 `summary.json`를 생성했다. | 특정 지표의 p95 또는 failure rate가 근소하게 초과했지만 외부 장애 로그가 동시에 있다. | `summary.json`의 실제 값과 직전 기준선을 비교한다. threshold 완화는 기본 추천하지 않으며, 서비스 목표가 바뀐 경우에만 별도 승인 후 조정한다. |
 | workflow probe parsing bug | candidate probe의 HTTP status와 content type이 정상인데도 URL 선택이 실패하거나, diagnostics의 probe 원시값과 workflow 로그의 판정이 서로 맞지 않는다. | curl은 성공했지만 probe meta의 `status` 또는 `content_type`이 비어 있거나 workflow 로그와 다르다. | workflow의 probe 파싱 로직을 결함 후보로 분리한다. backend 성능 회귀로 확정하지 않는다. |
 | smoke data missing | 로그인 또는 인증은 성공했지만 `/me/profile`, `/me/history`에서 signed `/media/render` URL 후보가 없다는 메시지가 기록된다. | profile 이미지는 없고 history도 비어 있거나, history 항목에 이미지 필드가 있지만 signed render URL 형식이 아니다. | smoke 계정에 유효한 이미지 데이터를 다시 준비한다. secret이나 signed URL을 새로 장기 저장하는 방식은 기본 조치로 사용하지 않는다. |
@@ -152,7 +152,7 @@ diagnostics artifact는 fresh URL 해석 실패 원인을 확정하기 위한 �
 - 확정으로 표현할 수 있는 값
   - workflow 로그에 표시된 `MEDIA_RENDER_URL` source. 값 자체는 기록하지 않는다.
   - workflow 로그에 표시된 `AUTH_BEARER_TOKEN` source. 값 자체는 기록하지 않는다.
-  - diagnostics의 `candidate_source`가 `profile`, `history`, `profile.profile_image_render_url`, `history[n].image_render_url` 중 어디였는지.
+  - diagnostics의 `candidate_source`가 `profile`, `history`, `profile.profile_image_render_url`, `history[<index>].image_render_url` 중 어디였는지.
   - diagnostics의 HTTP `status`, `content_type`, `detail.code`, `request_id`, `recovered`.
   - `summary.json`에 있는 metric 값과 threshold pass/fail 결과.
   - `k6.log`에 출력된 threshold 실패 메시지.
@@ -176,7 +176,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `analyze_failure_rate.rate`
 - `analyze_latency.p(95)`
 
-`run-media-baseline.sh`가 추가로 요약 출력하는 진단용 metric은 아래와 같다. 이 값들은 상태 코드 분포와 content type 불일치를 확인하기 위한 보조 지표이며, 현재 threshold 완화 근거로 단독 사용하지 않는다.
+`run-media-baseline.sh`가 추가로 요약 출력하는 진단용 metric은 아래와 같다. 이 값들은 상태 코드 분포와 content type 불일치를 확인하기 위한 보조 지표이며, 현재 threshold 완화 근거로 단독 사용하지 않는다. `render_content_type_mismatch_rate.rate`는 render 응답이 2xx였지만 `Content-Type`이 `image/*`가 아닌 경우를 센다.
 
 - `http_req_duration.p95`
 - `render_status_2xx_rate.rate`
@@ -185,6 +185,8 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `render_status_5xx_rate.rate`
 - `render_status_other_rate.rate`
 - `render_content_type_mismatch_rate.rate`
+
+`run-media-baseline.sh`의 콘솔 요약은 사람이 읽기 쉬운 별칭으로 latency를 `render_latency.p95`, `profile_latency.p95`, `analyze_latency.p95`처럼 출력한다. `summary.json`, threshold, 비교 스크립트의 필드 이름은 위의 주요 metric 목록처럼 `render_latency.p(95)`, `profile_latency.p(95)`, `analyze_latency.p(95)`를 기준으로 한다.
 
 ## 4) 1차 판정 기준 (초기값)
 - `http_req_failed.rate < 0.10`

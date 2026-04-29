@@ -1,16 +1,30 @@
+import logging
 import os
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 
-os.environ["OPENAPI_EXPORT_ONLY"] = "1"
-os.environ["AUTH_STATE_BACKEND"] = "memory"
-os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
-os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
-os.environ["MEDIA_STORAGE_BACKEND"] = "disabled"
+_RUNTIME_ENV: dict[str, str] = {
+    "OPENAPI_EXPORT_ONLY": "1",
+    "AUTH_STATE_BACKEND": "memory",
+    "ANALYSIS_JOB_BACKEND": "memory",
+    "ANALYSIS_NUTRITION_CACHE_BACKEND": "memory",
+    "MEDIA_STORAGE_BACKEND": "disabled",
+}
+_ORIGINAL_ENV: dict[str, str | None] = {key: os.environ.get(key) for key in _RUNTIME_ENV}
+os.environ.update(_RUNTIME_ENV)
 from backend.server import app  # noqa: E402
+for _key, _value in _ORIGINAL_ENV.items():
+    if _value is None:
+        os.environ.pop(_key, None)
+    else:
+        os.environ[_key] = _value
+
+
+_RUNTIME_LOGGER_NAMES: tuple[str, ...] = ("foodlens.api", "httpx")
 
 
 class _DisabledMediaStorage:
@@ -42,9 +56,19 @@ def _restore_app_state(snapshot: dict[str, object]) -> None:
 class HealthReadinessTests(unittest.TestCase):
     def setUp(self) -> None:
         self._original_state: dict[str, object] = _snapshot_app_state()
+        self._exit_stack: ExitStack = ExitStack()
+        self._exit_stack.enter_context(patch.dict(os.environ, _RUNTIME_ENV, clear=False))
+        self._original_logger_levels: dict[str, int] = {}
+        for logger_name in _RUNTIME_LOGGER_NAMES:
+            logger = logging.getLogger(logger_name)
+            self._original_logger_levels[logger_name] = logger.level
+            logger.setLevel(logging.CRITICAL)
 
     def tearDown(self) -> None:
+        for logger_name, logger_level in self._original_logger_levels.items():
+            logging.getLogger(logger_name).setLevel(logger_level)
         _restore_app_state(self._original_state)
+        self._exit_stack.close()
 
     @patch("backend.server.initialize_services")
     @patch("backend.server._is_openapi_export_mode", return_value=False)

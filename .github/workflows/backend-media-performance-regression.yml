@@ -61,7 +61,6 @@ jobs:
 
       - name: Resolve fresh media render URL
         env:
-          INPUT_MEDIA_RENDER_URL: ${{ inputs.media_render_url }}
           SECRET_MEDIA_RENDER_URL: ${{ secrets.PERF_MEDIA_RENDER_URL }}
           PERF_AUTH_BEARER_TOKEN: ${{ secrets.PERF_AUTH_BEARER_TOKEN }}
           BASE_URL: ${{ inputs.backend_base_url }}
@@ -82,6 +81,24 @@ jobs:
               exit 1
             fi
           }
+
+          INPUT_MEDIA_RENDER_URL="$(
+            python3 - "${GITHUB_EVENT_PATH}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as handle:
+              event = json.load(handle)
+
+          inputs = event.get("inputs")
+          if not isinstance(inputs, dict):
+              raise SystemExit("workflow_dispatch event inputs must be an object")
+          value = inputs.get("media_render_url") or ""
+          if not isinstance(value, str):
+              raise SystemExit("media_render_url input must be a string")
+          print(value, end="")
+          PY
+          )"
 
           if [[ -n "${INPUT_MEDIA_RENDER_URL}" ]]; then
             assert_single_line_value "media_render_url" "${INPUT_MEDIA_RENDER_URL}"

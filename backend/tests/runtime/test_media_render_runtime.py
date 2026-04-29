@@ -3,18 +3,31 @@ import logging
 import os
 import unittest
 from collections import OrderedDict
+from contextlib import ExitStack
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-os.environ["OPENAPI_EXPORT_ONLY"] = "1"
-os.environ["AUTH_STATE_BACKEND"] = "memory"
-os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
-os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
-os.environ["MEDIA_STORAGE_BACKEND"] = "disabled"
+_RUNTIME_ENV: dict[str, str] = {
+    "OPENAPI_EXPORT_ONLY": "1",
+    "AUTH_STATE_BACKEND": "memory",
+    "ANALYSIS_JOB_BACKEND": "memory",
+    "ANALYSIS_NUTRITION_CACHE_BACKEND": "memory",
+    "MEDIA_STORAGE_BACKEND": "disabled",
+}
+_ORIGINAL_ENV: dict[str, str | None] = {key: os.environ.get(key) for key in _RUNTIME_ENV}
+os.environ.update(_RUNTIME_ENV)
 import backend.server as server  # noqa: E402
 from backend.modules.media.service import MediaObjectPayload, MediaStorageError  # noqa: E402
+for _key, _value in _ORIGINAL_ENV.items():
+    if _value is None:
+        os.environ.pop(_key, None)
+    else:
+        os.environ[_key] = _value
+
+
+_RUNTIME_LOGGER_NAMES: tuple[str, ...] = ("foodlens.api", "httpx")
 
 
 class _FakeRequest:
@@ -78,14 +91,20 @@ def _restore_app_state(snapshot: dict[str, object]) -> None:
 class MediaRenderRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         self._original_state: dict[str, object] = _snapshot_app_state()
-        self._httpx_logger = logging.getLogger("httpx")
-        self._original_httpx_level: int = self._httpx_logger.level
-        self._httpx_logger.setLevel(logging.WARNING)
+        self._exit_stack: ExitStack = ExitStack()
+        self._exit_stack.enter_context(patch.dict(os.environ, _RUNTIME_ENV, clear=False))
+        self._original_logger_levels: dict[str, int] = {}
+        for logger_name in _RUNTIME_LOGGER_NAMES:
+            logger = logging.getLogger(logger_name)
+            self._original_logger_levels[logger_name] = logger.level
+            logger.setLevel(logging.CRITICAL)
         self._prime_media_render_runtime(media_public_base_url="")
 
     def tearDown(self) -> None:
-        self._httpx_logger.setLevel(self._original_httpx_level)
+        for logger_name, logger_level in self._original_logger_levels.items():
+            logging.getLogger(logger_name).setLevel(logger_level)
         _restore_app_state(self._original_state)
+        self._exit_stack.close()
 
     def _prime_media_render_runtime(self, *, media_public_base_url: str) -> None:
         server.app.state.media_render_default_width = 512

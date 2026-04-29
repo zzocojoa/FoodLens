@@ -85,7 +85,10 @@ function isStatusOther(status) {
 }
 
 function isImageContentType(headers) {
-  return String(headers['Content-Type'] || '').startsWith('image/');
+  const contentType = Object.entries(headers).find(
+    ([name]) => name.toLowerCase() === 'content-type',
+  )?.[1];
+  return String(contentType || '').trim().toLowerCase().startsWith('image/');
 }
 
 function runRenderRequest() {
@@ -99,7 +102,7 @@ function runRenderRequest() {
   renderStatus4xxRate.add(isStatus4xx(response.status));
   renderStatus5xxRate.add(isStatus5xx(response.status));
   renderStatusOtherRate.add(isStatusOther(response.status));
-  renderContentTypeMismatchRate.add(response.status === 200 && !renderContentTypeMatches);
+  renderContentTypeMismatchRate.add(isStatus2xx(response.status) && !renderContentTypeMatches);
   const ok = check(response, {
     'render status is 200': (r) => r.status === 200,
     'render content type image/*': (r) => isImageContentType(r.headers),
