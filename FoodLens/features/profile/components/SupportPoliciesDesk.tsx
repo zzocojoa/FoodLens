@@ -16,6 +16,7 @@ import { Colors, type ColorSchemeName } from '@/constants/theme';
 import { HomeBackgroundAtmosphere } from '../../home/components/HomeBackgroundAtmosphere';
 import { PearlSurfaceOverlay } from '../../home/components/PearlSurfaceOverlay';
 import {
+    getHomeDashboardColors,
     homeDashboardColors,
     homeDashboardSpacing,
 } from '../../home/components/homeDashboardTokens';
@@ -180,15 +181,23 @@ export default function SupportPoliciesDesk({
     onOpenTermsOfService,
 }: SupportPoliciesDeskProps): React.JSX.Element {
     const isDarkMode = colorScheme === 'dark';
+    const dashboardColors = getHomeDashboardColors(colorScheme);
     const mutedTextStyle = isDarkMode ? styles.darkTextSecondary : null;
     const primaryTextStyle = isDarkMode ? styles.darkTextPrimary : null;
     const panelStyle = isDarkMode ? styles.darkPanel : null;
     const mutedPanelStyle = isDarkMode ? styles.darkMutedPanel : null;
-    const rowIconColor = isDarkMode ? Colors.dark.textSecondary : homeDashboardColors.inkSoft;
+    const rowIconColor = isDarkMode ? dashboardColors.inkSoft : homeDashboardColors.inkSoft;
+    const contactIconColor = dashboardColors.accentGreen;
     const policyRestBackgroundColor = isDarkMode ? Colors.dark.surface : homeDashboardColors.surfaceStrong;
     const policyPressedBackgroundColor = isDarkMode
         ? Colors.dark.background
         : homeDashboardColors.surfaceMuted;
+    const primaryActionStyle = isDarkMode ? styles.darkPrimaryAction : null;
+    const primaryTitleStyle = isDarkMode ? styles.darkPrimaryTitle : null;
+    const primaryDescriptionStyle = isDarkMode ? styles.darkPrimaryDescription : null;
+    const primaryIconWrapStyle = isDarkMode ? styles.darkPrimaryIconWrap : null;
+    const secondaryIconWrapStyle = isDarkMode ? styles.darkSecondaryIconWrap : null;
+    const compactRowBorderStyle = isDarkMode ? styles.darkCompactRowBorder : styles.compactRowBorder;
 
     return (
         <View style={[styles.root, isDarkMode ? styles.darkRoot : null]}>
@@ -217,22 +226,28 @@ export default function SupportPoliciesDesk({
                         )}
                         <View style={styles.surfaceContent}>
                             <SupportActionRow
-                                chevronColor={homeDashboardColors.paper}
+                                chevronColor={isDarkMode ? Colors.dark.textPrimary : homeDashboardColors.paper}
                                 description={copy.helpDescription}
-                                descriptionStyle={styles.primaryDescription}
-                                icon={<LifeBuoy color={homeDashboardColors.ink} size={19} strokeWidth={2.5} />}
-                                iconWrapStyle={styles.primaryIconWrap}
+                                descriptionStyle={[styles.primaryDescription, primaryDescriptionStyle]}
+                                icon={
+                                    <LifeBuoy
+                                        color={isDarkMode ? Colors.dark.textPrimary : homeDashboardColors.ink}
+                                        size={19}
+                                        strokeWidth={2.5}
+                                    />
+                                }
+                                iconWrapStyle={[styles.primaryIconWrap, primaryIconWrapStyle]}
                                 onPress={onOpenHelpCenter}
-                                rowStyle={styles.primaryAction}
+                                rowStyle={[styles.primaryAction, primaryActionStyle]}
                                 title={copy.helpTitle}
-                                titleStyle={styles.primaryTitle}
+                                titleStyle={[styles.primaryTitle, primaryTitleStyle]}
                             />
                             <SupportActionRow
-                                chevronColor={homeDashboardColors.inkSoft}
+                                chevronColor={rowIconColor}
                                 description={copy.contactDescription}
                                 descriptionStyle={[styles.secondaryDescription, mutedTextStyle]}
-                                icon={<Mail color={homeDashboardColors.accentGreen} size={18} strokeWidth={2.5} />}
-                                iconWrapStyle={styles.secondaryIconWrap}
+                                icon={<Mail color={contactIconColor} size={18} strokeWidth={2.5} />}
+                                iconWrapStyle={[styles.secondaryIconWrap, secondaryIconWrapStyle]}
                                 onPress={onOpenSupportContact}
                                 rowStyle={[styles.secondaryAction, mutedPanelStyle]}
                                 title={copy.contactTitle}
@@ -252,7 +267,7 @@ export default function SupportPoliciesDesk({
                             onPress={onOpenPrivacyPolicy}
                             pressedBackgroundColor={policyPressedBackgroundColor}
                             restBackgroundColor={policyRestBackgroundColor}
-                            rowBorderStyle={styles.compactRowBorder}
+                            rowBorderStyle={compactRowBorderStyle}
                             title={copy.privacyTitle}
                         />
                         <CompactPolicyRow

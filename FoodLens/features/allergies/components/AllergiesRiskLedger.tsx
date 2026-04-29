@@ -1,9 +1,16 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { homeDashboardColors, homeDashboardRadii, homeDashboardSpacing, homeDashboardTypography } from '../../home/components/homeDashboardTokens';
+import {
+  homeDashboardColors,
+  homeDashboardRadii,
+  homeDashboardSpacing,
+  homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
+} from '../../home/components/homeDashboardTokens';
 import { homeDashboardStyles } from '../../home/components/homeDashboardStyles';
-import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
+import { PearlSurfaceOverlay } from '../../home/components/PearlSurfaceOverlay';
 import {
   type AllergiesSeverityGroupKind,
   type AllergiesSeveritySectionItem,
@@ -14,18 +21,20 @@ export type AllergiesRiskLedgerSection = Readonly<{
   kind: AllergiesSeverityGroupKind;
   title: string;
   subtitle?: string;
-  items: ReadonlyArray<AllergiesSeveritySectionItem>;
+  items: readonly AllergiesSeveritySectionItem[];
 }>;
 
 export type AllergiesRiskLedgerProps = Readonly<{
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   title: string;
   meta: string;
-  sections: ReadonlyArray<AllergiesRiskLedgerSection>;
+  sections: readonly AllergiesRiskLedgerSection[];
   emptyTitle?: string;
   emptyDescription?: string;
 }>;
 
-const LEDGER_ORDER: ReadonlyArray<AllergiesSeverityGroupKind> = [
+const LEDGER_ORDER: readonly AllergiesSeverityGroupKind[] = [
   'severe',
   'moderate',
   'mild',
@@ -33,8 +42,8 @@ const LEDGER_ORDER: ReadonlyArray<AllergiesSeverityGroupKind> = [
 ];
 
 const getOrderedSections = (
-  sections: ReadonlyArray<AllergiesRiskLedgerSection>,
-): ReadonlyArray<AllergiesRiskLedgerSection> => {
+  sections: readonly AllergiesRiskLedgerSection[],
+): readonly AllergiesRiskLedgerSection[] => {
   return LEDGER_ORDER.flatMap((kind) => {
     const section = sections.find((entry) => entry.kind === kind);
 
@@ -43,6 +52,8 @@ const getOrderedSections = (
 };
 
 export function AllergiesRiskLedger({
+  colorScheme,
+  colors,
   title,
   meta,
   sections,
@@ -58,29 +69,52 @@ export function AllergiesRiskLedger({
     }
 
     return (
-      <View style={[homeDashboardStyles.sectionCard, localStyles.container]}>
-        <PearlSurfaceOverlay
-          accentWashColor={homeDashboardColors.pearlMist}
-          baseBottomColor="#FFF8F0"
-          baseTopColor={homeDashboardColors.pearlIvory}
-          coolWashColor={homeDashboardColors.pearlSage}
-          warmWashColor={homeDashboardColors.pearlPeach}
-        />
+      <View
+        style={[
+          homeDashboardStyles.sectionCard,
+          localStyles.container,
+          { backgroundColor: colors.surface, borderColor: colors.line },
+        ]}
+      >
+        {colorScheme === 'light' ? (
+          <PearlSurfaceOverlay
+            accentWashColor={colors.pearlMist}
+            baseBottomColor="#FFF8F0"
+            baseTopColor={colors.pearlIvory}
+            coolWashColor={colors.pearlSage}
+            warmWashColor={colors.pearlPeach}
+          />
+        ) : null}
         <View style={homeDashboardStyles.sectionHeaderRow}>
           <View style={homeDashboardStyles.sectionHeaderCopy}>
-            <Text style={localStyles.title}>{title}</Text>
-            <Text style={localStyles.meta}>{meta}</Text>
+            <Text style={[localStyles.title, { color: colors.ink }]}>{title}</Text>
+            <Text style={[localStyles.meta, { color: colors.inkSoft }]}>{meta}</Text>
           </View>
 
-          <View style={[homeDashboardStyles.pill, localStyles.countPill]}>
-            <Text style={[homeDashboardStyles.pillText, localStyles.countPillText]}>0</Text>
+          <View
+            style={[
+              homeDashboardStyles.pill,
+              localStyles.countPill,
+              { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+            ]}
+          >
+            <Text style={[homeDashboardStyles.pillText, localStyles.countPillText, { color: colors.ink }]}>
+              0
+            </Text>
           </View>
         </View>
 
-        <View style={localStyles.emptyState}>
-          <Text style={localStyles.emptyTitle}>{emptyTitle}</Text>
+        <View
+          style={[
+            localStyles.emptyState,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
+        >
+          <Text style={[localStyles.emptyTitle, { color: colors.ink }]}>{emptyTitle}</Text>
           {typeof emptyDescription === 'string' && emptyDescription.trim().length > 0 ? (
-            <Text style={localStyles.emptyDescription}>{emptyDescription}</Text>
+            <Text style={[localStyles.emptyDescription, { color: colors.inkSoft }]}>
+              {emptyDescription}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -88,22 +122,36 @@ export function AllergiesRiskLedger({
   }
 
   return (
-    <View style={[homeDashboardStyles.sectionCard, localStyles.container]}>
-      <PearlSurfaceOverlay
-        accentWashColor={homeDashboardColors.pearlMist}
-        baseBottomColor="#FFF8F0"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={homeDashboardColors.pearlSage}
-        warmWashColor={homeDashboardColors.pearlPeach}
-      />
+    <View
+      style={[
+        homeDashboardStyles.sectionCard,
+        localStyles.container,
+        { backgroundColor: colors.surface, borderColor: colors.line },
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={colors.pearlMist}
+          baseBottomColor="#FFF8F0"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={colors.pearlSage}
+          warmWashColor={colors.pearlPeach}
+        />
+      ) : null}
       <View style={homeDashboardStyles.sectionHeaderRow}>
         <View style={homeDashboardStyles.sectionHeaderCopy}>
-          <Text style={localStyles.title}>{title}</Text>
-          <Text style={localStyles.meta}>{meta}</Text>
+          <Text style={[localStyles.title, { color: colors.ink }]}>{title}</Text>
+          <Text style={[localStyles.meta, { color: colors.inkSoft }]}>{meta}</Text>
         </View>
 
-        <View style={[homeDashboardStyles.pill, localStyles.countPill]}>
-          <Text style={[homeDashboardStyles.pillText, localStyles.countPillText]}>
+        <View
+          style={[
+            homeDashboardStyles.pill,
+            localStyles.countPill,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
+        >
+          <Text style={[homeDashboardStyles.pillText, localStyles.countPillText, { color: colors.ink }]}>
             {String(totalCount)}
           </Text>
         </View>
@@ -117,6 +165,7 @@ export function AllergiesRiskLedger({
             title={section.title}
             subtitle={section.subtitle}
             items={section.items}
+            colors={colors}
           />
         ))}
       </View>

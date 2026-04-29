@@ -18,7 +18,9 @@ import { HomeBackgroundAtmosphere } from '../../home/components/HomeBackgroundAt
 import AllergiesConciergeRail from '../components/AllergiesConciergeRail';
 import {
     allergiesDashboardColors,
+    getAllergiesDashboardColors,
     type AllergiesDashboardTone,
+    type AllergiesDashboardColorScheme,
 } from '../components/allergiesDashboardTokens';
 import {
     allergiesDashboardStyles,
@@ -70,12 +72,6 @@ type AllergiesScreenContentProps = Readonly<{
     severityMap: Record<string, AllergySeverity>;
     loading: boolean;
 }>;
-
-const AllergiesScreenStatusBar = (): React.JSX.Element => {
-    const colorScheme = useColorScheme() ?? 'light';
-
-    return <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />;
-};
 
 const TRAVELER_ALLERGIES_PREFIX = '⚠️ My Allergies:';
 
@@ -420,6 +416,11 @@ const AllergiesScreenContent = ({
     severityMap,
     loading,
 }: AllergiesScreenContentProps): React.JSX.Element => {
+    const colorScheme = (useColorScheme() ?? 'light') as AllergiesDashboardColorScheme;
+    const dashboardColors = React.useMemo(
+        () => getAllergiesDashboardColors(colorScheme),
+        [colorScheme],
+    );
     const router = useRouter();
     const isFocused = useIsFocused();
     const insets = useSafeAreaInsets();
@@ -513,15 +514,18 @@ const AllergiesScreenContent = ({
     return (
         <TopLevelScreenShell
             activeItem="allergies"
-            backgroundColor={allergiesDashboardColors.paper}
+            backgroundColor={dashboardColors.paper}
             hideNav={false}
         >
-            <View style={screenStyles.container}>
-                <HomeBackgroundAtmosphere />
-                <AllergiesScreenStatusBar />
+            <View style={[screenStyles.container, { backgroundColor: dashboardColors.paper }]}>
+                {colorScheme === 'light' ? <HomeBackgroundAtmosphere /> : null}
+                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                 <Stack.Screen options={{ headerShown: false }} />
 
-                <SafeAreaView style={screenStyles.safeArea} edges={['top']}>
+                <SafeAreaView
+                    style={[screenStyles.safeArea, { backgroundColor: dashboardColors.paper }]}
+                    edges={['top']}
+                >
                     <ScrollView
                         contentInsetAdjustmentBehavior="automatic"
                         contentContainerStyle={[
@@ -537,10 +541,12 @@ const AllergiesScreenContent = ({
                             savedCountLabel={savedCountLabel}
                             statusLabel={railStatusLabel}
                             statusTone={railTone}
+                            colors={dashboardColors}
                         />
 
                         {heroState === 'empty' ? (
                             <AllergiesEmptyHero
+                                colors={dashboardColors}
                                 eyebrow={t('allergies.rail.travelerNotReady', 'Not ready yet')}
                                 title={t('allergies.summary.emptyTitle', 'No saved items yet')}
                                 description={t('allergies.summary.emptyHint', 'Add your allergies before analyzing food.')}
@@ -549,6 +555,8 @@ const AllergiesScreenContent = ({
                             />
                         ) : (
                             <AllergiesPassportHero
+                                colorScheme={colorScheme}
+                                colors={dashboardColors}
                                 state={heroState}
                                 summary={summary}
                                 cardCopy={heroCardCopy}
@@ -563,6 +571,8 @@ const AllergiesScreenContent = ({
                                 sections={ledgerSections}
                                 emptyTitle={t('allergies.ledger.empty', 'Nothing tracked yet')}
                                 emptyDescription={t('allergies.summary.emptyHint', 'Add your allergies before analyzing food.')}
+                                colors={dashboardColors}
+                                colorScheme={colorScheme}
                             />
                         ) : null}
                     </ScrollView>
@@ -572,8 +582,11 @@ const AllergiesScreenContent = ({
             <AllergiesTravelerCardModal
                 visible={isTravelerCardExpanded}
                 onClose={handleCloseTravelerCard}
+                colors={dashboardColors}
             >
                 <AllergiesTravelerPassportCard
+                    colorScheme={colorScheme}
+                    colors={dashboardColors}
                     state={modalCardState}
                     copy={heroCardCopy ?? {}}
                 />

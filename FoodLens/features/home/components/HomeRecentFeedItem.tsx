@@ -10,10 +10,12 @@ import { getBarcodeImageUri, resolveImageUri } from '@/services/imageStorage';
 import { formatDate, getEmoji } from '@/services/utils';
 
 import {
+  getHomeDashboardAccentForegroundColor,
   homeDashboardColors,
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
 } from './homeDashboardTokens';
 import { getHomeScanStatusBadge } from '../utils/homeUi';
 import { getLocalizedFoodName } from '../utils/localizedFoodName';
@@ -21,6 +23,7 @@ import { getLocalizedFoodName } from '../utils/localizedFoodName';
 type TranslationFunction = (key: string, fallback?: string) => string;
 
 type HomeRecentFeedItemProps = {
+  colors: HomeDashboardColors;
   item: AnalysisRecord;
   locale: string;
   t: TranslationFunction;
@@ -29,6 +32,7 @@ type HomeRecentFeedItemProps = {
 };
 
 const getThumbTone = (
+  colors: HomeDashboardColors,
   status: AnalysisRecord['safetyStatus']
 ): {
   backgroundColor: string;
@@ -36,35 +40,37 @@ const getThumbTone = (
 } => {
   if (status === 'SAFE') {
     return {
-      backgroundColor: 'rgba(31, 107, 79, 0.10)',
-      borderColor: 'rgba(31, 107, 79, 0.12)',
+      backgroundColor: colors.accentGreenSoft,
+      borderColor: colors.accentGreen,
     };
   }
 
   if (status === 'DANGER') {
     return {
-      backgroundColor: 'rgba(185, 70, 62, 0.12)',
-      borderColor: 'rgba(185, 70, 62, 0.14)',
+      backgroundColor: colors.accentRedSoft,
+      borderColor: colors.accentRed,
     };
   }
 
   return {
-    backgroundColor: 'rgba(170, 106, 19, 0.12)',
-    borderColor: 'rgba(170, 106, 19, 0.14)',
+    backgroundColor: colors.accentAmberSoft,
+    borderColor: colors.accentAmber,
   };
 };
 
 export const HomeRecentFeedItem = ({
+  colors,
   item,
   locale,
   t,
   onOpenResult,
   onDeleteItem,
 }: HomeRecentFeedItemProps): React.JSX.Element => {
-  const badge = getHomeScanStatusBadge(item.safetyStatus, t);
+  const badge = getHomeScanStatusBadge(item.safetyStatus, t, colors);
   const localizedFoodName = getLocalizedFoodName(item, locale);
   const imageUri = item.isBarcode ? getBarcodeImageUri() : (resolveImageUri(item.imageUri) || undefined);
-  const thumbTone = getThumbTone(item.safetyStatus);
+  const thumbTone = getThumbTone(colors, item.safetyStatus);
+  const accentForegroundColor = getHomeDashboardAccentForegroundColor(colors);
 
   const renderRightActions = (
     progress: Animated.AnimatedInterpolation<number>,
@@ -89,13 +95,14 @@ export const HomeRecentFeedItem = ({
           style={[
             styles.deleteActionContent,
             {
+              backgroundColor: colors.accentRed,
               opacity,
               transform: [{ translateX }],
             },
           ]}
         >
-          <Trash2 color={homeDashboardColors.white} size={18} strokeWidth={2.2} />
-          <Text style={styles.deleteLabel}>{t('common.delete', 'Delete')}</Text>
+          <Trash2 color={accentForegroundColor} size={18} strokeWidth={2.2} />
+          <Text style={[styles.deleteLabel, { color: accentForegroundColor }]}>{t('common.delete', 'Delete')}</Text>
         </Animated.View>
       </TouchableOpacity>
     );
@@ -110,23 +117,26 @@ export const HomeRecentFeedItem = ({
         activeOpacity={0.82}
         hapticType="light"
         onPress={() => onOpenResult(item)}
-        style={styles.card}
+        style={[
+          styles.card,
+          { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+        ]}
       >
         <View style={[styles.thumbWrap, thumbTone]}>
           <FoodThumbnail
             uri={imageUri}
             emoji={getEmoji(localizedFoodName)}
-            style={styles.thumb}
+            style={[styles.thumb, { backgroundColor: colors.surfaceMuted }]}
             imageStyle={styles.thumbImage}
             fallbackFontSize={22}
           />
         </View>
 
         <View style={styles.copy}>
-          <Text numberOfLines={1} style={styles.name}>
+          <Text numberOfLines={1} style={[styles.name, { color: colors.ink }]}>
             {localizedFoodName}
           </Text>
-          <Text numberOfLines={1} style={styles.meta}>
+          <Text numberOfLines={1} style={[styles.meta, { color: colors.inkSoft }]}>
             {formatDate(item.timestamp, locale)}
           </Text>
         </View>
@@ -135,7 +145,7 @@ export const HomeRecentFeedItem = ({
           <View style={[styles.badge, { backgroundColor: badge.backgroundColor }]}>
             <Text style={[styles.badgeText, { color: badge.textColor }]}>{badge.label}</Text>
           </View>
-          <ChevronRight color={homeDashboardColors.inkSoft} size={18} strokeWidth={2.2} />
+          <ChevronRight color={colors.inkSoft} size={18} strokeWidth={2.2} />
         </View>
       </HapticTouchableOpacity>
     </Swipeable>

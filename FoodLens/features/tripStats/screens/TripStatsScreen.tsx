@@ -12,17 +12,25 @@ import TripStatsPassportTotals from '../components/TripStatsPassportTotals';
 import TripStatsToast from '../components/TripStatsToast';
 import {
     tripStatsDashboardColors as colors,
+    getTripStatsDashboardColors,
     tripStatsDashboardSpacing as spacing,
     tripStatsDashboardTypography as typography,
+    type TripStatsDashboardColorScheme,
 } from '../components/tripStatsDashboardTokens';
 import { tripStatsDashboardStyles } from '../components/tripStatsDashboardStyles';
 import { useTripStatsScreen } from '../hooks/useTripStatsScreen';
 import { useI18n } from '@/features/i18n';
 import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TripStatsScreen(): React.JSX.Element {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const colorScheme = (useColorScheme() ?? 'light') as TripStatsDashboardColorScheme;
+    const dashboardColors = React.useMemo(
+        () => getTripStatsDashboardColors(colorScheme),
+        [colorScheme],
+    );
     const { t } = useI18n();
     const hasMarkedFirstContentRef = React.useRef(false);
     const handleIgnoredJourneyEntry = React.useCallback((_entryId: string): void => {}, []);
@@ -92,11 +100,19 @@ export default function TripStatsScreen(): React.JSX.Element {
     }, [loading, viewModel]);
 
     return (
-        <View style={tripStatsDashboardStyles.screenBackground}>
+        <View
+            style={[
+                tripStatsDashboardStyles.screenBackground,
+                { backgroundColor: dashboardColors.paper },
+            ]}
+        >
             <Stack.Screen options={{ headerShown: false }} />
-            <HomeBackgroundAtmosphere />
-            <SafeAreaView style={styles.safeArea} edges={['top']}>
-                <StatusBar style="dark" />
+            {colorScheme === 'light' ? <HomeBackgroundAtmosphere /> : null}
+            <SafeAreaView
+                style={[styles.safeArea, { backgroundColor: dashboardColors.paper }]}
+                edges={['top']}
+            >
+                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                 <ScrollView
                     contentContainerStyle={[
                         tripStatsDashboardStyles.scrollContent,
@@ -111,27 +127,39 @@ export default function TripStatsScreen(): React.JSX.Element {
                             style={({ pressed }) => [
                                 styles.navButton,
                                 pressed ? styles.navButtonPressed : null,
+                                {
+                                    backgroundColor: dashboardColors.surfaceStrong,
+                                    borderColor: dashboardColors.line,
+                                },
                             ]}
                         >
-                            <ArrowLeft color={colors.ink} size={18} />
+                            <ArrowLeft color={dashboardColors.ink} size={18} />
                         </Pressable>
 
                         <View style={styles.navCopy}>
-                            <Text style={styles.navTitle}>
+                            <Text style={[styles.navTitle, { color: dashboardColors.ink }]}>
                                 {t('tripStats.header.title', 'Trip Statistics')}
                             </Text>
-                            <Text style={styles.navSubtitle}>{headerSubtitle}</Text>
+                            <Text style={[styles.navSubtitle, { color: dashboardColors.inkSoft }]}>
+                                {headerSubtitle}
+                            </Text>
                         </View>
                     </View>
 
                     <TripStatsJournalRail
+                        colorScheme={colorScheme}
+                        colors={dashboardColors}
                         currentLocation={currentLocation}
                         isLocating={isLocating}
                         loading={loading}
                         tripStartDate={tripStartDate}
                     />
 
-                    <TripStatsPassportTotals totals={passportTotals} />
+                    <TripStatsPassportTotals
+                        colorScheme={colorScheme}
+                        colors={dashboardColors}
+                        totals={passportTotals}
+                    />
 
                     <View style={styles.actionRow}>
                         <Pressable
@@ -142,9 +170,20 @@ export default function TripStatsScreen(): React.JSX.Element {
                                 styles.primaryAction,
                                 pressed && !isActionDisabled ? styles.actionPressed : null,
                                 isActionDisabled ? styles.actionDisabled : null,
+                                {
+                                    backgroundColor: dashboardColors.accentBlue,
+                                    borderColor: dashboardColors.accentBlue,
+                                },
                             ]}
                         >
-                            <Text style={styles.primaryActionText}>{primaryActionLabel}</Text>
+                            <Text
+                                style={[
+                                    styles.primaryActionText,
+                                    { color: colorScheme === 'dark' ? colors.black : colors.white },
+                                ]}
+                            >
+                                {primaryActionLabel}
+                            </Text>
                         </Pressable>
 
                         <Pressable
@@ -153,15 +192,25 @@ export default function TripStatsScreen(): React.JSX.Element {
                             style={({ pressed }) => [
                                 styles.secondaryAction,
                                 pressed ? styles.actionPressed : null,
+                                {
+                                    backgroundColor: dashboardColors.surfaceStrong,
+                                    borderColor: dashboardColors.line,
+                                },
                             ]}
                         >
-                            <Text style={styles.secondaryActionText}>
+                            <Text
+                                style={[
+                                    styles.secondaryActionText,
+                                    { color: dashboardColors.ink },
+                                ]}
+                            >
                                 {t('tripStats.action.secondary', 'View history')}
                             </Text>
                         </Pressable>
                     </View>
                 </ScrollView>
                 <TripStatsToast
+                    colors={dashboardColors}
                     currentLocation={startFeedbackLocation}
                     insetsTop={insets.top}
                     onHidden={clearStartFeedback}

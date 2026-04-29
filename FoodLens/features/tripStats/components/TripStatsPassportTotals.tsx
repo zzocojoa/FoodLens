@@ -6,15 +6,19 @@ import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
 import { TripStatsPassportTotals as TripStatsPassportTotalsViewModel } from '../types/tripStats.types';
 import {
     tripStatsDashboardColors as colors,
+    getTripStatsDashboardSignalColors,
     tripStatsDashboardRadii as radii,
     tripStatsDashboardSpacing as spacing,
-    tripStatsDashboardSignalColors as signalColors,
     tripStatsDashboardTypography as typography,
+    type TripStatsDashboardColors,
+    type TripStatsDashboardColorScheme,
 } from './tripStatsDashboardTokens';
 import { tripStatsDashboardStyles } from './tripStatsDashboardStyles';
 import { useI18n } from '@/features/i18n';
 
 export type TripStatsPassportTotalsProps = {
+    colorScheme: TripStatsDashboardColorScheme;
+    colors: TripStatsDashboardColors;
     totals: TripStatsPassportTotalsViewModel;
 };
 
@@ -42,9 +46,15 @@ const resolveSegmentWidth = (value: number, total: number): `${number}%` => {
 };
 
 export default function TripStatsPassportTotals({
+    colorScheme,
+    colors: dashboardColors,
     totals,
 }: TripStatsPassportTotalsProps): React.JSX.Element {
     const { t } = useI18n();
+    const themedSignalColors = React.useMemo(
+        () => getTripStatsDashboardSignalColors(dashboardColors),
+        [dashboardColors],
+    );
     const currentTripTotal = totals.currentTripCount;
     const currentTripSafeCount = totals.currentTripSafeCount;
     const currentTripCautionCount = totals.currentTripCautionCount;
@@ -55,69 +65,87 @@ export default function TripStatsPassportTotals({
             key: 'safe',
             label: t('tripStats.totals.safeLabel', 'Safe'),
             value: currentTripSafeCount,
-            color: signalColors.SAFE.text,
-            backgroundColor: signalColors.SAFE.background,
-            icon: <ShieldCheck color={signalColors.SAFE.text} size={16} />,
+            color: themedSignalColors.SAFE.text,
+            backgroundColor: themedSignalColors.SAFE.background,
+            icon: <ShieldCheck color={themedSignalColors.SAFE.text} size={16} />,
         },
         {
             key: 'caution',
             label: t('tripStats.totals.cautionLabel', 'Caution'),
             value: currentTripCautionCount,
-            color: signalColors.CAUTION.text,
-            backgroundColor: signalColors.CAUTION.background,
-            icon: <ShieldAlert color={signalColors.CAUTION.text} size={16} />,
+            color: themedSignalColors.CAUTION.text,
+            backgroundColor: themedSignalColors.CAUTION.background,
+            icon: <ShieldAlert color={themedSignalColors.CAUTION.text} size={16} />,
         },
         {
             key: 'danger',
             label: t('tripStats.totals.dangerLabel', 'Avoid'),
             value: currentTripDangerCount,
-            color: signalColors.DANGER.text,
-            backgroundColor: signalColors.DANGER.background,
-            icon: <ShieldX color={signalColors.DANGER.text} size={16} />,
+            color: themedSignalColors.DANGER.text,
+            backgroundColor: themedSignalColors.DANGER.background,
+            icon: <ShieldX color={themedSignalColors.DANGER.text} size={16} />,
         },
     ];
 
     const metrics: MetricTile[] = [
         {
-            icon: <Globe color={colors.accentBlue} size={16} />,
+            icon: <Globe color={dashboardColors.accentBlue} size={16} />,
             label: t('tripStats.totals.countriesLabel', 'Countries'),
             value: String(totals.countriesVisitedCount),
         },
         {
-            icon: <MapPin color={colors.accentAmber} size={16} />,
+            icon: <MapPin color={dashboardColors.accentAmber} size={16} />,
             label: t('tripStats.totals.citiesLabel', 'Cities'),
             value: String(totals.citiesVisitedCount),
         },
         {
-            icon: <ShieldCheck color={colors.accentGreen} size={16} />,
+            icon: <ShieldCheck color={dashboardColors.accentGreen} size={16} />,
             label: t('tripStats.totals.safeLabel', 'Safe'),
             value: String(totals.safeCount),
         },
         {
-            icon: <Navigation color={colors.accentBlue} size={16} />,
+            icon: <Navigation color={dashboardColors.accentBlue} size={16} />,
             label: t('tripStats.totals.currentTripLabel', 'Trip'),
             value: String(totals.currentTripCount),
         },
     ];
 
     return (
-        <View style={[tripStatsDashboardStyles.totalsCard, styles.container]}>
-            <PearlSurfaceOverlay
-                accentWashColor={colors.pearlMist}
-                baseBottomColor="#FFF8F0"
-                baseTopColor={colors.pearlIvory}
-                coolWashColor={colors.pearlSage}
-                warmWashColor={colors.pearlPeach}
-            />
+        <View
+            style={[
+                tripStatsDashboardStyles.totalsCard,
+                styles.container,
+                { backgroundColor: dashboardColors.surface, borderColor: dashboardColors.line },
+            ]}
+        >
+            {colorScheme === 'light' ? (
+                <PearlSurfaceOverlay
+                    accentWashColor={dashboardColors.pearlMist}
+                    baseBottomColor="#FFF8F0"
+                    baseTopColor={dashboardColors.pearlIvory}
+                    coolWashColor={dashboardColors.pearlSage}
+                    warmWashColor={dashboardColors.pearlPeach}
+                />
+            ) : null}
 
             <View style={styles.content}>
-                <View style={styles.heroPanel}>
+                <View
+                    style={[
+                        styles.heroPanel,
+                        {
+                            backgroundColor: dashboardColors.pearlIvory,
+                            borderColor: dashboardColors.line,
+                        },
+                    ]}
+                >
                     <View style={styles.heroCopy}>
-                        <Text style={styles.heroEyebrow}>
+                        <Text style={[styles.heroEyebrow, { color: dashboardColors.inkSoft }]}>
                             {t('tripStats.totals.currentTripEyebrow', 'Current trip')}
                         </Text>
-                        <Text style={styles.heroValue}>{String(currentTripTotal)}</Text>
-                        <Text style={styles.heroCaption}>
+                        <Text style={[styles.heroValue, { color: dashboardColors.ink }]}>
+                            {String(currentTripTotal)}
+                        </Text>
+                        <Text style={[styles.heroCaption, { color: dashboardColors.inkSoft }]}>
                             {hasCurrentTripSignals
                                 ? t('tripStats.totals.currentTripCaption', 'Safety checks logged on this trip')
                                 : t('tripStats.totals.currentTripEmpty', 'Start a trip to build a focused safety snapshot')}
@@ -125,7 +153,15 @@ export default function TripStatsPassportTotals({
                     </View>
 
                     <View style={styles.distributionColumn}>
-                        <View style={styles.distributionTrack}>
+                        <View
+                            style={[
+                                styles.distributionTrack,
+                                {
+                                    backgroundColor: dashboardColors.surfaceMuted,
+                                    borderColor: dashboardColors.line,
+                                },
+                            ]}
+                        >
                             {safetySegments.map((segment) => (
                                 <View
                                     key={segment.key}
@@ -142,7 +178,16 @@ export default function TripStatsPassportTotals({
 
                         <View style={styles.segmentGrid}>
                             {safetySegments.map((segment) => (
-                                <View key={segment.key} style={styles.segmentItem}>
+                                <View
+                                    key={segment.key}
+                                    style={[
+                                        styles.segmentItem,
+                                        {
+                                            backgroundColor: dashboardColors.surfaceStrong,
+                                            borderColor: dashboardColors.line,
+                                        },
+                                    ]}
+                                >
                                     <View
                                         style={[
                                             styles.segmentIcon,
@@ -154,14 +199,16 @@ export default function TripStatsPassportTotals({
                                     <Text style={[styles.segmentValue, { color: segment.color }]}>
                                         {String(segment.value)}
                                     </Text>
-                                    <Text style={styles.segmentLabel}>{segment.label}</Text>
+                                    <Text style={[styles.segmentLabel, { color: dashboardColors.inkSoft }]}>
+                                        {segment.label}
+                                    </Text>
                                 </View>
                             ))}
                         </View>
                     </View>
                 </View>
 
-                <Text style={tripStatsDashboardStyles.totalsTitle}>
+                <Text style={[tripStatsDashboardStyles.totalsTitle, { color: dashboardColors.ink }]}>
                     {t('tripStats.totals.title', 'Passport totals')}
                 </Text>
 
@@ -171,6 +218,7 @@ export default function TripStatsPassportTotals({
                             key={metric.label}
                             icon={metric.icon}
                             label={metric.label}
+                            colors={dashboardColors}
                             value={metric.value}
                         />
                     ))}
@@ -181,17 +229,29 @@ export default function TripStatsPassportTotals({
 }
 
 type MetricCardProps = {
+    colors: TripStatsDashboardColors;
     icon: React.ReactNode;
     label: string;
     value: string;
 };
 
-const MetricCard = ({ icon, label, value }: MetricCardProps): React.JSX.Element => {
+const MetricCard = ({ colors: dashboardColors, icon, label, value }: MetricCardProps): React.JSX.Element => {
     return (
-        <View style={tripStatsDashboardStyles.totalsTile}>
-            <View style={styles.metricIcon}>{icon}</View>
-            <Text style={tripStatsDashboardStyles.totalsValue}>{value}</Text>
-            <Text style={tripStatsDashboardStyles.totalsLabel}>{label}</Text>
+        <View
+            style={[
+                tripStatsDashboardStyles.totalsTile,
+                { backgroundColor: dashboardColors.pearlIvory, borderColor: dashboardColors.line },
+            ]}
+        >
+            <View style={[styles.metricIcon, { backgroundColor: dashboardColors.surfaceMuted }]}>
+                {icon}
+            </View>
+            <Text style={[tripStatsDashboardStyles.totalsValue, { color: dashboardColors.ink }]}>
+                {value}
+            </Text>
+            <Text style={[tripStatsDashboardStyles.totalsLabel, { color: dashboardColors.inkSoft }]}>
+                {label}
+            </Text>
         </View>
     );
 };

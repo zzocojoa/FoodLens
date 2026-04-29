@@ -25,6 +25,8 @@ export default function RestrictionInput({
     onSubmit,
     onSelectSuggestion,
 }: RestrictionInputProps) {
+    const iconBackgroundColor = theme.background;
+
     return (
         <View style={styles.inputSection}>
             {suggestions.length > 0 && (
@@ -32,8 +34,8 @@ export default function RestrictionInput({
                     style={[
                         styles.suggestionsDropdown,
                         {
-                            borderColor: homeDashboardColors.line,
-                            backgroundColor: homeDashboardColors.surfaceStrong,
+                            borderColor: theme.border,
+                            backgroundColor: theme.surface,
                             shadowColor: theme.shadow,
                         },
                     ]}
@@ -41,28 +43,39 @@ export default function RestrictionInput({
                     {suggestions.map((item, index) => (
                         <Pressable
                             key={`${item.value}-${index}`}
-                            style={[styles.suggestionItem, { borderBottomColor: homeDashboardColors.line }]}
+                            style={[styles.suggestionItem, { borderBottomColor: theme.border }]}
                             onPress={() => onSelectSuggestion(item.value)}
                             accessibilityRole="button"
                             accessibilityLabel={item.label}
                         >
-                            <View style={styles.suggestionIconSlot}>
-                                <Plus size={17} color={homeDashboardColors.ink} />
+                            <View style={[styles.suggestionIconSlot, { backgroundColor: iconBackgroundColor }]}>
+                                <Plus size={17} color={theme.textPrimary} />
                             </View>
-                            <Text numberOfLines={2} style={styles.suggestionText}>{item.label}</Text>
+                            <Text numberOfLines={2} style={[styles.suggestionText, { color: theme.textPrimary }]}>
+                                {item.label}
+                            </Text>
                         </Pressable>
                     ))}
                 </View>
             )}
 
-            <View style={[styles.inputWrapper, { shadowColor: theme.shadow }]}>
-                <View style={styles.inputIconSlot}>
-                    <Search size={20} color={homeDashboardColors.inkSoft} />
+            <View
+                style={[
+                    styles.inputWrapper,
+                    {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                        shadowColor: theme.shadow,
+                    },
+                ]}
+            >
+                <View style={[styles.inputIconSlot, { backgroundColor: iconBackgroundColor }]}>
+                    <Search size={20} color={theme.textSecondary} />
                 </View>
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { color: theme.textPrimary }]}
                     placeholder={t('profile.input.placeholder', 'Type (e.g. Peach, Pine nut)...')}
-                    placeholderTextColor={homeDashboardColors.inkSoft}
+                    placeholderTextColor={theme.textSecondary}
                     value={inputValue}
                     onChangeText={onChangeText}
                     onSubmitEditing={onSubmit}
@@ -77,7 +90,7 @@ export default function RestrictionInput({
                             accessibilityRole="button"
                             accessibilityLabel={t('profile.health.addTypedItem', 'Add typed item')}
                         >
-                            <CirclePlus size={24} color={homeDashboardColors.ink} />
+                            <CirclePlus size={24} color={theme.textPrimary} />
                         </Pressable>
                     ) : null}
                 </View>

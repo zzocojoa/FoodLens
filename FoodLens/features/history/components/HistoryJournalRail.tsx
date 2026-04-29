@@ -4,15 +4,18 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ArchiveMode } from '../types/history.types';
 import {
-  historyDashboardColors as colors,
+  getHistoryDashboardAccentForegroundColor,
+  historyDashboardColors,
   historyDashboardRadii as radii,
   historyDashboardSpacing as spacing,
   historyDashboardTypography as typography,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 import { useI18n } from '@/features/i18n';
 
 type HistoryJournalRailProps = {
   archiveMode: ArchiveMode;
+  colors: HistoryDashboardColors;
   isEditMode: boolean;
   isMapModeAvailable: boolean;
   onBack: () => void;
@@ -22,6 +25,7 @@ type HistoryJournalRailProps = {
 
 export default function HistoryJournalRail({
   archiveMode,
+  colors,
   isEditMode,
   isMapModeAvailable,
   onBack,
@@ -29,6 +33,7 @@ export default function HistoryJournalRail({
   onToggleEdit,
 }: HistoryJournalRailProps): React.JSX.Element {
   const { t } = useI18n();
+  const accentForegroundColor = getHistoryDashboardAccentForegroundColor(colors);
 
   return (
     <View style={styles.container}>
@@ -38,14 +43,18 @@ export default function HistoryJournalRail({
           accessibilityRole="button"
           hitSlop={8}
           onPress={onBack}
-          style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.iconButton,
+            { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+            pressed ? styles.pressed : null,
+          ]}
         >
           <ChevronLeft color={colors.ink} size={18} />
         </Pressable>
 
         <View style={styles.copy}>
-          <Text style={styles.title}>{t('history.rail.title', '푸드 패스포트')}</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.ink }]}>{t('history.rail.title', '푸드 패스포트')}</Text>
+          <Text style={[styles.subtitle, { color: colors.inkSoft }]}>
             {archiveMode === 'list'
               ? t('history.rail.listMode', '저널')
               : t('history.rail.mapMode', '아틀라스')}
@@ -66,12 +75,13 @@ export default function HistoryJournalRail({
               onPress={onToggleEdit}
               style={({ pressed }) => [
                 styles.editButton,
-                isEditMode ? styles.editButtonActive : null,
+                { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+                isEditMode ? { backgroundColor: colors.accentBlue, borderColor: colors.accentBlue } : null,
                 pressed ? styles.pressed : null,
               ]}
             >
-              <PenLine color={isEditMode ? colors.white : colors.ink} size={14} />
-              <Text style={[styles.editLabel, isEditMode ? styles.editLabelActive : null]}>
+              <PenLine color={isEditMode ? accentForegroundColor : colors.ink} size={14} />
+              <Text style={[styles.editLabel, { color: isEditMode ? accentForegroundColor : colors.ink }]}>
                 {isEditMode
                   ? t('history.utility.done', '완료')
                   : t('history.utility.edit', '편집')}
@@ -79,7 +89,7 @@ export default function HistoryJournalRail({
             </Pressable>
           ) : null}
 
-          <View style={styles.modeSwitch}>
+          <View style={[styles.modeSwitch, { backgroundColor: colors.surfaceMuted, borderColor: colors.line }]}>
             <Pressable
               accessibilityLabel={t('history.accessibility.mapMode', '지도 보기')}
               accessibilityRole="tab"
@@ -92,12 +102,12 @@ export default function HistoryJournalRail({
               onPress={() => onSwitchMode('map')}
               style={({ pressed }) => [
                 styles.modeButton,
-                archiveMode === 'map' ? styles.modeButtonActive : null,
+                archiveMode === 'map' ? { backgroundColor: colors.accentBlue } : null,
                 !isMapModeAvailable ? styles.modeButtonDisabled : null,
                 pressed ? styles.pressed : null,
               ]}
             >
-              <Globe color={archiveMode === 'map' ? colors.white : colors.inkSoft} size={16} />
+              <Globe color={archiveMode === 'map' ? accentForegroundColor : colors.inkSoft} size={16} />
             </Pressable>
             <Pressable
               accessibilityLabel={t('history.accessibility.listMode', '저널 보기')}
@@ -107,11 +117,11 @@ export default function HistoryJournalRail({
               onPress={() => onSwitchMode('list')}
               style={({ pressed }) => [
                 styles.modeButton,
-                archiveMode === 'list' ? styles.modeButtonActive : null,
+                archiveMode === 'list' ? { backgroundColor: colors.accentBlue } : null,
                 pressed ? styles.pressed : null,
               ]}
             >
-              <List color={archiveMode === 'list' ? colors.white : colors.inkSoft} size={16} />
+              <List color={archiveMode === 'list' ? accentForegroundColor : colors.inkSoft} size={16} />
             </Pressable>
           </View>
         </View>
@@ -132,8 +142,8 @@ const styles = StyleSheet.create({
   },
   editButton: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceStrong,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -144,22 +154,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   editButtonActive: {
-    backgroundColor: colors.accentBlue,
-    borderColor: colors.accentBlue,
+    backgroundColor: historyDashboardColors.accentBlue,
+    borderColor: historyDashboardColors.accentBlue,
   },
   editLabel: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.caption,
     fontWeight: '700',
     lineHeight: 16,
   },
   editLabelActive: {
-    color: colors.white,
+    color: historyDashboardColors.white,
   },
   iconButton: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceStrong,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -175,15 +185,15 @@ const styles = StyleSheet.create({
     width: 36,
   },
   modeButtonActive: {
-    backgroundColor: colors.accentBlue,
+    backgroundColor: historyDashboardColors.accentBlue,
   },
   modeButtonDisabled: {
     opacity: 0.42,
   },
   modeSwitch: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceMuted,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -202,7 +212,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   subtitle: {
-    color: colors.inkSoft,
+    color: historyDashboardColors.inkSoft,
     fontSize: typography.caption,
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -210,7 +220,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   title: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.bodyStrong,
     fontWeight: '800',
     lineHeight: 20,

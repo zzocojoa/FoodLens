@@ -10,14 +10,17 @@ import { formatCalendarDate } from '@/features/i18n/services/formatService';
 
 import type { HistoryRecentEntry } from '../types/historyViewModel.types';
 import {
-  historyDashboardColors as colors,
+  getHistoryDashboardAccentForegroundColor,
+  getHistoryDashboardToneTokens,
+  historyDashboardColors,
   historyDashboardRadii as radii,
   historyDashboardSpacing as spacing,
-  historyDashboardToneTokens,
   historyDashboardTypography as typography,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 
 type HistoryRecordRowProps = {
+  colors: HistoryDashboardColors;
   entry: HistoryRecentEntry;
   isEditMode: boolean;
   isSelected: boolean;
@@ -26,13 +29,8 @@ type HistoryRecordRowProps = {
   onToggleSelect: (id: string) => void;
 };
 
-const toneMap = {
-  ask: historyDashboardToneTokens.caution,
-  avoid: historyDashboardToneTokens.danger,
-  ok: historyDashboardToneTokens.safe,
-} as const;
-
 export default function HistoryRecordRow({
+  colors,
   entry,
   isEditMode,
   isSelected,
@@ -41,7 +39,9 @@ export default function HistoryRecordRow({
   onToggleSelect,
 }: HistoryRecordRowProps): React.JSX.Element {
   const { locale, t } = useI18n();
-  const tone = toneMap[entry.tone];
+  const toneTokens = getHistoryDashboardToneTokens(colors);
+  const accentForegroundColor = getHistoryDashboardAccentForegroundColor(colors);
+  const tone = toneTokens[entry.tone === 'ok' ? 'safe' : entry.tone === 'avoid' ? 'danger' : 'caution'];
   const dateLabel = formatCalendarDate(entry.timestamp, locale);
   const locationLabel = `${entry.cityLabel}, ${entry.countryLabel}`;
   const combinedMetaLabel = `${locationLabel} · ${dateLabel}`;
@@ -56,10 +56,13 @@ export default function HistoryRecordRow({
     });
 
     return (
-      <Pressable onPress={() => onDelete(entry.id)} style={styles.deleteAction}>
+      <Pressable
+        onPress={() => onDelete(entry.id)}
+        style={[styles.deleteAction, { backgroundColor: colors.accentRed }]}
+      >
         <Animated.View style={[styles.deleteContent, { transform: [{ translateX }] }]}>
-          <Trash2 color={colors.white} size={18} />
-          <Text style={styles.deleteText}>{t('common.delete', '삭제')}</Text>
+          <Trash2 color={accentForegroundColor} size={18} />
+          <Text style={[styles.deleteText, { color: accentForegroundColor }]}>{t('common.delete', '삭제')}</Text>
         </Animated.View>
       </Pressable>
     );
@@ -87,7 +90,13 @@ export default function HistoryRecordRow({
 
           onPress(entry);
         }}
-        style={styles.row}
+        style={[
+          styles.row,
+          {
+            backgroundColor: colors.surfaceStrong,
+            borderColor: colors.line,
+          },
+        ]}
       >
           <View style={[styles.toneRail, { backgroundColor: tone.borderColor }]} />
 
@@ -104,14 +113,14 @@ export default function HistoryRecordRow({
               style={styles.selectionButton}
             >
               {isSelected ? (
-                <CheckCircle2 color={colors.accentBlue} fill={colors.white} size={20} />
+                <CheckCircle2 color={colors.accentBlue} fill={accentForegroundColor} size={20} />
               ) : (
                 <Circle color={colors.lineStrong} size={20} />
               )}
             </Pressable>
           ) : null}
 
-          <View style={styles.thumbnail}>
+          <View style={[styles.thumbnail, { backgroundColor: colors.paperMuted, borderColor: colors.line }]}>
             <FoodThumbnail
               emoji={entry.emoji}
               fallbackFontSize={20}
@@ -122,10 +131,10 @@ export default function HistoryRecordRow({
           </View>
 
           <View style={styles.copy}>
-            <Text numberOfLines={1} style={styles.title}>
+            <Text numberOfLines={1} style={[styles.title, { color: colors.ink }]}>
               {entry.foodName}
             </Text>
-            <Text numberOfLines={1} style={styles.meta}>
+            <Text numberOfLines={1} style={[styles.meta, { color: colors.inkSoft }]}>
               {combinedMetaLabel}
             </Text>
           </View>
@@ -153,7 +162,7 @@ const styles = StyleSheet.create({
   },
   deleteAction: {
     alignItems: 'center',
-    backgroundColor: colors.accentRed,
+    backgroundColor: historyDashboardColors.accentRed,
     borderCurve: 'continuous',
     borderRadius: radii.lg,
     justifyContent: 'center',
@@ -165,20 +174,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   deleteText: {
-    color: colors.white,
+    color: historyDashboardColors.white,
     fontSize: typography.caption,
     fontWeight: '700',
     lineHeight: 14,
   },
   meta: {
-    color: colors.inkSoft,
+    color: historyDashboardColors.inkSoft,
     fontSize: typography.caption - 1,
     lineHeight: 14,
   },
   row: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceStrong,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -201,8 +210,8 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     alignItems: 'center',
-    backgroundColor: colors.paperMuted,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.paperMuted,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -218,7 +227,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.bodyStrong,
     fontWeight: '700',
     lineHeight: 17,

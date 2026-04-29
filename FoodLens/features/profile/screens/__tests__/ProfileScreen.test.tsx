@@ -1,6 +1,8 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import ProfileScreen from '../ProfileScreen';
+import { homeDashboardDarkColors } from '@/features/home/components/homeDashboardTokens';
 
 const mockSaveProfile = jest.fn();
 const mockCycleSeverity = jest.fn();
@@ -26,6 +28,7 @@ const createMockProfileScreenState = (): MockProfileScreenState => ({
 });
 
 let mockProfileScreenState: MockProfileScreenState = createMockProfileScreenState();
+let mockColorScheme: 'light' | 'dark' = 'light';
 
 jest.mock('expo-router', () => ({
     useRouter: () => ({
@@ -61,12 +64,12 @@ jest.mock('@/features/home/components/HomeBackgroundAtmosphere', () => ({
 
 jest.mock('@/contexts/ThemeContext', () => ({
     useTheme: () => ({
-        colorScheme: 'light',
+        colorScheme: mockColorScheme,
     }),
 }));
 
 jest.mock('@/hooks/use-color-scheme', () => ({
-    useColorScheme: () => 'light',
+    useColorScheme: () => mockColorScheme,
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -133,6 +136,7 @@ describe('ProfileScreen', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockProfileScreenState = createMockProfileScreenState();
+        mockColorScheme = 'light';
     });
 
     it('renders allergen-only health sections', () => {
@@ -185,5 +189,22 @@ describe('ProfileScreen', () => {
         expect(queryByLabelText('no raw onion, Diet, Mild')).toBeNull();
         expect(queryByText('no raw onion')).toBeNull();
         expect(queryByText('custom:no raw onion')).toBeNull();
+    });
+
+    it('uses dark dashboard colors for severity pills', () => {
+        mockColorScheme = 'dark';
+
+        const { getByText } = render(<ProfileScreen />);
+        const severityLabel = getByText('Moderate');
+        const severityPill = severityLabel.parent?.parent;
+
+        expect(StyleSheet.flatten(severityLabel.props.style)).toMatchObject({
+            color: homeDashboardDarkColors.accentAmber,
+        });
+        expect(severityPill).not.toBeNull();
+        expect(StyleSheet.flatten(severityPill?.props.style)).toMatchObject({
+            backgroundColor: homeDashboardDarkColors.accentAmberSoft,
+            borderColor: homeDashboardDarkColors.accentAmber,
+        });
     });
 });

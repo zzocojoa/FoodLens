@@ -72,6 +72,9 @@ module.exports = {
       supportsTablet: true,
       bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
       googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
+      entitlements: {
+        "keychain-access-groups": [`$(AppIdentifierPrefix)${IOS_BUNDLE_IDENTIFIER}`],
+      },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         NSAppTransportSecurity: {
@@ -123,7 +126,7 @@ module.exports = {
           resizeMode: "contain",
           backgroundColor: "#FFFFFF",
           dark: {
-            backgroundColor: "#FFFFFF",
+            backgroundColor: "#020617",
           },
         },
       ],

@@ -1,7 +1,9 @@
 import type { Region } from 'react-native-maps';
 import { CountryData } from '@/models/History';
+import type { HistoryDashboardColors } from '@/features/history/components/historyDashboardTokens';
 
 export interface HistoryMapProps {
+    colors: HistoryDashboardColors;
     data: CountryData[];
     initialRegion: Region | null;
     onMarkerPress: (countryId: string) => void;

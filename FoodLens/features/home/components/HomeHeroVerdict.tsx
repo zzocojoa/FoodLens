@@ -13,13 +13,17 @@ import PearlSurfaceOverlay from './PearlSurfaceOverlay';
 import {
   homeDashboardColors,
   homeDashboardRadii,
-  homeDashboardSignalColors,
+  getHomeDashboardSignalColors,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 import type { HomeStatusSignal } from '../utils/homeStatusCard';
 
 type HomeHeroVerdictProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   t: (key: string, fallback?: string) => string;
   signalDateLabel: string;
   statusLabel: string;
@@ -40,10 +44,11 @@ type SignalCardContent = {
 };
 
 const getSignalCardStyle = (
+  colors: HomeDashboardColors,
   signal: HomeStatusSignal,
   isActive: boolean
 ): StyleProp<ViewStyle> => {
-  const palette = homeDashboardSignalColors[signal];
+  const palette = getHomeDashboardSignalColors(colors)[signal];
 
   if (isActive) {
     return {
@@ -53,31 +58,33 @@ const getSignalCardStyle = (
   }
 
   return {
-    backgroundColor: homeDashboardColors.surfaceMuted,
-    borderColor: homeDashboardColors.line,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.line,
   };
 };
 
 const getSignalTextColor = (
+  colors: HomeDashboardColors,
   signal: HomeStatusSignal,
   isActive: boolean
 ): string => {
   if (isActive) {
-    return homeDashboardSignalColors[signal].text;
+    return getHomeDashboardSignalColors(colors)[signal].text;
   }
 
-  return homeDashboardColors.ink;
+  return colors.ink;
 };
 
 const getSignalMetaColor = (
+  colors: HomeDashboardColors,
   signal: HomeStatusSignal,
   isActive: boolean
 ): string => {
   if (isActive) {
-    return homeDashboardSignalColors[signal].text;
+    return getHomeDashboardSignalColors(colors)[signal].text;
   }
 
-  return homeDashboardColors.inkSoft;
+  return colors.inkSoft;
 };
 
 const getSignalCards = (
@@ -102,6 +109,8 @@ const getSignalCards = (
 ];
 
 export function HomeHeroVerdict({
+  colorScheme,
+  colors,
   t,
   signalDateLabel,
   statusLabel,
@@ -113,31 +122,45 @@ export function HomeHeroVerdict({
   const signalCards = getSignalCards(statusCounts, t);
 
   return (
-    <View style={[homeDashboardStyles.elevatedCard, styles.heroCard]}>
-      <PearlSurfaceOverlay
-        accentWashColor={homeDashboardColors.pearlMist}
-        baseBottomColor="#FFF7EF"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={homeDashboardColors.pearlSage}
-        warmWashColor={homeDashboardColors.pearlPeach}
-      />
+    <View
+      style={[
+        homeDashboardStyles.elevatedCard,
+        styles.heroCard,
+        { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={colors.pearlMist}
+          baseBottomColor="#FFF7EF"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={colors.pearlSage}
+          warmWashColor={colors.pearlPeach}
+        />
+      ) : null}
       <View style={styles.content}>
         <View style={styles.headerRow}>
           <View style={styles.copyBlock}>
-            <Text style={styles.eyebrow}>{signalDateLabel}</Text>
-            <Text style={styles.kicker}>
+            <Text style={[styles.eyebrow, { color: colors.inkSoft }]}>{signalDateLabel}</Text>
+            <Text style={[styles.kicker, { color: colors.inkSoft }]}>
               {t('home.hero.kicker', "Today's food signal")}
             </Text>
-            <Text style={styles.verdict}>{statusLabel}</Text>
+            <Text style={[styles.verdict, { color: colors.ink }]}>{statusLabel}</Text>
           </View>
-          <View style={[homeDashboardStyles.pill, styles.heroPill]}>
-            <Text style={[homeDashboardStyles.pillText, styles.heroPillText]}>
+          <View
+            style={[
+              homeDashboardStyles.pill,
+              styles.heroPill,
+              { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+            ]}
+          >
+            <Text style={[homeDashboardStyles.pillText, styles.heroPillText, { color: colors.ink }]}>
               {statusChipLabel}
             </Text>
           </View>
         </View>
 
-        <Text numberOfLines={2} style={styles.bodyCopy}>
+        <Text numberOfLines={2} style={[styles.bodyCopy, { color: colors.inkSoft }]}>
           {t(
             'home.hero.summary',
             "Scan signals are grouped by today's safety readout. Tap a lane to focus the feed.",
@@ -147,8 +170,8 @@ export function HomeHeroVerdict({
         <View style={styles.signalGrid}>
           {signalCards.map((card) => {
             const isActive = activeSignal === card.signal;
-            const valueColor = getSignalTextColor(card.signal, isActive);
-            const metaColor = getSignalMetaColor(card.signal, isActive);
+            const valueColor = getSignalTextColor(colors, card.signal, isActive);
+            const metaColor = getSignalMetaColor(colors, card.signal, isActive);
 
             return (
               <Pressable
@@ -158,7 +181,7 @@ export function HomeHeroVerdict({
                 onPress={() => onSignalPress(card.signal)}
                 style={({ pressed }) => [
                   styles.signalCard,
-                  getSignalCardStyle(card.signal, isActive),
+                  getSignalCardStyle(colors, card.signal, isActive),
                   pressed ? styles.signalCardPressed : null,
                 ]}
               >

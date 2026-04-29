@@ -19,7 +19,11 @@ import HomeQuickActions from '../components/HomeQuickActions';
 import HomeRecentFeed from '../components/HomeRecentFeed';
 import { HomeStatusRail } from '../components/HomeStatusRail';
 import HomeWeekPulse from '../components/HomeWeekPulse';
-import { homeDashboardColors } from '../components/homeDashboardTokens';
+import {
+  getHomeDashboardColors,
+  homeDashboardColors,
+  type HomeDashboardColorScheme,
+} from '../components/homeDashboardTokens';
 import { useHomeScreenController } from '../hooks/useHomeScreenController';
 import { isSameDay } from '../utils/homeDashboard';
 import {
@@ -34,12 +38,6 @@ import { useI18n } from '@/features/i18n';
 import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 type TranslationFunction = (key: string, fallback?: string) => string;
-
-const HomeScreenStatusBar = (): React.JSX.Element => {
-  const colorScheme = useColorScheme() ?? 'light';
-
-  return <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />;
-};
 
 const getStatusLabel = (
   t: TranslationFunction,
@@ -164,6 +162,7 @@ const getQuickActionCopy = (
 
 export default function HomeScreen() {
   const isFocused = useIsFocused();
+  const colorScheme = (useColorScheme() ?? 'light') as HomeDashboardColorScheme;
   const { t, locale } = useI18n();
   const insets = useSafeAreaInsets();
   const {
@@ -216,7 +215,11 @@ export default function HomeScreen() {
   const homeContentBottomPadding =
     getTopLevelScreenBottomPadding(insets.bottom, 24);
 
-  const homeBackgroundColor = homeDashboardColors.paper;
+  const dashboardColors = React.useMemo(
+    () => getHomeDashboardColors(colorScheme),
+    [colorScheme],
+  );
+  const homeBackgroundColor = dashboardColors.paper;
   const visibleRecentScans = React.useMemo(() => {
     if (activeSignal === null) {
       return recentScans;
@@ -294,10 +297,10 @@ export default function HomeScreen() {
       backgroundColor={homeBackgroundColor}
       hideNav={false}
     >
-      <View style={screenStyles.container}>
-        <HomeBackgroundAtmosphere />
-        <SafeAreaView style={screenStyles.safeArea} edges={['top']}>
-          <HomeScreenStatusBar />
+      <View style={[screenStyles.container, { backgroundColor: homeBackgroundColor }]}>
+        {colorScheme === 'light' ? <HomeBackgroundAtmosphere /> : null}
+        <SafeAreaView style={[screenStyles.safeArea, { backgroundColor: homeBackgroundColor }]} edges={['top']}>
+          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
           <ScrollView
             contentInsetAdjustmentBehavior="automatic"
             contentContainerStyle={[
@@ -312,6 +315,8 @@ export default function HomeScreen() {
               isConnected={isConnected}
               profileImageUri={profileImageUri}
               statusLabel={railStatusLabel}
+              colors={dashboardColors}
+              colorScheme={colorScheme}
             />
             <HomeHeroVerdict
               t={t}
@@ -321,6 +326,8 @@ export default function HomeScreen() {
               activeSignal={activeSignal}
               statusCounts={statusCounts}
               onSignalPress={handleSignalPress}
+              colors={dashboardColors}
+              colorScheme={colorScheme}
             />
             <HomeQuickActions
               allergiesDescription={quickActionCopy.allergiesDescription}
@@ -335,8 +342,12 @@ export default function HomeScreen() {
               onOpenAllergies={handleOpenAllergies}
               onOpenHistory={handleOpenHistory}
               onOpenTripStats={handleOpenTripStats}
+              colors={dashboardColors}
+              colorScheme={colorScheme}
             />
             <HomeWeekPulse
+              colors={dashboardColors}
+              colorScheme={colorScheme}
               locale={resolvedLocale}
               metaLabel={t('home.weekPulse.meta', 'Read only')}
               selectedDate={selectedDate}
@@ -344,12 +355,16 @@ export default function HomeScreen() {
               weeklyStats={weeklyStats}
             />
             <HomeFeaturedScan
+              colors={dashboardColors}
+              colorScheme={colorScheme}
               item={featuredRecentScan}
               locale={resolvedLocale}
               t={t}
               onOpenResult={handleOpenResult}
             />
             <HomeRecentFeed
+              colors={dashboardColors}
+              colorScheme={colorScheme}
               items={visibleRecentScans}
               title={t('home.scans.recentTitle', 'Recent Scans')}
               meta={t('home.recentFeed.meta', 'Swipe to delete')}

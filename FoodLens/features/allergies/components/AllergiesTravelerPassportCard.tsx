@@ -15,12 +15,13 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 
-import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
+import { PearlSurfaceOverlay } from '../../home/components/PearlSurfaceOverlay';
 import {
-  homeDashboardColors,
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from '../../home/components/homeDashboardTokens';
 import type {
   AllergiesPassportCardCopy,
@@ -42,141 +43,163 @@ type AllergiesTravelerPassportCardTone = {
 };
 
 export type AllergiesTravelerPassportCardProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   state: AllergiesPassportHeroState;
   copy: AllergiesPassportCardCopy;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 };
 
-const getCardTone = (state: AllergiesPassportHeroState): AllergiesTravelerPassportCardTone => {
+const getCardTone = (
+  colors: HomeDashboardColors,
+  state: AllergiesPassportHeroState,
+): AllergiesTravelerPassportCardTone => {
   if (state === 'loading') {
     return {
-      accentColor: homeDashboardColors.inkSoft,
-      badgeBackgroundColor: homeDashboardColors.surfaceMuted,
-      badgeTextColor: homeDashboardColors.inkSoft,
-      bodyColor: homeDashboardColors.inkSoft,
-      headlineColor: homeDashboardColors.ink,
-      overlayAccentColor: homeDashboardColors.pearlMist,
-      overlayBaseBottomColor: homeDashboardColors.paperStrong,
-      overlayBaseTopColor: homeDashboardColors.pearlIvory,
-      overlayCoolColor: homeDashboardColors.pearlGlow,
-      overlayWarmColor: homeDashboardColors.pearlMist,
-      supportingColor: homeDashboardColors.inkSoft,
+      accentColor: colors.inkSoft,
+      badgeBackgroundColor: colors.surfaceMuted,
+      badgeTextColor: colors.inkSoft,
+      bodyColor: colors.inkSoft,
+      headlineColor: colors.ink,
+      overlayAccentColor: colors.pearlMist,
+      overlayBaseBottomColor: colors.paperStrong,
+      overlayBaseTopColor: colors.pearlIvory,
+      overlayCoolColor: colors.pearlGlow,
+      overlayWarmColor: colors.pearlMist,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'empty') {
     return {
-      accentColor: homeDashboardColors.accentAmber,
-      badgeBackgroundColor: homeDashboardColors.accentAmberSoft,
-      badgeTextColor: homeDashboardColors.accentAmber,
-      bodyColor: homeDashboardColors.inkSoft,
-      headlineColor: homeDashboardColors.ink,
-      overlayAccentColor: homeDashboardColors.pearlPeach,
-      overlayBaseBottomColor: homeDashboardColors.paper,
-      overlayBaseTopColor: homeDashboardColors.pearlIvory,
-      overlayCoolColor: homeDashboardColors.pearlGlow,
-      overlayWarmColor: homeDashboardColors.pearlPeach,
-      supportingColor: homeDashboardColors.inkSoft,
+      accentColor: colors.accentAmber,
+      badgeBackgroundColor: colors.accentAmberSoft,
+      badgeTextColor: colors.accentAmber,
+      bodyColor: colors.inkSoft,
+      headlineColor: colors.ink,
+      overlayAccentColor: colors.pearlPeach,
+      overlayBaseBottomColor: colors.paper,
+      overlayBaseTopColor: colors.pearlIvory,
+      overlayCoolColor: colors.pearlGlow,
+      overlayWarmColor: colors.pearlPeach,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'personalized') {
     return {
-      accentColor: homeDashboardColors.accentGreen,
-      badgeBackgroundColor: homeDashboardColors.accentGreenSoft,
-      badgeTextColor: homeDashboardColors.accentGreen,
-      bodyColor: homeDashboardColors.inkSoft,
-      headlineColor: homeDashboardColors.ink,
-      overlayAccentColor: homeDashboardColors.pearlSage,
-      overlayBaseBottomColor: homeDashboardColors.paperStrong,
-      overlayBaseTopColor: homeDashboardColors.pearlIvory,
-      overlayCoolColor: homeDashboardColors.pearlSage,
-      overlayWarmColor: homeDashboardColors.pearlGlow,
-      supportingColor: homeDashboardColors.inkSoft,
+      accentColor: colors.accentGreen,
+      badgeBackgroundColor: colors.accentGreenSoft,
+      badgeTextColor: colors.accentGreen,
+      bodyColor: colors.inkSoft,
+      headlineColor: colors.ink,
+      overlayAccentColor: colors.pearlSage,
+      overlayBaseBottomColor: colors.paperStrong,
+      overlayBaseTopColor: colors.pearlIvory,
+      overlayCoolColor: colors.pearlSage,
+      overlayWarmColor: colors.pearlGlow,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'generic') {
     return {
-      accentColor: homeDashboardColors.accentBlue,
-      badgeBackgroundColor: homeDashboardColors.surfaceMuted,
-      badgeTextColor: homeDashboardColors.accentBlue,
-      bodyColor: homeDashboardColors.inkSoft,
-      headlineColor: homeDashboardColors.ink,
-      overlayAccentColor: homeDashboardColors.pearlMist,
-      overlayBaseBottomColor: homeDashboardColors.paperMuted,
-      overlayBaseTopColor: homeDashboardColors.pearlIvory,
-      overlayCoolColor: homeDashboardColors.pearlMist,
-      overlayWarmColor: homeDashboardColors.pearlGlow,
-      supportingColor: homeDashboardColors.inkSoft,
+      accentColor: colors.accentBlue,
+      badgeBackgroundColor: colors.surfaceMuted,
+      badgeTextColor: colors.accentBlue,
+      bodyColor: colors.inkSoft,
+      headlineColor: colors.ink,
+      overlayAccentColor: colors.pearlMist,
+      overlayBaseBottomColor: colors.paperMuted,
+      overlayBaseTopColor: colors.pearlIvory,
+      overlayCoolColor: colors.pearlMist,
+      overlayWarmColor: colors.pearlGlow,
+      supportingColor: colors.inkSoft,
     };
   }
 
   return {
-    accentColor: homeDashboardColors.accentRed,
-    badgeBackgroundColor: homeDashboardColors.accentRedSoft,
-    badgeTextColor: homeDashboardColors.accentRed,
-    bodyColor: homeDashboardColors.inkSoft,
-    headlineColor: homeDashboardColors.ink,
-    overlayAccentColor: homeDashboardColors.pearlPeach,
-    overlayBaseBottomColor: homeDashboardColors.paperStrong,
-    overlayBaseTopColor: homeDashboardColors.pearlIvory,
-    overlayCoolColor: homeDashboardColors.pearlMist,
-    overlayWarmColor: homeDashboardColors.pearlPeach,
-    supportingColor: homeDashboardColors.inkSoft,
+    accentColor: colors.accentRed,
+    badgeBackgroundColor: colors.accentRedSoft,
+    badgeTextColor: colors.accentRed,
+    bodyColor: colors.inkSoft,
+    headlineColor: colors.ink,
+    overlayAccentColor: colors.pearlPeach,
+    overlayBaseBottomColor: colors.paperStrong,
+    overlayBaseTopColor: colors.pearlIvory,
+    overlayCoolColor: colors.pearlMist,
+    overlayWarmColor: colors.pearlPeach,
+    supportingColor: colors.inkSoft,
   };
 };
 
-const getStateIcon = (state: AllergiesPassportHeroState): React.JSX.Element => {
+const getStateIcon = (
+  colors: HomeDashboardColors,
+  state: AllergiesPassportHeroState,
+): React.JSX.Element => {
   if (state === 'loading') {
-    return <Loader2 color={homeDashboardColors.inkSoft} size={16} />;
+    return <Loader2 color={colors.inkSoft} size={16} />;
   }
 
   if (state === 'empty') {
-    return <CirclePlus color={homeDashboardColors.accentAmber} size={16} />;
+    return <CirclePlus color={colors.accentAmber} size={16} />;
   }
 
   if (state === 'personalized') {
-    return <BadgeCheck color={homeDashboardColors.accentGreen} size={16} />;
+    return <BadgeCheck color={colors.accentGreen} size={16} />;
   }
 
   if (state === 'generic') {
-    return <Sparkles color={homeDashboardColors.accentBlue} size={16} />;
+    return <Sparkles color={colors.accentBlue} size={16} />;
   }
 
-  return <ShieldAlert color={homeDashboardColors.accentRed} size={16} />;
+  return <ShieldAlert color={colors.accentRed} size={16} />;
 };
 
 export function AllergiesTravelerPassportCard({
+  colorScheme,
+  colors,
   state,
   copy,
   onPress,
   style,
 }: AllergiesTravelerPassportCardProps): React.JSX.Element {
-  const tone = getCardTone(state);
+  const tone = getCardTone(colors, state);
 
   const content = (
     <>
-      <PearlSurfaceOverlay
-        accentWashColor={tone.overlayAccentColor}
-        baseBottomColor={tone.overlayBaseBottomColor}
-        baseTopColor={tone.overlayBaseTopColor}
-        coolWashColor={tone.overlayCoolColor}
-        warmWashColor={tone.overlayWarmColor}
-      />
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={tone.overlayAccentColor}
+          baseBottomColor={tone.overlayBaseBottomColor}
+          baseTopColor={tone.overlayBaseTopColor}
+          coolWashColor={tone.overlayCoolColor}
+          warmWashColor={tone.overlayWarmColor}
+        />
+      ) : null}
 
       <View style={styles.content}>
         <View style={styles.topRow}>
-          <View style={[styles.badge, { backgroundColor: tone.badgeBackgroundColor }]}>
-            {getStateIcon(state)}
+          <View
+            style={[
+              styles.badge,
+              { backgroundColor: tone.badgeBackgroundColor, borderColor: colors.line },
+            ]}
+          >
+            {getStateIcon(colors, state)}
             <Text style={[styles.badgeText, { color: tone.badgeTextColor }]}>
               {copy.badgeLabel}
             </Text>
           </View>
 
           {copy.languageLabel ? (
-            <View style={styles.languageBadge}>
+            <View
+              style={[
+                styles.languageBadge,
+                { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+              ]}
+            >
               <Text style={[styles.languageBadgeText, { color: tone.supportingColor }]}>
                 {copy.languageLabel}
               </Text>
@@ -186,9 +209,27 @@ export function AllergiesTravelerPassportCard({
 
         {state === 'loading' ? (
           <View style={styles.loadingBlock}>
-            <View style={[styles.loadingLine, styles.loadingLineWide]} />
-            <View style={[styles.loadingLine, styles.loadingLineMedium]} />
-            <View style={[styles.loadingLine, styles.loadingLineShort]} />
+            <View
+              style={[
+                styles.loadingLine,
+                styles.loadingLineWide,
+                { backgroundColor: colors.surfaceMuted },
+              ]}
+            />
+            <View
+              style={[
+                styles.loadingLine,
+                styles.loadingLineMedium,
+                { backgroundColor: colors.surfaceMuted },
+              ]}
+            />
+            <View
+              style={[
+                styles.loadingLine,
+                styles.loadingLineShort,
+                { backgroundColor: colors.surfaceMuted },
+              ]}
+            />
           </View>
         ) : (
           <View style={styles.copyBlock}>
@@ -221,7 +262,8 @@ export function AllergiesTravelerPassportCard({
         style={({ pressed }) => [
           styles.card,
           {
-            borderColor: homeDashboardColors.lineStrong,
+            backgroundColor: colors.surfaceStrong,
+            borderColor: colors.lineStrong,
             shadowColor: tone.accentColor,
           },
           pressed ? styles.cardPressed : null,
@@ -238,7 +280,8 @@ export function AllergiesTravelerPassportCard({
       style={[
         styles.card,
         {
-          borderColor: homeDashboardColors.lineStrong,
+          backgroundColor: colors.surfaceStrong,
+          borderColor: colors.lineStrong,
           shadowColor: tone.accentColor,
         },
         style,
@@ -284,7 +327,6 @@ const styles = StyleSheet.create({
     borderRadius: homeDashboardRadii.pill,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: homeDashboardColors.line,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -302,9 +344,7 @@ const styles = StyleSheet.create({
     borderRadius: homeDashboardRadii.pill,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: homeDashboardColors.line,
     justifyContent: 'center',
-    backgroundColor: homeDashboardColors.surfaceMuted,
   },
   languageBadgeText: {
     fontSize: homeDashboardTypography.caption,
@@ -345,7 +385,6 @@ const styles = StyleSheet.create({
   loadingLine: {
     height: 14,
     borderRadius: homeDashboardRadii.pill,
-    backgroundColor: 'rgba(23, 32, 51, 0.08)',
   },
   loadingLineWide: {
     width: '84%',

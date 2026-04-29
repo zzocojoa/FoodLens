@@ -9,10 +9,15 @@ import ResultMetaHeader from './resultContent/components/ResultMetaHeader';
 import { useResultContentModel } from './resultContent/hooks/useResultContentModel';
 import { resultContentStyles as styles } from './resultContent/styles';
 import { ResultContentProps } from './resultContent/types';
-import { homeDashboardColors, homeDashboardSignalColors } from '@/features/home/components/homeDashboardTokens';
+import {
+    getHomeDashboardColors,
+    getHomeDashboardSignalColors,
+    type HomeDashboardColors,
+} from '@/features/home/components/homeDashboardTokens';
 
 const resolveDecisionColors = (
-    decisionVariant: 'ok' | 'ask' | 'avoid'
+    decisionVariant: 'ok' | 'ask' | 'avoid',
+    colors: HomeDashboardColors
 ): {
     badgeBackgroundColor: string;
     badgeBorderColor: string;
@@ -23,14 +28,16 @@ const resolveDecisionColors = (
     helperBackgroundColor: string;
     helperTextColor: string;
 } => {
+    const signalColors = getHomeDashboardSignalColors(colors);
+
     if (decisionVariant === 'ok') {
-        const signal = homeDashboardSignalColors.SAFE;
+        const signal = signalColors.SAFE;
         return {
             badgeBackgroundColor: signal.background,
             badgeBorderColor: signal.background,
             badgeTextColor: signal.text,
             actionTextColor: signal.text,
-            cardBackgroundColor: homeDashboardColors.pearlIvory,
+            cardBackgroundColor: colors.pearlIvory,
             cardBorderColor: signal.background,
             helperBackgroundColor: signal.background,
             helperTextColor: signal.text,
@@ -38,26 +45,26 @@ const resolveDecisionColors = (
     }
 
     if (decisionVariant === 'ask') {
-        const signal = homeDashboardSignalColors.CAUTION;
+        const signal = signalColors.CAUTION;
         return {
             badgeBackgroundColor: signal.background,
             badgeBorderColor: signal.background,
             badgeTextColor: signal.text,
             actionTextColor: signal.text,
-            cardBackgroundColor: homeDashboardColors.paperMuted,
+            cardBackgroundColor: colors.paperMuted,
             cardBorderColor: signal.background,
             helperBackgroundColor: signal.background,
             helperTextColor: signal.text,
         };
     }
 
-    const signal = homeDashboardSignalColors.DANGER;
+    const signal = signalColors.DANGER;
     return {
         badgeBackgroundColor: signal.background,
         badgeBorderColor: signal.background,
         badgeTextColor: signal.text,
         actionTextColor: signal.text,
-        cardBackgroundColor: homeDashboardColors.paperMuted,
+        cardBackgroundColor: colors.paperMuted,
         cardBorderColor: signal.background,
         helperBackgroundColor: signal.background,
         helperTextColor: signal.text,
@@ -94,7 +101,8 @@ export function ResultContent({
         t,
         locale
     );
-    const decisionColors = resolveDecisionColors(decisionVariant);
+    const dashboardColors = getHomeDashboardColors(colorScheme);
+    const decisionColors = resolveDecisionColors(decisionVariant, dashboardColors);
 
     return (
         <View style={[styles.sheetContainer, { backgroundColor: theme.background }]}>

@@ -19,8 +19,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { HomeBackgroundAtmosphere } from '@/features/home/components/HomeBackgroundAtmosphere';
 import { PearlSurfaceOverlay } from '@/features/home/components/PearlSurfaceOverlay';
 import {
+    getHomeDashboardColors,
+    getHomeDashboardSignalColors,
     homeDashboardColors,
-    homeDashboardSignalColors,
+    type HomeDashboardColors,
 } from '@/features/home/components/homeDashboardTokens';
 import AllergenGrid from '../components/AllergenGrid';
 import ProfileHeader from '../components/ProfileHeader';
@@ -69,30 +71,35 @@ type SeverityTone = {
     textColor: string;
 };
 
-const getSeverityTone = (severity: AllergySeverity): SeverityTone => {
+const getSeverityTone = (
+    severity: AllergySeverity,
+    colors: HomeDashboardColors,
+): SeverityTone => {
+    const signalColors = getHomeDashboardSignalColors(colors);
+
     if (severity === 'severe') {
         return {
-            backgroundColor: homeDashboardSignalColors.DANGER.background,
-            borderColor: homeDashboardColors.accentRed,
-            iconColor: homeDashboardColors.accentRed,
-            textColor: homeDashboardColors.accentRed,
+            backgroundColor: signalColors.DANGER.background,
+            borderColor: colors.accentRed,
+            iconColor: colors.accentRed,
+            textColor: colors.accentRed,
         };
     }
 
     if (severity === 'moderate') {
         return {
-            backgroundColor: homeDashboardSignalColors.CAUTION.background,
-            borderColor: homeDashboardColors.accentAmber,
-            iconColor: homeDashboardColors.accentAmber,
-            textColor: homeDashboardColors.accentAmber,
+            backgroundColor: signalColors.CAUTION.background,
+            borderColor: colors.accentAmber,
+            iconColor: colors.accentAmber,
+            textColor: colors.accentAmber,
         };
     }
 
     return {
-        backgroundColor: homeDashboardSignalColors.SAFE.background,
-        borderColor: homeDashboardColors.accentGreen,
-        iconColor: homeDashboardColors.accentGreen,
-        textColor: homeDashboardColors.accentGreen,
+        backgroundColor: signalColors.SAFE.background,
+        borderColor: colors.accentGreen,
+        iconColor: colors.accentGreen,
+        textColor: colors.accentGreen,
     };
 };
 
@@ -114,6 +121,8 @@ export default function ProfileScreen() {
     const { t } = useI18n();
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme];
+    const isDarkTheme = colorScheme === 'dark';
+    const dashboardColors = getHomeDashboardColors(colorScheme);
     const insets = useSafeAreaInsets();
     const [showCustomAllergenSearch, setShowCustomAllergenSearch] = React.useState(false);
     const customAllergenSectionYRef = React.useRef<number | null>(null);
@@ -204,9 +213,9 @@ export default function ProfileScreen() {
     }, [savedNoticeKey, savedToastOpacity]);
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar style="dark" />
-            <HomeBackgroundAtmosphere />
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+            <StatusBar style={isDarkTheme ? 'light' : 'dark'} />
+            {isDarkTheme ? null : <HomeBackgroundAtmosphere />}
             <ProfileHeader
                 theme={theme}
                 onBack={handleBack}
@@ -228,20 +237,31 @@ export default function ProfileScreen() {
                     keyboardShouldPersistTaps="always"
                     keyboardDismissMode="on-drag"
                 >
-                    <View style={styles.summaryPanel}>
-                        <PearlSurfaceOverlay
-                            accentWashColor={homeDashboardColors.pearlMist}
-                            baseBottomColor={homeDashboardColors.paperStrong}
-                            baseTopColor={homeDashboardColors.pearlIvory}
-                            coolWashColor={homeDashboardColors.pearlSage}
-                            warmWashColor={homeDashboardColors.pearlPeach}
-                        />
+                    <View
+                        style={[
+                            styles.summaryPanel,
+                            {
+                                backgroundColor: theme.surface,
+                                borderColor: theme.border,
+                                shadowColor: theme.shadow,
+                            },
+                        ]}
+                    >
+                        {isDarkTheme ? null : (
+                            <PearlSurfaceOverlay
+                                accentWashColor={homeDashboardColors.pearlMist}
+                                baseBottomColor={homeDashboardColors.paperStrong}
+                                baseTopColor={homeDashboardColors.pearlIvory}
+                                coolWashColor={homeDashboardColors.pearlSage}
+                                warmWashColor={homeDashboardColors.pearlPeach}
+                            />
+                        )}
                         <View style={styles.summaryPanelContent}>
                             <View style={styles.summaryPanelHeader}>
-                                <Text style={styles.summaryTitle}>
+                                <Text style={[styles.summaryTitle, { color: theme.textPrimary }]}>
                                     {t('profile.health.summary.title', 'FoodLens safety criteria')}
                                 </Text>
-                                <Text style={styles.summaryDescription}>
+                                <Text style={[styles.summaryDescription, { color: theme.textSecondary }]}>
                                     {t(
                                         'profile.health.summary.subtitle',
                                         'Scans use these items to flag food that needs caution.',
@@ -250,24 +270,39 @@ export default function ProfileScreen() {
                             </View>
 
                             <View style={styles.summaryMetricRow}>
-                                <View style={styles.summaryMetricPill}>
-                                    <Text style={styles.summaryMetricText}>
+                                <View
+                                    style={[
+                                        styles.summaryMetricPill,
+                                        { backgroundColor: theme.background, borderColor: theme.border },
+                                    ]}
+                                >
+                                    <Text style={[styles.summaryMetricText, { color: theme.textSecondary }]}>
                                         {replaceCountTemplate(
                                             t('profile.health.allergiesTemplate', '{count} allergies'),
                                             allergies.length,
                                         )}
                                     </Text>
                                 </View>
-                                <View style={styles.summaryMetricPill}>
-                                    <Text style={styles.summaryMetricText}>
+                                <View
+                                    style={[
+                                        styles.summaryMetricPill,
+                                        { backgroundColor: theme.background, borderColor: theme.border },
+                                    ]}
+                                >
+                                    <Text style={[styles.summaryMetricText, { color: theme.textSecondary }]}>
                                         {replaceCountTemplate(
                                             t('profile.health.customTemplate', '{count} custom'),
                                             customAllergies.length,
                                         )}
                                     </Text>
                                 </View>
-                                <View style={styles.summaryMetricPill}>
-                                    <Text style={styles.summaryMetricText}>
+                                <View
+                                    style={[
+                                        styles.summaryMetricPill,
+                                        { backgroundColor: theme.background, borderColor: theme.border },
+                                    ]}
+                                >
+                                    <Text style={[styles.summaryMetricText, { color: theme.textSecondary }]}>
                                         {replaceCountTemplate(
                                             t('profile.health.severeTemplate', '{count} severe'),
                                             severeCount,
@@ -278,7 +313,13 @@ export default function ProfileScreen() {
 
                             <View style={styles.editActionRow}>
                                 <TouchableOpacity
-                                    style={styles.editActionButton}
+                                    style={[
+                                        styles.editActionButton,
+                                        {
+                                            backgroundColor: theme.textPrimary,
+                                            borderColor: theme.textPrimary,
+                                        },
+                                    ]}
                                     onPress={handleShowCustomAllergenSearch}
                                     accessibilityRole="button"
                                     accessibilityLabel={t(
@@ -290,8 +331,8 @@ export default function ProfileScreen() {
                                         'Shows the custom allergen search field',
                                     )}
                                 >
-                                    <Plus size={17} color={homeDashboardColors.paper} />
-                                    <Text style={styles.editActionText}>
+                                    <Plus size={17} color={theme.background} />
+                                    <Text style={[styles.editActionText, { color: theme.background }]}>
                                         {t('profile.health.addMissingAllergen', 'Add missing allergen')}
                                     </Text>
                                 </TouchableOpacity>
@@ -302,23 +343,28 @@ export default function ProfileScreen() {
                     <View style={styles.ledgerSection}>
                         <View style={styles.sectionTitleRow}>
                             <View>
-                                <Text style={styles.sectionHeader}>
+                                <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
                                     {t('profile.health.selected.title', 'Protection ledger')}
                                 </Text>
-                                <Text style={styles.sectionSubtext}>
+                                <Text style={[styles.sectionSubtext, { color: theme.textSecondary }]}>
                                     {t('profile.health.selected.subtitle', 'Review selected items and their severity.')}
                                 </Text>
                             </View>
                         </View>
 
                         {ledgerItems.length === 0 ? (
-                            <View style={styles.emptyLedgerCard}>
-                                <ShieldCheck size={22} color={homeDashboardColors.inkSoft} />
+                            <View
+                                style={[
+                                    styles.emptyLedgerCard,
+                                    { backgroundColor: theme.surface, borderColor: theme.border },
+                                ]}
+                            >
+                                <ShieldCheck size={22} color={theme.textSecondary} />
                                 <View style={styles.emptyLedgerTextGroup}>
-                                    <Text style={styles.emptyLedgerTitle}>
+                                    <Text style={[styles.emptyLedgerTitle, { color: theme.textPrimary }]}>
                                         {t('profile.health.empty.title', 'No items yet')}
                                     </Text>
-                                    <Text style={styles.emptyLedgerBody}>
+                                    <Text style={[styles.emptyLedgerBody, { color: theme.textSecondary }]}>
                                         {t('profile.health.empty.body', 'Add allergens before scanning.')}
                                     </Text>
                                 </View>
@@ -327,7 +373,7 @@ export default function ProfileScreen() {
                             <View style={styles.ledgerList}>
                                 {ledgerItems.map((item) => {
                                     const severity = severityMap[item.id] || 'moderate';
-                                    const tone = getSeverityTone(severity);
+                                    const tone = getSeverityTone(severity, dashboardColors);
                                     const severityLabel = t(
                                         `profile.health.severity.${severity}`,
                                         getSeverityFallback(severity),
@@ -338,7 +384,13 @@ export default function ProfileScreen() {
                                     };
 
                                     return (
-                                        <View key={`ledger-${item.id}`} style={styles.ledgerRow}>
+                                        <View
+                                            key={`ledger-${item.id}`}
+                                            style={[
+                                                styles.ledgerRow,
+                                                { backgroundColor: theme.surface, borderColor: theme.border },
+                                            ]}
+                                        >
                                             <TouchableOpacity
                                                 style={styles.ledgerMainButton}
                                                 onPress={() => cycleSeverity(item.id)}
@@ -351,8 +403,10 @@ export default function ProfileScreen() {
                                                 )}
                                             >
                                                 <View style={styles.ledgerItemTextGroup}>
-                                                    <Text style={styles.ledgerItemName}>{itemName}</Text>
-                                                    <Text style={styles.ledgerItemKind}>
+                                                    <Text style={[styles.ledgerItemName, { color: theme.textPrimary }]}>
+                                                        {itemName}
+                                                    </Text>
+                                                    <Text style={[styles.ledgerItemKind, { color: theme.textSecondary }]}>
                                                         {t('profile.health.kind.allergen', 'Allergen')}
                                                     </Text>
                                                 </View>
@@ -372,7 +426,10 @@ export default function ProfileScreen() {
                                                 </View>
                                             </TouchableOpacity>
                                             <TouchableOpacity
-                                                style={styles.ledgerRemoveButton}
+                                                style={[
+                                                    styles.ledgerRemoveButton,
+                                                    { borderLeftColor: theme.border },
+                                                ]}
                                                 onPress={handleRemove}
                                                 accessibilityRole="button"
                                                 accessibilityLabel={replaceItemTemplate(
@@ -380,7 +437,7 @@ export default function ProfileScreen() {
                                                     itemName,
                                                 )}
                                             >
-                                                <CircleX size={19} color={homeDashboardColors.inkSoft} />
+                                                <CircleX size={19} color={theme.textSecondary} />
                                             </TouchableOpacity>
                                         </View>
                                     );
@@ -390,10 +447,12 @@ export default function ProfileScreen() {
                     </View>
 
                     <View style={styles.editorSection}>
-                        <Text style={styles.sectionHeader}>
+                        <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
                             {t('profile.health.commonAllergens.title', 'Common allergens')}
                         </Text>
                         <AllergenGrid
+                            dashboardColors={dashboardColors}
+                            theme={theme}
                             selectedAllergies={allergies}
                             onToggle={toggleAllergen}
                             t={t}
@@ -406,7 +465,7 @@ export default function ProfileScreen() {
                     >
                         {!showCustomAllergenSearch ? (
                             <TouchableOpacity
-                                style={styles.searchToggleButton}
+                                style={[styles.searchToggleButton, { borderColor: theme.border }]}
                                 onPress={handleShowCustomAllergenSearch}
                                 accessibilityRole="button"
                                 accessibilityLabel={t('onboarding.allergies.notFound', 'Not finding yours?')}
@@ -415,17 +474,17 @@ export default function ProfileScreen() {
                                     'Open search to add a custom allergen',
                                 )}
                             >
-                                <Plus size={17} color={homeDashboardColors.ink} />
-                                <Text style={styles.searchToggleText}>
+                                <Plus size={17} color={theme.textPrimary} />
+                                <Text style={[styles.searchToggleText, { color: theme.textPrimary }]}>
                                     {t('profile.health.customAllergen.title', 'Missing from the list')}
                                 </Text>
                             </TouchableOpacity>
                         ) : (
                             <View>
-                                <Text style={styles.sectionHeader}>
+                                <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>
                                     {t('profile.health.customAllergen.title', 'Missing from the list')}
                                 </Text>
-                                <Text style={styles.sectionSubtext}>
+                                <Text style={[styles.sectionSubtext, { color: theme.textSecondary }]}>
                                     {t(
                                         'profile.health.customAllergen.subtitle',
                                         'Add an allergen FoodLens should treat as a safety risk.',
@@ -451,11 +510,14 @@ export default function ProfileScreen() {
                     pointerEvents="none"
                     style={[styles.savedToastOverlay, { opacity: savedToastOpacity }]}
                 >
-                    <View accessibilityRole="alert" style={styles.savedToast}>
-                        <View style={styles.savedToastIcon}>
+                    <View
+                        accessibilityRole="alert"
+                        style={[styles.savedToast, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                    >
+                        <View style={[styles.savedToastIcon, { backgroundColor: theme.background }]}>
                             <Check size={14} color={homeDashboardColors.accentGreen} />
                         </View>
-                        <Text style={styles.savedToastText}>
+                        <Text style={[styles.savedToastText, { color: theme.textPrimary }]}>
                             {t('profile.health.saved', 'Saved')}
                         </Text>
                     </View>

@@ -483,8 +483,10 @@ export default function ProfileHubScreen(): React.JSX.Element {
 
                     <ProfileDeveloperSheet
                         closeLabel={t('profileAtelier.developer.close', 'Close')}
+                        colorScheme={resolvedColorScheme}
                         onClose={handleCloseBuildFingerprint}
                         rows={buildFingerprintRows}
+                        theme={palette}
                         title={t('profileAtelier.developer.title', 'Developer Info')}
                         visible={canRevealBuildFingerprint && isBuildFingerprintVisible}
                     />

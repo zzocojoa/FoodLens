@@ -8,6 +8,7 @@ import { HapticTouchableOpacity } from '../../../components/HapticFeedback';
 import { AnalysisRecord } from '../../../services/analysisService';
 import { getBarcodeImageUri, resolveImageUri } from '../../../services/imageStorage';
 import { formatDate, getEmoji } from '../../../services/utils';
+import { homeDashboardColors } from './homeDashboardTokens';
 import { homeStyles as styles } from '../styles/homeStyles';
 import { formatHomeSectionTitle, getHomeScanStatusBadge } from '../utils/homeUi';
 import { getLocalizedFoodName } from '../utils/localizedFoodName';
@@ -71,7 +72,7 @@ export default function HomeScansSection({
       <View style={styles.scanList}>
         {filteredScans.length > 0 ? (
           filteredScans.map((item, index) => {
-            const badgeStyle = getHomeScanStatusBadge(item.safetyStatus, t);
+            const badgeStyle = getHomeScanStatusBadge(item.safetyStatus, t, homeDashboardColors);
             const localizedFoodName = getLocalizedFoodName(item, locale);
             return (
               <View key={`${item.id}-${index}`} style={{ marginBottom: 12 }}>

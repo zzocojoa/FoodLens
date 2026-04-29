@@ -8,15 +8,17 @@ import type { HistoryCountryChapter, HistoryRecentEntry } from '../types/history
 import HistoryRecordRow from './HistoryRecordRow';
 import HistorySurfaceCard from './HistorySurfaceCard';
 import {
-  historyDashboardColors as colors,
+  getHistoryDashboardToneTokens,
+  historyDashboardColors,
   historyDashboardRadii as radii,
   historyDashboardSpacing as spacing,
-  historyDashboardToneTokens,
   historyDashboardTypography as typography,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 
 type HistoryCountryChaptersProps = {
   chapters: HistoryCountryChapter[];
+  colors: HistoryDashboardColors;
   expandedCountries: Set<string>;
   isEditMode: boolean;
   matchesFilter: (type: string | undefined) => boolean;
@@ -28,23 +30,26 @@ type HistoryCountryChaptersProps = {
 };
 
 type HistoryChapterBadgeProps = {
+  colors: HistoryDashboardColors;
   label: string;
   value: string;
 };
 
 function HistoryChapterBadge({
+  colors,
   label,
   value,
 }: HistoryChapterBadgeProps): React.JSX.Element {
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{`${label} ${value}`}</Text>
+    <View style={[styles.badge, { backgroundColor: colors.surfaceMuted, borderColor: colors.line }]}>
+      <Text style={[styles.badgeText, { color: colors.ink }]}>{`${label} ${value}`}</Text>
     </View>
   );
 }
 
 export default function HistoryCountryChapters({
   chapters,
+  colors,
   expandedCountries,
   isEditMode,
   matchesFilter,
@@ -55,18 +60,19 @@ export default function HistoryCountryChapters({
   selectedItems,
 }: HistoryCountryChaptersProps): React.JSX.Element {
   const { t } = useI18n();
+  const toneTokens = getHistoryDashboardToneTokens(colors);
 
   if (chapters.length === 0) {
     return (
-      <HistorySurfaceCard accentWashColor={colors.pearlMist}>
-        <Text style={styles.emptyTitle}>{t('history.chapters.empty', '기록이 아직 없습니다')}</Text>
+      <HistorySurfaceCard accentWashColor={colors.pearlMist} colors={colors}>
+        <Text style={[styles.emptyTitle, { color: colors.inkSoft }]}>{t('history.chapters.empty', '기록이 아직 없습니다')}</Text>
       </HistorySurfaceCard>
     );
   }
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t('history.chapters.title', '챕터')}</Text>
+      <Text style={[styles.sectionTitle, { color: colors.ink }]}>{t('history.chapters.title', '챕터')}</Text>
 
       {chapters.map((chapter) => {
         const isExpanded = expandedCountries.has(chapter.id);
@@ -78,7 +84,7 @@ export default function HistoryCountryChapters({
           .filter((region) => region.items.length > 0);
 
         return (
-            <HistorySurfaceCard key={chapter.id} accentWashColor={colors.pearlPeach}>
+            <HistorySurfaceCard key={chapter.id} accentWashColor={colors.pearlPeach} colors={colors}>
               <Pressable
                 accessibilityLabel={chapter.country}
                 accessibilityRole="button"
@@ -89,25 +95,25 @@ export default function HistoryCountryChapters({
                 <View style={styles.chapterTopRow}>
                   <View style={styles.chapterTitleRow}>
                     <Text style={styles.flag}>{chapter.flag}</Text>
-                    <Text style={styles.chapterTitle}>{chapter.country}</Text>
+                    <Text style={[styles.chapterTitle, { color: colors.ink }]}>{chapter.country}</Text>
                   </View>
                   {isExpanded ? <ChevronUp color={colors.inkSoft} size={18} /> : <ChevronDown color={colors.inkSoft} size={18} />}
                 </View>
 
-                <View style={styles.chapterRule} />
+                <View style={[styles.chapterRule, { backgroundColor: colors.accentRedSoft }]} />
 
                 <View style={styles.chapterSummary}>
-                  <HistoryChapterBadge label={t('history.chapters.total', '기록')} value={String(chapter.totalCount)} />
+                  <HistoryChapterBadge colors={colors} label={t('history.chapters.total', '기록')} value={String(chapter.totalCount)} />
                   <View
                     style={[
                       styles.countPill,
                       {
-                        backgroundColor: historyDashboardToneTokens.safe.backgroundColor,
-                        borderColor: historyDashboardToneTokens.safe.borderColor,
+                        backgroundColor: toneTokens.safe.backgroundColor,
+                        borderColor: toneTokens.safe.borderColor,
                       },
                     ]}
                   >
-                    <Text style={[styles.countPillLabel, { color: historyDashboardToneTokens.safe.textColor }]}>
+                    <Text style={[styles.countPillLabel, { color: toneTokens.safe.textColor }]}>
                       {t('history.utility.safe', '안전')} {chapter.toneCounts.safe}
                     </Text>
                   </View>
@@ -119,7 +125,7 @@ export default function HistoryCountryChapters({
                 <View style={styles.regionList}>
                   {visibleRegions.map((region) => (
                     <View key={`${chapter.id}-${region.name}`} style={styles.regionSection}>
-                      <Text style={styles.regionTitle}>{region.name}</Text>
+                      <Text style={[styles.regionTitle, { color: colors.accentBlue }]}>{region.name}</Text>
                       <View style={styles.records}>
                         {region.items.map((item) => (
                           <HistoryRecordRow
@@ -138,6 +144,7 @@ export default function HistoryCountryChapters({
                             }}
                             isEditMode={isEditMode}
                             isSelected={selectedItems.has(item.id)}
+                            colors={colors}
                             onDelete={onDelete}
                             onPress={onEntryPress}
                             onToggleSelect={onToggleItem}
@@ -148,7 +155,7 @@ export default function HistoryCountryChapters({
                   ))}
                 </View>
               ) : (
-                <Text style={styles.emptyFilter}>
+                <Text style={[styles.emptyFilter, { color: colors.inkSoft }]}>
                   {t('history.chapters.emptyFilter', '이 필터에는 표시할 기록이 없습니다')}
                 </Text>
               )
@@ -163,8 +170,8 @@ export default function HistoryCountryChapters({
 const styles = StyleSheet.create({
   badge: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceMuted,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -174,7 +181,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   badgeText: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.caption,
     fontWeight: '800',
     lineHeight: 14,
@@ -189,7 +196,7 @@ const styles = StyleSheet.create({
   },
   chapterRule: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.accentRedSoft,
+    backgroundColor: historyDashboardColors.accentRedSoft,
     borderRadius: radii.pill,
     height: 2,
     width: 28,
@@ -201,7 +208,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   chapterTitle: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     flex: 1,
     fontSize: typography.bodyStrong + 1,
     fontWeight: '800',
@@ -227,12 +234,12 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   emptyFilter: {
-    color: colors.inkSoft,
+    color: historyDashboardColors.inkSoft,
     fontSize: typography.body,
     lineHeight: 20,
   },
   emptyTitle: {
-    color: colors.inkSoft,
+    color: historyDashboardColors.inkSoft,
     fontSize: typography.bodyStrong,
     fontWeight: '700',
     lineHeight: 18,
@@ -253,7 +260,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   regionTitle: {
-    color: colors.accentBlue,
+    color: historyDashboardColors.accentBlue,
     fontSize: typography.caption,
     fontWeight: '700',
     lineHeight: 14,
@@ -262,7 +269,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   sectionTitle: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.section,
     fontWeight: '800',
     lineHeight: 28,

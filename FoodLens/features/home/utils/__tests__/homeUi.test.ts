@@ -1,5 +1,6 @@
 import type { AnalysisRecord } from '@/services/analysisService';
 
+import { homeDashboardColors, homeDashboardDarkColors } from '../../components/homeDashboardTokens';
 import { getHomeScanStatusBadge } from '../homeUi';
 
 type TranslationFunction = (key: string, fallback?: string) => string;
@@ -16,10 +17,10 @@ describe('homeUi', () => {
       'result.safety.ok': 'localized-ok',
     });
 
-    expect(getHomeScanStatusBadge('SAFE', t)).toEqual({
+    expect(getHomeScanStatusBadge('SAFE', t, homeDashboardColors)).toEqual({
       label: 'localized-ok',
-      backgroundColor: '#DCFCE7',
-      textColor: '#15803D',
+      backgroundColor: homeDashboardColors.accentGreenSoft,
+      textColor: homeDashboardColors.accentGreen,
     });
   });
 
@@ -28,10 +29,10 @@ describe('homeUi', () => {
       'result.safety.avoid': 'localized-avoid',
     });
 
-    expect(getHomeScanStatusBadge('DANGER', t)).toEqual({
+    expect(getHomeScanStatusBadge('DANGER', t, homeDashboardColors)).toEqual({
       label: 'localized-avoid',
-      backgroundColor: '#FFE4E6',
-      textColor: '#BE123C',
+      backgroundColor: homeDashboardColors.accentRedSoft,
+      textColor: homeDashboardColors.accentRed,
     });
   });
 
@@ -41,10 +42,22 @@ describe('homeUi', () => {
     });
     const unexpectedStatus = 'UNEXPECTED' as AnalysisRecord['safetyStatus'];
 
-    expect(getHomeScanStatusBadge(unexpectedStatus, t)).toEqual({
+    expect(getHomeScanStatusBadge(unexpectedStatus, t, homeDashboardColors)).toEqual({
       label: 'localized-ask',
-      backgroundColor: '#FEF3C7',
-      textColor: '#B45309',
+      backgroundColor: homeDashboardColors.accentAmberSoft,
+      textColor: homeDashboardColors.accentAmber,
+    });
+  });
+
+  it('uses the supplied dark dashboard colors for badge tones', () => {
+    const t = createTranslator({
+      'result.safety.ok': 'localized-ok',
+    });
+
+    expect(getHomeScanStatusBadge('SAFE', t, homeDashboardDarkColors)).toEqual({
+      label: 'localized-ok',
+      backgroundColor: homeDashboardDarkColors.accentGreenSoft,
+      textColor: homeDashboardDarkColors.accentGreen,
     });
   });
 });

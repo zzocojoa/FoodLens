@@ -34,6 +34,26 @@ export const supportPoliciesStyles = StyleSheet.create({
         backgroundColor: Colors.dark.surface,
         borderColor: Colors.dark.border,
     },
+    darkPrimaryAction: {
+        backgroundColor: Colors.dark.background,
+        borderColor: Colors.dark.border,
+    },
+    darkPrimaryTitle: {
+        color: Colors.dark.textPrimary,
+    },
+    darkPrimaryDescription: {
+        color: Colors.dark.textSecondary,
+    },
+    darkPrimaryIconWrap: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    },
+    darkSecondaryIconWrap: {
+        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    },
+    darkCompactRowBorder: {
+        borderBottomColor: Colors.dark.border,
+        borderBottomWidth: 1,
+    },
     darkTextPrimary: {
         color: Colors.dark.textPrimary,
     },

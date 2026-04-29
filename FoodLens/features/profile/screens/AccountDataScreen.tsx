@@ -408,7 +408,14 @@ export default function AccountDataScreen() {
                     ) : null}
 
                     {deletionStatusError ? (
-                        <Text style={{ color: '#DC2626', fontSize: 13, lineHeight: 18, marginBottom: 12 }}>
+                        <Text
+                            style={{
+                                color: colorScheme === 'dark' ? '#FCA5A5' : '#DC2626',
+                                fontSize: 13,
+                                lineHeight: 18,
+                                marginBottom: 12,
+                            }}
+                        >
                             {deletionStatusError}
                         </Text>
                     ) : null}

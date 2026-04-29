@@ -14,21 +14,23 @@ import {
     allergiesDashboardStyles as styles,
 } from './allergiesDashboardStyles';
 import {
-    allergiesDashboardColors,
+    type AllergiesDashboardColors,
 } from './allergiesDashboardTokens';
 import { useI18n } from '@/features/i18n';
 
 export type AllergiesTravelerCardModalProps = {
     visible: boolean;
     onClose: () => void;
+    colors: AllergiesDashboardColors;
     children: ReactNode;
 };
 
 export default function AllergiesTravelerCardModal({
     visible,
     onClose,
+    colors,
     children,
-}: AllergiesTravelerCardModalProps) {
+}: AllergiesTravelerCardModalProps): React.JSX.Element {
     const { t } = useI18n();
     const handleSheetPress = React.useCallback((event: GestureResponderEvent): void => {
         event.stopPropagation();
@@ -53,11 +55,14 @@ export default function AllergiesTravelerCardModal({
                     <Pressable
                         accessibilityRole="none"
                         onPress={handleSheetPress}
-                        style={styles.modalSheet}
+                        style={[
+                            styles.modalSheet,
+                            { backgroundColor: colors.surfaceStrong, borderColor: colors.lineStrong },
+                        ]}
                         testID="allergies-traveler-card-sheet"
                     >
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>
+                        <View style={[styles.modalHeader, { borderColor: colors.line }]}>
+                            <Text style={[styles.modalTitle, { color: colors.ink }]}>
                                 {t('allergies.modal.title', 'Traveler Card')}
                             </Text>
                             <Pressable
@@ -66,10 +71,13 @@ export default function AllergiesTravelerCardModal({
                                 accessibilityHint={t('allergies.modal.closeHint', 'Closes the traveler card modal')}
                                 hitSlop={10}
                                 onPress={onClose}
-                                style={styles.modalCloseButton}
+                                style={[
+                                    styles.modalCloseButton,
+                                    { backgroundColor: colors.surfaceMuted, borderColor: colors.lineStrong },
+                                ]}
                                 testID="allergies-traveler-card-close"
                             >
-                                <X color={allergiesDashboardColors.ink} size={18} strokeWidth={2.4} />
+                                <X color={colors.ink} size={18} strokeWidth={2.4} />
                             </Pressable>
                         </View>
                         <ScrollView

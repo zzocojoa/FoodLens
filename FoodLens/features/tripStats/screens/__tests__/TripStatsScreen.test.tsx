@@ -46,6 +46,10 @@ jest.mock('../../../home/components/HomeBackgroundAtmosphere', () => {
     };
 });
 
+jest.mock('../../../../hooks/use-color-scheme', () => ({
+    useColorScheme: () => 'light',
+}));
+
 jest.mock('../../components/TripStatsJournalRail', () => {
     const React = require('react');
     const { Text } = require('react-native');

@@ -1,10 +1,15 @@
 import {
+  getHomeDashboardAccentForegroundColor,
   homeDashboardColors,
+  getHomeDashboardColors,
+  getHomeDashboardSignalColors,
   homeDashboardRadii,
   homeDashboardShadows,
   homeDashboardSpacing,
   homeDashboardTypography,
   homeDashboardSignalColors,
+  type HomeDashboardColorScheme,
+  type HomeDashboardColors,
 } from '../../home/components/homeDashboardTokens';
 
 export const tripStatsDashboardColors = homeDashboardColors;
@@ -19,6 +24,16 @@ export const tripStatsDashboardShadows = homeDashboardShadows;
 
 export const tripStatsDashboardSignalColors = homeDashboardSignalColors;
 
+export const getTripStatsDashboardColors = getHomeDashboardColors;
+
+export const getTripStatsDashboardSignalColors = getHomeDashboardSignalColors;
+
+export const getTripStatsDashboardAccentForegroundColor = getHomeDashboardAccentForegroundColor;
+
+export type TripStatsDashboardColorScheme = HomeDashboardColorScheme;
+
+export type TripStatsDashboardColors = HomeDashboardColors;
+
 export const tripStatsDashboardSectionOrder = [
   'rail',
   'hero',
@@ -29,4 +44,3 @@ export const tripStatsDashboardSectionOrder = [
 ] as const;
 
 export type TripStatsDashboardSectionKey = (typeof tripStatsDashboardSectionOrder)[number];
-

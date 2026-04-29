@@ -11,12 +11,16 @@ import {
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 import HomeRecentFeedItem from './HomeRecentFeedItem';
 
 type TranslationFunction = (key: string, fallback?: string) => string;
 
 type HomeRecentFeedProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   items: AnalysisRecord[];
   title: string;
   meta: string;
@@ -28,6 +32,8 @@ type HomeRecentFeedProps = {
 };
 
 export const HomeRecentFeed = ({
+  colorScheme,
+  colors,
   items,
   title,
   meta,
@@ -38,27 +44,40 @@ export const HomeRecentFeed = ({
   onOpenHistory,
 }: HomeRecentFeedProps): React.JSX.Element => {
   return (
-    <View style={[homeDashboardStyles.sectionCard, styles.container]}>
-      <PearlSurfaceOverlay
-        accentWashColor={homeDashboardColors.pearlPeach}
-        baseBottomColor="#FFF8F0"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={homeDashboardColors.pearlMist}
-        warmWashColor={homeDashboardColors.pearlGlow}
-      />
+    <View
+      style={[
+        homeDashboardStyles.sectionCard,
+        styles.container,
+        { backgroundColor: colors.surface, borderColor: colors.line },
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={colors.pearlPeach}
+          baseBottomColor="#FFF8F0"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={colors.pearlMist}
+          warmWashColor={colors.pearlGlow}
+        />
+      ) : null}
       <View style={homeDashboardStyles.sectionHeaderRow}>
         <View style={homeDashboardStyles.sectionHeaderCopy}>
-          <Text style={homeDashboardStyles.sectionTitle}>{title}</Text>
-          <Text style={homeDashboardStyles.sectionMeta}>{meta}</Text>
+          <Text style={[homeDashboardStyles.sectionTitle, { color: colors.ink }]}>{title}</Text>
+          <Text style={[homeDashboardStyles.sectionMeta, { color: colors.inkSoft }]}>{meta}</Text>
         </View>
 
         <HapticTouchableOpacity
           activeOpacity={0.78}
           hapticType="selection"
           onPress={onOpenHistory}
-          style={styles.seeAllChip}
+          style={[
+            styles.seeAllChip,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
         >
-          <Text style={styles.seeAllText}>{t('home.scans.seeAll', 'See All')}</Text>
+          <Text style={[styles.seeAllText, { color: colors.accentBlue }]}>
+            {t('home.scans.seeAll', 'See All')}
+          </Text>
         </HapticTouchableOpacity>
       </View>
 
@@ -68,6 +87,7 @@ export const HomeRecentFeed = ({
             <HomeRecentFeedItem
               key={item.id}
               item={item}
+              colors={colors}
               locale={locale}
               t={t}
               onOpenResult={onOpenResult}
@@ -76,11 +96,16 @@ export const HomeRecentFeed = ({
           ))}
         </View>
       ) : (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>
+        <View
+          style={[
+            styles.emptyCard,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
+        >
+          <Text style={[styles.emptyTitle, { color: colors.ink }]}>
             {t('home.scans.empty.title', 'No records for this day')}
           </Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptySubtitle, { color: colors.inkSoft }]}>
             {t('home.scans.empty.subtitle', 'Try analyzing a new meal!')}
           </Text>
         </View>

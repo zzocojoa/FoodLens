@@ -3,14 +3,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import HistorySurfaceCard from './HistorySurfaceCard';
 import {
-  historyDashboardColors as colors,
+  historyDashboardColors,
   historyDashboardRadii as radii,
   historyDashboardSpacing as spacing,
   historyDashboardTypography as typography,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 import { useI18n } from '@/features/i18n';
 
 type HistorySelectionUtilityBarProps = {
+  colors: HistoryDashboardColors;
   onClearSelection: () => void;
   onDeleteSelection: () => void;
   onSelectAll: () => void;
@@ -19,6 +21,7 @@ type HistorySelectionUtilityBarProps = {
 };
 
 export default function HistorySelectionUtilityBar({
+  colors,
   onClearSelection,
   onDeleteSelection,
   onSelectAll,
@@ -28,9 +31,9 @@ export default function HistorySelectionUtilityBar({
   const { t } = useI18n();
 
   return (
-    <HistorySurfaceCard accentWashColor={colors.pearlMist}>
+    <HistorySurfaceCard accentWashColor={colors.pearlMist} colors={colors}>
       <View style={styles.row}>
-        <Text style={styles.copy}>
+        <Text style={[styles.copy, { color: colors.ink }]}>
           {t('history.utility.selectionTemplate', '{selected}/{total} 선택').replace(
             '{selected}',
             String(selectedCount)
@@ -42,17 +45,25 @@ export default function HistorySelectionUtilityBar({
             accessibilityLabel={t('history.accessibility.selectAllVisible', '보이는 기록 모두 선택')}
             accessibilityRole="button"
             onPress={onSelectAll}
-            style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+              pressed ? styles.pressed : null,
+            ]}
           >
-            <Text style={styles.buttonLabel}>{t('history.utility.selectAll', '전체')}</Text>
+            <Text style={[styles.buttonLabel, { color: colors.ink }]}>{t('history.utility.selectAll', '전체')}</Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t('history.accessibility.clearSelection', '선택 해제')}
             accessibilityRole="button"
             onPress={onClearSelection}
-            style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+              pressed ? styles.pressed : null,
+            ]}
           >
-            <Text style={styles.buttonLabel}>{t('history.utility.clearSelection', '해제')}</Text>
+            <Text style={[styles.buttonLabel, { color: colors.ink }]}>{t('history.utility.clearSelection', '해제')}</Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t('history.accessibility.deleteSelection', '선택한 기록 삭제')}
@@ -62,11 +73,12 @@ export default function HistorySelectionUtilityBar({
             onPress={onDeleteSelection}
             style={({ pressed }) => [
               styles.deleteButton,
+              { backgroundColor: colors.accentRedSoft, borderColor: colors.accentRed },
               selectedCount === 0 ? styles.disabledButton : null,
               pressed ? styles.pressed : null,
             ]}
           >
-            <Text style={styles.deleteLabel}>{t('history.utility.delete', '삭제')}</Text>
+            <Text style={[styles.deleteLabel, { color: colors.accentRed }]}>{t('history.utility.delete', '삭제')}</Text>
           </Pressable>
         </View>
       </View>
@@ -82,8 +94,8 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.line,
+    backgroundColor: historyDashboardColors.surfaceStrong,
+    borderColor: historyDashboardColors.line,
     borderCurve: 'continuous',
     borderRadius: radii.pill,
     borderWidth: 1,
@@ -93,13 +105,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   buttonLabel: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     fontSize: typography.caption,
     fontWeight: '700',
     lineHeight: 16,
   },
   copy: {
-    color: colors.ink,
+    color: historyDashboardColors.ink,
     flex: 1,
     fontSize: typography.bodyStrong,
     fontWeight: '700',
@@ -107,8 +119,8 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     alignItems: 'center',
-    backgroundColor: colors.accentRedSoft,
-    borderColor: colors.accentRed,
+    backgroundColor: historyDashboardColors.accentRedSoft,
+    borderColor: historyDashboardColors.accentRed,
     borderCurve: 'continuous',
     borderRadius: radii.pill,
     borderWidth: 1,
@@ -118,7 +130,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   deleteLabel: {
-    color: colors.accentRed,
+    color: historyDashboardColors.accentRed,
     fontSize: typography.caption,
     fontWeight: '700',
     lineHeight: 16,

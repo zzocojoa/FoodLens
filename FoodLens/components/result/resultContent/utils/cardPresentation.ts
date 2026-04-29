@@ -19,12 +19,50 @@ export const getAllergyAlertCardColors = (colorScheme: 'light' | 'dark') => {
   };
 };
 
-export const getAiSummaryCardColors = (colorScheme: 'light' | 'dark', theme: ResultTheme) => ({
-  backgroundColor: colorScheme === 'dark' ? theme.surface : '#F0F9FF',
-  borderColor: colorScheme === 'dark' ? theme.border : '#E0F2FE',
-});
+export type AiSummaryCardColors = {
+  backgroundColor: string;
+  borderColor: string;
+  iconColor: string;
+  titleColor: string;
+  textColor: string;
+};
+
+export const getAiSummaryCardColors = (
+  colorScheme: 'light' | 'dark',
+  theme: ResultTheme
+): AiSummaryCardColors => {
+  if (colorScheme === 'dark') {
+    return {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      iconColor: theme.primary,
+      titleColor: theme.primary,
+      textColor: theme.textPrimary,
+    };
+  }
+
+  return {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#E0F2FE',
+    iconColor: '#0F766E',
+    titleColor: '#0F766E',
+    textColor: theme.textPrimary,
+  };
+};
 
 export const resolveAiSummaryText = (
-  summary?: string,
-  fallbackSummary: string = 'This food appears balanced. Assuming no hidden allergens, it fits well within a moderate diet.'
-): string => summary || fallbackSummary;
+  summary: string | undefined,
+  fallbackSummary: string
+): string => {
+  if (summary === undefined) {
+    return fallbackSummary;
+  }
+
+  const trimmedSummary = summary.trim();
+
+  if (trimmedSummary.length === 0) {
+    return fallbackSummary;
+  }
+
+  return trimmedSummary;
+};
