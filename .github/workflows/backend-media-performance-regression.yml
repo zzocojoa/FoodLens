@@ -82,6 +82,14 @@ jobs:
             fi
           }
 
+          mask_workflow_value() {
+            local value="${1}"
+            value="${value//%/%25}"
+            value="${value//$'\r'/%0D}"
+            value="${value//$'\n'/%0A}"
+            printf '::add-mask::%s\n' "${value}"
+          }
+
           INPUT_MEDIA_RENDER_URL="$(
             python3 - "${GITHUB_EVENT_PATH}" <<'PY'
           import json
@@ -102,11 +110,11 @@ jobs:
 
           if [[ -n "${INPUT_MEDIA_RENDER_URL}" ]]; then
             assert_single_line_value "media_render_url" "${INPUT_MEDIA_RENDER_URL}"
-            echo "::add-mask::${INPUT_MEDIA_RENDER_URL}"
+            mask_workflow_value "${INPUT_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${INPUT_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
               assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
-              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
               printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
             fi
             echo "MEDIA_RENDER_URL source: workflow input"
@@ -115,11 +123,11 @@ jobs:
 
           if [[ -n "${SECRET_MEDIA_RENDER_URL}" ]]; then
             assert_single_line_value "PERF_MEDIA_RENDER_URL" "${SECRET_MEDIA_RENDER_URL}"
-            echo "::add-mask::${SECRET_MEDIA_RENDER_URL}"
+            mask_workflow_value "${SECRET_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${SECRET_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
               assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
-              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
               printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
             fi
             echo "MEDIA_RENDER_URL source: PERF_MEDIA_RENDER_URL secret"
@@ -129,7 +137,7 @@ jobs:
           token="${PERF_AUTH_BEARER_TOKEN}"
           if [[ -n "${token}" ]]; then
             assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${token}"
-            echo "::add-mask::${token}"
+            mask_workflow_value "${token}"
             echo "AUTH_BEARER_TOKEN source: PERF_AUTH_BEARER_TOKEN secret"
           else
             if [[ -z "${SMOKE_EMAIL}" || -z "${SMOKE_PASSWORD}" ]]; then
@@ -182,7 +190,7 @@ jobs:
           PY
             )"
             assert_single_line_value "AUTH_BEARER_TOKEN" "${token}"
-            echo "::add-mask::${token}"
+            mask_workflow_value "${token}"
             echo "AUTH_BEARER_TOKEN source: smoke account login"
           fi
 
@@ -432,7 +440,7 @@ jobs:
               if [[ -z "${candidate_url}" ]]; then
                 continue
               fi
-              echo "::add-mask::${candidate_url}"
+              mask_workflow_value "${candidate_url}"
               probe_meta="${RUNNER_TEMP}/perf-render-probe-${attempt}.meta"
               probe_headers="${RUNNER_TEMP}/perf-render-probe-${attempt}.headers"
               probe_body="${RUNNER_TEMP}/perf-render-probe-${attempt}.body"

@@ -35,28 +35,46 @@ const renderStatus5xxRate = new Rate('render_status_5xx_rate');
 const renderStatusOtherRate = new Rate('render_status_other_rate');
 const renderContentTypeMismatchRate = new Rate('render_content_type_mismatch_rate');
 const renderLatency = new Trend('render_latency', true);
-const profileFailureRate = new Rate('profile_failure_rate');
-const profileLatency = new Trend('profile_latency', true);
-const analyzeFailureRate = new Rate('analyze_failure_rate');
-const analyzeLatency = new Trend('analyze_latency', true);
+const profileMetrics = authBearerToken
+  ? {
+    failureRate: new Rate('profile_failure_rate'),
+    latency: new Trend('profile_latency', true),
+  }
+  : null;
+const analyzeMetrics = enableAnalyze
+  ? {
+    failureRate: new Rate('analyze_failure_rate'),
+    latency: new Trend('analyze_latency', true),
+  }
+  : null;
+
+const thresholds = {
+  http_req_failed: ['rate<0.10'],
+  render_failure_rate: ['rate<0.05'],
+  render_latency: ['p(95)<1500'],
+  ...(profileMetrics
+    ? {
+      profile_failure_rate: ['rate<0.10'],
+      profile_latency: ['p(95)<1200'],
+    }
+    : {}),
+  ...(analyzeMetrics
+    ? {
+      analyze_failure_rate: ['rate<0.20'],
+      analyze_latency: ['p(95)<2500'],
+    }
+    : {}),
+};
 
 export const options = {
   scenarios: {
     baseline: {
       executor: 'constant-vus',
-      vus: Number(__ENV.K6_VUS || '20'),
-      duration: (__ENV.K6_DURATION || '60s').trim(),
+      vus: Number(__ENV.BASELINE_VUS || '20'),
+      duration: (__ENV.BASELINE_DURATION || '60s').trim(),
     },
   },
-  thresholds: {
-    http_req_failed: ['rate<0.10'],
-    render_failure_rate: ['rate<0.05'],
-    render_latency: ['p(95)<1500'],
-    profile_failure_rate: ['rate<0.10'],
-    profile_latency: ['p(95)<1200'],
-    analyze_failure_rate: ['rate<0.20'],
-    analyze_latency: ['p(95)<2500'],
-  },
+  thresholds,
 };
 
 function isStatus2xx(status) {
@@ -111,22 +129,22 @@ function runRenderRequest() {
 }
 
 function runProfileRequest() {
-  if (!authBearerToken) return;
+  if (!authBearerToken || !profileMetrics) return;
   const response = http.get(`${baseUrl}/me/profile`, {
     headers: {
       Authorization: `Bearer ${authBearerToken}`,
       Accept: 'application/json',
     },
   });
-  profileLatency.add(response.timings.duration);
+  profileMetrics.latency.add(response.timings.duration);
   const ok = check(response, {
     'profile status is 200/401': (r) => r.status === 200 || r.status === 401,
   });
-  profileFailureRate.add(!ok);
+  profileMetrics.failureRate.add(!ok);
 }
 
 function runAnalyzeRequest() {
-  if (!enableAnalyze || !analyzeBinary) return;
+  if (!enableAnalyze || !analyzeBinary || !analyzeMetrics) return;
   if (__ITER % analyzeEvery !== 0) return;
 
   const payload = {
@@ -135,11 +153,11 @@ function runAnalyzeRequest() {
     locale: analyzeLocale,
   };
   const response = http.post(`${baseUrl}/analyze/label`, payload);
-  analyzeLatency.add(response.timings.duration);
+  analyzeMetrics.latency.add(response.timings.duration);
   const ok = check(response, {
     'analyze status is 200/429': (r) => r.status === 200 || r.status === 429,
   });
-  analyzeFailureRate.add(!ok);
+  analyzeMetrics.failureRate.add(!ok);
 }
 
 export default function () {

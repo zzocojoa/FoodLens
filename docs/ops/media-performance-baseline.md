@@ -140,7 +140,8 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
 ## 3-3) Backend Media Performance Regression 실패 분류표
 | 분류 | 확정 신호 | 의심 신호 | 1차 조치 |
 | --- | --- | --- | --- |
-| URL resolution 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `profile`, `history`, `history[<index>].image_render_url`, 또는 `profile.profile_image_render_url`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret 경로에서는 diagnostics가 비어 있을 수 있어 workflow 로그와 함께 봐야 한다. | 같은 backend base URL의 live readiness와 Render/GCS 상태를 먼저 확인한다. smoke 계정 데이터와 권한은 그 다음에 확인한다. |
+| URL source fetch 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `profile` 또는 `history`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret 경로에서는 diagnostics가 비어 있을 수 있어 workflow 로그와 함께 봐야 한다. | 같은 backend base URL의 live readiness, 배포 상태, 인증 상태를 먼저 확인한다. Render/GCS와 smoke 계정 데이터는 그 다음에 확인한다. |
+| render candidate probe 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `history[<index>].image_render_url` 또는 `profile.profile_image_render_url`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | 같은 attempt에서 `profile`과 `history` fetch는 성공했지만 candidate probe만 실패했거나, `recovered`가 `true`인 이전 transient 행이 남아 있다. | `/media/render` 경로, Render/GCS 상태, asset 존재 여부를 먼저 확인한다. smoke 계정 데이터와 권한은 URL 후보 자체가 없을 때 확인한다. |
 | k6 threshold failure | `summary.json`의 `thresholds` 항목 또는 `k6.log`에 threshold 실패가 기록되고, 실행 자체는 `summary.json`를 생성했다. | 특정 지표의 p95 또는 failure rate가 근소하게 초과했지만 외부 장애 로그가 동시에 있다. | `summary.json`의 실제 값과 직전 기준선을 비교한다. threshold 완화는 기본 추천하지 않으며, 서비스 목표가 바뀐 경우에만 별도 승인 후 조정한다. |
 | workflow probe parsing bug | candidate probe의 HTTP status와 content type이 정상인데도 URL 선택이 실패하거나, diagnostics의 probe 원시값과 workflow 로그의 판정이 서로 맞지 않는다. | curl은 성공했지만 probe meta의 `status` 또는 `content_type`이 비어 있거나 workflow 로그와 다르다. | workflow의 probe 파싱 로직을 결함 후보로 분리한다. backend 성능 회귀로 확정하지 않는다. |
 | smoke data missing | 로그인 또는 인증은 성공했지만 `/me/profile`, `/me/history`에서 signed `/media/render` URL 후보가 없다는 메시지가 기록된다. | profile 이미지는 없고 history도 비어 있거나, history 항목에 이미지 필드가 있지만 signed render URL 형식이 아니다. | smoke 계정에 유효한 이미지 데이터를 다시 준비한다. secret이나 signed URL을 새로 장기 저장하는 방식은 기본 조치로 사용하지 않는다. |
@@ -148,6 +149,7 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
 
 ## 3-4) diagnostics artifact 판독 기준
 diagnostics artifact는 fresh URL 해석 실패 원인을 확정하기 위한 보조 자료다. `artifacts/perf/url-resolution/diagnostics.jsonl`의 각 행은 `timestamp`, `attempt`, `candidate_source`, `status`, `content_type`, `detail.code`, `request_id`, `recovered`를 기록한다. artifact와 workflow 로그의 값은 아래처럼 확정된 사실과 추정 상태를 나누어 기록한다.
+`candidate_source`가 `profile` 또는 `history`이면 URL 후보를 찾기 위한 JSON endpoint 호출이고, `history[<index>].image_render_url` 또는 `profile.profile_image_render_url`이면 실제 signed render URL 후보 probe다.
 
 - 확정으로 표현할 수 있는 값
   - workflow 로그에 표시된 `MEDIA_RENDER_URL` source. 값 자체는 기록하지 않는다.
@@ -167,6 +169,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 
 ## 3-5) 주요 metric 이름
 비교 스크립트와 threshold 판정에서 추적하는 metric은 아래 이름을 기준으로 한다.
+`profile_*` metric은 `AUTH_BEARER_TOKEN`이 있을 때만 생성되고, `analyze_*` metric은 `ENABLE_ANALYZE=1`일 때만 생성된다. 비활성 시 비교 스크립트와 콘솔 요약은 누락 metric을 `n/a`로 표시하며 회귀로 판정하지 않는다.
 
 - `http_req_failed.rate`
 - `render_failure_rate.rate`

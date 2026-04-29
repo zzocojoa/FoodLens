@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_PATH="${ROOT_DIR}/scripts/perf/k6-media-baseline.js"
 RUN_TS="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/artifacts/perf/${RUN_TS}}"
+BASELINE_SCRIPT_VUS="${BASELINE_VUS:-${K6_VUS:-20}}"
+BASELINE_SCRIPT_DURATION="${BASELINE_DURATION:-${K6_DURATION:-60s}}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -35,7 +37,9 @@ fi
 echo "[perf] output: ${OUT_DIR}"
 echo "[perf] starting baseline run..."
 
-k6 run "${SCRIPT_PATH}" \
+env -u K6_VUS -u K6_DURATION k6 run "${SCRIPT_PATH}" \
+  --env "BASELINE_VUS=${BASELINE_SCRIPT_VUS}" \
+  --env "BASELINE_DURATION=${BASELINE_SCRIPT_DURATION}" \
   --summary-export "${OUT_DIR}/summary.json" \
   2>&1 | tee "${OUT_DIR}/k6.log"
 

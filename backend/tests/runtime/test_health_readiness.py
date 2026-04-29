@@ -14,21 +14,18 @@ _RUNTIME_ENV: dict[str, str] = {
     "ANALYSIS_NUTRITION_CACHE_BACKEND": "memory",
     "MEDIA_STORAGE_BACKEND": "disabled",
 }
-_ORIGINAL_ENV: dict[str, str | None] = {key: os.environ.get(key) for key in _RUNTIME_ENV}
+_ORIGINAL_ENV: dict[str, str] = dict(os.environ)
 os.environ.update(_RUNTIME_ENV)
 from backend.server import app  # noqa: E402
-for _key, _value in _ORIGINAL_ENV.items():
-    if _value is None:
-        os.environ.pop(_key, None)
-    else:
-        os.environ[_key] = _value
+os.environ.clear()
+os.environ.update(_ORIGINAL_ENV)
 
 
 _RUNTIME_LOGGER_NAMES: tuple[str, ...] = ("foodlens.api", "httpx")
 
 
 class _DisabledMediaStorage:
-    enabled = False
+    enabled: bool = False
 
 
 def _snapshot_app_state() -> dict[str, object]:
