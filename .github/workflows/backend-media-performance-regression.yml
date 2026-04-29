@@ -212,9 +212,9 @@ jobs:
             curl -sS --connect-timeout 15 --max-time 30 --retry 2 --retry-delay 1 --retry-all-errors \
               -H "Accept: image/webp,image/*,*/*;q=0.8" \
               -o "${probe_body}" \
-              -w '%{http_code}\t%{content_type}' \
+              -w '%{http_code}\t%{content_type}\n' \
               "${candidate_url}" > "${probe_meta}" || true
-            IFS=$'\t' read -r probe_status probe_content_type < "${probe_meta}"
+            IFS=$'\t' read -r probe_status probe_content_type < "${probe_meta}" || true
             if [[ "${probe_status}" == "200" && "${probe_content_type}" == image/* ]]; then
               selected_source="${candidate_source}"
               selected_url="${candidate_url}"
