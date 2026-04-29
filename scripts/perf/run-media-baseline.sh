@@ -47,10 +47,16 @@ if command -v jq >/dev/null 2>&1; then
   echo "[perf] key metrics"
   jq -r '
     def metric_value($name; $field):
-      (.metrics[$name].values[$field] // .metrics[$name][$field] // .metrics[$name].value // "n/a");
+      (.metrics?[$name]?.values?[$field] // .metrics?[$name]?[$field] // .metrics?[$name]?.value // "n/a");
     [
       "http_req_failed.rate=\(metric_value("http_req_failed"; "rate"))",
       "http_req_duration.p95=\(metric_value("http_req_duration"; "p(95)"))",
+      "render_status_2xx_rate.rate=\(metric_value("render_status_2xx_rate"; "rate"))",
+      "render_status_3xx_rate.rate=\(metric_value("render_status_3xx_rate"; "rate"))",
+      "render_status_4xx_rate.rate=\(metric_value("render_status_4xx_rate"; "rate"))",
+      "render_status_5xx_rate.rate=\(metric_value("render_status_5xx_rate"; "rate"))",
+      "render_status_other_rate.rate=\(metric_value("render_status_other_rate"; "rate"))",
+      "render_content_type_mismatch_rate.rate=\(metric_value("render_content_type_mismatch_rate"; "rate"))",
       "render_latency.p95=\(metric_value("render_latency"; "p(95)"))",
       "profile_latency.p95=\(metric_value("profile_latency"; "p(95)"))",
       "analyze_latency.p95=\(metric_value("analyze_latency"; "p(95)"))"

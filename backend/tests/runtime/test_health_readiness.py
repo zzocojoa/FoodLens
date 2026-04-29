@@ -17,7 +17,35 @@ class _DisabledMediaStorage:
     enabled = False
 
 
+def _snapshot_app_state() -> dict[str, object]:
+    state = getattr(app.state, "_state", None)
+    if not isinstance(state, dict):
+        raise TypeError("app.state._state must be a dictionary.")
+
+    snapshot: dict[str, object] = {}
+    for key, value in state.items():
+        if not isinstance(key, str):
+            raise TypeError("app.state key must be a string.")
+        snapshot[key] = value
+    return snapshot
+
+
+def _restore_app_state(snapshot: dict[str, object]) -> None:
+    state = getattr(app.state, "_state", None)
+    if not isinstance(state, dict):
+        raise TypeError("app.state._state must be a dictionary.")
+
+    state.clear()
+    state.update(snapshot)
+
+
 class HealthReadinessTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._original_state: dict[str, object] = _snapshot_app_state()
+
+    def tearDown(self) -> None:
+        _restore_app_state(self._original_state)
+
     @patch("backend.server.initialize_services")
     @patch("backend.server._is_openapi_export_mode", return_value=False)
     def test_health_ready_returns_200_when_runtime_state_is_ready(
@@ -36,6 +64,10 @@ class HealthReadinessTests(unittest.TestCase):
         self.assertTrue(payload["ready"])
         self.assertTrue(payload["checks"]["startup_completed"])
         self.assertTrue(payload["checks"]["core_services"])
+        self.assertIn("media_storage", payload["checks"])
+        self.assertIn("media_storage_enabled", payload["checks"])
+        self.assertTrue(payload["checks"]["media_storage"])
+        self.assertFalse(payload["checks"]["media_storage_enabled"])
 
     @patch("backend.server.initialize_services")
     @patch("backend.server._is_openapi_export_mode", return_value=False)
