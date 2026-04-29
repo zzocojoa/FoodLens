@@ -46,12 +46,14 @@ echo "[perf] raw log: ${OUT_DIR}/k6.log"
 if command -v jq >/dev/null 2>&1; then
   echo "[perf] key metrics"
   jq -r '
+    def metric_value($name; $field):
+      (.metrics[$name].values[$field] // .metrics[$name][$field] // .metrics[$name].value // "n/a");
     [
-      "http_req_failed.rate=\(.metrics.http_req_failed.values.rate // "n/a")",
-      "http_req_duration.p95=\(.metrics.http_req_duration.values["p(95)"] // "n/a")",
-      "render_latency.p95=\(.metrics.render_latency.values["p(95)"] // "n/a")",
-      "profile_latency.p95=\(.metrics.profile_latency.values["p(95)"] // "n/a")",
-      "analyze_latency.p95=\(.metrics.analyze_latency.values["p(95)"] // "n/a")"
+      "http_req_failed.rate=\(metric_value("http_req_failed"; "rate"))",
+      "http_req_duration.p95=\(metric_value("http_req_duration"; "p(95)"))",
+      "render_latency.p95=\(metric_value("render_latency"; "p(95)"))",
+      "profile_latency.p95=\(metric_value("profile_latency"; "p(95)"))",
+      "analyze_latency.p95=\(metric_value("analyze_latency"; "p(95)"))"
     ] | .[]
   ' "${OUT_DIR}/summary.json"
 fi
