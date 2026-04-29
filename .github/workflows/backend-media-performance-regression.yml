@@ -61,7 +61,6 @@ jobs:
 
       - name: Resolve fresh media render URL
         env:
-          INPUT_MEDIA_RENDER_URL: ${{ inputs.media_render_url }}
           SECRET_MEDIA_RENDER_URL: ${{ secrets.PERF_MEDIA_RENDER_URL }}
           PERF_AUTH_BEARER_TOKEN: ${{ secrets.PERF_AUTH_BEARER_TOKEN }}
           BASE_URL: ${{ inputs.backend_base_url }}
@@ -70,11 +69,52 @@ jobs:
         run: |
           set -euo pipefail
 
+          diagnostics_path="artifacts/perf/url-resolution/diagnostics.jsonl"
+          mkdir -p "$(dirname "${diagnostics_path}")"
+          : > "${diagnostics_path}"
+
+          assert_single_line_value() {
+            local name="${1}"
+            local value="${2}"
+            if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
+              echo "${name} must be a single-line value."
+              exit 1
+            fi
+          }
+
+          mask_workflow_value() {
+            local value="${1}"
+            value="${value//%/%25}"
+            value="${value//$'\r'/%0D}"
+            value="${value//$'\n'/%0A}"
+            printf '::add-mask::%s\n' "${value}"
+          }
+
+          INPUT_MEDIA_RENDER_URL="$(
+            python3 - "${GITHUB_EVENT_PATH}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as handle:
+              event = json.load(handle)
+
+          inputs = event.get("inputs")
+          if not isinstance(inputs, dict):
+              raise SystemExit("workflow_dispatch event inputs must be an object")
+          value = inputs.get("media_render_url") or ""
+          if not isinstance(value, str):
+              raise SystemExit("media_render_url input must be a string")
+          print(value, end="")
+          PY
+          )"
+
           if [[ -n "${INPUT_MEDIA_RENDER_URL}" ]]; then
-            echo "::add-mask::${INPUT_MEDIA_RENDER_URL}"
+            assert_single_line_value "media_render_url" "${INPUT_MEDIA_RENDER_URL}"
+            mask_workflow_value "${INPUT_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${INPUT_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
-              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
+              mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
               printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
             fi
             echo "MEDIA_RENDER_URL source: workflow input"
@@ -82,10 +122,12 @@ jobs:
           fi
 
           if [[ -n "${SECRET_MEDIA_RENDER_URL}" ]]; then
-            echo "::add-mask::${SECRET_MEDIA_RENDER_URL}"
+            assert_single_line_value "PERF_MEDIA_RENDER_URL" "${SECRET_MEDIA_RENDER_URL}"
+            mask_workflow_value "${SECRET_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${SECRET_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
-              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
+              mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
               printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
             fi
             echo "MEDIA_RENDER_URL source: PERF_MEDIA_RENDER_URL secret"
@@ -94,7 +136,8 @@ jobs:
 
           token="${PERF_AUTH_BEARER_TOKEN}"
           if [[ -n "${token}" ]]; then
-            echo "::add-mask::${token}"
+            assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${token}"
+            mask_workflow_value "${token}"
             echo "AUTH_BEARER_TOKEN source: PERF_AUTH_BEARER_TOKEN secret"
           else
             if [[ -z "${SMOKE_EMAIL}" || -z "${SMOKE_PASSWORD}" ]]; then
@@ -111,6 +154,7 @@ jobs:
           PY
             )"
             login_body="${RUNNER_TEMP}/perf-auth-login.body"
+            login_curl_exit=0
             login_status="$(
               curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
                 -H "Content-Type: application/json" \
@@ -119,7 +163,11 @@ jobs:
                 -X POST \
                 -d "${login_request}" \
                 "${BASE_URL%/}/auth/email/login"
-            )"
+            )" || login_curl_exit=$?
+            if [[ "${login_curl_exit}" != "0" ]]; then
+              echo "auth/email/login curl failed: exit_code=${login_curl_exit}"
+              exit 1
+            fi
             if [[ "${login_status}" != "200" ]]; then
               echo "auth/email/login expected 200, got ${login_status}"
               exit 1
@@ -141,22 +189,161 @@ jobs:
           print(candidate)
           PY
             )"
-            echo "::add-mask::${token}"
+            assert_single_line_value "AUTH_BEARER_TOKEN" "${token}"
+            mask_workflow_value "${token}"
             echo "AUTH_BEARER_TOKEN source: smoke account login"
           fi
 
-          profile_body="${RUNNER_TEMP}/perf-me-profile.body"
-          history_body="${RUNNER_TEMP}/perf-me-history.body"
-          curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
-            -H "Authorization: Bearer ${token}" \
-            -o "${profile_body}" \
-            "${BASE_URL%/}/me/profile"
-          curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
-            -H "Authorization: Bearer ${token}" \
-            -o "${history_body}" \
-            "${BASE_URL%/}/me/history?limit=20"
+          write_diagnostic() {
+            local attempt="${1}"
+            local candidate_source="${2}"
+            local status="${3}"
+            local content_type="${4}"
+            local detail_code="${5}"
+            local request_id="${6}"
+            local recovered="${7}"
+            local timestamp
+            timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            python3 - "${diagnostics_path}" "${timestamp}" "${attempt}" "${candidate_source}" "${status}" "${content_type}" "${detail_code}" "${request_id}" "${recovered}" <<'PY'
+          import json
+          import re
+          import sys
 
-          candidates="$(
+          path, timestamp, attempt, candidate_source, status, content_type, detail_code, request_id, recovered = sys.argv[1:]
+
+          safe_value_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@=+; \[\]-]{0,199}$")
+
+          def safe_diagnostic_value(value: str) -> str:
+              text = str(value or "").strip()
+              lowered = text.lower()
+              if not text:
+                  return ""
+              if "://" in text or "?" in text or "authorization" in lowered or "bearer " in lowered or "sig=" in lowered:
+                  return "redacted"
+              if not safe_value_pattern.fullmatch(text):
+                  return "redacted"
+              return text
+
+          event = {
+              "timestamp": timestamp,
+              "attempt": int(attempt),
+              "candidate_source": safe_diagnostic_value(candidate_source),
+              "status": safe_diagnostic_value(status),
+              "content_type": safe_diagnostic_value(content_type),
+              "detail": {"code": safe_diagnostic_value(detail_code)},
+              "request_id": safe_diagnostic_value(request_id),
+              "recovered": recovered == "true",
+          }
+          with open(path, "a", encoding="utf-8") as handle:
+              handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+          PY
+          }
+
+          request_id_from_headers() {
+            local headers_path="${1}"
+            awk '
+              /^[[:space:]]*[^:]+:[[:space:]]*/ {
+                header = tolower($0)
+                if (header !~ /^[[:space:]]*(x-request-id|request-id|x-amzn-requestid|cf-ray):[[:space:]]*/) {
+                  next
+                }
+                sub(/^[^:]+:[[:space:]]*/, "", $0)
+                sub(/[[:space:]\r]+$/, "", $0)
+                print $0
+                exit
+              }
+            ' "${headers_path}"
+          }
+
+          diagnostic_detail_from_body() {
+            local body_path="${1}"
+            python3 - "${body_path}" <<'PY'
+          import json
+          import sys
+
+          body_path = sys.argv[1]
+          detail_code = ""
+          request_id = ""
+          try:
+              with open(body_path, "r", encoding="utf-8") as handle:
+                  payload = json.load(handle)
+          except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+              print("\t")
+              raise SystemExit(0)
+
+          detail = payload.get("detail") if isinstance(payload, dict) else None
+          if isinstance(detail, dict):
+              detail_code = str(detail.get("code") or "").strip()
+              request_id = str(detail.get("request_id") or "").strip()
+          print(f"{detail_code}\t{request_id}")
+          PY
+          }
+
+          is_retryable_curl_exit() {
+            local curl_exit="${1}"
+            case "${curl_exit}" in
+              5|6|7|18|28|35|52|55|56|92)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          is_transient_failure() {
+            local status="${1}"
+            local curl_exit="${2}"
+            if [[ "${status}" == "502" || "${status}" == "503" || "${status}" == "504" ]]; then
+              return 0
+            fi
+            is_retryable_curl_exit "${curl_exit}"
+          }
+
+          fetch_json_endpoint() {
+            local endpoint_name="${1}"
+            local url="${2}"
+            local body_path="${3}"
+            local attempt="${4}"
+            local headers_path="${RUNNER_TEMP}/perf-${endpoint_name}-${attempt}.headers"
+            local meta_path="${RUNNER_TEMP}/perf-${endpoint_name}-${attempt}.meta"
+            local status=""
+            local content_type=""
+            local detail_code=""
+            local request_id=""
+            local body_request_id=""
+            local curl_exit=0
+
+            : > "${headers_path}"
+            : > "${meta_path}"
+            curl -sS --connect-timeout 15 --max-time 30 \
+              -H "Authorization: Bearer ${token}" \
+              -D "${headers_path}" \
+              -o "${body_path}" \
+              -w '%{http_code}\t%{content_type}\n' \
+              "${url}" > "${meta_path}" || curl_exit=$?
+            IFS=$'\t' read -r status content_type < "${meta_path}" || true
+            request_id="$(request_id_from_headers "${headers_path}")"
+            IFS=$'\t' read -r detail_code body_request_id < <(diagnostic_detail_from_body "${body_path}") || true
+            if [[ -z "${request_id}" ]]; then
+              request_id="${body_request_id}"
+            fi
+            write_diagnostic "${attempt}" "${endpoint_name}" "${status}" "${content_type}" "${detail_code}" "${request_id}" "${transient_seen}"
+
+            if [[ "${curl_exit}" == "0" && "${status}" == "200" ]]; then
+              return 0
+            fi
+            if is_transient_failure "${status}" "${curl_exit}"; then
+              transient_seen="true"
+              return 75
+            fi
+            echo "${endpoint_name} expected 200, got ${status}"
+            return 1
+          }
+
+          collect_candidates() {
+            local profile_body="${1}"
+            local history_body="${2}"
             python3 - "${profile_body}" "${history_body}" <<'PY'
           import json
           import sys
@@ -172,6 +359,8 @@ jobs:
 
           def signed_remote_render_url(value: object) -> str:
               candidate = str(value or "").strip()
+              if "\n" in candidate or "\r" in candidate or "\t" in candidate:
+                  return ""
               parsed = urlparse(candidate)
               query = parse_qs(parsed.query)
               if parsed.scheme in {"http", "https"} and parsed.netloc and "/media/render/" in parsed.path and query.get("exp") and query.get("sig"):
@@ -194,40 +383,113 @@ jobs:
               if candidate:
                   print(f"profile.profile_image_render_url\t{candidate}")
           PY
-          )"
-          if [[ -z "${candidates}" ]]; then
-            echo "Smoke account has no signed /media/render URL in /me/history or /me/profile."
-            exit 1
-          fi
+          }
 
           selected_source=""
           selected_url=""
-          while IFS=$'\t' read -r candidate_source candidate_url; do
-            if [[ -z "${candidate_url}" ]]; then
+          transient_seen="false"
+          max_attempts=3
+
+          for attempt in $(seq 1 "${max_attempts}"); do
+            profile_body="${RUNNER_TEMP}/perf-me-profile-${attempt}.body"
+            history_body="${RUNNER_TEMP}/perf-me-history-${attempt}.body"
+            fetch_retryable="false"
+
+            if fetch_json_endpoint "profile" "${BASE_URL%/}/me/profile" "${profile_body}" "${attempt}"; then
+              :
+            else
+              fetch_status=$?
+              if [[ "${fetch_status}" == "75" && "${attempt}" != "${max_attempts}" ]]; then
+                fetch_retryable="true"
+              elif [[ "${fetch_status}" == "75" ]]; then
+                echo "profile request transient failure after ${max_attempts} attempts."
+                exit 1
+              else
+                exit "${fetch_status}"
+              fi
+            fi
+            if [[ "${fetch_retryable}" == "false" ]]; then
+              if fetch_json_endpoint "history" "${BASE_URL%/}/me/history?limit=20" "${history_body}" "${attempt}"; then
+                :
+              else
+                fetch_status=$?
+                if [[ "${fetch_status}" == "75" && "${attempt}" != "${max_attempts}" ]]; then
+                  fetch_retryable="true"
+                elif [[ "${fetch_status}" == "75" ]]; then
+                  echo "history request transient failure after ${max_attempts} attempts."
+                  exit 1
+                else
+                  exit "${fetch_status}"
+                fi
+              fi
+            fi
+
+            if [[ "${fetch_retryable}" == "true" ]]; then
+              sleep "${attempt}"
               continue
             fi
-            echo "::add-mask::${candidate_url}"
-            probe_meta="${RUNNER_TEMP}/perf-render-probe.meta"
-            probe_body="${RUNNER_TEMP}/perf-render-probe.body"
-            curl -sS --connect-timeout 15 --max-time 30 --retry 2 --retry-delay 1 --retry-all-errors \
-              -H "Accept: image/webp,image/*,*/*;q=0.8" \
-              -o "${probe_body}" \
-              -w '%{http_code}\t%{content_type}\n' \
-              "${candidate_url}" > "${probe_meta}" || true
-            IFS=$'\t' read -r probe_status probe_content_type < "${probe_meta}" || true
-            if [[ "${probe_status}" == "200" && "${probe_content_type}" == image/* ]]; then
-              selected_source="${candidate_source}"
-              selected_url="${candidate_url}"
+
+            candidates="$(collect_candidates "${profile_body}" "${history_body}")"
+            if [[ -z "${candidates}" ]]; then
+              echo "Smoke account has no signed /media/render URL in /me/history or /me/profile."
+              exit 1
+            fi
+
+            probe_retryable="false"
+            while IFS=$'\t' read -r candidate_source candidate_url; do
+              if [[ -z "${candidate_url}" ]]; then
+                continue
+              fi
+              mask_workflow_value "${candidate_url}"
+              probe_meta="${RUNNER_TEMP}/perf-render-probe-${attempt}.meta"
+              probe_headers="${RUNNER_TEMP}/perf-render-probe-${attempt}.headers"
+              probe_body="${RUNNER_TEMP}/perf-render-probe-${attempt}.body"
+              probe_curl_exit=0
+              probe_detail_code=""
+              : > "${probe_headers}"
+              : > "${probe_meta}"
+              curl -sS --connect-timeout 15 --max-time 30 \
+                -H "Accept: image/webp,image/*,*/*;q=0.8" \
+                -D "${probe_headers}" \
+                -o "${probe_body}" \
+                -w '%{http_code}\t%{content_type}\n' \
+                "${candidate_url}" > "${probe_meta}" || probe_curl_exit=$?
+              IFS=$'\t' read -r probe_status probe_content_type < "${probe_meta}" || true
+              probe_request_id="$(request_id_from_headers "${probe_headers}")"
+              IFS=$'\t' read -r probe_detail_code probe_body_request_id < <(diagnostic_detail_from_body "${probe_body}") || true
+              if [[ -z "${probe_request_id}" ]]; then
+                probe_request_id="${probe_body_request_id}"
+              fi
+              if [[ "${probe_curl_exit}" == "0" && "${probe_status}" == "200" && "${probe_content_type}" == image/* ]]; then
+                write_diagnostic "${attempt}" "${candidate_source}" "${probe_status}" "${probe_content_type}" "${probe_detail_code}" "${probe_request_id}" "${transient_seen}"
+                selected_source="${candidate_source}"
+                selected_url="${candidate_url}"
+                break
+              fi
+              write_diagnostic "${attempt}" "${candidate_source}" "${probe_status}" "${probe_content_type}" "${probe_detail_code}" "${probe_request_id}" "false"
+              echo "Skipped render URL candidate ${candidate_source}: status=${probe_status} content_type=${probe_content_type}"
+              if is_transient_failure "${probe_status}" "${probe_curl_exit}"; then
+                transient_seen="true"
+                probe_retryable="true"
+              fi
+            done <<< "${candidates}"
+
+            if [[ -n "${selected_url}" ]]; then
               break
             fi
-            echo "Skipped render URL candidate ${candidate_source}: status=${probe_status} content_type=${probe_content_type}"
-          done <<< "${candidates}"
+            if [[ "${probe_retryable}" == "true" && "${attempt}" != "${max_attempts}" ]]; then
+              sleep "${attempt}"
+              continue
+            fi
+            break
+          done
 
           if [[ -z "${selected_url}" ]]; then
             echo "No signed /media/render URL candidate returned 200 with image/* content type."
             exit 1
           fi
 
+          assert_single_line_value "MEDIA_RENDER_URL" "${selected_url}"
           printf 'MEDIA_RENDER_URL=%s\n' "${selected_url}" >> "${GITHUB_ENV}"
           printf 'AUTH_BEARER_TOKEN=%s\n' "${token}" >> "${GITHUB_ENV}"
           echo "MEDIA_RENDER_URL source: ${selected_source}"
