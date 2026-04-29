@@ -1,0 +1,290 @@
+name: Backend Media Performance Regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_label:
+        description: "Release label or release candidate identifier"
+        required: true
+        type: string
+      backend_base_url:
+        description: "Deployed backend public base URL"
+        required: true
+        type: string
+      media_render_url:
+        description: "Signed media render URL; leave empty to use PERF_MEDIA_RENDER_URL secret"
+        required: false
+        type: string
+      baseline_summary_path:
+        description: "Optional checked-out or downloaded baseline summary.json path"
+        required: false
+        type: string
+      baseline_summary_artifact_run_id:
+        description: "Optional prior workflow run id containing the baseline artifact"
+        required: false
+        type: string
+      baseline_summary_artifact_name:
+        description: "Optional artifact name containing a baseline summary.json"
+        required: false
+        type: string
+      enable_analyze:
+        description: "Include /analyze/label requests when ANALYZE_PATH is available"
+        required: true
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
+      analyze_path:
+        description: "Repository path to JPEG fixture for ENABLE_ANALYZE=1"
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  backend-media-performance-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install k6
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Resolve fresh media render URL
+        env:
+          INPUT_MEDIA_RENDER_URL: ${{ inputs.media_render_url }}
+          SECRET_MEDIA_RENDER_URL: ${{ secrets.PERF_MEDIA_RENDER_URL }}
+          PERF_AUTH_BEARER_TOKEN: ${{ secrets.PERF_AUTH_BEARER_TOKEN }}
+          BASE_URL: ${{ inputs.backend_base_url }}
+          SMOKE_EMAIL: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${INPUT_MEDIA_RENDER_URL}" ]]; then
+            echo "::add-mask::${INPUT_MEDIA_RENDER_URL}"
+            printf 'MEDIA_RENDER_URL=%s\n' "${INPUT_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
+            if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
+              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
+            fi
+            echo "MEDIA_RENDER_URL source: workflow input"
+            exit 0
+          fi
+
+          if [[ -n "${SECRET_MEDIA_RENDER_URL}" ]]; then
+            echo "::add-mask::${SECRET_MEDIA_RENDER_URL}"
+            printf 'MEDIA_RENDER_URL=%s\n' "${SECRET_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
+            if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
+              echo "::add-mask::${PERF_AUTH_BEARER_TOKEN}"
+              printf 'AUTH_BEARER_TOKEN=%s\n' "${PERF_AUTH_BEARER_TOKEN}" >> "${GITHUB_ENV}"
+            fi
+            echo "MEDIA_RENDER_URL source: PERF_MEDIA_RENDER_URL secret"
+            exit 0
+          fi
+
+          token="${PERF_AUTH_BEARER_TOKEN}"
+          if [[ -n "${token}" ]]; then
+            echo "::add-mask::${token}"
+            echo "AUTH_BEARER_TOKEN source: PERF_AUTH_BEARER_TOKEN secret"
+          else
+            if [[ -z "${SMOKE_EMAIL}" || -z "${SMOKE_PASSWORD}" ]]; then
+              echo "Provide media_render_url/PERF_MEDIA_RENDER_URL, PERF_AUTH_BEARER_TOKEN, or PHASE6_POSTDEPLOY_SMOKE_EMAIL/PASSWORD."
+              exit 1
+            fi
+
+            login_request="$(
+              python3 - "${SMOKE_EMAIL}" "${SMOKE_PASSWORD}" <<'PY'
+          import json
+          import sys
+
+          print(json.dumps({"email": sys.argv[1], "password": sys.argv[2]}))
+          PY
+            )"
+            login_body="${RUNNER_TEMP}/perf-auth-login.body"
+            login_status="$(
+              curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+                -H "Content-Type: application/json" \
+                -o "${login_body}" \
+                -w '%{http_code}' \
+                -X POST \
+                -d "${login_request}" \
+                "${BASE_URL%/}/auth/email/login"
+            )"
+            if [[ "${login_status}" != "200" ]]; then
+              echo "auth/email/login expected 200, got ${login_status}"
+              exit 1
+            fi
+            token="$(
+              python3 - "${login_body}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          candidate = str(payload.get("access_token") or payload.get("token") or "").strip()
+          if not candidate:
+              auth = payload.get("auth") if isinstance(payload.get("auth"), dict) else {}
+              candidate = str(auth.get("access_token") or auth.get("token") or "").strip()
+          if not candidate:
+              raise SystemExit("auth/email/login response did not include an access token")
+          print(candidate)
+          PY
+            )"
+            echo "::add-mask::${token}"
+            echo "AUTH_BEARER_TOKEN source: smoke account login"
+          fi
+
+          profile_body="${RUNNER_TEMP}/perf-me-profile.body"
+          history_body="${RUNNER_TEMP}/perf-me-history.body"
+          curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+            -H "Authorization: Bearer ${token}" \
+            -o "${profile_body}" \
+            "${BASE_URL%/}/me/profile"
+          curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+            -H "Authorization: Bearer ${token}" \
+            -o "${history_body}" \
+            "${BASE_URL%/}/me/history?limit=1"
+
+          resolved="$(
+            python3 - "${profile_body}" "${history_body}" <<'PY'
+          import json
+          import sys
+          from urllib.parse import parse_qs, urlparse
+
+          profile_path = sys.argv[1]
+          history_path = sys.argv[2]
+
+          with open(profile_path, "r", encoding="utf-8") as handle:
+              profile_payload = json.load(handle)
+          with open(history_path, "r", encoding="utf-8") as handle:
+              history_payload = json.load(handle)
+
+          def signed_remote_render_url(value: object) -> str:
+              candidate = str(value or "").strip()
+              parsed = urlparse(candidate)
+              query = parse_qs(parsed.query)
+              if parsed.scheme in {"http", "https"} and parsed.netloc and "/media/render/" in parsed.path and query.get("exp") and query.get("sig"):
+                  return candidate
+              return ""
+
+          history_items = history_payload.get("history") if isinstance(history_payload, dict) else []
+          if isinstance(history_items, list):
+              for item in history_items:
+                  if not isinstance(item, dict):
+                      continue
+                  entry = item.get("entry") if isinstance(item.get("entry"), dict) else item
+                  candidate = signed_remote_render_url(entry.get("image_render_url"))
+                  if candidate:
+                      print(f"history.image_render_url\t{candidate}")
+                      raise SystemExit(0)
+
+          profile = profile_payload.get("profile") if isinstance(profile_payload, dict) else {}
+          if isinstance(profile, dict):
+              candidate = signed_remote_render_url(profile.get("profile_image_render_url"))
+              if candidate:
+                  print(f"profile.profile_image_render_url\t{candidate}")
+                  raise SystemExit(0)
+
+          raise SystemExit("Smoke account has no signed /media/render URL in /me/history or /me/profile")
+          PY
+          )"
+          source="${resolved%%$'\t'*}"
+          media_render_url="${resolved#*$'\t'}"
+          echo "::add-mask::${media_render_url}"
+          printf 'MEDIA_RENDER_URL=%s\n' "${media_render_url}" >> "${GITHUB_ENV}"
+          printf 'AUTH_BEARER_TOKEN=%s\n' "${token}" >> "${GITHUB_ENV}"
+          echo "MEDIA_RENDER_URL source: ${source}"
+
+      - name: Validate performance inputs
+        env:
+          ENABLE_ANALYZE: ${{ inputs.enable_analyze }}
+          ANALYZE_PATH: ${{ inputs.analyze_path }}
+        run: |
+          if [[ -z "${MEDIA_RENDER_URL}" ]]; then
+            echo "MEDIA_RENDER_URL resolution failed."
+            exit 1
+          fi
+          if [[ "${ENABLE_ANALYZE}" == "1" && -z "${ANALYZE_PATH}" ]]; then
+            echo "analyze_path input is required when enable_analyze=1."
+            exit 1
+          fi
+          if [[ "${ENABLE_ANALYZE}" == "1" && ! -f "${ANALYZE_PATH}" ]]; then
+            echo "analyze_path does not exist."
+            exit 1
+          fi
+
+      - name: Download baseline summary artifact
+        if: inputs.baseline_summary_path == '' && inputs.baseline_summary_artifact_run_id != '' && inputs.baseline_summary_artifact_name != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_SUMMARY_ARTIFACT_RUN_ID: ${{ inputs.baseline_summary_artifact_run_id }}
+          BASELINE_SUMMARY_ARTIFACT_NAME: ${{ inputs.baseline_summary_artifact_name }}
+        run: |
+          mkdir -p artifacts/perf/baseline
+          gh run download "${BASELINE_SUMMARY_ARTIFACT_RUN_ID}" \
+            --name "${BASELINE_SUMMARY_ARTIFACT_NAME}" \
+            --dir artifacts/perf/baseline
+
+      - name: Run media performance baseline
+        env:
+          PHASE6_RELEASE_LABEL: ${{ inputs.release_label }}
+          BASE_URL: ${{ inputs.backend_base_url }}
+          K6_VUS: "20"
+          K6_DURATION: "60s"
+          ENABLE_ANALYZE: ${{ inputs.enable_analyze }}
+          ANALYZE_PATH: ${{ inputs.analyze_path }}
+          OUT_DIR: artifacts/perf/backend-media-${{ github.run_id }}
+        run: |
+          bash scripts/perf/run-media-baseline.sh
+
+      - name: Compare with baseline summary
+        if: inputs.baseline_summary_path != '' || (inputs.baseline_summary_artifact_run_id != '' && inputs.baseline_summary_artifact_name != '')
+        env:
+          BASELINE_SUMMARY_PATH: ${{ inputs.baseline_summary_path }}
+          AFTER_SUMMARY_PATH: artifacts/perf/backend-media-${{ github.run_id }}/summary.json
+        run: |
+          baseline_summary="${BASELINE_SUMMARY_PATH}"
+          if [[ -z "${baseline_summary}" ]]; then
+            baseline_summary="$(find artifacts/perf/baseline -type f -name summary.json | sort | head -n 1)"
+          fi
+          if [[ -z "${baseline_summary}" || ! -f "${baseline_summary}" ]]; then
+            echo "Baseline summary.json was not found."
+            exit 1
+          fi
+          if [[ ! -f "${AFTER_SUMMARY_PATH}" ]]; then
+            echo "New summary.json was not found."
+            exit 1
+          fi
+          tolerance_args=()
+          compare_help="$(python3 scripts/perf/compare-media-summaries.py --help)"
+          if grep -q -- "--max-regression-percent" <<< "${compare_help}"; then
+            tolerance_args=(--max-regression-percent 15)
+          elif grep -q -- "--tolerance" <<< "${compare_help}"; then
+            tolerance_args=(--tolerance 0.15)
+          fi
+          python3 scripts/perf/compare-media-summaries.py \
+            --before "${baseline_summary}" \
+            --after "${AFTER_SUMMARY_PATH}" \
+            --fail-on-regression \
+            --enforce-thresholds \
+            "${tolerance_args[@]}"
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-media-performance-regression-${{ github.run_id }}
+          path: artifacts/perf
+          if-no-files-found: warn
+          retention-days: 14

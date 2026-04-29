@@ -106,6 +106,7 @@ from backend.modules.analysis_jobs import (
 )
 from backend.modules.auth.service import AuthServiceError, InMemoryAuthSessionService
 from backend.modules.media.service import (
+    MediaUploadResult,
     MediaStorageError,
     build_media_storage_from_env,
 )
@@ -1046,14 +1047,33 @@ async def _media_render_cache_set(
     ttl_seconds = max(1, int(getattr(app.state, "media_render_cache_ttl_seconds", 300)))
     max_items = max(1, int(getattr(app.state, "media_render_cache_max_items", 256)))
     async with lock:
-        cache[variant_key] = {
-            "bytes_data": bytes_data,
-            "content_type": content_type,
-            "expires_at": now_ts + ttl_seconds,
-        }
-        cache.move_to_end(variant_key)
-        while len(cache) > max_items:
-            cache.popitem(last=False)
+        await run_in_threadpool(
+            _media_render_cache_set_locked,
+            cache,
+            variant_key,
+            bytes_data,
+            content_type,
+            now_ts + ttl_seconds,
+            max_items,
+        )
+
+
+def _media_render_cache_set_locked(
+    cache: OrderedDict[str, dict[str, object]],
+    variant_key: str,
+    bytes_data: bytes,
+    content_type: str,
+    expires_at: int,
+    max_items: int,
+) -> None:
+    cache[variant_key] = {
+        "bytes_data": bytes_data,
+        "content_type": content_type,
+        "expires_at": expires_at,
+    }
+    cache.move_to_end(variant_key)
+    while len(cache) > max_items:
+        cache.popitem(last=False)
 
 
 async def _run_media_render_singleflight(
@@ -2835,27 +2855,32 @@ async def post_me_media_upload(
 
     try:
         payload = await file.read()
-        upload = media_storage.upload_original(
-            user_id=user.user_id,
-            scope=normalized_scope,
-            mime_type=mime_type,
-            payload=payload,
-            filename=file.filename,
-        )
-        asset = auth_service.register_media_asset(
-            user_id=user.user_id,
-            scope=normalized_scope,
-            mime_type=upload.mime_type,
-            size_bytes=upload.size_bytes,
-            sha256=upload.sha256,
-            object_key=upload.object_key,
-            asset_id=upload.asset_id,
-        )
-        _register_media_retention_record(
-            asset_id=upload.asset_id,
-            user_id=user.user_id,
-            object_key=upload.object_key,
-        )
+
+        def _store_media_upload() -> tuple[MediaUploadResult, dict[str, object]]:
+            upload_result = media_storage.upload_original(
+                user_id=user.user_id,
+                scope=normalized_scope,
+                mime_type=mime_type,
+                payload=payload,
+                filename=file.filename,
+            )
+            registered_asset = auth_service.register_media_asset(
+                user_id=user.user_id,
+                scope=normalized_scope,
+                mime_type=upload_result.mime_type,
+                size_bytes=upload_result.size_bytes,
+                sha256=upload_result.sha256,
+                object_key=upload_result.object_key,
+                asset_id=upload_result.asset_id,
+            )
+            _register_media_retention_record(
+                asset_id=upload_result.asset_id,
+                user_id=user.user_id,
+                object_key=upload_result.object_key,
+            )
+            return upload_result, registered_asset
+
+        upload, asset = await run_in_threadpool(_store_media_upload)
         render_url = _build_media_render_url(request, asset_id=upload.asset_id)
         logger.info(
             "[Media] upload success request_id=%s user_id=%s asset_id=%s scope=%s bytes=%s",
@@ -2980,11 +3005,10 @@ async def get_media_render(
                 },
             )
 
-        async def _render_variant() -> tuple[bytes, str, str, str]:
+        def _render_variant_sync() -> tuple[bytes, str, str, str]:
             asset = auth_service.get_media_asset(asset_id=asset_id)
             source = media_storage.fetch_original(object_key=str(asset["object_key"]))
-            rendered_bytes, content_type = await run_in_threadpool(
-                _render_image_bytes,
+            rendered_bytes, content_type = _render_image_bytes(
                 source_bytes=source.bytes_data,
                 target_width=final_width,
                 target_quality=final_quality,
@@ -2993,6 +3017,12 @@ async def get_media_render(
             auth_service.touch_media_asset(asset_id=asset_id)
             owner_id = str(asset.get("user_id") or "unknown")
             scope = str(asset.get("scope") or "unknown")
+            return rendered_bytes, content_type, owner_id, scope
+
+        async def _render_variant() -> tuple[bytes, str, str, str]:
+            rendered_bytes, content_type, owner_id, scope = await run_in_threadpool(
+                _render_variant_sync
+            )
             await _media_render_cache_set(
                 variant_key,
                 bytes_data=rendered_bytes,
@@ -3586,7 +3616,7 @@ async def analyze_label(
         image = await run_in_threadpool(decode_upload_to_image, contents)
         preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
-        quality = evaluate_label_image_quality(image)
+        quality = await run_in_threadpool(evaluate_label_image_quality, image)
         logger.info(
             "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
             request_id,

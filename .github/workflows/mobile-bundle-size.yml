@@ -1,0 +1,37 @@
+name: Mobile Bundle Size
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  bundle-size:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run mobile bundle size gate
+        run: npm run bundle:size:gate -- --output-dir artifacts/phase6/mobile-bundle-size/export --summary-file artifacts/phase6/mobile-bundle-size/mobile-bundle-size-summary.json
+
+      - name: Upload mobile bundle size artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-bundle-size-${{ github.run_id }}
+          path: FoodLens/artifacts/phase6/mobile-bundle-size
+          if-no-files-found: error
+          retention-days: 14

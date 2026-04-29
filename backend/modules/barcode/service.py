@@ -135,10 +135,17 @@ class BarcodeService:
         
         self._reset_last_upstream_failure()
 
-        # 1. Try Data.go.kr
         print(f"\n[BarcodeTrace] >>> Starting lookup for: {barcode}")
-        print(f"[BarcodeTrace] Step 1: Querying Data.go.kr (C005)...")
         clean_barcode = barcode.strip()
+        cached = self._cache_get(clean_barcode)
+        if cached:
+            print(
+                f"[BarcodeTrace] ✓ Serving cached product for {clean_barcode} "
+                f"(source={cached.get('source')})"
+            )
+            return cached
+
+        print(f"[BarcodeTrace] Step 1: Querying Data.go.kr (C005)...")
         korean_data = await self.datago_client.get_product_by_barcode(clean_barcode)
         self._record_client_failure(source="datago", client=self.datago_client)
         datago_unavailable = self._client_unavailable(self.datago_client)

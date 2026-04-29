@@ -85,10 +85,43 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
   --after artifacts/perf/<after>/summary.json
 ```
 
+CI 게이트에서는 작은 측정 노이즈를 허용하도록 회귀 허용치를 명시한다.
+```bash
+python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-summaries.py \
+  --before artifacts/perf/<before>/summary.json \
+  --after artifacts/perf/<after>/summary.json \
+  --fail-on-regression \
+  --max-regression-percent 15 \
+  --enforce-thresholds
+```
+
+누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다.
+
+## 3-2) GitHub Actions fresh render URL
+`Backend Media Performance Regression` workflow는 아래 순서로 `MEDIA_RENDER_URL`을 정한다.
+
+1. `workflow_dispatch` 입력 `media_render_url`
+2. GitHub secret `PERF_MEDIA_RENDER_URL`
+3. GitHub secret `PERF_AUTH_BEARER_TOKEN`으로 `/me/profile`, `/me/history?limit=1` 조회
+4. `PHASE6_POSTDEPLOY_SMOKE_EMAIL`, `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`로 `/auth/email/login` 후 `/me/profile`, `/me/history?limit=1` 조회
+
+권장 운영 방식은 4번이다. signed render URL은 만료되므로 장기 secret으로 저장하지 않고, 성능 측정 직전에 smoke 계정으로 새 URL을 발급받는다.
+
+필수 GitHub secrets:
+- `PHASE6_POSTDEPLOY_SMOKE_EMAIL`
+- `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`
+
+선택 GitHub secrets:
+- `PERF_AUTH_BEARER_TOKEN`
+- `PERF_MEDIA_RENDER_URL`
+
 ## 4) 1차 판정 기준 (초기값)
 - `http_req_failed.rate < 0.10`
+- `render_failure_rate.rate < 0.05`
 - `render_latency p95 < 1500ms`
+- `profile_failure_rate.rate < 0.10`
 - `profile_latency p95 < 1200ms`
+- `analyze_failure_rate.rate < 0.20`
 - (옵션) `analyze_latency p95 < 2500ms`
 
 ## 5) 운영 루틴

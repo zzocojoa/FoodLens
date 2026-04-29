@@ -9,8 +9,10 @@ class _FakeDatagoClient:
     def __init__(self) -> None:
         self.mode = "success"
         self.last_failure_kind = None
+        self.barcode_calls = 0
 
     async def get_product_by_barcode(self, _barcode: str):
+        self.barcode_calls += 1
         if self.mode == "success":
             self.last_failure_kind = None
             return {
@@ -41,8 +43,10 @@ class _FakeDatagoClient:
 class _FakeOpenFoodFactsClient:
     def __init__(self) -> None:
         self.last_failure_kind = None
+        self.barcode_calls = 0
 
     async def get_product_by_barcode(self, _barcode: str):
+        self.barcode_calls += 1
         self.last_failure_kind = None
         return None
 
@@ -83,6 +87,8 @@ class BarcodeCacheFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(second)
             self.assertEqual(second.get("food_name"), "신라면")
             self.assertTrue(str(second.get("source", "")).endswith("_CACHE"))
+            self.assertEqual(datago.barcode_calls, 1)
+            self.assertEqual(off.barcode_calls, 0)
 
     async def test_returns_none_when_upstream_unavailable_and_no_cache(self):
         with TemporaryDirectory() as tmp_dir:
@@ -125,6 +131,34 @@ class BarcodeCacheFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(second)
             self.assertEqual(second.get("food_name"), "신라면")
             self.assertTrue(str(second.get("source", "")).endswith("_CACHE"))
+            self.assertEqual(datago.barcode_calls, 1)
+            self.assertEqual(off.barcode_calls, 0)
+
+    async def test_expired_cache_does_not_bypass_upstream(self):
+        with TemporaryDirectory() as tmp_dir:
+            service = BarcodeService()
+            service.cache_path = Path(tmp_dir) / "barcode-cache.json"
+            service.cache_ttl_seconds = 60
+            service.cache_max_entries = 100
+            service._cache = {}
+
+            datago = _FakeDatagoClient()
+            off = _FakeOpenFoodFactsClient()
+            service.datago_client = datago
+            service.off_client = off
+            service.public_data_client = _FakePublicDataClient()
+
+            barcode = "8801043015981"
+            first = await service.get_product_info(barcode)
+            self.assertIsNotNone(first)
+            self.assertEqual(first.get("food_name"), "신라면")
+            service._cache[barcode]["stored_at"] = 0
+
+            datago.mode = "no_data"
+            second = await service.get_product_info(barcode)
+            self.assertIsNone(second)
+            self.assertEqual(datago.barcode_calls, 2)
+            self.assertEqual(off.barcode_calls, 1)
 
 
 if __name__ == "__main__":
