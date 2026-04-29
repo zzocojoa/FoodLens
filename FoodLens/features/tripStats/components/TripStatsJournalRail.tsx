@@ -8,12 +8,16 @@ import {
     tripStatsDashboardRadii as radii,
     tripStatsDashboardSpacing as spacing,
     tripStatsDashboardTypography as typography,
+    type TripStatsDashboardColors,
+    type TripStatsDashboardColorScheme,
 } from './tripStatsDashboardTokens';
 import { tripStatsDashboardStyles } from './tripStatsDashboardStyles';
 import { formatCalendarDate } from '@/features/i18n';
 import { useI18n } from '@/features/i18n';
 
 export type TripStatsJournalRailProps = {
+    colorScheme: TripStatsDashboardColorScheme;
+    colors: TripStatsDashboardColors;
     currentLocation: string | null;
     isLocating: boolean;
     loading: boolean;
@@ -42,6 +46,8 @@ const resolveStatusLabel = (
 };
 
 export default function TripStatsJournalRail({
+    colorScheme,
+    colors: dashboardColors,
     currentLocation,
     isLocating,
     loading,
@@ -57,22 +63,35 @@ export default function TripStatsJournalRail({
         : t('tripStats.hero.allTimeLabel', 'Overall');
 
     return (
-        <View style={[tripStatsDashboardStyles.railCard, styles.container]}>
-            <PearlSurfaceOverlay
-                accentWashColor={colors.pearlMist}
-                baseBottomColor="#FFF7EF"
-                baseTopColor={colors.pearlIvory}
-                coolWashColor={colors.pearlSage}
-                warmWashColor={colors.pearlPeach}
-            />
+        <View
+            style={[
+                tripStatsDashboardStyles.railCard,
+                styles.container,
+                { backgroundColor: dashboardColors.surface, borderColor: dashboardColors.line },
+            ]}
+        >
+            {colorScheme === 'light' ? (
+                <PearlSurfaceOverlay
+                    accentWashColor={dashboardColors.pearlMist}
+                    baseBottomColor="#FFF7EF"
+                    baseTopColor={dashboardColors.pearlIvory}
+                    coolWashColor={dashboardColors.pearlSage}
+                    warmWashColor={dashboardColors.pearlPeach}
+                />
+            ) : null}
 
                 <View style={styles.content}>
                     <View style={tripStatsDashboardStyles.railHeader}>
                         <View style={tripStatsDashboardStyles.railCopy}>
-                            <Text style={tripStatsDashboardStyles.railTitle}>
+                            <Text style={[tripStatsDashboardStyles.railTitle, { color: dashboardColors.ink }]}>
                                 {t('tripStats.rail.title', 'Trip overview')}
                             </Text>
-                            <Text style={tripStatsDashboardStyles.railSubtitle}>
+                            <Text
+                                style={[
+                                    tripStatsDashboardStyles.railSubtitle,
+                                    { color: dashboardColors.inkSoft },
+                                ]}
+                            >
                                 {t(
                                     'tripStats.rail.subtitle',
                                     'Location, date, and status at a glance.',
@@ -80,8 +99,21 @@ export default function TripStatsJournalRail({
                             </Text>
                         </View>
 
-                    <View style={tripStatsDashboardStyles.pill}>
-                        <Text style={tripStatsDashboardStyles.pillText}>
+                    <View
+                        style={[
+                            tripStatsDashboardStyles.pill,
+                            {
+                                backgroundColor: dashboardColors.surfaceMuted,
+                                borderColor: dashboardColors.line,
+                            },
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                tripStatsDashboardStyles.pillText,
+                                { color: dashboardColors.inkSoft },
+                            ]}
+                        >
                             {resolveStatusLabel(loading, isLocating, tripStartDate, t)}
                         </Text>
                     </View>
@@ -89,15 +121,18 @@ export default function TripStatsJournalRail({
 
                 <View style={styles.metaRow}>
                     <MetaChip
-                        icon={<MapPin color={colors.accentBlue} size={14} />}
+                        colors={dashboardColors}
+                        icon={<MapPin color={dashboardColors.accentBlue} size={14} />}
                         label={locationLabel}
                     />
                     <MetaChip
-                        icon={<Clock3 color={colors.accentAmber} size={14} />}
+                        colors={dashboardColors}
+                        icon={<Clock3 color={dashboardColors.accentAmber} size={14} />}
                         label={tripDateLabel}
                     />
                     <MetaChip
-                        icon={<Navigation color={colors.accentGreen} size={14} />}
+                        colors={dashboardColors}
+                        icon={<Navigation color={dashboardColors.accentGreen} size={14} />}
                         label={scopeLabel}
                     />
                 </View>
@@ -107,15 +142,21 @@ export default function TripStatsJournalRail({
 }
 
 type MetaChipProps = {
+    colors: TripStatsDashboardColors;
     icon: React.ReactNode;
     label: string;
 };
 
-const MetaChip = ({ icon, label }: MetaChipProps): React.JSX.Element => {
+const MetaChip = ({ colors: dashboardColors, icon, label }: MetaChipProps): React.JSX.Element => {
     return (
-        <View style={styles.metaChip}>
+        <View
+            style={[
+                styles.metaChip,
+                { backgroundColor: dashboardColors.surfaceMuted, borderColor: dashboardColors.line },
+            ]}
+        >
             {icon}
-            <Text numberOfLines={1} style={styles.metaChipText}>
+            <Text numberOfLines={1} style={[styles.metaChipText, { color: dashboardColors.inkSoft }]}>
                 {label}
             </Text>
         </View>

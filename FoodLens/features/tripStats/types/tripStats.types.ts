@@ -91,7 +91,7 @@ export type TripStatsStartTripResult =
       }
     | {
           ok: false;
-          reason: 'permission_denied' | 'location_unavailable' | 'profile_save_failed';
+          reason: 'auth_required' | 'permission_denied' | 'location_unavailable' | 'profile_save_failed';
       };
 
 export type TripStatsState = {

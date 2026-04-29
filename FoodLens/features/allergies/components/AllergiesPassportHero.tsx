@@ -13,6 +13,8 @@ import {
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from '../../home/components/homeDashboardTokens';
 import { AllergiesTravelerPassportCard } from './AllergiesTravelerPassportCard';
 import { useI18n } from '@/features/i18n';
@@ -37,6 +39,8 @@ export type AllergiesPassportCardCopy = {
 };
 
 export type AllergiesPassportHeroProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   state: AllergiesPassportHeroState;
   summary: AllergiesPassportSummary;
   cardCopy?: AllergiesPassportCardCopy;
@@ -56,73 +60,76 @@ type HeroTone = {
   supportingColor: string;
 };
 
-const resolveHeroTone = (state: AllergiesPassportHeroState): HeroTone => {
+const resolveHeroTone = (
+  colors: HomeDashboardColors,
+  state: AllergiesPassportHeroState,
+): HeroTone => {
   if (state === 'loading') {
     return {
-      badgeBackgroundColor: homeDashboardColors.surfaceMuted,
-      badgeTextColor: homeDashboardColors.inkSoft,
-      outerAccentColor: homeDashboardColors.pearlMist,
-      outerBaseBottomColor: homeDashboardColors.paperStrong,
-      outerBaseTopColor: homeDashboardColors.pearlIvory,
-      outerCoolColor: homeDashboardColors.pearlGlow,
-      outerWarmColor: homeDashboardColors.pearlMist,
-      titleColor: homeDashboardColors.ink,
-      supportingColor: homeDashboardColors.inkSoft,
+      badgeBackgroundColor: colors.surfaceMuted,
+      badgeTextColor: colors.inkSoft,
+      outerAccentColor: colors.pearlMist,
+      outerBaseBottomColor: colors.paperStrong,
+      outerBaseTopColor: colors.pearlIvory,
+      outerCoolColor: colors.pearlGlow,
+      outerWarmColor: colors.pearlMist,
+      titleColor: colors.ink,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'empty') {
     return {
-      badgeBackgroundColor: homeDashboardColors.accentAmberSoft,
-      badgeTextColor: homeDashboardColors.accentAmber,
-      outerAccentColor: homeDashboardColors.pearlPeach,
-      outerBaseBottomColor: homeDashboardColors.paper,
-      outerBaseTopColor: homeDashboardColors.pearlIvory,
-      outerCoolColor: homeDashboardColors.pearlGlow,
-      outerWarmColor: homeDashboardColors.pearlPeach,
-      titleColor: homeDashboardColors.ink,
-      supportingColor: homeDashboardColors.inkSoft,
+      badgeBackgroundColor: colors.accentAmberSoft,
+      badgeTextColor: colors.accentAmber,
+      outerAccentColor: colors.pearlPeach,
+      outerBaseBottomColor: colors.paper,
+      outerBaseTopColor: colors.pearlIvory,
+      outerCoolColor: colors.pearlGlow,
+      outerWarmColor: colors.pearlPeach,
+      titleColor: colors.ink,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'personalized') {
     return {
-      badgeBackgroundColor: homeDashboardColors.accentGreenSoft,
-      badgeTextColor: homeDashboardColors.accentGreen,
-      outerAccentColor: homeDashboardColors.pearlSage,
-      outerBaseBottomColor: homeDashboardColors.paperStrong,
-      outerBaseTopColor: homeDashboardColors.pearlIvory,
-      outerCoolColor: homeDashboardColors.pearlSage,
-      outerWarmColor: homeDashboardColors.pearlGlow,
-      titleColor: homeDashboardColors.ink,
-      supportingColor: homeDashboardColors.inkSoft,
+      badgeBackgroundColor: colors.accentGreenSoft,
+      badgeTextColor: colors.accentGreen,
+      outerAccentColor: colors.pearlSage,
+      outerBaseBottomColor: colors.paperStrong,
+      outerBaseTopColor: colors.pearlIvory,
+      outerCoolColor: colors.pearlSage,
+      outerWarmColor: colors.pearlGlow,
+      titleColor: colors.ink,
+      supportingColor: colors.inkSoft,
     };
   }
 
   if (state === 'generic') {
     return {
-      badgeBackgroundColor: homeDashboardColors.surfaceMuted,
-      badgeTextColor: homeDashboardColors.accentBlue,
-      outerAccentColor: homeDashboardColors.pearlMist,
-      outerBaseBottomColor: homeDashboardColors.paperMuted,
-      outerBaseTopColor: homeDashboardColors.pearlIvory,
-      outerCoolColor: homeDashboardColors.pearlMist,
-      outerWarmColor: homeDashboardColors.pearlGlow,
-      titleColor: homeDashboardColors.ink,
-      supportingColor: homeDashboardColors.inkSoft,
+      badgeBackgroundColor: colors.surfaceMuted,
+      badgeTextColor: colors.accentBlue,
+      outerAccentColor: colors.pearlMist,
+      outerBaseBottomColor: colors.paperMuted,
+      outerBaseTopColor: colors.pearlIvory,
+      outerCoolColor: colors.pearlMist,
+      outerWarmColor: colors.pearlGlow,
+      titleColor: colors.ink,
+      supportingColor: colors.inkSoft,
     };
   }
 
   return {
-    badgeBackgroundColor: homeDashboardColors.accentRedSoft,
-    badgeTextColor: homeDashboardColors.accentRed,
-    outerAccentColor: homeDashboardColors.pearlPeach,
-    outerBaseBottomColor: homeDashboardColors.paperStrong,
-    outerBaseTopColor: homeDashboardColors.pearlIvory,
-    outerCoolColor: homeDashboardColors.pearlMist,
-    outerWarmColor: homeDashboardColors.pearlPeach,
-    titleColor: homeDashboardColors.ink,
-    supportingColor: homeDashboardColors.inkSoft,
+    badgeBackgroundColor: colors.accentRedSoft,
+    badgeTextColor: colors.accentRed,
+    outerAccentColor: colors.pearlPeach,
+    outerBaseBottomColor: colors.paperStrong,
+    outerBaseTopColor: colors.pearlIvory,
+    outerCoolColor: colors.pearlMist,
+    outerWarmColor: colors.pearlPeach,
+    titleColor: colors.ink,
+    supportingColor: colors.inkSoft,
   };
 };
 
@@ -352,6 +359,8 @@ const resolveCardCopy = (
 };
 
 export function AllergiesPassportHero({
+  colorScheme,
+  colors,
   state,
   summary,
   cardCopy,
@@ -359,21 +368,29 @@ export function AllergiesPassportHero({
   style,
 }: AllergiesPassportHeroProps): React.JSX.Element {
   const { t } = useI18n();
-  const tone = resolveHeroTone(state);
+  const tone = resolveHeroTone(colors, state);
   const summaryPills = resolveSummaryPills(state, summary, t);
   const resolvedCardCopy = resolveCardCopy(state, cardCopy, t);
 
   const canPressCard = state === 'personalized' || state === 'generic' ? onOpenTravelerCard : undefined;
 
   return (
-    <View style={[styles.heroShell, style]}>
-      <PearlSurfaceOverlay
-        accentWashColor={tone.outerAccentColor}
-        baseBottomColor={tone.outerBaseBottomColor}
-        baseTopColor={tone.outerBaseTopColor}
-        coolWashColor={tone.outerCoolColor}
-        warmWashColor={tone.outerWarmColor}
-      />
+    <View
+      style={[
+        styles.heroShell,
+        { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+        style,
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={tone.outerAccentColor}
+          baseBottomColor={tone.outerBaseBottomColor}
+          baseTopColor={tone.outerBaseTopColor}
+          coolWashColor={tone.outerCoolColor}
+          warmWashColor={tone.outerWarmColor}
+        />
+      ) : null}
 
       <View style={styles.content}>
         <View style={styles.headerRow}>
@@ -386,7 +403,12 @@ export function AllergiesPassportHero({
             </Text>
           </View>
 
-          <View style={[styles.stateBadge, { backgroundColor: tone.badgeBackgroundColor }]}>
+          <View
+            style={[
+              styles.stateBadge,
+              { backgroundColor: tone.badgeBackgroundColor, borderColor: colors.line },
+            ]}
+          >
             <Text style={[styles.stateBadgeText, { color: tone.badgeTextColor }]}>
               {resolveStateLabel(state, t)}
             </Text>
@@ -395,13 +417,27 @@ export function AllergiesPassportHero({
 
         <View style={styles.summaryRow}>
           {summaryPills.map((pill) => (
-            <View key={pill} style={styles.summaryPill}>
-              <Text style={styles.summaryPillText}>{pill}</Text>
+            <View
+              key={pill}
+              style={[
+                styles.summaryPill,
+                { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+              ]}
+            >
+              <Text style={[styles.summaryPillText, { color: colors.inkSoft }]}>
+                {pill}
+              </Text>
             </View>
           ))}
         </View>
 
-        <AllergiesTravelerPassportCard state={state} copy={resolvedCardCopy} onPress={canPressCard} />
+        <AllergiesTravelerPassportCard
+          colorScheme={colorScheme}
+          colors={colors}
+          state={state}
+          copy={resolvedCardCopy}
+          onPress={canPressCard}
+        />
       </View>
     </View>
   );

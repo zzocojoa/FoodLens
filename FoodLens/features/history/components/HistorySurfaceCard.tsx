@@ -4,13 +4,15 @@ import { StyleSheet, View } from 'react-native';
 
 import PearlSurfaceOverlay from '../../home/components/PearlSurfaceOverlay';
 import {
-  historyDashboardColors as colors,
+  historyDashboardColors,
   historyDashboardRadii as radii,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 
 type HistorySurfaceCardProps = {
   accentWashColor?: string;
   children: React.ReactNode;
+  colors?: HistoryDashboardColors;
   contentStyle?: StyleProp<ViewStyle>;
   coolWashColor?: string;
   style?: StyleProp<ViewStyle>;
@@ -20,24 +22,38 @@ type HistorySurfaceCardProps = {
 export default function HistorySurfaceCard({
   accentWashColor,
   children,
+  colors: providedColors,
   contentStyle,
   coolWashColor,
   style,
   warmWashColor,
 }: HistorySurfaceCardProps): React.JSX.Element {
+  const colors = providedColors ?? historyDashboardColors;
+  const isLightPalette = colors === historyDashboardColors;
   const resolvedAccentWashColor = accentWashColor ?? colors.pearlMist;
   const resolvedCoolWashColor = coolWashColor ?? colors.pearlSage;
   const resolvedWarmWashColor = warmWashColor ?? colors.pearlPeach;
 
   return (
-    <View style={[styles.card, style]}>
-      <PearlSurfaceOverlay
-        accentWashColor={resolvedAccentWashColor}
-        baseBottomColor={colors.surface}
-        baseTopColor={colors.pearlIvory}
-        coolWashColor={resolvedCoolWashColor}
-        warmWashColor={resolvedWarmWashColor}
-      />
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.surfaceStrong,
+          borderColor: colors.line,
+        },
+        style,
+      ]}
+    >
+      {isLightPalette ? (
+        <PearlSurfaceOverlay
+          accentWashColor={resolvedAccentWashColor}
+          baseBottomColor={colors.surface}
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={resolvedCoolWashColor}
+          warmWashColor={resolvedWarmWashColor}
+        />
+      ) : null}
       <View style={[styles.content, contentStyle]}>{children}</View>
     </View>
   );
@@ -45,8 +61,6 @@ export default function HistorySurfaceCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.line,
     borderCurve: 'continuous',
     borderRadius: radii.xl,
     borderWidth: 1,

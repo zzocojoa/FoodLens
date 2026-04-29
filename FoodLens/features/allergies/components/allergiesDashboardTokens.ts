@@ -1,14 +1,23 @@
 import {
     homeDashboardColors,
+    getHomeDashboardColors,
     homeDashboardRadii,
     homeDashboardShadows,
     homeDashboardSpacing,
     homeDashboardTypography,
+    type HomeDashboardColorScheme,
+    type HomeDashboardColors,
 } from '../../home/components/homeDashboardTokens';
 
 export type AllergiesDashboardTone = 'neutral' | 'safe' | 'caution' | 'danger' | 'accent';
 
 export const allergiesDashboardColors = homeDashboardColors;
+
+export const getAllergiesDashboardColors = getHomeDashboardColors;
+
+export type AllergiesDashboardColorScheme = HomeDashboardColorScheme;
+
+export type AllergiesDashboardColors = HomeDashboardColors;
 
 export const allergiesDashboardSpacing = homeDashboardSpacing;
 
@@ -53,7 +62,32 @@ export const allergiesDashboardToneTokens: Record<AllergiesDashboardTone, Allerg
 };
 
 export const getAllergiesDashboardToneTokens = (
+    colors: AllergiesDashboardColors,
     tone: AllergiesDashboardTone,
-): AllergiesDashboardToneTokens => {
-    return allergiesDashboardToneTokens[tone];
-};
+): AllergiesDashboardToneTokens => ({
+    neutral: {
+        backgroundColor: colors.surfaceMuted,
+        borderColor: colors.line,
+        textColor: colors.inkSoft,
+    },
+    safe: {
+        backgroundColor: colors.accentGreenSoft,
+        borderColor: colors.accentGreen,
+        textColor: colors.accentGreen,
+    },
+    caution: {
+        backgroundColor: colors.accentAmberSoft,
+        borderColor: colors.accentAmber,
+        textColor: colors.accentAmber,
+    },
+    danger: {
+        backgroundColor: colors.accentRedSoft,
+        borderColor: colors.accentRed,
+        textColor: colors.accentRed,
+    },
+    accent: {
+        backgroundColor: colors.pearlMist,
+        borderColor: colors.lineStrong,
+        textColor: colors.accentBlue,
+    },
+}[tone]);

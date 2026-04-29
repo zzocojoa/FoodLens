@@ -9,9 +9,13 @@ import {
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 
 type HomeStatusRailProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   contextCopy: string;
   displayName: string;
   isConnected: boolean;
@@ -30,6 +34,8 @@ const getAvatarFallbackLabel = (displayName: string): string => {
 };
 
 export function HomeStatusRail({
+  colorScheme,
+  colors,
   contextCopy,
   displayName,
   isConnected,
@@ -39,36 +45,52 @@ export function HomeStatusRail({
   const avatarFallbackLabel = getAvatarFallbackLabel(displayName);
 
   return (
-    <View style={[homeDashboardStyles.sectionCard, localStyles.container]}>
-      <PearlSurfaceOverlay
-        accentWashColor={homeDashboardColors.pearlMist}
-        baseBottomColor="#FFF8F0"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={homeDashboardColors.pearlSage}
-        warmWashColor={homeDashboardColors.pearlPeach}
-      />
+    <View
+      style={[
+        homeDashboardStyles.sectionCard,
+        localStyles.container,
+        { backgroundColor: colors.surface, borderColor: colors.line },
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={colors.pearlMist}
+          baseBottomColor="#FFF8F0"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={colors.pearlSage}
+          warmWashColor={colors.pearlPeach}
+        />
+      ) : null}
       <View style={localStyles.identityRow}>
-        <View style={localStyles.avatarFrame}>
+        <View style={[localStyles.avatarFrame, { backgroundColor: colors.paperStrong, borderColor: colors.lineStrong }]}>
           {profileImageUri ? (
             <SecureImage
               source={{ uri: profileImageUri }}
               style={localStyles.avatarImage}
               fallbackContainerStyle={localStyles.avatarFallbackSurface}
-              fallbackColor={homeDashboardColors.inkSoft}
+              fallbackColor={colors.inkSoft}
               fallbackIconSize={18}
             />
           ) : (
-            <View style={[localStyles.avatarImage, localStyles.avatarFallbackSurface]}>
-              <Text style={localStyles.avatarFallbackLabel}>{avatarFallbackLabel}</Text>
+            <View
+              style={[
+                localStyles.avatarImage,
+                localStyles.avatarFallbackSurface,
+                { backgroundColor: colors.paperStrong },
+              ]}
+            >
+              <Text style={[localStyles.avatarFallbackLabel, { color: colors.accentBlue }]}>
+                {avatarFallbackLabel}
+              </Text>
             </View>
           )}
         </View>
 
         <View style={localStyles.copyBlock}>
-          <Text numberOfLines={1} style={localStyles.contextCopy}>
+          <Text numberOfLines={1} style={[localStyles.contextCopy, { color: colors.inkSoft }]}>
             {contextCopy}
           </Text>
-          <Text numberOfLines={1} style={localStyles.displayName}>
+          <Text numberOfLines={1} style={[localStyles.displayName, { color: colors.ink }]}>
             {displayName}
           </Text>
         </View>
@@ -79,12 +101,17 @@ export function HomeStatusRail({
           homeDashboardStyles.pill,
           localStyles.statusPill,
           isConnected ? localStyles.statusPillOnline : localStyles.statusPillOffline,
+          {
+            backgroundColor: isConnected ? colors.accentGreenSoft : colors.accentAmberSoft,
+            borderColor: isConnected ? colors.accentGreen : colors.accentAmber,
+          },
         ]}
       >
         <View
           style={[
             localStyles.statusDot,
             isConnected ? localStyles.statusDotOnline : localStyles.statusDotOffline,
+            { backgroundColor: isConnected ? colors.accentGreen : colors.accentAmber },
           ]}
         />
         <Text
@@ -93,6 +120,7 @@ export function HomeStatusRail({
             homeDashboardStyles.pillText,
             localStyles.statusLabel,
             isConnected ? localStyles.statusLabelOnline : localStyles.statusLabelOffline,
+            { color: isConnected ? colors.accentGreen : colors.accentAmber },
           ]}
         >
           {statusLabel}

@@ -1,6 +1,8 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { ResultContent } from '../ResultContent';
+import { homeDashboardDarkColors } from '@/features/home/components/homeDashboardTokens';
 
 type RenderedTextNode =
     | string
@@ -10,8 +12,10 @@ type RenderedTextNode =
       }
     | RenderedTextNode[];
 
+let mockColorScheme: 'light' | 'dark' = 'light';
+
 jest.mock('@/hooks/use-color-scheme', () => ({
-    useColorScheme: () => 'light',
+    useColorScheme: () => mockColorScheme,
 }));
 
 jest.mock('../../TravelerAllergyCard', () => {
@@ -75,6 +79,10 @@ const collectRenderedText = (node: RenderedTextNode | null): string[] => {
 };
 
 describe('ResultContent', () => {
+    beforeEach(() => {
+        mockColorScheme = 'light';
+    });
+
     it('renders safety, action, reason, food name, and ingredients in that order', () => {
         const view = render(
             <ResultContent
@@ -134,5 +142,42 @@ describe('ResultContent', () => {
         const renderedText = collectRenderedText(view.toJSON());
 
         expect(renderedText).not.toContain('SUMMARY_CARD');
+    });
+
+    it('uses dark dashboard colors for the decision status card', () => {
+        mockColorScheme = 'dark';
+
+        const view = render(
+            <ResultContent
+                result={{
+                    foodName: 'Bibimbap',
+                    safetyStatus: 'CAUTION',
+                    ingredients: [],
+                }}
+                locationData={null}
+                imageSource={null}
+                timestamp={null}
+                onOpenBreakdown={jest.fn()}
+                onDatePress={jest.fn()}
+                t={t}
+                locale="en-US"
+            />
+        );
+
+        const safetyLabel = view.getByText('ASK');
+        const safetyBadge = safetyLabel.parent?.parent;
+        const actionLabel = view.getByText('Check the label or ask staff before eating.');
+
+        expect(StyleSheet.flatten(safetyLabel.props.style)).toMatchObject({
+            color: homeDashboardDarkColors.accentAmber,
+        });
+        expect(safetyBadge).not.toBeNull();
+        expect(StyleSheet.flatten(safetyBadge?.props.style)).toMatchObject({
+            backgroundColor: homeDashboardDarkColors.accentAmberSoft,
+            borderColor: homeDashboardDarkColors.accentAmberSoft,
+        });
+        expect(StyleSheet.flatten(actionLabel.props.style)).toMatchObject({
+            color: homeDashboardDarkColors.accentAmber,
+        });
     });
 });

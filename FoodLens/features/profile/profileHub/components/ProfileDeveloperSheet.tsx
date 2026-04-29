@@ -11,6 +11,7 @@ import { X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HapticTouchableOpacity } from '@/components/HapticFeedback';
+import type { ColorSchemeName, ThemePalette } from '@/constants/theme';
 import PearlSurfaceOverlay from '@/features/home/components/PearlSurfaceOverlay';
 import {
     homeDashboardColors,
@@ -25,20 +26,26 @@ type DeveloperRow = {
 };
 
 type ProfileDeveloperSheetProps = {
+    colorScheme: ColorSchemeName;
     visible: boolean;
     title: string;
     closeLabel: string;
     rows: DeveloperRow[];
+    theme: ThemePalette;
     onClose: () => void;
 };
 
 export default function ProfileDeveloperSheet({
+    colorScheme,
     visible,
     title,
     closeLabel,
     rows,
+    theme,
     onClose,
 }: ProfileDeveloperSheetProps): React.JSX.Element | null {
+    const isDarkMode = colorScheme === 'dark';
+
     if (!visible) {
         return null;
     }
@@ -49,29 +56,42 @@ export default function ProfileDeveloperSheet({
                 <TouchableOpacity activeOpacity={1} onPress={onClose} style={styles.dismissArea} />
 
                 <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
-                    <View style={styles.sheetContainer}>
-                        <PearlSurfaceOverlay
-                            accentWashColor={homeDashboardColors.pearlMist}
-                            baseBottomColor={homeDashboardColors.paperStrong}
-                            baseTopColor={homeDashboardColors.pearlIvory}
-                            coolWashColor={homeDashboardColors.pearlGlow}
-                            warmWashColor={homeDashboardColors.pearlPeach}
-                        />
+                    <View
+                        style={[
+                            styles.sheetContainer,
+                            { backgroundColor: theme.surface, borderColor: theme.border },
+                        ]}
+                    >
+                        {isDarkMode ? null : (
+                            <PearlSurfaceOverlay
+                                accentWashColor={homeDashboardColors.pearlMist}
+                                baseBottomColor={homeDashboardColors.paperStrong}
+                                baseTopColor={homeDashboardColors.pearlIvory}
+                                coolWashColor={homeDashboardColors.pearlGlow}
+                                warmWashColor={homeDashboardColors.pearlPeach}
+                            />
+                        )}
 
                         <View style={styles.sheetContent}>
                             <View style={styles.handle} />
 
                             <View style={styles.headerRow}>
-                                <Text style={styles.title}>{title}</Text>
+                                <Text style={[styles.title, { color: theme.textPrimary }]}>{title}</Text>
                                 <HapticTouchableOpacity
                                     accessibilityLabel={closeLabel}
                                     accessibilityRole="button"
                                     activeOpacity={0.9}
                                     hapticType="light"
                                     onPress={onClose}
-                                    style={styles.closeButton}
+                                    style={[
+                                        styles.closeButton,
+                                        {
+                                            backgroundColor: theme.background,
+                                            borderColor: theme.border,
+                                        },
+                                    ]}
                                 >
-                                    <X color={homeDashboardColors.inkSoft} size={16} />
+                                    <X color={theme.textSecondary} size={16} />
                                 </HapticTouchableOpacity>
                             </View>
 
@@ -86,11 +106,17 @@ export default function ProfileDeveloperSheet({
                                             key={row.label}
                                             style={[
                                                 styles.rowCard,
+                                                {
+                                                    backgroundColor: theme.background,
+                                                    borderColor: theme.border,
+                                                },
                                                 index === rows.length - 1 ? styles.rowCardLast : null,
                                             ]}
                                         >
-                                            <Text style={styles.rowLabel}>{row.label}</Text>
-                                            <Text selectable style={styles.rowValue}>
+                                            <Text style={[styles.rowLabel, { color: theme.textSecondary }]}>
+                                                {row.label}
+                                            </Text>
+                                            <Text selectable style={[styles.rowValue, { color: theme.textPrimary }]}>
                                                 {row.value}
                                             </Text>
                                         </View>

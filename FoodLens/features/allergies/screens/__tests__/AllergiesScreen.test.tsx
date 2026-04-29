@@ -1,15 +1,18 @@
 /// <reference types="jest" />
 
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import AllergiesScreen from '../AllergiesScreen';
 import { useAllergiesData } from '../../hooks/useAllergiesData';
 import { useTravelerAllergyCardModel } from '../../../../components/travelerAllergyCard/hooks/useTravelerAllergyCardModel';
+import { homeDashboardDarkColors } from '../../../home/components/homeDashboardTokens';
 
 const mockedBack = jest.fn();
 const mockedPush = jest.fn();
 const mockedNavigate = jest.fn();
 const mockedPrefetch = jest.fn();
+let mockedColorScheme: 'light' | 'dark' = 'light';
 
 jest.mock('expo-router', () => ({
     Stack: {
@@ -38,15 +41,16 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('../../../../components/TravelerAllergyCard', () => {
-    const React = require('react');
-    const { Text } = require('react-native');
+    const mockReact = jest.requireActual<typeof React>('react');
+    const { Text: MockText } = jest.requireActual<typeof import('react-native')>('react-native');
+
     return function MockTravelerAllergyCard() {
-        return <Text>MOCK_TRAVELER_CARD</Text>;
+        return mockReact.createElement(MockText, null, 'MOCK_TRAVELER_CARD');
     };
 });
 
 jest.mock('../../../../hooks/use-color-scheme', () => ({
-    useColorScheme: () => 'light',
+    useColorScheme: () => mockedColorScheme,
 }));
 
 jest.mock('../../constants/allergies.constants', () => ({
@@ -112,6 +116,7 @@ describe('AllergiesScreen', () => {
         useTravelerAllergyCardModel as jest.MockedFunction<typeof useTravelerAllergyCardModel>;
 
     afterEach(() => {
+        mockedColorScheme = 'light';
         jest.clearAllMocks();
     });
 
@@ -187,6 +192,40 @@ describe('AllergiesScreen', () => {
         fireEvent.press(getByTestId('allergies-traveler-card-close'));
 
         expect(queryByTestId('allergies-traveler-card-body')).toBeNull();
+    });
+
+    test('uses dark tokens for the expanded traveler card modal', () => {
+        mockedColorScheme = 'dark';
+        mockedUseTravelerAllergyCardModel.mockReturnValue({
+            displayData: {
+                isAiLoaded: false,
+                language: 'English',
+                sub: 'Traveler Safety Card (Manual Language)',
+                text: 'I have food allergies. Please check ingredients carefully.',
+                usedAiText: false,
+            },
+            finalMessage: 'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nPeanuts',
+            isAiLoaded: false,
+        });
+        mockedUseAllergiesData.mockReturnValue({
+            loading: false,
+            allergies: ['Peanuts'],
+            dietaryRestrictions: [],
+            severityMap: { Peanuts: 'severe' },
+        });
+
+        const { getByTestId, getByText } = render(<AllergiesScreen />);
+
+        fireEvent.press(getByText('Traveler Passport'));
+
+        expect(StyleSheet.flatten(getByTestId('allergies-traveler-card-sheet').props.style)).toMatchObject({
+            backgroundColor: homeDashboardDarkColors.surfaceStrong,
+            borderColor: homeDashboardDarkColors.lineStrong,
+        });
+        expect(StyleSheet.flatten(getByTestId('allergies-traveler-card-close').props.style)).toMatchObject({
+            backgroundColor: homeDashboardDarkColors.surfaceMuted,
+            borderColor: homeDashboardDarkColors.lineStrong,
+        });
     });
 
     test('renders canonical and custom values in the risk ledger without storage tokens', () => {

@@ -2,25 +2,30 @@ import React from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { ShieldCheck } from 'lucide-react-native';
 import {
+    getTripStatsDashboardAccentForegroundColor,
     tripStatsDashboardColors as colors,
     tripStatsDashboardRadii as radii,
     tripStatsDashboardSpacing as spacing,
     tripStatsDashboardTypography as typography,
+    type TripStatsDashboardColors,
 } from './tripStatsDashboardTokens';
 import { useI18n } from '@/features/i18n';
 
 type TripStatsToastProps = {
+    colors: TripStatsDashboardColors;
     currentLocation: string | null;
     insetsTop: number;
     onHidden: () => void;
 };
 
 export default function TripStatsToast({
+    colors: dashboardColors,
     currentLocation,
     insetsTop,
     onHidden,
 }: TripStatsToastProps) {
     const { t } = useI18n();
+    const accentForegroundColor = getTripStatsDashboardAccentForegroundColor(dashboardColors);
     const toastOpacity = React.useRef(new Animated.Value(0)).current;
     const toastTranslate = React.useRef(new Animated.Value(-50)).current;
     const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,15 +93,28 @@ export default function TripStatsToast({
                 },
             ]}
         >
-            <View style={styles.toastContent}>
-                <View style={styles.activeIconCircleSmall}>
-                    <ShieldCheck size={16} color="white" />
+            <View
+                style={[
+                    styles.toastContent,
+                    {
+                        backgroundColor: dashboardColors.surfaceStrong,
+                        borderColor: dashboardColors.lineStrong,
+                    },
+                ]}
+            >
+                <View
+                    style={[
+                        styles.activeIconCircleSmall,
+                        { backgroundColor: dashboardColors.accentGreen },
+                    ]}
+                >
+                    <ShieldCheck size={16} color={accentForegroundColor} />
                 </View>
                 <View style={styles.toastCopy}>
-                    <Text style={styles.toastTitle}>
+                    <Text style={[styles.toastTitle, { color: dashboardColors.accentGreen }]}>
                         {t('tripStats.toast.startedTitle', 'Trip started!')}
                     </Text>
-                    <Text style={styles.toastMessage}>
+                    <Text style={[styles.toastMessage, { color: dashboardColors.ink }]}>
                         {t('tripStats.toast.nowExploringTemplate', 'Now exploring {location}').replace(
                             '{location}',
                             currentLocation ?? t('tripStats.hero.locationNotSet', 'Location not set')

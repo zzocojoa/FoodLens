@@ -29,11 +29,13 @@ import HistorySelectionUtilityBar from '../components/HistorySelectionUtilityBar
 import HistorySummaryStrip from '../components/HistorySummaryStrip';
 import HistorySurfaceCard from '../components/HistorySurfaceCard';
 import {
-    historyDashboardColors,
+    getHistoryDashboardColors,
+    type HistoryDashboardColorScheme,
     historyDashboardSpacing,
 } from '../components/historyDashboardTokens';
 import { historyDashboardStyles } from '../components/historyDashboardStyles';
 import { useI18n } from '@/features/i18n';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { completeTopLevelTabSwitchTrace } from '@/components/navigation/tabSwitchTrace';
 import { markHomeNavigationTrace } from '@/features/home/services/homeNavigationTrace';
 import type { UserProfileUpdateReason } from '@/services/user/userProfileStore';
@@ -52,6 +54,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 export default function HistoryScreen() {
     const router = useRouter();
     const isFocused = useIsFocused();
+    const colorScheme = (useColorScheme() ?? 'light') as HistoryDashboardColorScheme;
     const insets = useSafeAreaInsets();
     const { t } = useI18n();
     const historyUserId = getHistoryUserId();
@@ -236,6 +239,10 @@ export default function HistoryScreen() {
         : Math.max(insets.bottom + 92, 112);
     const atlasBottomInset = Math.max(insets.bottom + 92, 112);
     const isHistoryReady = !loading || countryChapters.length > 0;
+    const dashboardColors = useMemo(
+        () => getHistoryDashboardColors(colorScheme),
+        [colorScheme],
+    );
 
     useEffect(() => {
         if (!isFocused || !isHistoryReady) {
@@ -261,18 +268,19 @@ export default function HistoryScreen() {
     return (
         <TopLevelScreenShell
             activeItem="history"
-            backgroundColor={historyDashboardColors.paper}
+            backgroundColor={dashboardColors.paper}
             hideNav={ui.isEditMode}
         >
-            <View style={historyDashboardStyles.screenBackground}>
+            <View style={[historyDashboardStyles.screenBackground, { backgroundColor: dashboardColors.paper }]}>
                 <Stack.Screen options={{ headerShown: false }} />
-                <HistoryHomeBackgroundAtmosphere />
+                {colorScheme === 'light' ? <HistoryHomeBackgroundAtmosphere /> : null}
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                     {ui.archiveMode === 'map' ? (
                         <View style={historyDashboardStyles.atlasScreenContent}>
                             <View style={historyDashboardStyles.atlasRailInset}>
                                 <HistoryJournalRail
                                     archiveMode={ui.archiveMode}
+                                    colors={dashboardColors}
                                     isEditMode={ui.isEditMode}
                                     isMapModeAvailable={ui.isMapModeAvailable}
                                     onBack={handleReturnHome}
@@ -288,6 +296,7 @@ export default function HistoryScreen() {
                             >
                                 <HistoryAtlasPanel
                                     canRenderNativeMap={canRenderNativeMap}
+                                    colors={dashboardColors}
                                     data={archiveData}
                                     initialRegion={ui.savedMapRegion ?? ui.savedMapRegionRef.current ?? initialRegion}
                                     onMarkerPress={handleMarkerPress}
@@ -306,6 +315,7 @@ export default function HistoryScreen() {
                         >
                             <HistoryJournalRail
                                 archiveMode={ui.archiveMode}
+                                colors={dashboardColors}
                                 isEditMode={ui.isEditMode}
                                 isMapModeAvailable={ui.isMapModeAvailable}
                                 onBack={handleReturnHome}
@@ -314,14 +324,16 @@ export default function HistoryScreen() {
                             />
 
                             <View style={{ gap: historyDashboardSpacing.sm }}>
-                                <HistorySummaryStrip summary={journalSummary} />
+                                <HistorySummaryStrip colors={dashboardColors} summary={journalSummary} />
                                 <HistoryFilterRail
+                                    colors={dashboardColors}
                                     filter={archiveFilter}
                                     isReduceMotionEnabled={isReduceMotionEnabled}
                                     onChange={setArchiveFilter}
                                 />
                                 {ui.isEditMode ? (
                                     <HistorySelectionUtilityBar
+                                        colors={dashboardColors}
                                         onClearSelection={handleClearSelection}
                                         onDeleteSelection={ui.handleBulkDelete}
                                         onSelectAll={handleSelectAllVisible}
@@ -330,7 +342,7 @@ export default function HistoryScreen() {
                                     />
                                 ) : null}
                                 {loading && countryChapters.length === 0 ? (
-                                    <HistorySurfaceCard accentWashColor={historyDashboardColors.pearlMist}>
+                                    <HistorySurfaceCard accentWashColor={dashboardColors.pearlMist} colors={dashboardColors}>
                                         <View
                                             style={{
                                                 alignItems: 'center',
@@ -338,10 +350,10 @@ export default function HistoryScreen() {
                                                 paddingVertical: historyDashboardSpacing.lg,
                                             }}
                                         >
-                                            <ActivityIndicator color={historyDashboardColors.accentBlue} />
+                                            <ActivityIndicator color={dashboardColors.accentBlue} />
                                             <Text
                                                 style={{
-                                                    color: historyDashboardColors.inkSoft,
+                                                    color: dashboardColors.inkSoft,
                                                     fontSize: 15,
                                                     fontWeight: '700',
                                                     lineHeight: 20,
@@ -354,6 +366,7 @@ export default function HistoryScreen() {
                                 ) : (
                                     <HistoryCountryChapters
                                         chapters={countryChapters}
+                                        colors={dashboardColors}
                                         expandedCountries={expandedCountries}
                                         isEditMode={ui.isEditMode}
                                         matchesFilter={matchesFilter}

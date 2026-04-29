@@ -28,6 +28,62 @@ export const homeDashboardColors = {
   black: '#000000',
 } as const;
 
+export type HomeDashboardColors = {
+  readonly [Key in keyof typeof homeDashboardColors]: string;
+};
+
+export type HomeDashboardColorScheme = 'light' | 'dark';
+
+export const homeDashboardDarkColors = {
+  paper: '#020617',
+  paperStrong: '#0F172A',
+  paperMuted: '#111827',
+  surface: 'rgba(15, 23, 42, 0.86)',
+  surfaceStrong: 'rgba(30, 41, 59, 0.92)',
+  surfaceMuted: 'rgba(51, 65, 85, 0.72)',
+  pearlIvory: 'rgba(30, 41, 59, 0.96)',
+  pearlGlow: 'rgba(148, 163, 184, 0.20)',
+  pearlSage: 'rgba(34, 197, 94, 0.18)',
+  pearlPeach: 'rgba(251, 146, 60, 0.14)',
+  pearlMist: 'rgba(96, 165, 250, 0.16)',
+  grainShadow: 'rgba(0, 0, 0, 1)',
+  grainHighlight: 'rgba(148, 163, 184, 1)',
+  line: 'rgba(148, 163, 184, 0.18)',
+  lineStrong: 'rgba(148, 163, 184, 0.28)',
+  ink: '#F8FAFC',
+  inkSoft: '#CBD5E1',
+  accentBlue: '#93C5FD',
+  accentGreen: '#86EFAC',
+  accentGreenSoft: 'rgba(34, 197, 94, 0.18)',
+  accentAmber: '#FCD34D',
+  accentAmberSoft: 'rgba(245, 158, 11, 0.18)',
+  accentRed: '#FCA5A5',
+  accentRedSoft: 'rgba(248, 113, 113, 0.18)',
+  chip: 'rgba(30, 64, 175, 0.24)',
+  white: '#FFFFFF',
+  black: '#000000',
+} satisfies HomeDashboardColors;
+
+export const getHomeDashboardColors = (
+  colorScheme: HomeDashboardColorScheme,
+): HomeDashboardColors => {
+  if (colorScheme === 'dark') {
+    return homeDashboardDarkColors;
+  }
+
+  return homeDashboardColors;
+};
+
+export const getHomeDashboardAccentForegroundColor = (
+  colors: HomeDashboardColors,
+): string => {
+  if (colors === homeDashboardDarkColors) {
+    return colors.black;
+  }
+
+  return colors.white;
+};
+
 export const homeDashboardSpacing = {
   xxs: 4,
   xs: 8,
@@ -81,3 +137,26 @@ export const homeDashboardSignalColors = {
     text: homeDashboardColors.inkSoft,
   },
 } as const;
+
+export const getHomeDashboardSignalColors = (
+  colors: HomeDashboardColors,
+): Record<keyof typeof homeDashboardSignalColors, { background: string; text: string }> => {
+  return {
+    SAFE: {
+      background: colors.accentGreenSoft,
+      text: colors.accentGreen,
+    },
+    CAUTION: {
+      background: colors.accentAmberSoft,
+      text: colors.accentAmber,
+    },
+    DANGER: {
+      background: colors.accentRedSoft,
+      text: colors.accentRed,
+    },
+    EMPTY: {
+      background: colors.surfaceMuted,
+      text: colors.inkSoft,
+    },
+  };
+};

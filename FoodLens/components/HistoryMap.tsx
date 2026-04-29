@@ -12,7 +12,7 @@ import { historyMapStyles as styles } from './historyMap/styles';
 const MAP_MAX_ZOOM = 20;
 const MAP_MIN_ZOOM = 1;
 
-export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
+export default function HistoryMap({ colors, data, initialRegion, onMarkerPress, onReady, onRegionChange }: HistoryMapProps) {
     const resolvedInitialRegion = resolveInitialRegion(initialRegion);
     const totalRecordCount = data.reduce((sum, country) => sum + country.total, 0);
     const {
@@ -39,8 +39,9 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
     });
 
     return (
-        <View style={styles.mapContainer}>
+        <View style={[styles.mapContainer, { backgroundColor: colors.paperStrong }]}>
             <HistoryMapStatusLayers
+                colors={colors}
                 isMapError={isMapError}
                 isMapReady={isMapReady}
                 markersLength={markers.length}
@@ -61,6 +62,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
                 minZoomLevel={MAP_MIN_ZOOM}
             >
                 <HistoryMapMarkers
+                    colors={colors}
                     markers={markers}
                     visibleMarkers={visibleMarkers}
                     visibleClusteredItems={visibleClusteredItems}
@@ -70,6 +72,7 @@ export default function HistoryMap({ data, initialRegion, onMarkerPress, onReady
             </MapView>
 
             <HistoryMapOverlay
+                colors={colors}
                 isMapReady={isMapReady}
                 countryCount={data.length}
                 favoriteCountry={favoriteCountry}

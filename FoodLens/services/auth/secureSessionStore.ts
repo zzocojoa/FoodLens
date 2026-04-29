@@ -26,6 +26,10 @@ export const isNativeModuleUnavailableError = (error: unknown): boolean => {
   return (
     message.includes('cannot find native module') ||
     message.includes('securestore') ||
+    message.includes('client has neither application-identifier nor keychain-access-groups entitlements') ||
+    message.includes('keychain-access-groups') ||
+    message.includes('nsosstatuserrordomain code=-34018') ||
+    message.includes("a required entitlement isn't present") ||
     message.includes('getvaluewithkeyasync is not a function') ||
     message.includes('setvaluewithkeyasync is not a function') ||
     message.includes('deletevaluewithkeyasync is not a function')

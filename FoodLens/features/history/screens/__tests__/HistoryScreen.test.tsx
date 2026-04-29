@@ -58,6 +58,10 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
+jest.mock('@/hooks/use-color-scheme', () => ({
+  useColorScheme: () => 'light',
+}));
+
 jest.mock('@/components/navigation/TopLevelScreenShell', () => {
   const React = require('react');
   const { View } = require('react-native');

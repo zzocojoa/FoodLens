@@ -6,10 +6,12 @@ import {
     historyDashboardRadii as radii,
     historyDashboardSpacing as spacing,
     historyDashboardTypography as typography,
+    type HistoryDashboardColors,
 } from '../../../features/history/components/historyDashboardTokens';
 import { useI18n } from '../../../features/i18n';
 
 type HistoryMapOverlayProps = {
+    colors: HistoryDashboardColors;
     isMapReady: boolean;
     countryCount: number;
     favoriteCountry: string;
@@ -18,6 +20,7 @@ type HistoryMapOverlayProps = {
 };
 
 export default function HistoryMapOverlay({
+    colors: dashboardColors,
     isMapReady,
     countryCount,
     favoriteCountry,
@@ -45,37 +48,54 @@ export default function HistoryMapOverlay({
         <View pointerEvents="box-none" style={styles.overlayRoot}>
             {hasInsights ? (
                 <View pointerEvents="none" style={styles.insightContainer}>
-                    <View style={styles.insightCard}>
-                        <Text style={styles.insightEyebrow}>
+                    <View
+                        style={[
+                            styles.insightCard,
+                            {
+                                backgroundColor: dashboardColors.surfaceStrong,
+                                borderColor: dashboardColors.line,
+                            },
+                        ]}
+                    >
+                        <Text style={[styles.insightEyebrow, { color: dashboardColors.inkSoft }]}>
                             {t('history.map.insights.title', '글로벌 인사이트')}
                         </Text>
                         <View style={styles.metricRow}>
                             <View style={styles.metricBlock}>
-                                <Text style={styles.metricValue}>{countryCount}</Text>
-                                <Text style={styles.metricLabel}>
+                                <Text style={[styles.metricValue, { color: dashboardColors.ink }]}>{countryCount}</Text>
+                                <Text style={[styles.metricLabel, { color: dashboardColors.inkSoft }]}>
                                     {t('history.atlas.metricCountries', '국가')}
                                 </Text>
                             </View>
-                            <View style={styles.metricDivider} />
+                            <View style={[styles.metricDivider, { backgroundColor: dashboardColors.line }]} />
                             <View style={styles.metricBlock}>
-                                <Text style={styles.metricValue}>{totalRecordCount}</Text>
-                                <Text style={styles.metricLabel}>
+                                <Text style={[styles.metricValue, { color: dashboardColors.ink }]}>{totalRecordCount}</Text>
+                                <Text style={[styles.metricLabel, { color: dashboardColors.inkSoft }]}>
                                     {t('history.atlas.metricRecords', '기록')}
                                 </Text>
                             </View>
                         </View>
-                        <Text style={styles.favoriteLabel}>
+                        <Text style={[styles.favoriteLabel, { color: dashboardColors.inkSoft }]}>
                             {t('history.map.insights.favoriteDestination', '선호 여행지')}
                         </Text>
-                        <Text style={styles.favoriteValue}>{favoriteLabel}</Text>
+                        <Text style={[styles.favoriteValue, { color: dashboardColors.ink }]}>{favoriteLabel}</Text>
                     </View>
                 </View>
             ) : null}
 
             {toastMessage ? (
                 <View pointerEvents="box-none" style={[styles.toastContainer, toastAlignment]}>
-                    <View accessibilityLabel={accessibilityLabel} style={styles.toast}>
-                        <Text style={styles.toastText}>{toastMessage}</Text>
+                    <View
+                        accessibilityLabel={accessibilityLabel}
+                        style={[
+                            styles.toast,
+                            {
+                                backgroundColor: dashboardColors.surfaceStrong,
+                                borderColor: dashboardColors.line,
+                            },
+                        ]}
+                    >
+                        <Text style={[styles.toastText, { color: dashboardColors.inkSoft }]}>{toastMessage}</Text>
                     </View>
                 </View>
             ) : null}

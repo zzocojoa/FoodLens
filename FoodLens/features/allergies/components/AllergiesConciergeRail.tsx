@@ -7,9 +7,11 @@ import {
 import {
     AllergiesDashboardTone,
     getAllergiesDashboardToneTokens,
+    type AllergiesDashboardColors,
 } from './allergiesDashboardTokens';
 
 export type AllergiesConciergeRailProps = {
+    colors: AllergiesDashboardColors;
     eyebrow?: string;
     title: string;
     description: string;
@@ -19,6 +21,7 @@ export type AllergiesConciergeRailProps = {
 };
 
 export default function AllergiesConciergeRail({
+    colors,
     eyebrow,
     title,
     description,
@@ -26,15 +29,19 @@ export default function AllergiesConciergeRail({
     savedCountLabel,
     statusTone,
 }: AllergiesConciergeRailProps) {
-    const toneTokens = getAllergiesDashboardToneTokens(statusTone);
+    const toneTokens = getAllergiesDashboardToneTokens(colors, statusTone);
     const hasEyebrow = typeof eyebrow === 'string' && eyebrow.trim().length > 0;
 
     return (
-        <View style={styles.sectionCard}>
+        <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.line }]}>
             <View style={styles.railHeader}>
-                {hasEyebrow ? <Text style={styles.railEyebrow}>{eyebrow}</Text> : null}
-                <Text style={styles.railTitle}>{title}</Text>
-                <Text style={styles.railDescription}>{description}</Text>
+                {hasEyebrow ? (
+                    <Text style={[styles.railEyebrow, { color: colors.inkSoft }]}>{eyebrow}</Text>
+                ) : null}
+                <Text style={[styles.railTitle, { color: colors.ink }]}>{title}</Text>
+                <Text style={[styles.railDescription, { color: colors.inkSoft }]}>
+                    {description}
+                </Text>
             </View>
 
             <View style={styles.railMetaRow}>
@@ -49,8 +56,15 @@ export default function AllergiesConciergeRail({
                 >
                     <Text style={[styles.pillText, { color: toneTokens.textColor }]}>{statusLabel}</Text>
                 </View>
-                <View style={styles.pill}>
-                    <Text style={styles.pillText}>{savedCountLabel}</Text>
+                <View
+                    style={[
+                        styles.pill,
+                        { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+                    ]}
+                >
+                    <Text style={[styles.pillText, { color: colors.inkSoft }]}>
+                        {savedCountLabel}
+                    </Text>
                 </View>
             </View>
         </View>

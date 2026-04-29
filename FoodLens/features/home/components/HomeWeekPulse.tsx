@@ -13,9 +13,13 @@ import {
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 
 type HomeWeekPulseProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   locale: string;
   metaLabel: string;
   selectedDate: Date;
@@ -73,23 +77,25 @@ const getDayLabel = (date: Date, locale: string): string => {
   }).format(date);
 };
 
-const getSignalColor = (tone: WeekSignalTone): string => {
+const getSignalColor = (colors: HomeDashboardColors, tone: WeekSignalTone): string => {
   if (tone === 'DANGER') {
-    return homeDashboardColors.accentRed;
+    return colors.accentRed;
   }
 
   if (tone === 'CAUTION') {
-    return homeDashboardColors.accentAmber;
+    return colors.accentAmber;
   }
 
   if (tone === 'SAFE') {
-    return homeDashboardColors.accentGreen;
+    return colors.accentGreen;
   }
 
-  return homeDashboardColors.lineStrong;
+  return colors.lineStrong;
 };
 
 export function HomeWeekPulse({
+  colorScheme,
+  colors,
   locale,
   metaLabel,
   selectedDate,
@@ -102,18 +108,31 @@ export function HomeWeekPulse({
   );
 
   return (
-    <View style={[homeDashboardStyles.sectionCard, styles.container]}>
-      <PearlSurfaceOverlay
-        accentWashColor={homeDashboardColors.pearlMist}
-        baseBottomColor="#FFF8F0"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={homeDashboardColors.pearlSage}
-        warmWashColor={homeDashboardColors.pearlPeach}
-      />
+    <View
+      style={[
+        homeDashboardStyles.sectionCard,
+        styles.container,
+        { backgroundColor: colors.surface, borderColor: colors.line },
+      ]}
+    >
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={colors.pearlMist}
+          baseBottomColor="#FFF8F0"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={colors.pearlSage}
+          warmWashColor={colors.pearlPeach}
+        />
+      ) : null}
       <View style={homeDashboardStyles.sectionHeaderRow}>
-        <Text style={homeDashboardStyles.sectionTitle}>{title}</Text>
-        <View style={homeDashboardStyles.pill}>
-          <Text style={homeDashboardStyles.pillText}>{metaLabel}</Text>
+        <Text style={[homeDashboardStyles.sectionTitle, { color: colors.ink }]}>{title}</Text>
+        <View
+          style={[
+            homeDashboardStyles.pill,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
+        >
+          <Text style={[homeDashboardStyles.pillText, { color: colors.inkSoft }]}>{metaLabel}</Text>
         </View>
       </View>
 
@@ -128,23 +147,37 @@ export function HomeWeekPulse({
               style={[
                 styles.dayCard,
                 isSelected ? styles.dayCardSelected : null,
+                {
+                  backgroundColor: isSelected ? colors.chip : colors.surfaceStrong,
+                  borderColor: isSelected ? colors.accentBlue : colors.line,
+                },
               ]}
             >
-              <Text style={[styles.dayLabel, isSelected ? styles.dayLabelSelected : null]}>
+              <Text
+                style={[
+                  styles.dayLabel,
+                  isSelected ? styles.dayLabelSelected : null,
+                  { color: isSelected ? colors.accentBlue : colors.inkSoft },
+                ]}
+              >
                 {getDayLabel(item.date, locale)}
               </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.8}
-                style={[styles.dayNumber, isSelected ? styles.dayNumberSelected : null]}
+                style={[
+                  styles.dayNumber,
+                  isSelected ? styles.dayNumberSelected : null,
+                  { color: isSelected ? colors.accentBlue : colors.ink },
+                ]}
               >
                 {item.date.getDate()}
               </Text>
               <View
                 style={[
                   styles.signalDot,
-                  { backgroundColor: getSignalColor(tone) },
+                  { backgroundColor: getSignalColor(colors, tone) },
                   tone === 'EMPTY' ? styles.signalDotEmpty : null,
                 ]}
               />

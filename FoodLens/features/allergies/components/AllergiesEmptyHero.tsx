@@ -4,8 +4,10 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import {
     allergiesDashboardStyles as styles,
 } from './allergiesDashboardStyles';
+import type { AllergiesDashboardColors } from './allergiesDashboardTokens';
 
 export type AllergiesEmptyHeroProps = {
+    colors: AllergiesDashboardColors;
     eyebrow: string;
     title: string;
     description: string;
@@ -16,6 +18,7 @@ export type AllergiesEmptyHeroProps = {
 };
 
 export default function AllergiesEmptyHero({
+    colors,
     eyebrow,
     title,
     description,
@@ -30,13 +33,22 @@ export default function AllergiesEmptyHero({
         secondaryLabel !== undefined && onSecondaryPress !== undefined ? onSecondaryPress : null;
 
     return (
-        <View style={styles.elevatedCard}>
+        <View style={[styles.elevatedCard, { backgroundColor: colors.surfaceStrong, borderColor: colors.line }]}>
             <View style={styles.heroCopy}>
-                <View style={styles.emptyBadge}>
-                    <Text style={styles.emptyBadgeText}>{eyebrow}</Text>
+                <View
+                    style={[
+                        styles.emptyBadge,
+                        { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+                    ]}
+                >
+                    <Text style={[styles.emptyBadgeText, { color: colors.accentBlue }]}>
+                        {eyebrow}
+                    </Text>
                 </View>
-                <Text style={styles.emptyTitle}>{title}</Text>
-                <Text style={styles.emptyDescription}>{description}</Text>
+                <Text style={[styles.emptyTitle, { color: colors.ink }]}>{title}</Text>
+                <Text style={[styles.emptyDescription, { color: colors.inkSoft }]}>
+                    {description}
+                </Text>
             </View>
 
             <View style={styles.emptyActionRow}>
@@ -44,9 +56,14 @@ export default function AllergiesEmptyHero({
                     accessibilityRole="button"
                     onPress={onActionPress}
                     activeOpacity={0.86}
-                    style={styles.primaryActionButton}
+                    style={[
+                        styles.primaryActionButton,
+                        { backgroundColor: colors.ink, borderColor: colors.ink },
+                    ]}
                 >
-                    <Text style={styles.primaryActionButtonText}>{actionLabel}</Text>
+                    <Text style={[styles.primaryActionButtonText, { color: colors.paper }]}>
+                        {actionLabel}
+                    </Text>
                 </TouchableOpacity>
 
                 {secondaryActionLabel !== null && secondaryActionPress !== null ? (
@@ -54,9 +71,14 @@ export default function AllergiesEmptyHero({
                         accessibilityRole="button"
                         onPress={secondaryActionPress}
                         activeOpacity={0.86}
-                        style={styles.secondaryActionButton}
+                        style={[
+                            styles.secondaryActionButton,
+                            { backgroundColor: colors.surfaceMuted, borderColor: colors.lineStrong },
+                        ]}
                     >
-                        <Text style={styles.secondaryActionButtonText}>{secondaryActionLabel}</Text>
+                        <Text style={[styles.secondaryActionButtonText, { color: colors.ink }]}>
+                            {secondaryActionLabel}
+                        </Text>
                     </TouchableOpacity>
                 ) : null}
             </View>

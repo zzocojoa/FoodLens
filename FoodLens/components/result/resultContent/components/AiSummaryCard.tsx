@@ -24,19 +24,25 @@ export default function AiSummaryCard({ colorScheme, theme, summary, t }: AiSumm
         summary,
         t('result.ai.defaultSummary', summaryFallback)
     );
+    const cardColors = {
+        backgroundColor: colors.backgroundColor,
+        borderColor: colors.borderColor,
+    };
 
     return (
         <View
             style={[
                 styles.aiSummaryCard,
-                colors,
+                cardColors,
             ]}
         >
             <View style={styles.aiHeader}>
-                <ShieldCheck size={18} color="#0F766E" />
-                <Text style={styles.aiTitle}>{t('result.ai.title', titleFallback)}</Text>
+                <ShieldCheck size={18} color={colors.iconColor} />
+                <Text style={[styles.aiTitle, { color: colors.titleColor }]}>
+                    {t('result.ai.title', titleFallback)}
+                </Text>
             </View>
-            <Text style={[styles.aiText, { color: theme.textPrimary }]}>
+            <Text style={[styles.aiText, { color: colors.textColor }]}>
                 {summaryText}
             </Text>
         </View>

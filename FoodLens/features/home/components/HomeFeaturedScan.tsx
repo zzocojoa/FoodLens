@@ -16,6 +16,8 @@ import {
   homeDashboardShadows,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 import { getHomeScanStatusBadge } from '../utils/homeUi';
 import { getLocalizedFoodName } from '../utils/localizedFoodName';
@@ -23,6 +25,8 @@ import { getLocalizedFoodName } from '../utils/localizedFoodName';
 type TranslationFunction = (key: string, fallback?: string) => string;
 
 type HomeFeaturedScanProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   item: AnalysisRecord | null;
   locale: string;
   t: TranslationFunction;
@@ -30,6 +34,8 @@ type HomeFeaturedScanProps = {
 };
 
 const getFeaturedSignalColors = (
+  colors: HomeDashboardColors,
+  colorScheme: HomeDashboardColorScheme,
   status: AnalysisRecord['safetyStatus']
 ): {
   glow: string;
@@ -40,34 +46,36 @@ const getFeaturedSignalColors = (
 } => {
   if (status === 'SAFE') {
     return {
-      glow: 'rgba(31, 107, 79, 0.16)',
-      accent: homeDashboardColors.accentGreen,
-      backgroundTop: '#F4F0E7',
-      backgroundBottom: '#D7CCBA',
-      haze: 'rgba(214, 229, 217, 0.52)',
+      glow: colorScheme === 'dark' ? colors.accentGreenSoft : 'rgba(31, 107, 79, 0.16)',
+      accent: colors.accentGreen,
+      backgroundTop: colorScheme === 'dark' ? colors.surfaceStrong : '#F4F0E7',
+      backgroundBottom: colorScheme === 'dark' ? colors.paperStrong : '#D7CCBA',
+      haze: colorScheme === 'dark' ? colors.accentGreenSoft : 'rgba(214, 229, 217, 0.52)',
     };
   }
 
   if (status === 'DANGER') {
     return {
-      glow: 'rgba(185, 70, 62, 0.18)',
-      accent: homeDashboardColors.accentRed,
-      backgroundTop: '#F7EEE8',
-      backgroundBottom: '#E0C9BB',
-      haze: 'rgba(242, 222, 215, 0.5)',
+      glow: colorScheme === 'dark' ? colors.accentRedSoft : 'rgba(185, 70, 62, 0.18)',
+      accent: colors.accentRed,
+      backgroundTop: colorScheme === 'dark' ? colors.surfaceStrong : '#F7EEE8',
+      backgroundBottom: colorScheme === 'dark' ? colors.paperStrong : '#E0C9BB',
+      haze: colorScheme === 'dark' ? colors.accentRedSoft : 'rgba(242, 222, 215, 0.5)',
     };
   }
 
   return {
-    glow: 'rgba(170, 106, 19, 0.18)',
-    accent: homeDashboardColors.accentAmber,
-    backgroundTop: '#F6F0E5',
-    backgroundBottom: '#DBCCB2',
-    haze: 'rgba(239, 228, 198, 0.48)',
+    glow: colorScheme === 'dark' ? colors.accentAmberSoft : 'rgba(170, 106, 19, 0.18)',
+    accent: colors.accentAmber,
+    backgroundTop: colorScheme === 'dark' ? colors.surfaceStrong : '#F6F0E5',
+    backgroundBottom: colorScheme === 'dark' ? colors.paperStrong : '#DBCCB2',
+    haze: colorScheme === 'dark' ? colors.accentAmberSoft : 'rgba(239, 228, 198, 0.48)',
   };
 };
 
 export const HomeFeaturedScan = ({
+  colorScheme,
+  colors,
   item,
   locale,
   t,
@@ -78,21 +86,28 @@ export const HomeFeaturedScan = ({
   }
 
   const localizedFoodName = getLocalizedFoodName(item, locale);
-  const badge = getHomeScanStatusBadge(item.safetyStatus, t);
+  const badge = getHomeScanStatusBadge(item.safetyStatus, t, colors);
   const imageUri = item.isBarcode ? getBarcodeImageUri() : (resolveImageUri(item.imageUri) || undefined);
-  const signalColors = getFeaturedSignalColors(item.safetyStatus);
+  const signalColors = getFeaturedSignalColors(colors, colorScheme, item.safetyStatus);
 
   return (
     <HapticTouchableOpacity
       activeOpacity={0.92}
       hapticType="selection"
       onPress={() => onOpenResult(item)}
-      style={styles.card}
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.surfaceStrong,
+          borderColor: colors.line,
+        },
+      ]}
     >
       <View
         style={[
           styles.media,
           {
+            borderColor: colors.lineStrong,
             shadowColor: signalColors.accent,
           },
         ]}
@@ -101,14 +116,20 @@ export const HomeFeaturedScan = ({
           accentWashColor={signalColors.haze}
           baseBottomColor={signalColors.backgroundBottom}
           baseTopColor={signalColors.backgroundTop}
-          coolWashColor={homeDashboardColors.pearlGlow}
+          coolWashColor={colors.pearlGlow}
           warmWashColor={signalColors.glow}
         />
 
         <View style={styles.ticket}>
           <View style={styles.eyebrowRow}>
-            <View style={[styles.noteChip, styles.latestChip]}>
-              <Text style={[styles.noteChipText, styles.latestChipText]}>
+            <View
+              style={[
+                styles.noteChip,
+                styles.latestChip,
+                { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+              ]}
+            >
+              <Text style={[styles.noteChipText, styles.latestChipText, { color: colors.inkSoft }]}>
                 {t('home.scans.featuredTitle', 'Latest Verdict')}
               </Text>
             </View>
@@ -121,7 +142,7 @@ export const HomeFeaturedScan = ({
             <FoodThumbnail
               uri={imageUri}
               emoji={getEmoji(localizedFoodName)}
-              style={styles.thumbnail}
+              style={[styles.thumbnail, { backgroundColor: colors.surfaceMuted }]}
               imageStyle={styles.thumbnailImage}
               fallbackFontSize={42}
             />
@@ -129,22 +150,30 @@ export const HomeFeaturedScan = ({
 
           <View style={styles.bodyRow}>
             <View style={styles.copyBlock}>
-              <Text style={styles.title} numberOfLines={2}>
+              <Text style={[styles.title, { color: colors.ink }]} numberOfLines={2}>
                 {localizedFoodName}
               </Text>
               <View style={styles.metaRow}>
-                <Clock3 color={homeDashboardColors.inkSoft} size={14} strokeWidth={2.1} />
-                <Text style={styles.metaText}>{formatDate(item.timestamp, locale)}</Text>
+                <Clock3 color={colors.inkSoft} size={14} strokeWidth={2.1} />
+                <Text style={[styles.metaText, { color: colors.inkSoft }]}>
+                  {formatDate(item.timestamp, locale)}
+                </Text>
               </View>
             </View>
 
-            <View pointerEvents="none" style={styles.actionButton}>
-              <ArrowRight color={homeDashboardColors.ink} size={20} strokeWidth={2.2} />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.actionButton,
+                { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+              ]}
+            >
+              <ArrowRight color={colors.ink} size={20} strokeWidth={2.2} />
             </View>
           </View>
 
-          <View style={styles.noteChip}>
-            <Text style={styles.noteChipText}>
+          <View style={[styles.noteChip, { backgroundColor: colors.surfaceMuted, borderColor: colors.line }]}>
+            <Text style={[styles.noteChipText, { color: colors.inkSoft }]}>
               {t('home.scans.featuredHint', 'Open full analysis')}
             </Text>
           </View>

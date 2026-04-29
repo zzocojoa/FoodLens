@@ -24,6 +24,17 @@ describe('startTripFromCurrentLocation', () => {
     mockConsoleError.mockClear();
   });
 
+  it('returns auth required before resolving location when user id is unauthenticated', async () => {
+    await expect(startTripFromCurrentLocation('auth-required')).resolves.toEqual({
+      ok: false,
+      reason: 'auth_required',
+    });
+
+    expect(mockResolveCurrentLocation).not.toHaveBeenCalled();
+    expect(mockStartTrip).not.toHaveBeenCalled();
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
   it('returns location unavailable when recent location lookup cannot resolve a location', async () => {
     mockResolveCurrentLocation.mockRejectedValueOnce(new TripStatsLocationUnavailableError());
 

@@ -7,7 +7,13 @@ import {
   TriangleAlert,
 } from 'lucide-react-native';
 
-import { homeDashboardColors, homeDashboardRadii, homeDashboardSpacing, homeDashboardTypography } from '../../home/components/homeDashboardTokens';
+import {
+  homeDashboardColors,
+  homeDashboardRadii,
+  homeDashboardSpacing,
+  homeDashboardTypography,
+  type HomeDashboardColors,
+} from '../../home/components/homeDashboardTokens';
 import { homeDashboardStyles } from '../../home/components/homeDashboardStyles';
 
 export type AllergiesSeverityGroupKind = 'severe' | 'moderate' | 'mild' | 'dietaryRestrictions';
@@ -19,6 +25,7 @@ export type AllergiesSeveritySectionItem = Readonly<{
 }>;
 
 export type AllergiesSeveritySectionProps = Readonly<{
+  colors: HomeDashboardColors;
   kind: AllergiesSeverityGroupKind;
   title: string;
   subtitle?: string;
@@ -41,53 +48,59 @@ type SeverityIconProps = Readonly<{
   strokeWidth: number;
 }>;
 
-const getSeverityTone = (kind: AllergiesSeverityGroupKind): SeverityTone => {
+const getSeverityTone = (
+  colors: HomeDashboardColors,
+  kind: AllergiesSeverityGroupKind,
+): SeverityTone => {
   if (kind === 'severe') {
     return {
-      accentColor: homeDashboardColors.accentRed,
-      badgeBackgroundColor: homeDashboardColors.accentRedSoft,
-      badgeBorderColor: 'rgba(185, 70, 62, 0.18)',
-      cardBackgroundColor: 'rgba(255, 248, 246, 0.88)',
-      iconBackgroundColor: 'rgba(185, 70, 62, 0.12)',
-      iconColor: homeDashboardColors.accentRed,
+      accentColor: colors.accentRed,
+      badgeBackgroundColor: colors.accentRedSoft,
+      badgeBorderColor: colors.accentRed,
+      cardBackgroundColor: colors.accentRedSoft,
+      iconBackgroundColor: colors.accentRedSoft,
+      iconColor: colors.accentRed,
     };
   }
 
   if (kind === 'mild') {
     return {
-      accentColor: homeDashboardColors.accentGreen,
-      badgeBackgroundColor: homeDashboardColors.accentGreenSoft,
-      badgeBorderColor: 'rgba(31, 107, 79, 0.18)',
-      cardBackgroundColor: 'rgba(247, 251, 247, 0.88)',
-      iconBackgroundColor: 'rgba(31, 107, 79, 0.12)',
-      iconColor: homeDashboardColors.accentGreen,
+      accentColor: colors.accentGreen,
+      badgeBackgroundColor: colors.accentGreenSoft,
+      badgeBorderColor: colors.accentGreen,
+      cardBackgroundColor: colors.accentGreenSoft,
+      iconBackgroundColor: colors.accentGreenSoft,
+      iconColor: colors.accentGreen,
     };
   }
 
   if (kind === 'dietaryRestrictions') {
     return {
-      accentColor: homeDashboardColors.accentBlue,
-      badgeBackgroundColor: 'rgba(36, 56, 93, 0.10)',
-      badgeBorderColor: 'rgba(36, 56, 93, 0.16)',
-      cardBackgroundColor: 'rgba(246, 248, 252, 0.90)',
-      iconBackgroundColor: 'rgba(36, 56, 93, 0.11)',
-      iconColor: homeDashboardColors.accentBlue,
+      accentColor: colors.accentBlue,
+      badgeBackgroundColor: colors.surfaceMuted,
+      badgeBorderColor: colors.line,
+      cardBackgroundColor: colors.surfaceMuted,
+      iconBackgroundColor: colors.surfaceMuted,
+      iconColor: colors.accentBlue,
     };
   }
 
   return {
-    accentColor: homeDashboardColors.accentAmber,
-    badgeBackgroundColor: homeDashboardColors.accentAmberSoft,
-    badgeBorderColor: 'rgba(170, 106, 19, 0.18)',
-    cardBackgroundColor: 'rgba(255, 249, 240, 0.88)',
-    iconBackgroundColor: 'rgba(170, 106, 19, 0.12)',
-    iconColor: homeDashboardColors.accentAmber,
+    accentColor: colors.accentAmber,
+    badgeBackgroundColor: colors.accentAmberSoft,
+    badgeBorderColor: colors.accentAmber,
+    cardBackgroundColor: colors.accentAmberSoft,
+    iconBackgroundColor: colors.accentAmberSoft,
+    iconColor: colors.accentAmber,
   };
 };
 
-const getSeverityIcon = (kind: AllergiesSeverityGroupKind): React.JSX.Element => {
+const getSeverityIcon = (
+  colors: HomeDashboardColors,
+  kind: AllergiesSeverityGroupKind,
+): React.JSX.Element => {
   const iconProps: SeverityIconProps = {
-    color: getSeverityTone(kind).iconColor,
+    color: getSeverityTone(colors, kind).iconColor,
     kind,
     size: 18,
     strokeWidth: 2.2,
@@ -109,6 +122,7 @@ const getSeverityIcon = (kind: AllergiesSeverityGroupKind): React.JSX.Element =>
 };
 
 export function AllergiesSeveritySection({
+  colors,
   kind,
   title,
   subtitle,
@@ -118,20 +132,33 @@ export function AllergiesSeveritySection({
     return null;
   }
 
-  const tone = getSeverityTone(kind);
+  const tone = getSeverityTone(colors, kind);
 
   return (
-    <View style={[localStyles.sectionCard, { backgroundColor: tone.cardBackgroundColor }]}>
+    <View
+      style={[
+        localStyles.sectionCard,
+        { backgroundColor: tone.cardBackgroundColor, borderColor: colors.line },
+      ]}
+    >
       <View style={homeDashboardStyles.sectionHeaderRow}>
         <View style={homeDashboardStyles.sectionHeaderCopy}>
-          <Text style={localStyles.sectionTitle}>{title}</Text>
+          <Text style={[localStyles.sectionTitle, { color: colors.ink }]}>{title}</Text>
           {typeof subtitle === 'string' && subtitle.trim().length > 0 ? (
-            <Text style={localStyles.sectionSubtitle}>{subtitle}</Text>
+            <Text style={[localStyles.sectionSubtitle, { color: colors.inkSoft }]}>
+              {subtitle}
+            </Text>
           ) : null}
         </View>
 
-        <View style={[homeDashboardStyles.pill, localStyles.countPill]}>
-          <Text style={[homeDashboardStyles.pillText, localStyles.countPillText]}>
+        <View
+          style={[
+            homeDashboardStyles.pill,
+            localStyles.countPill,
+            { backgroundColor: colors.surfaceMuted, borderColor: colors.line },
+          ]}
+        >
+          <Text style={[homeDashboardStyles.pillText, localStyles.countPillText, { color: colors.ink }]}>
             {String(items.length)}
           </Text>
         </View>
@@ -144,7 +171,7 @@ export function AllergiesSeveritySection({
             style={[
               localStyles.itemCard,
               {
-                backgroundColor: homeDashboardColors.pearlIvory,
+                backgroundColor: colors.pearlIvory,
                 borderColor: tone.badgeBorderColor,
               },
             ]}
@@ -157,14 +184,14 @@ export function AllergiesSeveritySection({
                 },
               ]}
             >
-              {getSeverityIcon(kind)}
+              {getSeverityIcon(colors, kind)}
             </View>
 
             <View style={localStyles.itemCopy}>
-              <Text numberOfLines={1} style={localStyles.itemPrimary}>
+              <Text numberOfLines={1} style={[localStyles.itemPrimary, { color: colors.ink }]}>
                 {item.primaryLabel}
               </Text>
-              <Text numberOfLines={2} style={localStyles.itemSecondary}>
+              <Text numberOfLines={2} style={[localStyles.itemSecondary, { color: colors.inkSoft }]}>
                 {item.secondaryLabel}
               </Text>
             </View>

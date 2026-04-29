@@ -409,6 +409,39 @@ describe('useTripStatsScreen', () => {
     expect(result.current.startFeedbackLocation).toBeNull();
   });
 
+  it('shows the login required alert when trip start lacks an authenticated user id', async () => {
+    const initialSnapshot = buildSnapshot(null, null);
+    const authRequiredResult = { ok: false as const, reason: 'auth_required' as const };
+
+    mockLoadTripStatsSnapshot.mockResolvedValueOnce(initialSnapshot);
+    mockStartTripFromCurrentLocation.mockResolvedValueOnce(authRequiredResult);
+
+    const { result } = renderHook(() =>
+      useTripStatsScreen({
+        onOpenHistory: jest.fn(),
+        onOpenJourneyEntry: jest.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleStartNewTrip();
+    });
+
+    expect(mockShowTranslatedAlert).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        titleKey: 'tripStats.alert.authRequiredTitle',
+        messageKey: 'tripStats.alert.authRequiredMessage',
+      })
+    );
+    expect(result.current.isLocating).toBe(false);
+    expect(result.current.startFeedbackLocation).toBeNull();
+  });
+
   it('ignores repeated trip start requests while the first one is still running', async () => {
     const initialSnapshot = buildSnapshot(null, null);
     const refreshedSnapshot = buildSnapshot('Daegu, South Korea', 'Daegu, South Korea');

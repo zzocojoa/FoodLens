@@ -119,8 +119,18 @@ const buildOptimisticTripStartState = (
 
 const showTripStartFailureAlert = (
     t: ReturnType<typeof useI18n>['t'],
-    reason: 'permission_denied' | 'location_unavailable' | 'profile_save_failed',
+    reason: 'auth_required' | 'permission_denied' | 'location_unavailable' | 'profile_save_failed',
 ): void => {
+    if (reason === 'auth_required') {
+        showTranslatedAlert(t, {
+            titleKey: 'tripStats.alert.authRequiredTitle',
+            titleFallback: 'Login required',
+            messageKey: 'tripStats.alert.authRequiredMessage',
+            messageFallback: 'Please sign in again to start a trip.',
+        });
+        return;
+    }
+
     if (reason === 'permission_denied') {
         showTranslatedAlert(t, {
             titleKey: 'tripStats.alert.permissionDeniedTitle',

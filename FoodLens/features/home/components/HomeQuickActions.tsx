@@ -13,11 +13,15 @@ import {
   homeDashboardRadii,
   homeDashboardSpacing,
   homeDashboardTypography,
+  type HomeDashboardColors,
+  type HomeDashboardColorScheme,
 } from './homeDashboardTokens';
 import { markHomeNavigationTrace } from '../services/homeNavigationTrace';
 import type { HomeNavigationTraceTarget } from '../services/homeNavigationTrace';
 
 type HomeQuickActionsProps = {
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   allergiesDescription: string;
   allergiesTitle: string;
   allergiesValue: string;
@@ -35,6 +39,8 @@ type HomeQuickActionsProps = {
 type QuickActionCardProps = {
   accentBackgroundColor: string;
   accentTextColor: string;
+  colorScheme: HomeDashboardColorScheme;
+  colors: HomeDashboardColors;
   description: string;
   navigationTraceTarget: HomeNavigationTraceTarget;
   overlayAccentColor: string;
@@ -48,6 +54,8 @@ type QuickActionCardProps = {
 function QuickActionCard({
   accentBackgroundColor,
   accentTextColor,
+  colorScheme,
+  colors,
   description,
   navigationTraceTarget,
   overlayAccentColor,
@@ -69,27 +77,30 @@ function QuickActionCard({
       style={({ pressed }) => [
         homeDashboardStyles.sectionCard,
         styles.card,
+        { backgroundColor: colors.surface, borderColor: colors.line },
         {
           opacity: pressed ? 0.86 : 1,
           transform: [{ scale: pressed ? 0.985 : 1 }],
         },
       ]}
     >
-      <PearlSurfaceOverlay
-        accentWashColor={overlayAccentColor}
-        baseBottomColor="#FFF8F0"
-        baseTopColor={homeDashboardColors.pearlIvory}
-        coolWashColor={overlayCoolColor}
-        warmWashColor={overlayWarmColor}
-      />
+      {colorScheme === 'light' ? (
+        <PearlSurfaceOverlay
+          accentWashColor={overlayAccentColor}
+          baseBottomColor="#FFF8F0"
+          baseTopColor={colors.pearlIvory}
+          coolWashColor={overlayCoolColor}
+          warmWashColor={overlayWarmColor}
+        />
+      ) : null}
       <View style={[styles.valueBadge, { backgroundColor: accentBackgroundColor }]}>
         <Text style={[styles.valueBadgeText, { color: accentTextColor }]}>{value}</Text>
       </View>
       <View style={styles.copyBlock}>
-        <Text numberOfLines={1} style={styles.cardTitle}>
+        <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.ink }]}>
           {title}
         </Text>
-        <Text numberOfLines={4} style={styles.cardDescription}>
+        <Text numberOfLines={4} style={[styles.cardDescription, { color: colors.inkSoft }]}>
           {description}
         </Text>
       </View>
@@ -98,6 +109,8 @@ function QuickActionCard({
 }
 
 export function HomeQuickActions({
+  colorScheme,
+  colors,
   allergiesDescription,
   allergiesTitle,
   allergiesValue,
@@ -114,8 +127,10 @@ export function HomeQuickActions({
   return (
     <View style={styles.row}>
       <QuickActionCard
-        accentBackgroundColor={homeDashboardColors.accentRedSoft}
-        accentTextColor={homeDashboardColors.accentRed}
+        accentBackgroundColor={colors.accentRedSoft}
+        accentTextColor={colors.accentRed}
+        colorScheme={colorScheme}
+        colors={colors}
         description={allergiesDescription}
         overlayAccentColor="rgba(185, 70, 62, 0.18)"
         overlayCoolColor={homeDashboardColors.pearlGlow}
@@ -126,8 +141,10 @@ export function HomeQuickActions({
         onPress={onOpenAllergies}
       />
       <QuickActionCard
-        accentBackgroundColor={homeDashboardColors.accentBlue}
-        accentTextColor={homeDashboardColors.white}
+        accentBackgroundColor={colors.accentBlue}
+        accentTextColor={colorScheme === 'dark' ? homeDashboardColors.black : colors.white}
+        colorScheme={colorScheme}
+        colors={colors}
         description={historyDescription}
         overlayAccentColor="rgba(90, 111, 160, 0.22)"
         overlayCoolColor={homeDashboardColors.pearlMist}
@@ -138,8 +155,10 @@ export function HomeQuickActions({
         onPress={onOpenHistory}
       />
       <QuickActionCard
-        accentBackgroundColor={homeDashboardColors.accentGreenSoft}
-        accentTextColor={homeDashboardColors.accentGreen}
+        accentBackgroundColor={colors.accentGreenSoft}
+        accentTextColor={colors.accentGreen}
+        colorScheme={colorScheme}
+        colors={colors}
         description={tripStatsDescription}
         overlayAccentColor="rgba(31, 107, 79, 0.18)"
         overlayCoolColor={homeDashboardColors.pearlSage}

@@ -1,6 +1,7 @@
 import type { AnalysisRecord } from '@/services/analysisService';
 import { isSameDay } from './homeDashboard';
 import { DEFAULT_FALLBACK_LOCALE } from '@/features/i18n/constants';
+import type { HomeDashboardColors } from '../components/homeDashboardTokens';
 
 type TranslationFunction = (key: string, fallback?: string) => string;
 
@@ -14,26 +15,27 @@ type ScanBadge = {
 
 export const getHomeScanStatusBadge = (
   status: HomeScanStatus,
-  t: TranslationFunction
+  t: TranslationFunction,
+  colors: HomeDashboardColors
 ): ScanBadge => {
   switch (status) {
     case 'SAFE':
       return {
         label: t('result.safety.ok', 'OK'),
-        backgroundColor: '#DCFCE7',
-        textColor: '#15803D',
+        backgroundColor: colors.accentGreenSoft,
+        textColor: colors.accentGreen,
       };
     case 'DANGER':
       return {
         label: t('result.safety.avoid', 'AVOID'),
-        backgroundColor: '#FFE4E6',
-        textColor: '#BE123C',
+        backgroundColor: colors.accentRedSoft,
+        textColor: colors.accentRed,
       };
     default:
       return {
         label: t('result.safety.ask', 'ASK'),
-        backgroundColor: '#FEF3C7',
-        textColor: '#B45309',
+        backgroundColor: colors.accentAmberSoft,
+        textColor: colors.accentAmber,
       };
   }
 };

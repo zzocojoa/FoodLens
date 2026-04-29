@@ -8,14 +8,16 @@ import { useI18n } from '@/features/i18n';
 import { configureHistoryLayoutAnimation } from '../utils/historyLayoutAnimation';
 
 import {
-  historyDashboardColors as colors,
+  getHistoryDashboardToneTokens,
   historyDashboardRadii as radii,
   historyDashboardSpacing as spacing,
   historyDashboardToneTokens,
   historyDashboardTypography as typography,
+  type HistoryDashboardColors,
 } from './historyDashboardTokens';
 
 type HistoryFilterRailProps = {
+  colors: HistoryDashboardColors;
   filter: FilterType;
   isReduceMotionEnabled: boolean;
   onChange: (filter: FilterType) => void;
@@ -29,16 +31,18 @@ const filterToneMap: Record<FilterType, keyof typeof historyDashboardToneTokens>
 };
 
 export default function HistoryFilterRail({
+  colors: dashboardColors,
   filter,
   isReduceMotionEnabled,
   onChange,
 }: HistoryFilterRailProps): React.JSX.Element {
   const { t } = useI18n();
+  const toneTokens = getHistoryDashboardToneTokens(dashboardColors);
 
   return (
     <View style={styles.container}>
       {HISTORY_FILTERS.map((value) => {
-        const tone = historyDashboardToneTokens[filterToneMap[value]];
+        const tone = toneTokens[filterToneMap[value]];
         const isActive = filter === value;
 
         return (
@@ -55,15 +59,15 @@ export default function HistoryFilterRail({
             style={[
               styles.chip,
               {
-                backgroundColor: isActive ? tone.backgroundColor : colors.surfaceStrong,
-                borderColor: isActive ? tone.borderColor : colors.line,
+                backgroundColor: isActive ? tone.backgroundColor : dashboardColors.surfaceStrong,
+                borderColor: isActive ? tone.borderColor : dashboardColors.line,
               },
             ]}
           >
             <Text
               style={[
                 styles.label,
-                { color: isActive ? tone.textColor : colors.inkSoft },
+                { color: isActive ? tone.textColor : dashboardColors.inkSoft },
               ]}
             >
               {toFilterLabel(value, t)}

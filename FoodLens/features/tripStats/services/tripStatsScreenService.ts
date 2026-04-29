@@ -7,6 +7,11 @@ type SerializedTripStartError = {
     message: string;
 };
 
+const isUsableTripStatsUserId = (userId: string): boolean => {
+    const normalizedUserId = userId.trim();
+    return normalizedUserId.length > 0 && normalizedUserId !== 'auth-required';
+};
+
 const serializeTripStartError = (error: unknown): SerializedTripStartError => {
     if (error instanceof Error) {
         return {
@@ -39,6 +44,10 @@ export const loadTripStatsSnapshot = async (userId: string): Promise<TripStatsSn
 export const startTripFromCurrentLocation = async (
     userId: string,
 ): Promise<TripStatsStartTripResult> => {
+    if (!isUsableTripStatsUserId(userId)) {
+        return { ok: false as const, reason: 'auth_required' as const };
+    }
+
     let locationResult: Awaited<ReturnType<typeof tripStatsService.resolveCurrentLocation>>;
     try {
         locationResult = await tripStatsService.resolveCurrentLocation();

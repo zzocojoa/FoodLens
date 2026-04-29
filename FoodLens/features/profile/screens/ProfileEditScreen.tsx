@@ -659,10 +659,12 @@ export default function ProfileEditScreen(): React.JSX.Element {
 
                     <ProfileDeveloperSheet
                         closeLabel={t('profileAtelier.developer.close', 'Close')}
+                        colorScheme={resolvedColorScheme}
                         onClose={() => {
                             setIsBuildFingerprintVisible(false);
                         }}
                         rows={buildFingerprintRows}
+                        theme={Colors[resolvedColorScheme]}
                         title={t('profileAtelier.developer.title', 'Developer Info')}
                         visible={canRevealBuildFingerprint && isBuildFingerprintVisible}
                     />

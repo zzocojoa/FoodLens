@@ -522,6 +522,8 @@
   "tripStats.alert.permissionDeniedMessage": "Location access is needed to tag your trip. Please enable it in settings.",
   "tripStats.alert.failedToGetLocation": "Failed to get location. Please try again.",
   "tripStats.alert.failedToSaveTrip": "Could not save the trip start. Please try again.",
+  "tripStats.alert.authRequiredTitle": "Login required",
+  "tripStats.alert.authRequiredMessage": "Please sign in again to start a trip.",
   "emojiPicker.title": "Emoji Selection",
   "emojiPicker.preview": "Preview",
   "emojiPicker.section.title": "Choose an Emoji",

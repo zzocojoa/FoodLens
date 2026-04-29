@@ -4,7 +4,6 @@ import { ChevronLeft } from 'lucide-react-native';
 import { ProfileTheme } from '../types/profile.types';
 import { profileStyles as styles } from '../styles/profileStyles';
 import { useI18n } from '@/features/i18n';
-import { homeDashboardColors } from '@/features/home/components/homeDashboardTokens';
 
 type ProfileHeaderProps = {
     theme: ProfileTheme;
@@ -14,9 +13,11 @@ type ProfileHeaderProps = {
     saving?: boolean;
 };
 
-export default function ProfileHeader({ onBack, title, onSave, saving }: ProfileHeaderProps) {
+export default function ProfileHeader({ theme, onBack, title, onSave, saving }: ProfileHeaderProps) {
     const { t } = useI18n();
     const resolvedTitle = title ?? t('profile.header.title', 'Health Profile');
+    const headerActionBackgroundColor = theme.textPrimary;
+    const headerActionForegroundColor = theme.background;
 
     return (
         <View style={styles.navBar}>
@@ -26,24 +27,24 @@ export default function ProfileHeader({ onBack, title, onSave, saving }: Profile
                 accessibilityRole="button"
                 accessibilityLabel={t('common.back', 'Back')}
             >
-                <ChevronLeft size={28} color={homeDashboardColors.ink} />
+                <ChevronLeft size={28} color={theme.textPrimary} />
             </TouchableOpacity>
-            <Text style={[styles.navTitle, { color: homeDashboardColors.ink }]}>
+            <Text style={[styles.navTitle, { color: theme.textPrimary }]}>
                 {resolvedTitle}
             </Text>
             <View style={styles.navRightSlot}>
                 {onSave ? (
                     <TouchableOpacity
-                        style={styles.headerSaveButton}
+                        style={[styles.headerSaveButton, { backgroundColor: headerActionBackgroundColor }]}
                         onPress={onSave}
                         disabled={saving === true}
                         accessibilityRole="button"
                         accessibilityLabel={t('profile.health.save', 'Save')}
                     >
                         {saving === true ? (
-                            <ActivityIndicator color={homeDashboardColors.paper} size="small" />
+                            <ActivityIndicator color={headerActionForegroundColor} size="small" />
                         ) : (
-                            <Text style={styles.headerSaveButtonText}>
+                            <Text style={[styles.headerSaveButtonText, { color: headerActionForegroundColor }]}>
                                 {t('profile.health.save', 'Save')}
                             </Text>
                         )}
