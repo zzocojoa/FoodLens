@@ -154,9 +154,9 @@ jobs:
           curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
             -H "Authorization: Bearer ${token}" \
             -o "${history_body}" \
-            "${BASE_URL%/}/me/history?limit=1"
+            "${BASE_URL%/}/me/history?limit=20"
 
-          resolved="$(
+          candidates="$(
             python3 - "${profile_body}" "${history_body}" <<'PY'
           import json
           import sys
@@ -180,31 +180,57 @@ jobs:
 
           history_items = history_payload.get("history") if isinstance(history_payload, dict) else []
           if isinstance(history_items, list):
-              for item in history_items:
+              for index, item in enumerate(history_items):
                   if not isinstance(item, dict):
                       continue
                   entry = item.get("entry") if isinstance(item.get("entry"), dict) else item
                   candidate = signed_remote_render_url(entry.get("image_render_url"))
                   if candidate:
-                      print(f"history.image_render_url\t{candidate}")
-                      raise SystemExit(0)
+                      print(f"history[{index}].image_render_url\t{candidate}")
 
           profile = profile_payload.get("profile") if isinstance(profile_payload, dict) else {}
           if isinstance(profile, dict):
               candidate = signed_remote_render_url(profile.get("profile_image_render_url"))
               if candidate:
                   print(f"profile.profile_image_render_url\t{candidate}")
-                  raise SystemExit(0)
-
-          raise SystemExit("Smoke account has no signed /media/render URL in /me/history or /me/profile")
           PY
           )"
-          source="${resolved%%$'\t'*}"
-          media_render_url="${resolved#*$'\t'}"
-          echo "::add-mask::${media_render_url}"
-          printf 'MEDIA_RENDER_URL=%s\n' "${media_render_url}" >> "${GITHUB_ENV}"
+          if [[ -z "${candidates}" ]]; then
+            echo "Smoke account has no signed /media/render URL in /me/history or /me/profile."
+            exit 1
+          fi
+
+          selected_source=""
+          selected_url=""
+          while IFS=$'\t' read -r candidate_source candidate_url; do
+            if [[ -z "${candidate_url}" ]]; then
+              continue
+            fi
+            echo "::add-mask::${candidate_url}"
+            probe_meta="${RUNNER_TEMP}/perf-render-probe.meta"
+            probe_body="${RUNNER_TEMP}/perf-render-probe.body"
+            curl -sS --connect-timeout 15 --max-time 30 --retry 2 --retry-delay 1 --retry-all-errors \
+              -H "Accept: image/webp,image/*,*/*;q=0.8" \
+              -o "${probe_body}" \
+              -w '%{http_code}\t%{content_type}' \
+              "${candidate_url}" > "${probe_meta}" || true
+            IFS=$'\t' read -r probe_status probe_content_type < "${probe_meta}"
+            if [[ "${probe_status}" == "200" && "${probe_content_type}" == image/* ]]; then
+              selected_source="${candidate_source}"
+              selected_url="${candidate_url}"
+              break
+            fi
+            echo "Skipped render URL candidate ${candidate_source}: status=${probe_status} content_type=${probe_content_type}"
+          done <<< "${candidates}"
+
+          if [[ -z "${selected_url}" ]]; then
+            echo "No signed /media/render URL candidate returned 200 with image/* content type."
+            exit 1
+          fi
+
+          printf 'MEDIA_RENDER_URL=%s\n' "${selected_url}" >> "${GITHUB_ENV}"
           printf 'AUTH_BEARER_TOKEN=%s\n' "${token}" >> "${GITHUB_ENV}"
-          echo "MEDIA_RENDER_URL source: ${source}"
+          echo "MEDIA_RENDER_URL source: ${selected_source}"
 
       - name: Validate performance inputs
         env:

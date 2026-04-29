@@ -57,9 +57,12 @@ def _extract_metric(summary: dict[str, Any], name: str, field: str) -> float | N
     if not isinstance(metric, dict):
         return None
     values = metric.get("values")
-    if not isinstance(values, dict):
-        return None
-    raw = values.get(field)
+    if isinstance(values, dict):
+        raw = values.get(field)
+    elif field == "rate":
+        raw = metric.get("rate", metric.get("value"))
+    else:
+        raw = metric.get(field)
     if raw is None:
         return None
     try:
