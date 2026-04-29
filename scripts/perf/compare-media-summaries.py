@@ -6,8 +6,19 @@ import json
 import math
 import sys
 from pathlib import Path
+from typing import Any, TypedDict
 
-MetricRule = dict[str, str]
+
+class MetricRule(TypedDict):
+    name: str
+    field: str
+    direction: str
+
+
+class ThresholdRule(TypedDict):
+    name: str
+    field: str
+    max_value: float
 
 METRIC_RULES: list[MetricRule] = [
     {"name": "http_req_failed", "field": "rate", "direction": "lower"},
@@ -19,16 +30,35 @@ METRIC_RULES: list[MetricRule] = [
     {"name": "analyze_latency", "field": "p(95)", "direction": "lower"},
 ]
 
+THRESHOLD_RULES: list[ThresholdRule] = [
+    {"name": "http_req_failed", "field": "rate", "max_value": 0.10},
+    {"name": "render_failure_rate", "field": "rate", "max_value": 0.05},
+    {"name": "render_latency", "field": "p(95)", "max_value": 1500.0},
+    {"name": "profile_failure_rate", "field": "rate", "max_value": 0.10},
+    {"name": "profile_latency", "field": "p(95)", "max_value": 1200.0},
+    {"name": "analyze_failure_rate", "field": "rate", "max_value": 0.20},
+    {"name": "analyze_latency", "field": "p(95)", "max_value": 2500.0},
+]
 
-def _read_summary(path: Path) -> dict:
+
+def _read_summary(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fp:
-        return json.load(fp)
+        raw: Any = json.load(fp)
+    if not isinstance(raw, dict):
+        raise ValueError(f"summary JSON must be an object: path={path}")
+    return raw
 
 
-def _extract_metric(summary: dict, name: str, field: str) -> float | None:
-    metrics = summary.get("metrics") or {}
-    metric = metrics.get(name) or {}
-    values = metric.get("values") or {}
+def _extract_metric(summary: dict[str, Any], name: str, field: str) -> float | None:
+    metrics = summary.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    metric = metrics.get(name)
+    if not isinstance(metric, dict):
+        return None
+    values = metric.get("values")
+    if not isinstance(values, dict):
+        return None
     raw = values.get(field)
     if raw is None:
         return None
@@ -56,12 +86,47 @@ def _pct(before: float | None, after: float | None) -> str:
     return f"{((after - before) / before) * 100:+.2f}%"
 
 
-def _is_regression(before: float | None, after: float | None, direction: str) -> bool:
+def _is_regression(
+    before: float | None,
+    after: float | None,
+    direction: str,
+    max_regression_percent: float,
+) -> bool:
     if before is None or after is None:
         return False
     if direction == "lower":
-        return after > before
-    return after < before
+        if before == 0:
+            return after > before
+        allowed_after = before * (1 + (max_regression_percent / 100))
+        return after > allowed_after
+    if before == 0:
+        return after < before
+    allowed_after = before * (1 - (max_regression_percent / 100))
+    return after < allowed_after
+
+
+def _is_threshold_failure(after: float | None, threshold: float | None) -> bool:
+    if after is None or threshold is None:
+        return False
+    return after >= threshold
+
+
+def _thresholds_by_metric(rules: list[ThresholdRule]) -> dict[str, float]:
+    return {f"{rule['name']}.{rule['field']}": rule["max_value"] for rule in rules}
+
+
+def _non_negative_float(raw: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"must be a non-negative finite number: value={raw}"
+        ) from exc
+    if value < 0 or math.isnan(value) or math.isinf(value):
+        raise argparse.ArgumentTypeError(
+            f"must be a non-negative finite number: value={raw}"
+        )
+    return value
 
 
 def main() -> int:
@@ -73,6 +138,17 @@ def main() -> int:
         action="store_true",
         help="Exit 1 if any tracked metric regresses.",
     )
+    parser.add_argument(
+        "--max-regression-percent",
+        type=_non_negative_float,
+        default=0.0,
+        help="Allowed percent increase before lower-is-better metrics are flagged.",
+    )
+    parser.add_argument(
+        "--enforce-thresholds",
+        action="store_true",
+        help="Exit 1 if the new summary violates tracked k6 absolute thresholds.",
+    )
     args = parser.parse_args()
 
     before_path = Path(args.before)
@@ -81,28 +157,59 @@ def main() -> int:
     after = _read_summary(after_path)
 
     regressions = 0
-    header = f"{'metric':<24} {'before':>12} {'after':>12} {'delta':>10} {'status':>12}"
+    threshold_failures = 0
+    thresholds = _thresholds_by_metric(THRESHOLD_RULES)
+    if args.enforce_thresholds:
+        header = f"{'metric':<24} {'before':>12} {'after':>12} {'delta':>10} {'threshold':>12} {'status':>18}"
+    else:
+        header = f"{'metric':<24} {'before':>12} {'after':>12} {'delta':>10} {'status':>12}"
     print(header)
     print("-" * len(header))
     for rule in METRIC_RULES:
         name = rule["name"]
         field = rule["field"]
         direction = rule["direction"]
+        metric_key = f"{name}.{field}"
         before_value = _extract_metric(before, name, field)
         after_value = _extract_metric(after, name, field)
-        regressed = _is_regression(before_value, after_value, direction)
+        regressed = _is_regression(
+            before_value,
+            after_value,
+            direction,
+            args.max_regression_percent,
+        )
+        threshold = thresholds.get(metric_key)
+        threshold_failed = args.enforce_thresholds and _is_threshold_failure(after_value, threshold)
         if regressed:
             regressions += 1
-        status = "regressed" if regressed else "ok"
-        print(
-            f"{name + '.' + field:<24} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {status:>12}"
-        )
+        if threshold_failed:
+            threshold_failures += 1
+        status_parts: list[str] = []
+        if regressed:
+            status_parts.append("regressed")
+        if threshold_failed:
+            status_parts.append("threshold")
+        status = ",".join(status_parts) if status_parts else "ok"
+        if args.enforce_thresholds:
+            print(
+                f"{metric_key:<24} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {_fmt(threshold):>12} {status:>18}"
+            )
+        else:
+            print(
+                f"{metric_key:<24} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {status:>12}"
+            )
 
     print("")
     print(f"before={before_path}")
     print(f"after={after_path}")
+    if args.max_regression_percent > 0:
+        print(f"max_regression_percent={args.max_regression_percent:.2f}")
     print(f"regressions={regressions}")
+    if args.enforce_thresholds:
+        print(f"threshold_failures={threshold_failures}")
     if args.fail_on_regression and regressions > 0:
+        return 1
+    if args.enforce_thresholds and threshold_failures > 0:
         return 1
     return 0
 
