@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 
 import HistoryScreen from '../HistoryScreen';
 import { useHistoryData } from '@/hooks/useHistoryData';
@@ -15,6 +16,16 @@ const mockRouterBack = jest.fn();
 const mockRouterNavigate = jest.fn();
 const mockRouterPush = jest.fn();
 const mockTopLevelShell = jest.fn();
+
+type MockHistoryCountryChaptersProps = {
+  contentContainerStyle: StyleProp<ViewStyle>;
+  isLoadingInitial: boolean;
+  listHeaderComponent: React.ReactElement;
+  onEntryPress: (entry: { record: { id: string } }) => void;
+  refreshControl: React.ReactElement;
+};
+
+const mockHistoryCountryChapters = jest.fn<void, [MockHistoryCountryChaptersProps]>();
 
 type ProfileUpdateListener = (
   reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write'
@@ -141,19 +152,41 @@ jest.mock('../../components/HistorySelectionUtilityBar', () => ({
 jest.mock('../../components/HistoryCountryChapters', () => ({
   __esModule: true,
   default: ({
+    contentContainerStyle,
+    isLoadingInitial,
+    listHeaderComponent,
     onEntryPress,
+    refreshControl,
   }: {
+    contentContainerStyle: StyleProp<ViewStyle>;
+    isLoadingInitial: boolean;
+    listHeaderComponent: React.ReactElement;
     onEntryPress: (entry: { record: { id: string } }) => void;
+    refreshControl: React.ReactElement;
   }) => {
     const React = require('react');
-    const { Pressable, Text } = require('react-native');
+    const { Pressable, Text, View } = require('react-native');
+    mockHistoryCountryChapters({
+      contentContainerStyle,
+      isLoadingInitial,
+      listHeaderComponent,
+      onEntryPress,
+      refreshControl,
+    });
     return React.createElement(
-      Pressable,
-      {
-        onPress: () => onEntryPress({ record: { id: 'record-1' } }),
-        testID: 'history-chapters',
-      },
-      React.createElement(Text, null, 'chapters')
+      View,
+      null,
+      listHeaderComponent,
+      isLoadingInitial
+        ? null
+        : React.createElement(
+            Pressable,
+            {
+              onPress: () => onEntryPress({ record: { id: 'record-1' } }),
+              testID: 'history-chapters',
+            },
+            React.createElement(Text, null, 'chapters')
+          )
     );
   },
 }));
@@ -575,6 +608,112 @@ describe('HistoryScreen', () => {
     fireEvent.press(screen.getByTestId('history-selection-select-all'));
 
     expect(replaceSelection).toHaveBeenCalledWith(new Set<string>(['visible-item']));
+  });
+
+  it('skips visible selection scans outside edit mode for large expanded chapters', () => {
+    const baseHistoryData = createHistoryDataMock();
+    const matchesFilter = jest.fn(() => true);
+
+    mockedUseHistoryData.mockReturnValue({
+      ...baseHistoryData,
+      expandedCountries: new Set<string>(['대한민국-0']),
+      countryChapters: [
+        {
+          ...baseHistoryData.countryChapters[0],
+          id: '대한민국-0',
+          countryData: {
+            ...baseHistoryData.countryChapters[0].countryData,
+            regions: [
+              {
+                name: '대구광역시',
+                items: Array.from({ length: 1000 }, (_unused, index) => ({
+                  emoji: '🍜',
+                  id: `large-item-${index}`,
+                  name: `라면 ${index}`,
+                  originalRecord: { id: `large-record-${index}` } as never,
+                  timestamp: new Date('2026-04-20T00:00:00.000Z'),
+                  type: 'ok' as const,
+                })),
+              },
+            ],
+          },
+        },
+      ],
+    });
+    mockedUseHistoryFilter.mockReturnValue({
+      archiveFilter: 'all',
+      getFilteredItemsCount: jest.fn(() => 1000),
+      isAllowedItemType: ((type: string | undefined): type is 'ask' | 'avoid' | 'ok' => Boolean(type)),
+      matchesFilter,
+      setArchiveFilter: jest.fn(),
+    });
+    mockedUseHistoryScreen.mockReturnValue({
+      archiveMode: 'list',
+      handleBulkDelete: jest.fn(),
+      handleSwitchMode: jest.fn(),
+      isEditMode: false,
+      isMapModeAvailable: true,
+      replaceSelection: jest.fn(),
+      savedMapRegion: null,
+      savedMapRegionRef: { current: null },
+      selectedItems: new Set<string>(),
+      setSavedMapRegion: jest.fn(),
+      toggleEditMode: jest.fn(),
+      toggleSelectItem: jest.fn(),
+    });
+
+    render(<HistoryScreen />);
+
+    expect(matchesFilter).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('history-selection')).toBeNull();
+  });
+
+  it('keeps persistence callbacks stable across unchanged list rerenders', () => {
+    mockedUseHistoryData.mockReturnValue(createHistoryDataMock());
+    mockedUseHistoryFilter.mockReturnValue({
+      archiveFilter: 'all',
+      getFilteredItemsCount: jest.fn(() => 1),
+      isAllowedItemType: ((type: string | undefined): type is 'ask' | 'avoid' | 'ok' => Boolean(type)),
+      matchesFilter: jest.fn(() => true),
+      setArchiveFilter: jest.fn(),
+    });
+    mockedUseHistoryScreen.mockReturnValue({
+      archiveMode: 'list',
+      handleBulkDelete: jest.fn(),
+      handleSwitchMode: jest.fn(),
+      isEditMode: false,
+      isMapModeAvailable: true,
+      replaceSelection: jest.fn(),
+      savedMapRegion: null,
+      savedMapRegionRef: { current: null },
+      selectedItems: new Set<string>(),
+      setSavedMapRegion: jest.fn(),
+      toggleEditMode: jest.fn(),
+      toggleSelectItem: jest.fn(),
+    });
+
+    const view = render(<HistoryScreen />);
+    const firstFilterOptions = mockedUseHistoryFilter.mock.calls[0]?.[0];
+    const firstScreenOptions = mockedUseHistoryScreen.mock.calls[0]?.[0];
+    const firstListProps = mockHistoryCountryChapters.mock.calls[0]?.[0];
+
+    if (!firstFilterOptions || !firstScreenOptions || !firstListProps) {
+      throw new Error('Expected history hooks to be called on first render');
+    }
+
+    view.rerender(<HistoryScreen />);
+    const nextFilterOptions = mockedUseHistoryFilter.mock.calls[1]?.[0];
+    const nextScreenOptions = mockedUseHistoryScreen.mock.calls[1]?.[0];
+    const nextListProps = mockHistoryCountryChapters.mock.calls[1]?.[0];
+
+    if (!nextFilterOptions || !nextScreenOptions || !nextListProps) {
+      throw new Error('Expected history hooks to be called on rerender');
+    }
+
+    expect(nextFilterOptions.onFilterChange).toBe(firstFilterOptions.onFilterChange);
+    expect(nextScreenOptions.onArchiveModeChange).toBe(firstScreenOptions.onArchiveModeChange);
+    expect(nextListProps.contentContainerStyle).toBe(firstListProps.contentContainerStyle);
+    expect(nextListProps.refreshControl).toBe(firstListProps.refreshControl);
   });
 
   it('ignores client_state_write profile updates', () => {

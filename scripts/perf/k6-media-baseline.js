@@ -4,25 +4,64 @@ import { Rate, Trend } from 'k6/metrics';
 
 const baseUrl = (__ENV.BASE_URL || '').replace(/\/+$/, '');
 const mediaRenderUrl = (__ENV.MEDIA_RENDER_URL || '').trim();
+const mediaRenderCacheHitUrl = (__ENV.MEDIA_RENDER_CACHE_HIT_URL || '').trim();
+const mediaRenderCacheMissUrlsPath = (__ENV.MEDIA_RENDER_CACHE_MISS_URLS_PATH || '').trim();
 const authBearerToken = (__ENV.AUTH_BEARER_TOKEN || '').trim();
-const enableAnalyze = (__ENV.ENABLE_ANALYZE || '0').trim() === '1';
+const enableAnalyzeRaw = (__ENV.ENABLE_ANALYZE || '0').trim();
+const enableAnalyze = enableAnalyzeRaw === '1';
 const analyzePath = (__ENV.ANALYZE_PATH || '').trim();
 const analyzeLocale = (__ENV.ANALYZE_LOCALE || 'ko-KR').trim();
 const analyzeAllergy = (__ENV.ANALYZE_ALLERGY || 'egg').trim();
 const thinkTimeMs = Number(__ENV.THINK_TIME_MS || '200');
-const analyzeEvery = Math.max(1, Number(__ENV.ANALYZE_EVERY || '10'));
+const analyzeEvery = Number(__ENV.ANALYZE_EVERY || '10');
+const renderCacheMissEvery = Number(__ENV.RENDER_CACHE_MISS_EVERY || '1');
+const requireMediaRenderCacheHeader = (__ENV.REQUIRE_MEDIA_RENDER_CACHE_HEADER || '0').trim() === '1';
+
+function parseUrlList(raw) {
+  return String(raw || '')
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+const mediaRenderCacheMissUrls = parseUrlList(
+  mediaRenderCacheMissUrlsPath
+    ? open(mediaRenderCacheMissUrlsPath)
+    : (__ENV.MEDIA_RENDER_CACHE_MISS_URLS || __ENV.MEDIA_RENDER_CACHE_MISS_URL || ''),
+);
 
 if (!mediaRenderUrl) {
   throw new Error('MEDIA_RENDER_URL is required.');
 }
+if (enableAnalyzeRaw !== '0' && enableAnalyzeRaw !== '1') {
+  throw new Error('ENABLE_ANALYZE must be 0 or 1.');
+}
+if (!isSignedMediaRenderUrl(mediaRenderUrl)) {
+  throw new Error('MEDIA_RENDER_URL must be an http(s) signed /media/render URL with exp and sig query params.');
+}
+if (mediaRenderCacheHitUrl && !isSignedMediaRenderUrl(mediaRenderCacheHitUrl)) {
+  throw new Error('MEDIA_RENDER_CACHE_HIT_URL must be an http(s) signed /media/render URL with exp and sig query params.');
+}
+if (mediaRenderCacheMissUrls.some((url) => !isSignedMediaRenderUrl(url))) {
+  throw new Error('MEDIA_RENDER_CACHE_MISS_URLS must contain only http(s) signed /media/render URLs with exp and sig query params.');
+}
+if (mediaRenderCacheMissUrls.length > 0 && !isPositiveInteger(renderCacheMissEvery)) {
+  throw new Error('RENDER_CACHE_MISS_EVERY must be a positive integer when cache-miss URLs are configured.');
+}
 if ((authBearerToken || enableAnalyze) && !baseUrl) {
   throw new Error('BASE_URL is required when AUTH_BEARER_TOKEN is set or ENABLE_ANALYZE=1.');
+}
+if (!Number.isFinite(thinkTimeMs)) {
+  throw new Error('THINK_TIME_MS must be numeric.');
 }
 
 let analyzeBinary = null;
 if (enableAnalyze) {
   if (!analyzePath) {
     throw new Error('ANALYZE_PATH is required when ENABLE_ANALYZE=1.');
+  }
+  if (!isPositiveInteger(analyzeEvery)) {
+    throw new Error('ANALYZE_EVERY must be a positive integer when ENABLE_ANALYZE=1.');
   }
   analyzeBinary = open(analyzePath, 'b');
 }
@@ -35,6 +74,15 @@ const renderStatus5xxRate = new Rate('render_status_5xx_rate');
 const renderStatusOtherRate = new Rate('render_status_other_rate');
 const renderContentTypeMismatchRate = new Rate('render_content_type_mismatch_rate');
 const renderLatency = new Trend('render_latency', true);
+const renderCacheHitFailureRate = new Rate('render_cache_hit_failure_rate');
+const renderCacheHitContentTypeMismatchRate = new Rate('render_cache_hit_content_type_mismatch_rate');
+const renderCacheHitLatency = new Trend('render_cache_hit_latency', true);
+const renderCacheMissFailureRate = new Rate('render_cache_miss_failure_rate');
+const renderCacheMissContentTypeMismatchRate = new Rate('render_cache_miss_content_type_mismatch_rate');
+const renderCacheMissLatency = new Trend('render_cache_miss_latency', true);
+const renderCacheDisabledRate = new Rate('render_cache_disabled_rate');
+const renderCacheUnknownRate = new Rate('render_cache_unknown_rate');
+const renderCacheUnknownLatency = new Trend('render_cache_unknown_latency', true);
 const profileMetrics = authBearerToken
   ? {
     failureRate: new Rate('profile_failure_rate'),
@@ -51,7 +99,24 @@ const analyzeMetrics = enableAnalyze
 const thresholds = {
   http_req_failed: ['rate<0.10'],
   render_failure_rate: ['rate<0.05'],
+  render_content_type_mismatch_rate: ['rate<0.00001'],
   render_latency: ['p(95)<1500'],
+  render_cache_hit_content_type_mismatch_rate: ['rate<0.00001'],
+  ...(requireMediaRenderCacheHeader
+    ? {
+      render_cache_hit_failure_rate: ['rate<0.05'],
+      render_cache_hit_latency: ['p(95)<1500'],
+      render_cache_disabled_rate: ['rate<0.00001'],
+      render_cache_unknown_rate: ['rate<0.00001'],
+    }
+    : {}),
+  ...(requireMediaRenderCacheHeader && mediaRenderCacheMissUrls.length > 0
+    ? {
+      render_cache_miss_failure_rate: ['rate<0.05'],
+      render_cache_miss_latency: ['p(95)<2500'],
+    }
+    : {}),
+  render_cache_miss_content_type_mismatch_rate: ['rate<0.00001'],
   ...(profileMetrics
     ? {
       profile_failure_rate: ['rate<0.10'],
@@ -102,15 +167,61 @@ function isStatusOther(status) {
   );
 }
 
-function isImageContentType(headers) {
-  const contentType = Object.entries(headers).find(
-    ([name]) => name.toLowerCase() === 'content-type',
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+function isSignedMediaRenderUrl(value) {
+  const text = String(value || '').trim();
+  return (
+    !/[\n\r\t]/.test(text)
+    && /^https?:\/\//.test(text)
+    && text.includes('/media/render/')
+    && /[?&]exp=/.test(text)
+    && /[?&]sig=/.test(text)
+  );
+}
+
+function getHeader(headers, headerName) {
+  return Object.entries(headers).find(
+    ([name]) => name.toLowerCase() === headerName.toLowerCase(),
   )?.[1];
+}
+
+function isImageContentType(headers) {
+  const contentType = getHeader(headers, 'content-type');
   return String(contentType || '').trim().toLowerCase().startsWith('image/');
 }
 
-function runRenderRequest() {
-  const response = http.get(mediaRenderUrl, {
+function normalizeCacheStatus(headers) {
+  const cacheStatus = String(getHeader(headers, 'x-media-render-cache') || '').trim().toLowerCase();
+  if (cacheStatus === 'hit' || cacheStatus === 'miss' || cacheStatus === 'disabled') {
+    return cacheStatus;
+  }
+  return 'unknown';
+}
+
+function recordSplitRenderMetrics(response, ok, renderContentTypeMatches) {
+  const cacheStatus = normalizeCacheStatus(response.headers);
+  renderCacheDisabledRate.add(cacheStatus === 'disabled');
+  renderCacheUnknownRate.add(cacheStatus === 'unknown');
+  if (cacheStatus === 'hit') {
+    renderCacheHitLatency.add(response.timings.duration);
+    renderCacheHitFailureRate.add(!ok);
+    renderCacheHitContentTypeMismatchRate.add(isStatus2xx(response.status) && !renderContentTypeMatches);
+    return;
+  }
+  if (cacheStatus === 'miss') {
+    renderCacheMissLatency.add(response.timings.duration);
+    renderCacheMissFailureRate.add(!ok);
+    renderCacheMissContentTypeMismatchRate.add(isStatus2xx(response.status) && !renderContentTypeMatches);
+    return;
+  }
+  renderCacheUnknownLatency.add(response.timings.duration);
+}
+
+function runRenderRequest(url) {
+  const response = http.get(url, {
     headers: { Accept: 'image/webp,image/*,*/*;q=0.8' },
   });
   const renderContentTypeMatches = isImageContentType(response.headers);
@@ -126,6 +237,14 @@ function runRenderRequest() {
     'render content type image/*': (r) => isImageContentType(r.headers),
   });
   renderFailureRate.add(!ok);
+  recordSplitRenderMetrics(response, ok, renderContentTypeMatches);
+}
+
+function selectCacheMissUrl() {
+  if (mediaRenderCacheMissUrls.length === 0 || __ITER % renderCacheMissEvery !== 0) {
+    return '';
+  }
+  return mediaRenderCacheMissUrls[(__VU + __ITER) % mediaRenderCacheMissUrls.length];
 }
 
 function runProfileRequest() {
@@ -161,7 +280,11 @@ function runAnalyzeRequest() {
 }
 
 export default function () {
-  runRenderRequest();
+  runRenderRequest(mediaRenderCacheHitUrl || mediaRenderUrl);
+  const cacheMissUrl = selectCacheMissUrl();
+  if (cacheMissUrl) {
+    runRenderRequest(cacheMissUrl);
+  }
   runProfileRequest();
   runAnalyzeRequest();
   sleep(Math.max(0, thinkTimeMs) / 1000);

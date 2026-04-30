@@ -7,6 +7,7 @@ const zlib = require('zlib');
 const { spawnSync } = require('child_process');
 
 const MIB_BYTES = 1024 * 1024;
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 const HERMES_LIMIT_BYTES = Math.floor(6.8 * MIB_BYTES);
 const SOURCEMAP_LIMIT_BYTES = 20 * MIB_BYTES;
 const ASSET_PAYLOAD_LIMIT_BYTES = Math.floor(9.5 * MIB_BYTES);
@@ -23,6 +24,9 @@ const parseArguments = (argv) => {
     outputDir: process.env.MOBILE_BUNDLE_OUTPUT_DIR || path.join(os.tmpdir(), 'foodlens-mobile-bundle-export'),
     summaryFile: process.env.MOBILE_BUNDLE_SUMMARY_FILE || '',
     skipExport: process.env.MOBILE_BUNDLE_SKIP_EXPORT === '1',
+    allowStaleExport: process.env.MOBILE_BUNDLE_ALLOW_STALE_EXPORT === '1',
+    requireFreshExport: false,
+    explicitSkipExport: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,16 +54,44 @@ const parseArguments = (argv) => {
 
     if (argument === '--skip-export') {
       options.skipExport = true;
+      options.explicitSkipExport = true;
+      continue;
+    }
+
+    if (argument === '--allow-stale-export') {
+      options.allowStaleExport = true;
+      continue;
+    }
+
+    if (argument === '--require-fresh-export') {
+      options.requireFreshExport = true;
       continue;
     }
 
     throw new Error(`Unknown argument: ${argument}`);
   }
 
+  if (options.requireFreshExport && options.explicitSkipExport) {
+    throw new Error('--require-fresh-export cannot be combined with --skip-export');
+  }
+
+  if (options.requireFreshExport) {
+    options.skipExport = false;
+    options.allowStaleExport = false;
+  }
+
+  if (options.skipExport && !options.allowStaleExport) {
+    throw new Error(
+      'Refusing to run bundle size gate against a stale export. Use --skip-export with --allow-stale-export only for explicit local rechecks.'
+    );
+  }
+
   return {
     outputDir: path.resolve(options.outputDir),
     summaryFile: path.resolve(options.summaryFile || path.join(options.outputDir, 'mobile-bundle-size-summary.json')),
     skipExport: options.skipExport,
+    allowStaleExport: options.allowStaleExport,
+    requireFreshExport: options.requireFreshExport,
   };
 };
 
@@ -216,6 +248,33 @@ const collectAssetMapFileNames = (value) => {
   return [];
 };
 
+const resolveAssetMapFilePath = (outputDir, fileName) => {
+  const normalizedFileName = fileName.split('\\').join('/');
+  const pathParts = normalizedFileName.split('/');
+  const resolvedProjectRoot = path.resolve(PROJECT_ROOT);
+
+  if (path.isAbsolute(fileName)) {
+    const resolvedAbsolutePath = path.resolve(fileName);
+    if (resolvedAbsolutePath !== resolvedProjectRoot && !resolvedAbsolutePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) {
+      throw new Error(`Asset map file path must stay inside project root or export output: ${fileName}`);
+    }
+
+    return resolvedAbsolutePath;
+  }
+
+  if (pathParts.includes('..')) {
+    throw new Error(`Asset map file path must stay inside project root or export output: ${fileName}`);
+  }
+
+  const resolvedOutputDir = path.resolve(outputDir);
+  const resolvedFilePath = path.resolve(resolvedOutputDir, normalizedFileName);
+  if (resolvedFilePath !== resolvedOutputDir && !resolvedFilePath.startsWith(`${resolvedOutputDir}${path.sep}`)) {
+    throw new Error(`Asset map file path must stay inside project root or export output: ${fileName}`);
+  }
+
+  return resolvedFilePath;
+};
+
 const getAssetFilesFromAssetMap = (files, outputDir) => {
   const assetMapPath = files.find((filePath) => path.basename(filePath) === 'assetmap.json');
   if (!assetMapPath) {
@@ -227,7 +286,7 @@ const getAssetFilesFromAssetMap = (files, outputDir) => {
     left.localeCompare(right)
   );
   const absoluteFiles = assetFileNames
-    .map((fileName) => path.resolve(outputDir, fileName))
+    .map((fileName) => resolveAssetMapFilePath(outputDir, fileName))
     .filter((filePath) => fs.existsSync(filePath) && fs.statSync(filePath).isFile());
 
   return absoluteFiles.sort((left, right) => left.localeCompare(right));
@@ -395,7 +454,7 @@ const createChecks = (summary) => {
   };
 };
 
-const createSummary = (outputDir) => {
+const createSummary = (outputDir, exportMode) => {
   const files = listFiles(outputDir);
   const hermesBytecode = findHermesBytecodeSizes(files, outputDir);
   const sourcemaps = findSourcemapSizes(files, outputDir);
@@ -404,6 +463,8 @@ const createSummary = (outputDir) => {
   const sourcemapSourceCounts = summarizeSourcemapSources(sourcemaps, outputDir);
   const summary = {
     exportCommand: 'npx expo export --platform all --source-maps --dump-assetmap --output-dir <outputDir>',
+    exportMode,
+    generatedAt: new Date().toISOString(),
     thresholds: {
       hermesBytecode: createSizeRecord(HERMES_LIMIT_BYTES),
       sourcemap: createSizeRecord(SOURCEMAP_LIMIT_BYTES),
@@ -441,7 +502,8 @@ const main = () => {
     throw new Error(`Export output directory does not exist: ${options.outputDir}`);
   }
 
-  const summary = createSummary(options.outputDir);
+  const exportMode = options.skipExport ? 'stale-export-recheck' : 'fresh-export';
+  const summary = createSummary(options.outputDir, exportMode);
   writeSummary(options.summaryFile, summary);
 
   console.log(`Mobile bundle size summary: ${options.summaryFile}`);
@@ -455,9 +517,17 @@ const main = () => {
   }
 };
 
-try {
-  main();
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  createSummary,
+  parseArguments,
+  resolveAssetMapFilePath,
+};

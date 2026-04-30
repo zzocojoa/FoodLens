@@ -1,30 +1,48 @@
 name: Backend Media Performance Regression
 
 on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - "release/**"
+  release:
+    types:
+      - prereleased
+      - published
   workflow_dispatch:
     inputs:
       release_label:
         description: "Release label or release candidate identifier"
-        required: true
+        required: false
         type: string
       backend_base_url:
-        description: "Deployed backend public base URL"
-        required: true
+        description: "Deployed backend public base URL; leave empty to use PERF_BACKEND_BASE_URL variable/secret"
+        required: false
         type: string
       media_render_url:
         description: "Signed media render URL; leave empty to use PERF_MEDIA_RENDER_URL secret"
         required: false
         type: string
+      media_render_cache_hit_url:
+        description: "Signed cache-hit media render URL; leave empty to use PERF_MEDIA_RENDER_CACHE_HIT_URL secret"
+        required: false
+        type: string
+      media_render_cache_miss_urls:
+        description: "Comma-separated signed cache-miss media render URLs; leave empty to use PERF_MEDIA_RENDER_CACHE_MISS_URLS secret"
+        required: false
+        type: string
       baseline_summary_path:
-        description: "Optional checked-out or downloaded baseline summary.json path"
+        description: "Checked-out or downloaded baseline summary.json path; required unless baseline artifact vars are configured"
         required: false
         type: string
       baseline_summary_artifact_run_id:
-        description: "Optional prior workflow run id containing the baseline artifact"
+        description: "Prior workflow run id containing the baseline artifact; required unless baseline path is configured"
         required: false
         type: string
       baseline_summary_artifact_name:
-        description: "Optional artifact name containing a baseline summary.json"
+        description: "Artifact name containing a baseline summary.json; required unless baseline path is configured"
         required: false
         type: string
       enable_analyze:
@@ -39,6 +57,22 @@ on:
         description: "Repository path to JPEG fixture for ENABLE_ANALYZE=1"
         required: false
         type: string
+      validate_only:
+        description: "Validate workflow scripts without live backend secrets"
+        required: false
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
+      require_cache_header:
+        description: "Require X-Media-Render-Cache hit/miss/disabled headers"
+        required: false
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
 
 permissions:
   actions: read
@@ -51,7 +85,167 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Resolve performance gate inputs
+        id: resolve-inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_RELEASE_LABEL: ${{ inputs.release_label }}
+          INPUT_BACKEND_BASE_URL: ${{ inputs.backend_base_url }}
+          INPUT_MEDIA_RENDER_URL: ${{ inputs.media_render_url }}
+          INPUT_MEDIA_RENDER_CACHE_HIT_URL: ${{ inputs.media_render_cache_hit_url }}
+          INPUT_MEDIA_RENDER_CACHE_MISS_URLS: ${{ inputs.media_render_cache_miss_urls }}
+          INPUT_BASELINE_SUMMARY_PATH: ${{ inputs.baseline_summary_path }}
+          INPUT_BASELINE_SUMMARY_ARTIFACT_RUN_ID: ${{ inputs.baseline_summary_artifact_run_id }}
+          INPUT_BASELINE_SUMMARY_ARTIFACT_NAME: ${{ inputs.baseline_summary_artifact_name }}
+          INPUT_ENABLE_ANALYZE: ${{ inputs.enable_analyze }}
+          INPUT_ANALYZE_PATH: ${{ inputs.analyze_path }}
+          INPUT_VALIDATE_ONLY: ${{ inputs.validate_only }}
+          INPUT_REQUIRE_CACHE_HEADER: ${{ inputs.require_cache_header }}
+          VAR_BACKEND_BASE_URL: ${{ vars.PERF_BACKEND_BASE_URL }}
+          SECRET_BACKEND_BASE_URL: ${{ secrets.PERF_BACKEND_BASE_URL }}
+          VAR_BASELINE_SUMMARY_PATH: ${{ vars.PERF_BASELINE_SUMMARY_PATH }}
+          VAR_BASELINE_SUMMARY_ARTIFACT_RUN_ID: ${{ vars.PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID }}
+          VAR_BASELINE_SUMMARY_ARTIFACT_NAME: ${{ vars.PERF_BASELINE_SUMMARY_ARTIFACT_NAME }}
+        run: |
+          set -euo pipefail
+
+          assert_single_line_value() {
+            local name="${1}"
+            local value="${2}"
+            if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
+              echo "${name} must be a single-line value."
+              exit 1
+            fi
+          }
+
+          write_env_value() {
+            local name="${1}"
+            local value="${2}"
+            assert_single_line_value "${name}" "${value}"
+            printf '%s=%s\n' "${name}" "${value}" >> "${GITHUB_ENV}"
+          }
+
+          write_output_value() {
+            local name="${1}"
+            local value="${2}"
+            assert_single_line_value "${name}" "${value}"
+            printf '%s=%s\n' "${name}" "${value}" >> "${GITHUB_OUTPUT}"
+          }
+
+          choose_first_value() {
+            for candidate in "$@"; do
+              if [[ -n "${candidate}" ]]; then
+                printf '%s' "${candidate}"
+                return 0
+              fi
+            done
+            printf ''
+          }
+
+          default_release_label="run-${GITHUB_RUN_ID}"
+          if [[ "${EVENT_NAME:-}" == "pull_request" && -n "${EVENT_PR_NUMBER:-}" ]]; then
+            default_release_label="pr-${EVENT_PR_NUMBER}"
+          elif [[ "${EVENT_NAME:-}" == "release" && -n "${EVENT_RELEASE_TAG:-}" ]]; then
+            default_release_label="${EVENT_RELEASE_TAG}"
+          fi
+
+          release_label="$(choose_first_value "${INPUT_RELEASE_LABEL:-}" "${default_release_label}")"
+          backend_base_url="$(choose_first_value "${INPUT_BACKEND_BASE_URL:-}" "${VAR_BACKEND_BASE_URL:-}" "${SECRET_BACKEND_BASE_URL:-}")"
+          baseline_summary_path="$(choose_first_value "${INPUT_BASELINE_SUMMARY_PATH:-}" "${VAR_BASELINE_SUMMARY_PATH:-}")"
+          baseline_summary_artifact_run_id="$(choose_first_value "${INPUT_BASELINE_SUMMARY_ARTIFACT_RUN_ID:-}" "${VAR_BASELINE_SUMMARY_ARTIFACT_RUN_ID:-}")"
+          baseline_summary_artifact_name="$(choose_first_value "${INPUT_BASELINE_SUMMARY_ARTIFACT_NAME:-}" "${VAR_BASELINE_SUMMARY_ARTIFACT_NAME:-}")"
+          enable_analyze="$(choose_first_value "${INPUT_ENABLE_ANALYZE:-}" "0")"
+          validate_only="$(choose_first_value "${INPUT_VALIDATE_ONLY:-}" "0")"
+          require_cache_header="$(choose_first_value "${INPUT_REQUIRE_CACHE_HEADER:-}" "0")"
+
+          if [[ "${validate_only}" != "0" && "${validate_only}" != "1" ]]; then
+            echo "validate_only must be 0 or 1."
+            exit 1
+          fi
+          if [[ "${validate_only}" != "1" && -z "${backend_base_url}" ]]; then
+            echo "backend_base_url input or PERF_BACKEND_BASE_URL variable/secret is required."
+            exit 1
+          fi
+          if [[ "${validate_only}" != "1" && -z "${baseline_summary_path}" && ( -z "${baseline_summary_artifact_run_id}" || -z "${baseline_summary_artifact_name}" ) ]]; then
+            echo "A baseline summary is required: set baseline_summary_path or both PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID and PERF_BASELINE_SUMMARY_ARTIFACT_NAME."
+            exit 1
+          fi
+          if [[ "${enable_analyze}" != "0" && "${enable_analyze}" != "1" ]]; then
+            echo "enable_analyze must be 0 or 1."
+            exit 1
+          fi
+          if [[ "${require_cache_header}" != "0" && "${require_cache_header}" != "1" ]]; then
+            echo "require_cache_header must be 0 or 1."
+            exit 1
+          fi
+
+          write_env_value "PHASE6_RELEASE_LABEL" "${release_label}"
+          write_env_value "BASE_URL" "${backend_base_url}"
+          write_env_value "PERF_INPUT_MEDIA_RENDER_URL" "${INPUT_MEDIA_RENDER_URL:-}"
+          write_env_value "PERF_INPUT_MEDIA_RENDER_CACHE_HIT_URL" "${INPUT_MEDIA_RENDER_CACHE_HIT_URL:-}"
+          write_env_value "PERF_INPUT_MEDIA_RENDER_CACHE_MISS_URLS" "${INPUT_MEDIA_RENDER_CACHE_MISS_URLS:-}"
+          write_env_value "BASELINE_SUMMARY_PATH" "${baseline_summary_path}"
+          write_env_value "BASELINE_SUMMARY_ARTIFACT_RUN_ID" "${baseline_summary_artifact_run_id}"
+          write_env_value "BASELINE_SUMMARY_ARTIFACT_NAME" "${baseline_summary_artifact_name}"
+          write_env_value "ENABLE_ANALYZE" "${enable_analyze}"
+          write_env_value "ANALYZE_PATH" "${INPUT_ANALYZE_PATH:-}"
+          write_env_value "PERF_VALIDATE_ONLY" "${validate_only}"
+          write_env_value "REQUIRE_MEDIA_RENDER_CACHE_HEADER" "${require_cache_header}"
+          write_output_value "validate_only" "${validate_only}"
+
+      - name: Validate performance tooling without live secrets
+        if: ${{ steps.resolve-inputs.outputs.validate_only == '1' }}
+        run: |
+          set -euo pipefail
+          validate_dir="artifacts/perf/backend-media-validate-only"
+
+          bash -n scripts/perf/run-media-baseline.sh
+          python3 -m py_compile scripts/perf/compare-media-summaries.py
+          MEDIA_RENDER_URL="https://example.invalid/media/render/validate-hit?exp=1&sig=validate" \
+            MEDIA_RENDER_CACHE_MISS_URLS="https://example.invalid/media/render/validate-miss?exp=1&sig=validate" \
+            PERF_VALIDATE_ONLY=1 \
+            OUT_DIR="${validate_dir}" \
+            bash scripts/perf/run-media-baseline.sh
+          python3 - "${validate_dir}/baseline-summary.json" "${validate_dir}/summary.json" <<'PY'
+          import json
+          import sys
+
+          baseline_path, summary_path = sys.argv[1:]
+          summary = {
+              "metrics": {
+                  "http_req_failed": {"values": {"rate": 0.0}},
+                  "render_failure_rate": {"values": {"rate": 0.0}},
+                  "render_latency": {"values": {"p(95)": 100.0}},
+                  "render_cache_hit_failure_rate": {"values": {"rate": 0.0}},
+                  "render_cache_hit_latency": {"values": {"p(95)": 100.0}},
+                  "render_cache_miss_failure_rate": {"values": {"rate": 0.0}},
+                  "render_cache_miss_latency": {"values": {"p(95)": 200.0}},
+                  "render_cache_disabled_rate": {"values": {"rate": 0.0}},
+                  "render_cache_unknown_rate": {"values": {"rate": 0.0}},
+              }
+          }
+          for path in (baseline_path, summary_path):
+              with open(path, "w", encoding="utf-8") as handle:
+                  json.dump(summary, handle, sort_keys=True)
+                  handle.write("\n")
+          PY
+          python3 scripts/perf/compare-media-summaries.py \
+            --before "${validate_dir}/baseline-summary.json" \
+            --after "${validate_dir}/summary.json" \
+            --fail-on-regression \
+            --enforce-thresholds \
+            --require-cache-header \
+            --require-metric render_cache_hit_failure_rate.rate \
+            --require-metric "render_cache_hit_latency.p(95)" \
+            --require-metric render_cache_disabled_rate.rate \
+            --require-metric render_cache_unknown_rate.rate \
+            --require-metric render_cache_miss_failure_rate.rate \
+            --require-metric "render_cache_miss_latency.p(95)"
+
       - name: Install k6
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         run: |
           sudo mkdir -p /etc/apt/keyrings
           curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
@@ -60,10 +254,12 @@ jobs:
           sudo apt-get install -y k6
 
       - name: Resolve fresh media render URL
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
           SECRET_MEDIA_RENDER_URL: ${{ secrets.PERF_MEDIA_RENDER_URL }}
+          SECRET_MEDIA_RENDER_CACHE_HIT_URL: ${{ secrets.PERF_MEDIA_RENDER_CACHE_HIT_URL }}
+          SECRET_MEDIA_RENDER_CACHE_MISS_URLS: ${{ secrets.PERF_MEDIA_RENDER_CACHE_MISS_URLS }}
           PERF_AUTH_BEARER_TOKEN: ${{ secrets.PERF_AUTH_BEARER_TOKEN }}
-          BASE_URL: ${{ inputs.backend_base_url }}
           SMOKE_EMAIL: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_PASSWORD }}
         run: |
@@ -90,28 +286,35 @@ jobs:
             printf '::add-mask::%s\n' "${value}"
           }
 
-          INPUT_MEDIA_RENDER_URL="$(
-            python3 - "${GITHUB_EVENT_PATH}" <<'PY'
-          import json
-          import sys
+          INPUT_MEDIA_RENDER_URL="${PERF_INPUT_MEDIA_RENDER_URL}"
 
-          with open(sys.argv[1], "r", encoding="utf-8") as handle:
-              event = json.load(handle)
+          write_optional_cache_split_urls() {
+            local cache_hit_url="${PERF_INPUT_MEDIA_RENDER_CACHE_HIT_URL:-${SECRET_MEDIA_RENDER_CACHE_HIT_URL:-}}"
+            local cache_miss_urls="${PERF_INPUT_MEDIA_RENDER_CACHE_MISS_URLS:-${SECRET_MEDIA_RENDER_CACHE_MISS_URLS:-}}"
 
-          inputs = event.get("inputs")
-          if not isinstance(inputs, dict):
-              raise SystemExit("workflow_dispatch event inputs must be an object")
-          value = inputs.get("media_render_url") or ""
-          if not isinstance(value, str):
-              raise SystemExit("media_render_url input must be a string")
-          print(value, end="")
-          PY
-          )"
+            if [[ -n "${cache_hit_url}" && "${cache_hit_url}" == "${cache_miss_urls}" ]]; then
+              echo "cache-hit and cache-miss media render URLs must be different."
+              exit 1
+            fi
+            if [[ -n "${cache_hit_url}" ]]; then
+              assert_single_line_value "media_render_cache_hit_url" "${cache_hit_url}"
+              mask_workflow_value "${cache_hit_url}"
+              printf 'MEDIA_RENDER_CACHE_HIT_URL=%s\n' "${cache_hit_url}" >> "${GITHUB_ENV}"
+              echo "MEDIA_RENDER_CACHE_HIT_URL source: configured"
+            fi
+            if [[ -n "${cache_miss_urls}" ]]; then
+              assert_single_line_value "media_render_cache_miss_urls" "${cache_miss_urls}"
+              mask_workflow_value "${cache_miss_urls}"
+              printf 'MEDIA_RENDER_CACHE_MISS_URLS=%s\n' "${cache_miss_urls}" >> "${GITHUB_ENV}"
+              echo "MEDIA_RENDER_CACHE_MISS_URLS source: configured"
+            fi
+          }
 
           if [[ -n "${INPUT_MEDIA_RENDER_URL}" ]]; then
             assert_single_line_value "media_render_url" "${INPUT_MEDIA_RENDER_URL}"
             mask_workflow_value "${INPUT_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${INPUT_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
+            write_optional_cache_split_urls
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
               assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
               mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
@@ -125,6 +328,7 @@ jobs:
             assert_single_line_value "PERF_MEDIA_RENDER_URL" "${SECRET_MEDIA_RENDER_URL}"
             mask_workflow_value "${SECRET_MEDIA_RENDER_URL}"
             printf 'MEDIA_RENDER_URL=%s\n' "${SECRET_MEDIA_RENDER_URL}" >> "${GITHUB_ENV}"
+            write_optional_cache_split_urls
             if [[ -n "${PERF_AUTH_BEARER_TOKEN}" ]]; then
               assert_single_line_value "PERF_AUTH_BEARER_TOKEN" "${PERF_AUTH_BEARER_TOKEN}"
               mask_workflow_value "${PERF_AUTH_BEARER_TOKEN}"
@@ -492,12 +696,11 @@ jobs:
           assert_single_line_value "MEDIA_RENDER_URL" "${selected_url}"
           printf 'MEDIA_RENDER_URL=%s\n' "${selected_url}" >> "${GITHUB_ENV}"
           printf 'AUTH_BEARER_TOKEN=%s\n' "${token}" >> "${GITHUB_ENV}"
+          write_optional_cache_split_urls
           echo "MEDIA_RENDER_URL source: ${selected_source}"
 
       - name: Validate performance inputs
-        env:
-          ENABLE_ANALYZE: ${{ inputs.enable_analyze }}
-          ANALYZE_PATH: ${{ inputs.analyze_path }}
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         run: |
           if [[ -z "${MEDIA_RENDER_URL}" ]]; then
             echo "MEDIA_RENDER_URL resolution failed."
@@ -513,38 +716,56 @@ jobs:
           fi
 
       - name: Download baseline summary artifact
-        if: inputs.baseline_summary_path == '' && inputs.baseline_summary_artifact_run_id != '' && inputs.baseline_summary_artifact_name != ''
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          BASELINE_SUMMARY_ARTIFACT_RUN_ID: ${{ inputs.baseline_summary_artifact_run_id }}
-          BASELINE_SUMMARY_ARTIFACT_NAME: ${{ inputs.baseline_summary_artifact_name }}
         run: |
+          if [[ -n "${BASELINE_SUMMARY_PATH}" ]]; then
+            echo "Using checked-out baseline summary path: ${BASELINE_SUMMARY_PATH}"
+            exit 0
+          fi
           mkdir -p artifacts/perf/baseline
           gh run download "${BASELINE_SUMMARY_ARTIFACT_RUN_ID}" \
             --name "${BASELINE_SUMMARY_ARTIFACT_NAME}" \
             --dir artifacts/perf/baseline
 
       - name: Run media performance baseline
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
-          PHASE6_RELEASE_LABEL: ${{ inputs.release_label }}
-          BASE_URL: ${{ inputs.backend_base_url }}
           K6_VUS: "20"
           K6_DURATION: "60s"
-          ENABLE_ANALYZE: ${{ inputs.enable_analyze }}
-          ANALYZE_PATH: ${{ inputs.analyze_path }}
           OUT_DIR: artifacts/perf/backend-media-${{ github.run_id }}
         run: |
           bash scripts/perf/run-media-baseline.sh
 
       - name: Compare with baseline summary
-        if: inputs.baseline_summary_path != '' || (inputs.baseline_summary_artifact_run_id != '' && inputs.baseline_summary_artifact_name != '')
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
-          BASELINE_SUMMARY_PATH: ${{ inputs.baseline_summary_path }}
           AFTER_SUMMARY_PATH: artifacts/perf/backend-media-${{ github.run_id }}/summary.json
         run: |
+          set -euo pipefail
+
           baseline_summary="${BASELINE_SUMMARY_PATH}"
           if [[ -z "${baseline_summary}" ]]; then
-            baseline_summary="$(find artifacts/perf/baseline -type f -name summary.json | sort | head -n 1)"
+            baseline_download_dir="artifacts/perf/baseline"
+            mapfile -t baseline_matches < <(
+              find "${baseline_download_dir}" -type f -name summary.json | while IFS= read -r candidate_path; do
+                relative_path="${candidate_path#${baseline_download_dir}/}"
+                if [[ "${relative_path}" != baseline/* ]]; then
+                  printf '%s\n' "${candidate_path}"
+                fi
+              done | sort
+            )
+            if [[ "${#baseline_matches[@]}" == "1" ]]; then
+              baseline_summary="${baseline_matches[0]}"
+            elif [[ "${#baseline_matches[@]}" == "0" ]]; then
+              echo "Baseline summary.json was not found."
+              exit 1
+            else
+              echo "Baseline artifact contains multiple summary.json files; set baseline_summary_path to the exact file."
+              printf '%s\n' "${baseline_matches[@]}"
+              exit 1
+            fi
           fi
           if [[ -z "${baseline_summary}" || ! -f "${baseline_summary}" ]]; then
             echo "Baseline summary.json was not found."
@@ -561,12 +782,37 @@ jobs:
           elif grep -q -- "--tolerance" <<< "${compare_help}"; then
             tolerance_args=(--tolerance 0.15)
           fi
+          if grep -q -- "--min-latency-regression-ms" <<< "${compare_help}"; then
+            tolerance_args+=(--min-latency-regression-ms 100)
+          fi
+          required_metric_args=(
+            --require-metric render_failure_rate.rate
+            --require-metric "render_latency.p(95)"
+          )
+          cache_header_args=()
+          if [[ "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" == "1" ]]; then
+            cache_header_args=(--require-cache-header)
+            required_metric_args+=(
+              --require-metric render_cache_hit_failure_rate.rate
+              --require-metric "render_cache_hit_latency.p(95)"
+              --require-metric render_cache_disabled_rate.rate
+              --require-metric render_cache_unknown_rate.rate
+            )
+            if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
+              required_metric_args+=(
+                --require-metric render_cache_miss_failure_rate.rate
+                --require-metric "render_cache_miss_latency.p(95)"
+              )
+            fi
+          fi
           python3 scripts/perf/compare-media-summaries.py \
             --before "${baseline_summary}" \
             --after "${AFTER_SUMMARY_PATH}" \
             --fail-on-regression \
             --enforce-thresholds \
-            "${tolerance_args[@]}"
+            "${cache_header_args[@]}" \
+            "${tolerance_args[@]}" \
+            "${required_metric_args[@]}"
 
       - name: Upload performance artifacts
         if: always()
@@ -574,5 +820,5 @@ jobs:
         with:
           name: backend-media-performance-regression-${{ github.run_id }}
           path: artifacts/perf
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14

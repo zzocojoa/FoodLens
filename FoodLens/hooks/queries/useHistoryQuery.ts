@@ -30,10 +30,9 @@ export const useHistoryQuery = (userId: string, options: UseHistoryQueryOptions)
         markHomeNavigationTrace('history', 'async_load_end');
       }
     },
-    // Keep history screen live-updated while open for cross-device writes.
     staleTime: HISTORY_QUERY_REFRESH_INTERVAL_MS,
     refetchOnMount: isPollingEnabled,
-    refetchInterval: isPollingEnabled ? HISTORY_QUERY_REFRESH_INTERVAL_MS : false,
+    refetchInterval: false,
     refetchIntervalInBackground: false,
   });
 };

@@ -218,6 +218,7 @@ describe('RootLayout polling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     mockAppStateListeners.clear();
     jest.spyOn(AppState, 'addEventListener').mockImplementation(
       (_event: AppStateEvent, listener: (nextState: AppStateStatus) => void) => {
@@ -329,5 +330,29 @@ describe('RootLayout polling', () => {
         ([args]) => args && (args as { pullFromServer?: boolean }).pullFromServer === true,
       ),
     ).toHaveLength(1);
+  });
+
+  it('runs history cloud sync when the app returns active after startup', async () => {
+    const { default: RootLayout, PROFILE_SYNC_STARTUP_DELAY_MS } = loadLayoutModule();
+    render(<RootLayout />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(mockSyncHistoryFromCloud).toHaveBeenCalledTimes(1);
+    });
+    mockSyncHistoryFromCloud.mockClear();
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      emitAppStateChange('active');
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockSyncHistoryFromCloud).toHaveBeenCalledWith('usr_layout', { force: false });
+    });
   });
 });

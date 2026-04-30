@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { InteractionManager } from 'react-native';
 import { useHomeDashboard } from '../useHomeDashboard';
+import { queryClient } from '@/services/queryClient';
 
 const mockFetchHomeDashboardData = jest.fn();
 const mockGetProfileRestrictionCount = jest.fn();
@@ -84,6 +85,8 @@ const buildSelectedDatePatch = (date: Date) => ({
 describe('useHomeDashboard profile update subscription', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient.clear();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-04-24T12:00:00.000Z'));
     mockIsFocused = true;
@@ -290,7 +293,7 @@ describe('useHomeDashboard profile update subscription', () => {
     errorSpy.mockRestore();
   });
 
-  it('reloads dashboard once for rapid profile update events (debounced)', async () => {
+  it('hydrates profile once for rapid profile update events without reloading history', async () => {
     let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
     mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
       listener = cb;
@@ -303,6 +306,10 @@ describe('useHomeDashboard profile update subscription', () => {
       expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
     });
     expect(mockSubscribeUserProfileUpdated).toHaveBeenCalledWith('usr_home', expect.any(Function));
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalled();
+    });
+    mockSafeStorageGet.mockClear();
 
     act(() => {
       jest.advanceTimersByTime(3_000);
@@ -315,17 +322,19 @@ describe('useHomeDashboard profile update subscription', () => {
       jest.advanceTimersByTime(249);
     });
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    expect(mockSafeStorageGet).not.toHaveBeenCalled();
 
     act(() => {
       jest.advanceTimersByTime(1);
     });
 
     await waitFor(() => {
-      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+      expect(mockSafeStorageGet).toHaveBeenCalledTimes(1);
     });
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
 
-  it('skips immediate server_pull reloads right after dashboard load', async () => {
+  it('does not reload dashboard for server_pull profile events after the guard window', async () => {
     let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
     mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
       listener = cb;
@@ -337,7 +346,6 @@ describe('useHomeDashboard profile update subscription', () => {
     await waitFor(() => {
       expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
     });
-
     act(() => {
       listener?.('server_pull');
       jest.advanceTimersByTime(250);
@@ -351,9 +359,7 @@ describe('useHomeDashboard profile update subscription', () => {
       jest.advanceTimersByTime(250);
     });
 
-    await waitFor(() => {
-      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
-    });
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
 
   it('skips immediate client_state_write reloads right after dashboard load', async () => {
@@ -437,36 +443,50 @@ describe('useHomeDashboard profile update subscription', () => {
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
 
-  it('does not run background dashboard polling while blurred', async () => {
-    const { rerender } = renderHook(
-      ({ focused }: { focused: boolean }) => {
-        mockIsFocused = focused;
-        return useHomeDashboard();
-      },
-      {
-        initialProps: { focused: true },
-      }
-    );
+  it('does not run dashboard polling on the old 15 second interval', async () => {
+    renderHook(() => useHomeDashboard());
 
     await waitFor(() => {
       expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
     });
-
-    rerender({ focused: false });
 
     act(() => {
       jest.advanceTimersByTime(15_000);
     });
 
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
 
-    rerender({ focused: true });
+  it('updates home history sections from the shared history query cache', async () => {
+    const { result } = renderHook(() => useHomeDashboard());
 
-    act(() => {
-      jest.advanceTimersByTime(15_000);
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+    act(() => {
+      queryClient.setQueryData(['history', 'usr_home'], [
+        {
+          id: 'analysis_shared_1',
+          timestamp: new Date('2026-04-24T12:00:00.000Z'),
+          safetyStatus: 'SAFE',
+        },
+        {
+          id: 'analysis_shared_2',
+          timestamp: new Date('2026-04-23T12:00:00.000Z'),
+          safetyStatus: 'DANGER',
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.recentScans.map((item) => item.id)).toEqual([
+        'analysis_shared_1',
+        'analysis_shared_2',
+      ]);
+      expect(result.current.safeCount).toBe(1);
+    });
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
   });
 
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {
@@ -670,6 +690,7 @@ describe('useHomeDashboard profile update subscription', () => {
   });
 
   it('shows translated delete failure alert without inline fallback strings', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockDeleteAnalysis.mockRejectedValueOnce(new Error('delete failed'));
 
     const { result } = renderHook(() => useHomeDashboard());
@@ -686,5 +707,7 @@ describe('useHomeDashboard profile update subscription', () => {
       titleKey: 'home.alert.errorTitle',
       messageKey: 'home.alert.deleteFailedRestore',
     });
+    expect(errorSpy).toHaveBeenCalledWith('Home delete failed:', expect.any(Error));
+    errorSpy.mockRestore();
   });
 });

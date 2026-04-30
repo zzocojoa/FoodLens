@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import os
 import unittest
@@ -8,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 _RUNTIME_ENV: dict[str, str] = {
     "OPENAPI_EXPORT_ONLY": "1",
@@ -63,6 +65,18 @@ class _FailingFetchMediaStorage:
         raise self.error
 
 
+class _SuccessfulFetchMediaStorage:
+    enabled: bool = True
+
+    def __init__(self, *, bytes_data: bytes) -> None:
+        self.bytes_data = bytes_data
+        self.fetch_count = 0
+
+    def fetch_original(self, *, object_key: str) -> MediaObjectPayload:
+        self.fetch_count += 1
+        return MediaObjectPayload(bytes_data=self.bytes_data, mime_type="image/jpeg")
+
+
 def _snapshot_app_state() -> dict[str, object]:
     state = getattr(server.app.state, "_state", None)
     if not isinstance(state, dict):
@@ -83,6 +97,12 @@ def _restore_app_state(snapshot: dict[str, object]) -> None:
 
     state.clear()
     state.update(snapshot)
+
+
+def _create_jpeg_bytes() -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (4, 4), color=(255, 255, 255)).save(out, format="JPEG")
+    return out.getvalue()
 
 
 class MediaRenderRuntimeTests(unittest.TestCase):
@@ -197,6 +217,195 @@ class MediaRenderRuntimeTests(unittest.TestCase):
 
         asyncio.run(_scenario())
 
+    def test_media_render_response_headers_expose_cache_hit_and_miss(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_header_cache"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            first_response = client.get(f"{parsed.path}?{parsed.query}")
+            second_response = client.get(f"{parsed.path}?{parsed.query}")
+
+            self.assertEqual(first_response.status_code, 200)
+            self.assertEqual(second_response.status_code, 200)
+            self.assertEqual(first_response.headers["x-media-render-cache"], "miss")
+            self.assertEqual(second_response.headers["x-media-render-cache"], "hit")
+            self.assertIn("x-media-render-duration-ms", first_response.headers)
+            self.assertIn("x-media-render-duration-ms", second_response.headers)
+            self.assertEqual(media_storage.fetch_count, 1)
+
+    def test_media_render_cache_disabled_header_does_not_report_miss(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_cache_disabled"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+            server.app.state.media_render_cache_enabled = False
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            first_response = client.get(f"{parsed.path}?{parsed.query}")
+            second_response = client.get(f"{parsed.path}?{parsed.query}")
+
+            self.assertEqual(first_response.status_code, 200)
+            self.assertEqual(second_response.status_code, 200)
+            self.assertEqual(first_response.headers["x-media-render-cache"], "disabled")
+            self.assertEqual(second_response.headers["x-media-render-cache"], "disabled")
+            self.assertEqual(media_storage.fetch_count, 2)
+
+    def test_media_render_cache_uninitialized_header_does_not_report_miss(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_cache_uninitialized"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+            server.app.state.media_render_cache = None
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            response = client.get(f"{parsed.path}?{parsed.query}")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["x-media-render-cache"], "disabled")
+            self.assertEqual(media_storage.fetch_count, 1)
+
+    def test_media_render_cors_exposes_cache_diagnostics_headers(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_cors_headers"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            server.app.state.media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            response = client.get(
+                f"{parsed.path}?{parsed.query}",
+                headers={"Origin": "http://localhost:8081"},
+            )
+
+            exposed_headers = response.headers["access-control-expose-headers"].lower()
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("x-request-id", exposed_headers)
+            self.assertIn("x-media-render-cache", exposed_headers)
+            self.assertIn("x-media-render-duration-ms", exposed_headers)
+
+    def test_media_render_auto_format_cache_preserves_content_type(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_content_type"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            request_target = f"{parsed.path}?{parsed.query}"
+            first_response = client.get(
+                request_target,
+                headers={"Accept": "image/webp,image/*,*/*;q=0.8"},
+            )
+            second_response = client.get(
+                request_target,
+                headers={"Accept": "image/webp,image/*,*/*;q=0.8"},
+            )
+
+            self.assertEqual(first_response.status_code, 200)
+            self.assertEqual(second_response.status_code, 200)
+            self.assertEqual(first_response.headers["content-type"], "image/webp")
+            self.assertEqual(second_response.headers["content-type"], "image/webp")
+            self.assertEqual(first_response.headers["x-media-render-cache"], "miss")
+            self.assertEqual(second_response.headers["x-media-render-cache"], "hit")
+            self.assertEqual(media_storage.fetch_count, 1)
+
+    def test_media_render_invalid_signed_urls_do_not_leak_secret_values(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_forbidden"
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            server.app.state.media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            query = parse_qs(parsed.query)
+            leaked_sig = "leaky-signed-secret-token"
+            invalid_query = (
+                f"w={query['w'][0]}&q={query['q'][0]}&fmt={query['fmt'][0]}"
+                f"&exp={query['exp'][0]}&sig={leaked_sig}"
+            )
+            expired_query = (
+                f"w={query['w'][0]}&q={query['q'][0]}&fmt={query['fmt'][0]}"
+                f"&exp=1&sig={leaked_sig}"
+            )
+
+            invalid_response = client.get(
+                f"{parsed.path}?{invalid_query}",
+                headers={"X-Request-Id": "req-invalid-signature"},
+            )
+            expired_response = client.get(
+                f"{parsed.path}?{expired_query}",
+                headers={"X-Request-Id": "req-expired-signature"},
+            )
+
+            self.assertEqual(invalid_response.status_code, 403)
+            self.assertEqual(expired_response.status_code, 403)
+            self.assertNotIn(leaked_sig, invalid_response.text)
+            self.assertNotIn(leaked_sig, expired_response.text)
+            self.assertNotIn("unit-test-secret", invalid_response.text)
+            self.assertNotIn("unit-test-secret", expired_response.text)
+            self.assertEqual(invalid_response.headers["x-request-id"], "req-invalid-signature")
+            self.assertEqual(expired_response.headers["x-request-id"], "req-expired-signature")
+            self.assertEqual(invalid_response.headers["x-media-render-cache"], "miss")
+            self.assertEqual(expired_response.headers["x-media-render-cache"], "miss")
+            self.assertNotIn("x-media-render-duration-ms", invalid_response.headers)
+
     def test_media_render_storage_errors_return_detail_code_and_request_id(self) -> None:
         cases: list[tuple[str, int]] = [
             ("MEDIA_GCS_PERMISSION_DENIED", 503),
@@ -234,6 +443,8 @@ class MediaRenderRuntimeTests(unittest.TestCase):
                     detail = response.json()["detail"]
                     self.assertEqual(detail["code"], code)
                     self.assertEqual(detail["request_id"], request_id)
+                    self.assertEqual(response.headers["x-request-id"], request_id)
+                    self.assertEqual(response.headers["x-media-render-cache"], "miss")
 
 
 if __name__ == "__main__":

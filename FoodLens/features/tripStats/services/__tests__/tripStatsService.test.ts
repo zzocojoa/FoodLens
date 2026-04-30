@@ -51,3 +51,25 @@ describe('tripStatsService.startTrip', () => {
     expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
   });
 });
+
+describe('tripStatsService.loadUserTripData', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('loads profile and history without starting another profile background refresh', async () => {
+    mockLoadUserProfileWithHistory.mockResolvedValueOnce({
+      profile: { uid: 'usr_tripstats' },
+      allHistory: [{ id: 'analysis_trip_1' }],
+    });
+
+    await expect(tripStatsService.loadUserTripData('usr_tripstats')).resolves.toEqual({
+      user: { uid: 'usr_tripstats' },
+      allAnalyses: [{ id: 'analysis_trip_1' }],
+    });
+
+    expect(mockLoadUserProfileWithHistory).toHaveBeenCalledWith('usr_tripstats', {
+      allowBackgroundRefresh: false,
+    });
+  });
+});

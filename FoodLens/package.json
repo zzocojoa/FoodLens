@@ -22,6 +22,11 @@
     "test:ci": "jest --ci --runInBand",
     "test:sync-regression": "jest --runInBand services/sync/__tests__/phase2Mappers.test.ts services/sync/__tests__/phase2SyncQueue.test.ts features/home/hooks/__tests__/useHomeDashboard.test.ts components/profileSheet/hooks/__tests__/useProfileSheetState.test.ts features/profile/hooks/__tests__/useProfileScreen.test.ts features/profile/screens/__tests__/ProfileScreen.test.tsx features/allergies/hooks/__tests__/useAllergiesData.test.ts features/allergies/screens/__tests__/AllergiesScreen.test.tsx components/travelerAllergyCard/hooks/__tests__/useTravelerAllergens.test.ts services/aiCore/__tests__/allergy.test.ts",
     "i18n:release-gate": "npm run i18n:verify && npx tsc --noEmit && npm run lint",
+    "asset:image:quality:gate": "node ./scripts/asset-image-quality-gate.js",
+    "history:runtime:gate": "node ./scripts/history-runtime-performance-gate.js",
+    "phase6:mobile-performance:gate": "npm run asset:image:quality:gate && npm run history:runtime:gate && npm run bundle:size:gate -- --require-fresh-export",
+    "phase6:mobile-e2e:gate": "bash ./scripts/ci_phase6_mobile_e2e_release_gate.sh",
+    "phase6:mobile-e2e:release-gate": "MOBILE_E2E_REAL_DEVICE_EVIDENCE_REQUIRED=1 bash ./scripts/ci_phase6_mobile_e2e_release_gate.sh",
     "phase6:mobile-store-evidence": "bash ./scripts/ci_phase6_mobile_store_evidence.sh",
     "bundle:size:gate": "node ./scripts/mobile-bundle-size-gate.js"
   },

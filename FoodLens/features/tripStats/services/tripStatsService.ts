@@ -50,7 +50,9 @@ const resolveTripLocation = async (): Promise<ResolvedTripLocation> => {
 
 export const tripStatsService = {
   async loadUserTripData(userId: string) {
-    const { profile: user, allHistory: allAnalyses } = await loadUserProfileWithHistory(userId);
+    const { profile: user, allHistory: allAnalyses } = await loadUserProfileWithHistory(userId, {
+      allowBackgroundRefresh: false,
+    });
     return { user, allAnalyses };
   },
 

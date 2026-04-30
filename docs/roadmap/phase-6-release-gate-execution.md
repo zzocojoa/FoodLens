@@ -7,7 +7,7 @@
 - 기능을 빨리 넣는 것보다 "안정적으로 배포"하는 체계를 고정하는 단계입니다.
 - 한 번 정하면 계속 반복 사용할 운영 습관(게이트)을 만드는 것이 목표입니다.
 
-## 2) 현재 상태 (2026-04-11 기준)
+## 2) 현재 상태 (2026-04-30 기준)
 
 - Android release gate: **Go 승인 완료**
 - Android: Play Console 내부 테스트 수동 업로드 단계
@@ -47,6 +47,8 @@
     - 타입 검사 (TypeScript/Lint)
     - 계약 테스트 (Pact/Schema Validation)
     - Automated Regression
+    - Mobile bundle/image/runtime performance gate
+    - Backend media performance regression baseline 비교
     - 배포 직후 smoke workflow
 - QA
   - 릴리스 전수 시나리오 체크리스트 확정
@@ -60,6 +62,42 @@
 - DevOps
   - CI 파이프라인에 게이트 연결
   - 실패 시 머지/배포 차단 규칙 적용
+  - backend media performance regression을 PR 필수 컨텍스트로 등록:
+    - workflow: `.github/workflows/backend-media-performance-regression.yml`
+    - 기준선: `PERF_BASELINE_SUMMARY_PATH` 또는 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID` / `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`
+    - 기준선 누락 시 비교 skip 금지, workflow 실패
+  - mobile bundle size workflow를 PR 필수 컨텍스트로 등록:
+    - workflow: `.github/workflows/mobile-bundle-size.yml`
+    - 핵심 이미지 품질 gate: `npm run asset:image:quality:gate`
+    - History 300/1000개 fixture runtime gate: `npm run history:runtime:gate`
+    - 번들 크기 gate: `npm run bundle:size:gate`
+    - 로컬 통합 재현 명령: `npm run phase6:mobile-performance:gate`
+    - 통합 재현 명령은 `--require-fresh-export`로 번들 gate를 호출하므로 `MOBILE_BUNDLE_SKIP_EXPORT=1` 환경변수가 남아 있어도 fresh export를 강제
+    - 오래된 export 재검사는 로컬 진단에서만 `npm run bundle:size:gate -- --skip-export --allow-stale-export` 사용
+    - CI/PR 필수 컨텍스트에서는 `--skip-export` 사용 금지, 매 실행마다 fresh export 생성
+    - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-bundle-size/`
+    - bundle summary의 `exportMode`가 `fresh-export`인지 확인
+  - mobile E2E release gate를 릴리스 후보 검증 명령으로 등록:
+    - workflow: `.github/workflows/mobile-e2e-release-gate.yml`
+    - PR 필수 컨텍스트: `mobile-e2e`
+    - 로컬/CI 재현 명령: `npm run phase6:mobile-e2e:gate`
+    - 릴리스 증적 필수 로컬 재현 명령: `npm run phase6:mobile-e2e:release-gate`
+    - 자동화 범위: login/session, scan 분석 진입, result 저장/리포트, history 조회/이동
+    - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-e2e-release-gate/`
+    - `workflow_dispatch` 수동 실행은 workflow 파일이 default branch(`main`)에 merge된 뒤부터 가능
+    - default branch merge 전 검증 경로는 PR의 `mobile-e2e` check와 로컬 재현 명령으로 고정
+    - `docs/scripts/apply_branch_protection.sh`는 default branch에 workflow 파일이 확인된 뒤 `mobile-e2e`를 필수 컨텍스트로 등록
+    - `gate-manifest.json`의 `deviceRunnerConfigured=false`는 Detox/Maestro/Appium 같은 실디바이스 자동화 러너가 아직 없다는 뜻
+    - 모든 실행은 `real-device-evidence.json`에 iOS/Android 실디바이스 증적 상태를 기록
+    - 일반 PR에서는 실디바이스 증적이 없어도 Jest 기반 smoke gate만 실행
+    - `release/**` 브랜치 push 또는 `workflow_dispatch`에서 `require_real_device_evidence=true`인 실행은 iOS/Android 증적 URI가 없으면 실패
+    - 증적 URI 입력값:
+      - `MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI`
+      - `MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI`
+    - 증적 URI는 GitHub Actions artifact, TestFlight/Play Internal Testing 결과, 또는 수동 QA 리포트 링크 중 하나를 사용
+    - 선택 입력값:
+      - `MOBILE_E2E_IOS_REAL_DEVICE_RUNNER`
+      - `MOBILE_E2E_ANDROID_REAL_DEVICE_RUNNER`
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -95,6 +133,9 @@
     - 한 줄 요약
 - 완료 체크
   - [ ] CI에서 실패 시 배포 차단
+  - [ ] mobile bundle/image/runtime performance gate 통과
+  - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
+  - [ ] backend media performance regression baseline 비교 통과
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
   - [ ] smoke summary에 analyze-jobs `job_id` 와 terminal status가 포함
@@ -141,6 +182,9 @@
 
 - 기능/품질 기준
   - 필수 게이트(타입/계약/회귀/smoke) 통과
+  - mobile bundle/image/runtime performance gate 통과 및 artifact 보관
+  - mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 보관
+  - backend media performance regression 기준선 비교 통과 및 artifact 보관
   - 치명 결함 0건
   - 릴리스 리허설 및 롤백 리허설 완료
 - 운영 기준
@@ -167,6 +211,6 @@
 
 ---
 
-문서 버전: v1.1
+문서 버전: v1.2
 연결 문서: [Master Plan](./master-plan.md), [API 계약 기준서](../contracts/api-contracts.md), [아키텍처 요약](../architecture-overview.md)
-최종 수정: 2026-04-11
+최종 수정: 2026-04-30
