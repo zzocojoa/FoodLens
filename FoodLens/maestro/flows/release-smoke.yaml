@@ -19,6 +19,7 @@ name: FoodLens release smoke
 - tapOn:
     id: login-password-input
 - inputText: ${FOODLENS_E2E_PASSWORD}
+- hideKeyboard
 - tapOn:
     id: login-submit-button
 - extendedWaitUntil:
