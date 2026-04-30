@@ -45,6 +45,7 @@ curl --fail-with-body -L \
         "sync-regression",
         "backend-media-performance-regression",
         "bundle-size",
+        "mobile-e2e",
         "pr-policy-check",
         "image-hydration-policy"
       ]

@@ -25,6 +25,7 @@
     "asset:image:quality:gate": "node ./scripts/asset-image-quality-gate.js",
     "history:runtime:gate": "node ./scripts/history-runtime-performance-gate.js",
     "phase6:mobile-performance:gate": "npm run asset:image:quality:gate && npm run history:runtime:gate && npm run bundle:size:gate -- --require-fresh-export",
+    "phase6:mobile-e2e:gate": "bash ./scripts/ci_phase6_mobile_e2e_release_gate.sh",
     "phase6:mobile-store-evidence": "bash ./scripts/ci_phase6_mobile_store_evidence.sh",
     "bundle:size:gate": "node ./scripts/mobile-bundle-size-gate.js"
   },

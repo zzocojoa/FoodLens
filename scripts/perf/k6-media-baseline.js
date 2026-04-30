@@ -7,13 +7,14 @@ const mediaRenderUrl = (__ENV.MEDIA_RENDER_URL || '').trim();
 const mediaRenderCacheHitUrl = (__ENV.MEDIA_RENDER_CACHE_HIT_URL || '').trim();
 const mediaRenderCacheMissUrlsPath = (__ENV.MEDIA_RENDER_CACHE_MISS_URLS_PATH || '').trim();
 const authBearerToken = (__ENV.AUTH_BEARER_TOKEN || '').trim();
-const enableAnalyze = (__ENV.ENABLE_ANALYZE || '0').trim() === '1';
+const enableAnalyzeRaw = (__ENV.ENABLE_ANALYZE || '0').trim();
+const enableAnalyze = enableAnalyzeRaw === '1';
 const analyzePath = (__ENV.ANALYZE_PATH || '').trim();
 const analyzeLocale = (__ENV.ANALYZE_LOCALE || 'ko-KR').trim();
 const analyzeAllergy = (__ENV.ANALYZE_ALLERGY || 'egg').trim();
 const thinkTimeMs = Number(__ENV.THINK_TIME_MS || '200');
-const analyzeEvery = Math.max(1, Number(__ENV.ANALYZE_EVERY || '10'));
-const renderCacheMissEvery = Math.max(1, Number(__ENV.RENDER_CACHE_MISS_EVERY || '1'));
+const analyzeEvery = Number(__ENV.ANALYZE_EVERY || '10');
+const renderCacheMissEvery = Number(__ENV.RENDER_CACHE_MISS_EVERY || '1');
 const requireMediaRenderCacheHeader = (__ENV.REQUIRE_MEDIA_RENDER_CACHE_HEADER || '0').trim() === '1';
 
 function parseUrlList(raw) {
@@ -32,14 +33,35 @@ const mediaRenderCacheMissUrls = parseUrlList(
 if (!mediaRenderUrl) {
   throw new Error('MEDIA_RENDER_URL is required.');
 }
+if (enableAnalyzeRaw !== '0' && enableAnalyzeRaw !== '1') {
+  throw new Error('ENABLE_ANALYZE must be 0 or 1.');
+}
+if (!isSignedMediaRenderUrl(mediaRenderUrl)) {
+  throw new Error('MEDIA_RENDER_URL must be an http(s) signed /media/render URL with exp and sig query params.');
+}
+if (mediaRenderCacheHitUrl && !isSignedMediaRenderUrl(mediaRenderCacheHitUrl)) {
+  throw new Error('MEDIA_RENDER_CACHE_HIT_URL must be an http(s) signed /media/render URL with exp and sig query params.');
+}
+if (mediaRenderCacheMissUrls.some((url) => !isSignedMediaRenderUrl(url))) {
+  throw new Error('MEDIA_RENDER_CACHE_MISS_URLS must contain only http(s) signed /media/render URLs with exp and sig query params.');
+}
+if (mediaRenderCacheMissUrls.length > 0 && !isPositiveInteger(renderCacheMissEvery)) {
+  throw new Error('RENDER_CACHE_MISS_EVERY must be a positive integer when cache-miss URLs are configured.');
+}
 if ((authBearerToken || enableAnalyze) && !baseUrl) {
   throw new Error('BASE_URL is required when AUTH_BEARER_TOKEN is set or ENABLE_ANALYZE=1.');
+}
+if (!Number.isFinite(thinkTimeMs)) {
+  throw new Error('THINK_TIME_MS must be numeric.');
 }
 
 let analyzeBinary = null;
 if (enableAnalyze) {
   if (!analyzePath) {
     throw new Error('ANALYZE_PATH is required when ENABLE_ANALYZE=1.');
+  }
+  if (!isPositiveInteger(analyzeEvery)) {
+    throw new Error('ANALYZE_EVERY must be a positive integer when ENABLE_ANALYZE=1.');
   }
   analyzeBinary = open(analyzePath, 'b');
 }
@@ -142,6 +164,21 @@ function isStatusOther(status) {
     && !isStatus3xx(status)
     && !isStatus4xx(status)
     && !isStatus5xx(status)
+  );
+}
+
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+function isSignedMediaRenderUrl(value) {
+  const text = String(value || '').trim();
+  return (
+    !/[\n\r\t]/.test(text)
+    && /^https?:\/\//.test(text)
+    && text.includes('/media/render/')
+    && /[?&]exp=/.test(text)
+    && /[?&]sig=/.test(text)
   );
 }
 

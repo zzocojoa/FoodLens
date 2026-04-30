@@ -400,7 +400,10 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertNotIn(leaked_sig, expired_response.text)
             self.assertNotIn("unit-test-secret", invalid_response.text)
             self.assertNotIn("unit-test-secret", expired_response.text)
-            self.assertNotIn("x-media-render-cache", invalid_response.headers)
+            self.assertEqual(invalid_response.headers["x-request-id"], "req-invalid-signature")
+            self.assertEqual(expired_response.headers["x-request-id"], "req-expired-signature")
+            self.assertEqual(invalid_response.headers["x-media-render-cache"], "miss")
+            self.assertEqual(expired_response.headers["x-media-render-cache"], "miss")
             self.assertNotIn("x-media-render-duration-ms", invalid_response.headers)
 
     def test_media_render_storage_errors_return_detail_code_and_request_id(self) -> None:
@@ -440,6 +443,8 @@ class MediaRenderRuntimeTests(unittest.TestCase):
                     detail = response.json()["detail"]
                     self.assertEqual(detail["code"], code)
                     self.assertEqual(detail["request_id"], request_id)
+                    self.assertEqual(response.headers["x-request-id"], request_id)
+                    self.assertEqual(response.headers["x-media-render-cache"], "miss")
 
 
 if __name__ == "__main__":

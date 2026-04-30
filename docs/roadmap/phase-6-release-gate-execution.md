@@ -77,6 +77,13 @@
     - CI/PR 필수 컨텍스트에서는 `--skip-export` 사용 금지, 매 실행마다 fresh export 생성
     - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-bundle-size/`
     - bundle summary의 `exportMode`가 `fresh-export`인지 확인
+  - mobile E2E release gate를 릴리스 후보 검증 명령으로 등록:
+    - workflow: `.github/workflows/mobile-e2e-release-gate.yml`
+    - 로컬/CI 재현 명령: `npm run phase6:mobile-e2e:gate`
+    - 자동화 범위: login/session, scan 분석 진입, result 저장/리포트, history 조회/이동
+    - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-e2e-release-gate/`
+    - `gate-manifest.json`의 `deviceRunnerConfigured=false`는 Detox/Maestro/Appium 같은 실디바이스 자동화 러너가 아직 없다는 뜻
+    - 릴리스 후보 Go 판정 전 iOS/Android 실디바이스 수동 E2E 증적은 별도로 첨부
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -113,6 +120,7 @@
 - 완료 체크
   - [ ] CI에서 실패 시 배포 차단
   - [ ] mobile bundle/image/runtime performance gate 통과
+  - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
   - [ ] backend media performance regression baseline 비교 통과
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
@@ -161,6 +169,7 @@
 - 기능/품질 기준
   - 필수 게이트(타입/계약/회귀/smoke) 통과
   - mobile bundle/image/runtime performance gate 통과 및 artifact 보관
+  - mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 보관
   - backend media performance regression 기준선 비교 통과 및 artifact 보관
   - 치명 결함 0건
   - 릴리스 리허설 및 롤백 리허설 완료

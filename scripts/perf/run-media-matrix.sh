@@ -13,6 +13,10 @@ if [[ -z "${MEDIA_RENDER_URL:-}" ]]; then
   echo "[perf-matrix] MEDIA_RENDER_URL is required."
   exit 1
 fi
+if [[ "${ENABLE_ANALYZE:-0}" != "0" && "${ENABLE_ANALYZE:-0}" != "1" ]]; then
+  echo "[perf-matrix] ENABLE_ANALYZE must be 0 or 1."
+  exit 1
+fi
 if [[ -n "${AUTH_BEARER_TOKEN:-}" || -n "${BASE_URL:-}" ]]; then
   : # optional profile checks are handled in baseline script
 fi
@@ -48,7 +52,8 @@ done
 
 if [[ "${ENABLE_ANALYZE:-0}" == "1" ]]; then
   if [[ -z "${ANALYZE_PATH:-}" || ! -f "${ANALYZE_PATH}" ]]; then
-    echo "[perf-matrix] ENABLE_ANALYZE=1 but ANALYZE_PATH is missing. skip scenario B."
+    echo "[perf-matrix] ANALYZE_PATH file is required when ENABLE_ANALYZE=1."
+    exit 1
   else
     for vus in ${K6_MATRIX_VUS}; do
       run_case "B-render-profile-analyze" "${vus}" "1"

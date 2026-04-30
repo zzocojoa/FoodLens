@@ -1033,6 +1033,25 @@ def _media_render_cache_header_value(*, cache_hit: bool) -> str:
     return "disabled"
 
 
+def _media_render_cache_diagnostic_headers(*, request_id: str, cache_hit: bool) -> dict[str, str]:
+    return {
+        "X-Request-Id": request_id,
+        "X-Media-Render-Cache": _media_render_cache_header_value(cache_hit=cache_hit),
+    }
+
+
+def _media_render_http_exception(error: HTTPException, *, request_id: str) -> HTTPException:
+    headers: dict[str, str] = {}
+    if error.headers is not None:
+        headers.update(error.headers)
+    headers.update(_media_render_cache_diagnostic_headers(request_id=request_id, cache_hit=False))
+    return HTTPException(
+        status_code=error.status_code,
+        detail=error.detail,
+        headers=headers,
+    )
+
+
 async def _media_render_cache_get(variant_key: str, now_ts: int) -> tuple[bytes, str] | None:
     cache = getattr(app.state, "media_render_cache", None)
     lock = getattr(app.state, "media_render_cache_lock", None)
@@ -2953,44 +2972,44 @@ async def get_media_render(
     sig: str = Query(default=""),
 ):
     request_id = _request_id(request)
-    auth_service = _service("auth_service")
-    media_storage = _service("media_storage")
-    now_ts = int(time.time())
-    if not exp or not sig or exp < now_ts:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "Render URL is expired or invalid.",
-                "code": "MEDIA_RENDER_FORBIDDEN",
-                "request_id": request_id,
-            },
-        )
-
-    allowed_widths = set(getattr(app.state, "media_render_allowed_widths", {128, 256, 512, 1024}))
-    final_width = w if w in allowed_widths else int(getattr(app.state, "media_render_default_width", 512))
-    quality_min = int(getattr(app.state, "media_render_quality_min", 50))
-    quality_max = int(getattr(app.state, "media_render_quality_max", 85))
-    final_quality = max(quality_min, min(quality_max, q))
-    final_fmt = _resolve_media_format(fmt, request.headers.get("accept", ""))
-
-    if not _verify_media_render_signature(
-        asset_id=asset_id,
-        width=final_width,
-        quality=final_quality,
-        fmt=fmt,
-        exp=exp,
-        sig=sig,
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "Render signature verification failed.",
-                "code": "MEDIA_RENDER_FORBIDDEN",
-                "request_id": request_id,
-            },
-        )
-
     try:
+        now_ts = int(time.time())
+        if not exp or not sig or exp < now_ts:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Render URL is expired or invalid.",
+                    "code": "MEDIA_RENDER_FORBIDDEN",
+                    "request_id": request_id,
+                },
+            )
+
+        allowed_widths = set(getattr(app.state, "media_render_allowed_widths", {128, 256, 512, 1024}))
+        final_width = w if w in allowed_widths else int(getattr(app.state, "media_render_default_width", 512))
+        quality_min = int(getattr(app.state, "media_render_quality_min", 50))
+        quality_max = int(getattr(app.state, "media_render_quality_max", 85))
+        final_quality = max(quality_min, min(quality_max, q))
+        final_fmt = _resolve_media_format(fmt, request.headers.get("accept", ""))
+
+        if not _verify_media_render_signature(
+            asset_id=asset_id,
+            width=final_width,
+            quality=final_quality,
+            fmt=fmt,
+            exp=exp,
+            sig=sig,
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Render signature verification failed.",
+                    "code": "MEDIA_RENDER_FORBIDDEN",
+                    "request_id": request_id,
+                },
+            )
+
+        auth_service = _service("auth_service")
+        media_storage = _service("media_storage")
         started_at = time.time()
         variant_key = _media_render_variant_key(
             asset_id=asset_id,
@@ -3019,8 +3038,7 @@ async def get_media_render(
                 headers={
                     "Cache-Control": f"public, max-age={remaining_ttl}",
                     "Vary": "Accept",
-                    "X-Request-Id": request_id,
-                    "X-Media-Render-Cache": _media_render_cache_header_value(cache_hit=True),
+                    **_media_render_cache_diagnostic_headers(request_id=request_id, cache_hit=True),
                     "X-Media-Render-Duration-Ms": str(render_ms),
                 },
             )
@@ -3073,11 +3091,12 @@ async def get_media_render(
             headers={
                 "Cache-Control": f"public, max-age={remaining_ttl}",
                 "Vary": "Accept",
-                "X-Request-Id": request_id,
-                "X-Media-Render-Cache": _media_render_cache_header_value(cache_hit=False),
+                **_media_render_cache_diagnostic_headers(request_id=request_id, cache_hit=False),
                 "X-Media-Render-Duration-Ms": str(render_ms),
             },
         )
+    except HTTPException as error:
+        raise _media_render_http_exception(error, request_id=request_id) from error
     except MediaStorageError as error:
         logger.warning(
             "[Media] render failed request_id=%s asset_id=%s code=%s status=%s",
@@ -3093,9 +3112,13 @@ async def get_media_render(
                 "code": error.code,
                 "request_id": request_id,
             },
+            headers=_media_render_cache_diagnostic_headers(request_id=request_id, cache_hit=False),
         ) from error
     except AuthServiceError as error:
-        raise _auth_error_to_http_exception(error, request_id) from error
+        raise _media_render_http_exception(
+            _auth_error_to_http_exception(error, request_id),
+            request_id=request_id,
+        ) from error
 
 
 @app.patch("/me/history/{history_item_id}/image")

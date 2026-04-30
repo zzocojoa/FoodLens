@@ -19,6 +19,75 @@ trim_value() {
   printf '%s' "${value}"
 }
 
+is_positive_integer() {
+  local value="${1}"
+  [[ "${value}" =~ ^[1-9][0-9]*$ ]]
+}
+
+is_signed_media_render_url() {
+  local value="${1}"
+  if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* || "${value}" == *$'\t'* ]]; then
+    return 1
+  fi
+  if [[ "${value}" != http://* && "${value}" != https://* ]]; then
+    return 1
+  fi
+  if [[ "${value}" != *"/media/render/"* ]]; then
+    return 1
+  fi
+  if [[ "${value}" != *"?exp="* && "${value}" != *"&exp="* ]]; then
+    return 1
+  fi
+  if [[ "${value}" != *"?sig="* && "${value}" != *"&sig="* ]]; then
+    return 1
+  fi
+}
+
+validate_media_render_url() {
+  local name="${1}"
+  local value="${2}"
+  if ! is_signed_media_render_url "${value}"; then
+    echo "[perf] ${name} must be an http(s) signed /media/render URL with exp and sig query params."
+    exit 1
+  fi
+}
+
+validate_cache_miss_urls() {
+  local candidate=""
+  local miss_urls_string="${MEDIA_RENDER_CACHE_MISS_URLS:-}"
+  local saw_candidate="0"
+
+  if [[ -n "${miss_urls_string}" ]]; then
+    IFS=',' read -r -a miss_urls <<< "${miss_urls_string//$'\n'/,}"
+    for candidate in "${miss_urls[@]}"; do
+      candidate="$(trim_value "${candidate}")"
+      if [[ -z "${candidate}" ]]; then
+        continue
+      fi
+      saw_candidate="1"
+      validate_media_render_url "MEDIA_RENDER_CACHE_MISS_URLS entry" "${candidate}"
+    done
+  fi
+
+  if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
+    while IFS= read -r candidate; do
+      candidate="$(trim_value "${candidate}")"
+      if [[ -z "${candidate}" ]]; then
+        continue
+      fi
+      saw_candidate="1"
+      validate_media_render_url "MEDIA_RENDER_CACHE_MISS_URLS_PATH entry" "${candidate}"
+    done < <(tr '\n' ',' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" | tr ',' '\n')
+  fi
+
+  if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
+    if [[ "${saw_candidate}" != "1" ]]; then
+      echo "[perf] cache-miss URL input was configured but did not contain any signed /media/render URLs."
+      exit 1
+    fi
+  fi
+}
+
 cache_miss_urls_include() {
   local needle="${1}"
   local candidate=""
@@ -54,6 +123,10 @@ if [[ -z "${MEDIA_RENDER_URL:-}" ]]; then
   echo "[perf] MEDIA_RENDER_URL is required."
   exit 1
 fi
+validate_media_render_url "MEDIA_RENDER_URL" "${MEDIA_RENDER_URL}"
+if [[ -n "${MEDIA_RENDER_CACHE_HIT_URL:-}" ]]; then
+  validate_media_render_url "MEDIA_RENDER_CACHE_HIT_URL" "${MEDIA_RENDER_CACHE_HIT_URL}"
+fi
 if [[ "${PERF_VALIDATE_ONLY}" != "0" && "${PERF_VALIDATE_ONLY}" != "1" ]]; then
   echo "[perf] PERF_VALIDATE_ONLY must be 0 or 1."
   exit 1
@@ -62,8 +135,20 @@ if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && ! -f "${MEDIA_RENDER_CACHE_
   echo "[perf] MEDIA_RENDER_CACHE_MISS_URLS_PATH file does not exist."
   exit 1
 fi
+validate_cache_miss_urls
 if cache_miss_urls_include "${MEDIA_RENDER_CACHE_HIT_URL:-${MEDIA_RENDER_URL}}"; then
   echo "[perf] cache-miss URLs must not include the warmed cache-hit render URL."
+  exit 1
+fi
+if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
+  if ! is_positive_integer "${RENDER_CACHE_MISS_EVERY:-1}"; then
+    echo "[perf] RENDER_CACHE_MISS_EVERY must be a positive integer when cache-miss URLs are configured."
+    exit 1
+  fi
+fi
+
+if [[ "${ENABLE_ANALYZE:-0}" != "0" && "${ENABLE_ANALYZE:-0}" != "1" ]]; then
+  echo "[perf] ENABLE_ANALYZE must be 0 or 1."
   exit 1
 fi
 
@@ -77,6 +162,10 @@ fi
 if [[ "${ENABLE_ANALYZE:-0}" == "1" ]]; then
   if [[ -z "${ANALYZE_PATH:-}" || ! -f "${ANALYZE_PATH}" ]]; then
     echo "[perf] ANALYZE_PATH file is required when ENABLE_ANALYZE=1."
+    exit 1
+  fi
+  if ! is_positive_integer "${ANALYZE_EVERY:-10}"; then
+    echo "[perf] ANALYZE_EVERY must be a positive integer when ENABLE_ANALYZE=1."
     exit 1
   fi
 fi
