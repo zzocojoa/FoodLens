@@ -221,7 +221,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 
 `render_cache_*` metric은 backend 응답 헤더 `X-Media-Render-Cache: hit|miss|disabled`를 기준으로 채워진다. cache가 꺼진 backend는 `X-Media-Render-Cache: disabled`를 반환하며 k6는 이를 `render_cache_disabled_rate`와 `render_cache_unknown_latency`로 분류한다. 배포 대상 backend가 아직 이 헤더를 내보내지 않거나 알 수 없는 값을 내보내면 k6는 `render_cache_unknown_rate`와 `render_cache_unknown_latency`로 분류한다. 기본 workflow 실행은 이 값을 진단 지표로 기록하되 render/profile latency와 failure rate를 우선 차단한다. `require_cache_header=1` 또는 비교 스크립트의 `--require-cache-header`를 켠 실행에서는 `render_cache_disabled_rate.rate`와 `render_cache_unknown_rate.rate`가 0보다 크면 실패한다. 이 strict 모드는 cache-hit, cache-disabled, cache-unknown metric을 필수로 요구하며, `MEDIA_RENDER_CACHE_MISS_URLS` 또는 `MEDIA_RENDER_CACHE_MISS_URLS_PATH`를 설정한 실행에서는 cache-miss metric도 필수다.
 
-다운로드한 baseline artifact 안에 `summary.json`이 여러 개 있으면 workflow는 임의 선택하지 않고 실패한다. 이 경우 `baseline_summary_path` 또는 `PERF_BASELINE_SUMMARY_PATH`를 정확한 파일 경로로 지정한다.
+다운로드한 baseline artifact 안에 이전 비교 기준선이 `baseline/` 하위 디렉터리로 함께 들어 있으면 workflow는 그 중첩 기준선을 후보에서 제외하고 artifact 자체 실행의 `summary.json`을 우선 사용한다. 제외 후에도 `summary.json`이 여러 개 남으면 임의 선택하지 않고 실패한다. 이 경우 `baseline_summary_path` 또는 `PERF_BASELINE_SUMMARY_PATH`를 정확한 파일 경로로 지정한다.
 
 ## 4) 1차 판정 기준 (초기값)
 - `http_req_failed.rate < 0.10`

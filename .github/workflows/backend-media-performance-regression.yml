@@ -747,7 +747,15 @@ jobs:
 
           baseline_summary="${BASELINE_SUMMARY_PATH}"
           if [[ -z "${baseline_summary}" ]]; then
-            mapfile -t baseline_matches < <(find artifacts/perf/baseline -type f -name summary.json | sort)
+            baseline_download_dir="artifacts/perf/baseline"
+            mapfile -t baseline_matches < <(
+              find "${baseline_download_dir}" -type f -name summary.json | while IFS= read -r candidate_path; do
+                relative_path="${candidate_path#${baseline_download_dir}/}"
+                if [[ "${relative_path}" != baseline/* ]]; then
+                  printf '%s\n' "${candidate_path}"
+                fi
+              done | sort
+            )
             if [[ "${#baseline_matches[@]}" == "1" ]]; then
               baseline_summary="${baseline_matches[0]}"
             elif [[ "${#baseline_matches[@]}" == "0" ]]; then
