@@ -47,6 +47,8 @@
     - 타입 검사 (TypeScript/Lint)
     - 계약 테스트 (Pact/Schema Validation)
     - Automated Regression
+    - Mobile bundle/image/runtime performance gate
+    - Backend media performance regression baseline 비교
     - 배포 직후 smoke workflow
 - QA
   - 릴리스 전수 시나리오 체크리스트 확정
@@ -60,6 +62,21 @@
 - DevOps
   - CI 파이프라인에 게이트 연결
   - 실패 시 머지/배포 차단 규칙 적용
+  - backend media performance regression을 PR 필수 컨텍스트로 등록:
+    - workflow: `.github/workflows/backend-media-performance-regression.yml`
+    - 기준선: `PERF_BASELINE_SUMMARY_PATH` 또는 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID` / `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`
+    - 기준선 누락 시 비교 skip 금지, workflow 실패
+  - mobile bundle size workflow를 PR 필수 컨텍스트로 등록:
+    - workflow: `.github/workflows/mobile-bundle-size.yml`
+    - 핵심 이미지 품질 gate: `npm run asset:image:quality:gate`
+    - History 300/1000개 fixture runtime gate: `npm run history:runtime:gate`
+    - 번들 크기 gate: `npm run bundle:size:gate`
+    - 로컬 통합 재현 명령: `npm run phase6:mobile-performance:gate`
+    - 통합 재현 명령은 `--require-fresh-export`로 번들 gate를 호출하므로 `MOBILE_BUNDLE_SKIP_EXPORT=1` 환경변수가 남아 있어도 fresh export를 강제
+    - 오래된 export 재검사는 로컬 진단에서만 `npm run bundle:size:gate -- --skip-export --allow-stale-export` 사용
+    - CI/PR 필수 컨텍스트에서는 `--skip-export` 사용 금지, 매 실행마다 fresh export 생성
+    - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-bundle-size/`
+    - bundle summary의 `exportMode`가 `fresh-export`인지 확인
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -95,6 +112,8 @@
     - 한 줄 요약
 - 완료 체크
   - [ ] CI에서 실패 시 배포 차단
+  - [ ] mobile bundle/image/runtime performance gate 통과
+  - [ ] backend media performance regression baseline 비교 통과
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
   - [ ] smoke summary에 analyze-jobs `job_id` 와 terminal status가 포함
@@ -141,6 +160,8 @@
 
 - 기능/품질 기준
   - 필수 게이트(타입/계약/회귀/smoke) 통과
+  - mobile bundle/image/runtime performance gate 통과 및 artifact 보관
+  - backend media performance regression 기준선 비교 통과 및 artifact 보관
   - 치명 결함 0건
   - 릴리스 리허설 및 롤백 리허설 완료
 - 운영 기준

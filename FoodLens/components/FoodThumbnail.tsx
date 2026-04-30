@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, StyleProp, ViewStyle, ImageStyle } from 'react-native';
 import { Image as ExpoImage, type ImageSource } from 'expo-image';
 const BARCODE_PATTERN = [2, 1, 3, 1, 2, 4, 1, 2];
@@ -24,20 +24,31 @@ interface FoodThumbnailProps {
     traceId?: string;
 }
 
-export const FoodThumbnail = ({ 
-    uri, 
-    emoji, 
-    style, 
+export const FoodThumbnail = React.memo(function FoodThumbnail({
+    uri,
+    emoji,
+    style,
     imageStyle,
-    fallbackFontSize = 24,
-    traceId
-}: FoodThumbnailProps) => {
-    const [hasError, setHasError] = useState(false);
+    fallbackFontSize,
+}: FoodThumbnailProps): React.JSX.Element {
+    const [failedUri, setFailedUri] = useState<string | null>(null);
     const isBarcodePattern = typeof uri === 'string' && uri.startsWith('barcode://');
+    const hasError = typeof uri === 'string' && failedUri === uri;
+    const resolvedFallbackFontSize = fallbackFontSize ?? 24;
     const resolvedSource = useMemo<ImageSource | null>(() => {
         if (!uri) return null;
         const cacheKey = extractMediaRenderAssetId(uri);
         return cacheKey ? { uri, cacheKey } : { uri };
+    }, [uri]);
+
+    useEffect(() => {
+        setFailedUri((currentFailedUri) => {
+            if (currentFailedUri === null || currentFailedUri === uri) {
+                return currentFailedUri;
+            }
+
+            return null;
+        });
     }, [uri]);
 
     if (isBarcodePattern) {
@@ -59,42 +70,38 @@ export const FoodThumbnail = ({
         );
     }
 
-    // If no URI or previous error, show Emoji
+    // URI가 없거나 현재 URI 로드에 실패한 경우 emoji fallback을 표시합니다.
     if (!uri || hasError || !resolvedSource) {
-        if (!uri) {
-            console.log('[FoodThumbnailTrace] fallback:no-uri', { traceId, emoji });
-        } else if (hasError) {
-            console.log('[FoodThumbnailTrace] fallback:after-error', { traceId, uriHead: uri.slice(0, 48) });
-        }
         return (
             <View style={[styles.container, style]}>
-                <Text style={{ fontSize: fallbackFontSize }}>{emoji}</Text>
+                <Text style={{ fontSize: resolvedFallbackFontSize }}>{emoji}</Text>
             </View>
         );
     }
 
     return (
         <View style={[styles.container, style]}>
-             <ExpoImage
+            <ExpoImage
+                recyclingKey={uri}
                 source={resolvedSource}
                 style={[styles.image, imageStyle]}
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={100}
                 onError={() => {
-                    setHasError(true);
+                    setFailedUri(uri);
                 }}
             />
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#F8FAFC',
-        overflow: 'hidden', // Ensure image respects border radius of container
+        overflow: 'hidden', // 이미지가 컨테이너 radius 밖으로 넘치지 않게 합니다.
     },
     image: {
         width: '100%',

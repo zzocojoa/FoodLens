@@ -20,10 +20,32 @@ class ThresholdRule(TypedDict):
     field: str
     max_value: float
 
+
+class RequiredMetric(TypedDict):
+    name: str
+    field: str
+
 METRIC_RULES: list[MetricRule] = [
     {"name": "http_req_failed", "field": "rate", "direction": "lower"},
     {"name": "render_failure_rate", "field": "rate", "direction": "lower"},
+    {"name": "render_content_type_mismatch_rate", "field": "rate", "direction": "lower"},
     {"name": "render_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_cache_hit_failure_rate", "field": "rate", "direction": "lower"},
+    {
+        "name": "render_cache_hit_content_type_mismatch_rate",
+        "field": "rate",
+        "direction": "lower",
+    },
+    {"name": "render_cache_hit_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_cache_miss_failure_rate", "field": "rate", "direction": "lower"},
+    {
+        "name": "render_cache_miss_content_type_mismatch_rate",
+        "field": "rate",
+        "direction": "lower",
+    },
+    {"name": "render_cache_miss_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_cache_disabled_rate", "field": "rate", "direction": "lower"},
+    {"name": "render_cache_unknown_rate", "field": "rate", "direction": "lower"},
     {"name": "profile_failure_rate", "field": "rate", "direction": "lower"},
     {"name": "profile_latency", "field": "p(95)", "direction": "lower"},
     {"name": "analyze_failure_rate", "field": "rate", "direction": "lower"},
@@ -33,11 +55,33 @@ METRIC_RULES: list[MetricRule] = [
 THRESHOLD_RULES: list[ThresholdRule] = [
     {"name": "http_req_failed", "field": "rate", "max_value": 0.10},
     {"name": "render_failure_rate", "field": "rate", "max_value": 0.05},
+    {"name": "render_content_type_mismatch_rate", "field": "rate", "max_value": 0.00001},
     {"name": "render_latency", "field": "p(95)", "max_value": 1500.0},
+    {"name": "render_cache_hit_failure_rate", "field": "rate", "max_value": 0.05},
+    {
+        "name": "render_cache_hit_content_type_mismatch_rate",
+        "field": "rate",
+        "max_value": 0.00001,
+    },
+    {"name": "render_cache_hit_latency", "field": "p(95)", "max_value": 1500.0},
+    {"name": "render_cache_miss_failure_rate", "field": "rate", "max_value": 0.05},
+    {
+        "name": "render_cache_miss_content_type_mismatch_rate",
+        "field": "rate",
+        "max_value": 0.00001,
+    },
+    {"name": "render_cache_miss_latency", "field": "p(95)", "max_value": 2500.0},
+    {"name": "render_cache_disabled_rate", "field": "rate", "max_value": 0.00001},
+    {"name": "render_cache_unknown_rate", "field": "rate", "max_value": 0.00001},
     {"name": "profile_failure_rate", "field": "rate", "max_value": 0.10},
     {"name": "profile_latency", "field": "p(95)", "max_value": 1200.0},
     {"name": "analyze_failure_rate", "field": "rate", "max_value": 0.20},
     {"name": "analyze_latency", "field": "p(95)", "max_value": 2500.0},
+]
+
+ENFORCED_THRESHOLD_REQUIRED_METRICS: list[RequiredMetric] = [
+    {"name": "render_cache_disabled_rate", "field": "rate"},
+    {"name": "render_cache_unknown_rate", "field": "rate"},
 ]
 
 
@@ -69,6 +113,10 @@ def _extract_metric(summary: dict[str, Any], name: str, field: str) -> float | N
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _metric_is_missing(value: float | None) -> bool:
+    return value is None or math.isnan(value) or math.isinf(value)
 
 
 def _fmt(value: float | None) -> str:
@@ -118,6 +166,29 @@ def _thresholds_by_metric(rules: list[ThresholdRule]) -> dict[str, float]:
     return {f"{rule['name']}.{rule['field']}": rule["max_value"] for rule in rules}
 
 
+def _parse_required_metric(raw: str) -> RequiredMetric:
+    name, separator, field = raw.strip().rpartition(".")
+    if not separator or not name or not field:
+        raise argparse.ArgumentTypeError(
+            f"required metric must use name.field format: value={raw}"
+        )
+    return {"name": name, "field": field}
+
+
+def _required_metrics_for_run(
+    *,
+    enforce_thresholds: bool,
+    requested_metrics: list[RequiredMetric],
+) -> list[RequiredMetric]:
+    merged: dict[str, RequiredMetric] = {}
+    if enforce_thresholds:
+        for metric in ENFORCED_THRESHOLD_REQUIRED_METRICS:
+            merged[f"{metric['name']}.{metric['field']}"] = metric
+    for metric in requested_metrics:
+        merged[f"{metric['name']}.{metric['field']}"] = metric
+    return list(merged.values())
+
+
 def _non_negative_float(raw: str) -> float:
     try:
         value = float(raw)
@@ -152,6 +223,13 @@ def main() -> int:
         action="store_true",
         help="Exit 1 if the new summary violates tracked k6 absolute thresholds.",
     )
+    parser.add_argument(
+        "--require-metric",
+        action="append",
+        default=[],
+        type=_parse_required_metric,
+        help="Require an after summary metric in name.field format, e.g. render_cache_hit_latency.p(95).",
+    )
     args = parser.parse_args()
 
     before_path = Path(args.before)
@@ -161,11 +239,12 @@ def main() -> int:
 
     regressions = 0
     threshold_failures = 0
+    missing_required_metrics = 0
     thresholds = _thresholds_by_metric(THRESHOLD_RULES)
     if args.enforce_thresholds:
-        header = f"{'metric':<24} {'before':>12} {'after':>12} {'delta':>10} {'threshold':>12} {'status':>18}"
+        header = f"{'metric':<42} {'before':>12} {'after':>12} {'delta':>10} {'threshold':>12} {'status':>18}"
     else:
-        header = f"{'metric':<24} {'before':>12} {'after':>12} {'delta':>10} {'status':>12}"
+        header = f"{'metric':<42} {'before':>12} {'after':>12} {'delta':>10} {'status':>12}"
     print(header)
     print("-" * len(header))
     for rule in METRIC_RULES:
@@ -195,12 +274,33 @@ def main() -> int:
         status = ",".join(status_parts) if status_parts else "ok"
         if args.enforce_thresholds:
             print(
-                f"{metric_key:<24} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {_fmt(threshold):>12} {status:>18}"
+                f"{metric_key:<42} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {_fmt(threshold):>12} {status:>18}"
             )
         else:
             print(
-                f"{metric_key:<24} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {status:>12}"
+                f"{metric_key:<42} {_fmt(before_value):>12} {_fmt(after_value):>12} {_pct(before_value, after_value):>10} {status:>12}"
             )
+
+    required_metrics = _required_metrics_for_run(
+        enforce_thresholds=bool(args.enforce_thresholds),
+        requested_metrics=args.require_metric,
+    )
+    if required_metrics:
+        print("")
+        print("required metrics")
+        print("-" * 16)
+        for required_metric in required_metrics:
+            metric_key = f"{required_metric['name']}.{required_metric['field']}"
+            after_value = _extract_metric(
+                after,
+                required_metric["name"],
+                required_metric["field"],
+            )
+            missing = _metric_is_missing(after_value)
+            if missing:
+                missing_required_metrics += 1
+            status = "missing" if missing else "ok"
+            print(f"{metric_key:<42} {_fmt(after_value):>12} {status:>12}")
 
     print("")
     print(f"before={before_path}")
@@ -210,9 +310,13 @@ def main() -> int:
     print(f"regressions={regressions}")
     if args.enforce_thresholds:
         print(f"threshold_failures={threshold_failures}")
+    if required_metrics:
+        print(f"missing_required_metrics={missing_required_metrics}")
     if args.fail_on_regression and regressions > 0:
         return 1
     if args.enforce_thresholds and threshold_failures > 0:
+        return 1
+    if missing_required_metrics > 0:
         return 1
     return 0
 

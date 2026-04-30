@@ -15,6 +15,7 @@ const mockClearSession = jest.fn();
 const mockRestoreSession = jest.fn();
 const mockGetCurrentUserIdSnapshot = jest.fn();
 const mockStartPhase2SyncRuntime = jest.fn();
+const mockDispatchPhase2SyncQueue = jest.fn();
 const mockHasCompletedOnboarding = jest.fn();
 const mockSyncI18nSettingsFromProfile = jest.fn();
 const mockSyncHistoryFromCloud = jest.fn();
@@ -139,6 +140,7 @@ jest.mock('../../services/auth/currentUser', () => ({
 }));
 
 jest.mock('../../services/sync/phase2SyncQueue', () => ({
+  dispatchPhase2SyncQueue: (...args: unknown[]) => mockDispatchPhase2SyncQueue(...args),
   startPhase2SyncRuntime: (...args: unknown[]) => mockStartPhase2SyncRuntime(...args),
 }));
 
@@ -218,6 +220,7 @@ describe('RootLayout polling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     mockAppStateListeners.clear();
     jest.spyOn(AppState, 'addEventListener').mockImplementation(
       (_event: AppStateEvent, listener: (nextState: AppStateStatus) => void) => {
@@ -242,6 +245,7 @@ describe('RootLayout polling', () => {
       },
     });
     mockGetCurrentUserIdSnapshot.mockReturnValue('usr_layout');
+    mockDispatchPhase2SyncQueue.mockResolvedValue(undefined);
     mockHasCompletedOnboarding.mockResolvedValue(true);
     mockSyncI18nSettingsFromProfile.mockResolvedValue(undefined);
     mockSyncHistoryFromCloud.mockResolvedValue(undefined);
@@ -264,6 +268,7 @@ describe('RootLayout polling', () => {
 
     expect(mockSyncI18nSettingsFromProfile).not.toHaveBeenCalledWith({ pullFromServer: true });
     expect(mockSyncHistoryFromCloud).not.toHaveBeenCalledWith('usr_layout', { force: false });
+    expect(mockDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockSyncProfileFromCloud).not.toHaveBeenCalled();
 
     act(() => {
@@ -272,6 +277,7 @@ describe('RootLayout polling', () => {
 
     expect(mockSyncI18nSettingsFromProfile).not.toHaveBeenCalledWith({ pullFromServer: true });
     expect(mockSyncHistoryFromCloud).not.toHaveBeenCalledWith('usr_layout', { force: false });
+    expect(mockDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockSyncProfileFromCloud).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -288,6 +294,10 @@ describe('RootLayout polling', () => {
     });
 
     await waitFor(() => {
+      expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
       expect(mockSyncProfileFromCloud).toHaveBeenCalledWith('usr_layout', { force: false });
     });
   });
@@ -297,7 +307,7 @@ describe('RootLayout polling', () => {
     render(<RootLayout />);
 
     await waitFor(() => {
-      expect(mockAppStateListeners.size).toBe(3);
+      expect(mockAppStateListeners.size).toBe(4);
     });
 
     act(() => {
@@ -307,6 +317,7 @@ describe('RootLayout polling', () => {
 
     expect(mockSyncI18nSettingsFromProfile).not.toHaveBeenCalledWith({ pullFromServer: true });
     expect(mockSyncHistoryFromCloud).not.toHaveBeenCalled();
+    expect(mockDispatchPhase2SyncQueue).not.toHaveBeenCalled();
     expect(mockSyncProfileFromCloud).not.toHaveBeenCalled();
 
     act(() => {
@@ -324,10 +335,35 @@ describe('RootLayout polling', () => {
       expect(mockSyncProfileFromCloud).toHaveBeenCalledTimes(1);
     });
     expect(mockSyncHistoryFromCloud).toHaveBeenCalledTimes(1);
+    expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
     expect(
       mockSyncI18nSettingsFromProfile.mock.calls.filter(
         ([args]) => args && (args as { pullFromServer?: boolean }).pullFromServer === true,
       ),
     ).toHaveLength(1);
+  });
+
+  it('flushes the phase2 queue when the app returns active after startup', async () => {
+    const { default: RootLayout, PROFILE_SYNC_STARTUP_DELAY_MS } = loadLayoutModule();
+    render(<RootLayout />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    });
+    mockDispatchPhase2SyncQueue.mockClear();
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      emitAppStateChange('active');
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    });
   });
 });

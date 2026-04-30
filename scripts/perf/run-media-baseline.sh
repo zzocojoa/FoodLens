@@ -7,16 +7,59 @@ RUN_TS="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/artifacts/perf/${RUN_TS}}"
 BASELINE_SCRIPT_VUS="${BASELINE_VUS:-${K6_VUS:-20}}"
 BASELINE_SCRIPT_DURATION="${BASELINE_DURATION:-${K6_DURATION:-60s}}"
+RENDER_CACHE_HIT_WARMUP_REQUESTS="${RENDER_CACHE_HIT_WARMUP_REQUESTS:-1}"
+PERF_VALIDATE_ONLY="${PERF_VALIDATE_ONLY:-0}"
 
 mkdir -p "${OUT_DIR}"
 
-if ! command -v k6 >/dev/null 2>&1; then
-  echo "[perf] k6 is not installed. Install with: brew install k6"
-  exit 1
-fi
+trim_value() {
+  local value="${1}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+cache_miss_urls_include() {
+  local needle="${1}"
+  local candidate=""
+  local miss_urls_string="${MEDIA_RENDER_CACHE_MISS_URLS:-}"
+
+  if [[ -n "${miss_urls_string}" ]]; then
+    IFS=',' read -r -a miss_urls <<< "${miss_urls_string//$'\n'/,}"
+    for candidate in "${miss_urls[@]}"; do
+      candidate="$(trim_value "${candidate}")"
+      if [[ "${candidate}" == "${needle}" ]]; then
+        return 0
+      fi
+    done
+  fi
+
+  if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
+    while IFS= read -r candidate; do
+      candidate="$(trim_value "${candidate}")"
+      if [[ "${candidate}" == "${needle}" ]]; then
+        return 0
+      fi
+    done < <(tr '\n' ',' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" | tr ',' '\n')
+  fi
+
+  return 1
+}
 
 if [[ -z "${MEDIA_RENDER_URL:-}" ]]; then
   echo "[perf] MEDIA_RENDER_URL is required."
+  exit 1
+fi
+if [[ "${PERF_VALIDATE_ONLY}" != "0" && "${PERF_VALIDATE_ONLY}" != "1" ]]; then
+  echo "[perf] PERF_VALIDATE_ONLY must be 0 or 1."
+  exit 1
+fi
+if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && ! -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
+  echo "[perf] MEDIA_RENDER_CACHE_MISS_URLS_PATH file does not exist."
+  exit 1
+fi
+if cache_miss_urls_include "${MEDIA_RENDER_CACHE_HIT_URL:-${MEDIA_RENDER_URL}}"; then
+  echo "[perf] cache-miss URLs must not include the warmed cache-hit render URL."
   exit 1
 fi
 
@@ -32,6 +75,29 @@ if [[ "${ENABLE_ANALYZE:-0}" == "1" ]]; then
     echo "[perf] ANALYZE_PATH file is required when ENABLE_ANALYZE=1."
     exit 1
   fi
+fi
+
+if [[ "${PERF_VALIDATE_ONLY}" == "1" ]]; then
+  printf '{"mode":"validate_only","status":"passed","script_path":"%s"}\n' "${SCRIPT_PATH}" > "${OUT_DIR}/validate-only.json"
+  echo "[perf] validate-only passed."
+  exit 0
+fi
+
+if ! command -v k6 >/dev/null 2>&1; then
+  echo "[perf] k6 is not installed. Install with: brew install k6"
+  exit 1
+fi
+
+if [[ "${RENDER_CACHE_HIT_WARMUP_REQUESTS}" =~ ^[0-9]+$ ]]; then
+  for ((warmup_index = 0; warmup_index < RENDER_CACHE_HIT_WARMUP_REQUESTS; warmup_index++)); do
+    curl -fsS --connect-timeout 15 --max-time 30 \
+      -H "Accept: image/webp,image/*,*/*;q=0.8" \
+      -o /dev/null \
+      "${MEDIA_RENDER_CACHE_HIT_URL:-${MEDIA_RENDER_URL}}"
+  done
+else
+  echo "[perf] RENDER_CACHE_HIT_WARMUP_REQUESTS must be a non-negative integer."
+  exit 1
 fi
 
 echo "[perf] output: ${OUT_DIR}"
@@ -62,6 +128,15 @@ if command -v jq >/dev/null 2>&1; then
       "render_status_other_rate.rate=\(metric_value("render_status_other_rate"; "rate"))",
       "render_content_type_mismatch_rate.rate=\(metric_value("render_content_type_mismatch_rate"; "rate"))",
       "render_latency.p95=\(metric_value("render_latency"; "p(95)"))",
+      "render_cache_hit_failure_rate.rate=\(metric_value("render_cache_hit_failure_rate"; "rate"))",
+      "render_cache_hit_content_type_mismatch_rate.rate=\(metric_value("render_cache_hit_content_type_mismatch_rate"; "rate"))",
+      "render_cache_hit_latency.p95=\(metric_value("render_cache_hit_latency"; "p(95)"))",
+      "render_cache_miss_failure_rate.rate=\(metric_value("render_cache_miss_failure_rate"; "rate"))",
+      "render_cache_miss_content_type_mismatch_rate.rate=\(metric_value("render_cache_miss_content_type_mismatch_rate"; "rate"))",
+      "render_cache_miss_latency.p95=\(metric_value("render_cache_miss_latency"; "p(95)"))",
+      "render_cache_disabled_rate.rate=\(metric_value("render_cache_disabled_rate"; "rate"))",
+      "render_cache_unknown_rate.rate=\(metric_value("render_cache_unknown_rate"; "rate"))",
+      "render_cache_unknown_latency.p95=\(metric_value("render_cache_unknown_latency"; "p(95)"))",
       "profile_latency.p95=\(metric_value("profile_latency"; "p(95)"))",
       "analyze_latency.p95=\(metric_value("analyze_latency"; "p(95)"))"
     ] | .[]

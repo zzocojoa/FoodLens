@@ -6,6 +6,8 @@ import {
 } from './queries/useHistoryQuery';
 import { useDeleteAnalysisMutation } from './mutations/useAnalysisMutations';
 import { useI18n } from '@/features/i18n';
+import { AnalysisService, type HistoryCloudSyncStatus } from '@/services/analysisService';
+import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import {
     aggregateHistoryByCountry,
     buildHistoryArchiveViewModel,
@@ -16,12 +18,37 @@ type UseHistoryDataOptions = {
     isPollingEnabled: boolean;
 };
 
+type Translate = ReturnType<typeof useI18n>['t'];
+
 const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolean => {
     if (lastLoadedAtMs <= 0) {
         return true;
     }
 
     return Date.now() - lastLoadedAtMs >= refreshWindowMs;
+};
+
+const showHistoryRefreshAlert = (t: Translate, status: HistoryCloudSyncStatus): void => {
+    if (status === 'synced' || status === 'stale_user') {
+        return;
+    }
+
+    if (status === 'auth_required') {
+        showTranslatedAlert(t, {
+            titleKey: 'history.alert.refreshAuthRequiredTitle',
+            titleFallback: 'Login required',
+            messageKey: 'history.alert.refreshAuthRequiredMessage',
+            messageFallback: 'Please sign in again to refresh your history from the server.',
+        });
+        return;
+    }
+
+    showTranslatedAlert(t, {
+        titleKey: 'history.alert.refreshUnavailableTitle',
+        titleFallback: 'History not updated',
+        messageKey: 'history.alert.refreshUnavailableMessage',
+        messageFallback: 'Could not reach the server. Showing saved records on this device.',
+    });
 };
 
 export const useHistoryData = (userId: string, options: UseHistoryDataOptions) => {
@@ -38,7 +65,10 @@ export const useHistoryData = (userId: string, options: UseHistoryDataOptions) =
     const deleteMutation = useDeleteAnalysisMutation(userId);
 
     const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
+    const [manualRefreshing, setManualRefreshing] = useState(false);
     const hasAutoExpandedInitialCountryRef = useRef(false);
+    const isMountedRef = useRef(true);
+    const manualRefreshPromiseRef = useRef<Promise<void> | null>(null);
     const previousPollingEnabledRef = useRef(isPollingEnabled);
 
     const archiveData = useMemo(() => {
@@ -58,6 +88,12 @@ export const useHistoryData = (userId: string, options: UseHistoryDataOptions) =
         setExpandedCountries(new Set([archiveViewModel.countryChapters[0].id]));
         hasAutoExpandedInitialCountryRef.current = true;
     }, [archiveViewModel.countryChapters, expandedCountries.size]);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     useEffect(() => {
         const wasPollingEnabled = previousPollingEnabledRef.current;
@@ -83,9 +119,28 @@ export const useHistoryData = (userId: string, options: UseHistoryDataOptions) =
         await deleteMutation.mutateAsync(Array.from(itemIds));
     }, [deleteMutation]);
 
-    const onRefresh = useCallback(async () => {
-        await refetch();
-    }, [refetch]);
+    const onRefresh = useCallback((): Promise<void> => {
+        if (manualRefreshPromiseRef.current) {
+            return manualRefreshPromiseRef.current;
+        }
+
+        setManualRefreshing(true);
+        let refreshPromise: Promise<void>;
+        refreshPromise = AnalysisService.syncHistoryFromCloudWithStatus(userId, { force: true })
+            .then((result) => {
+                showHistoryRefreshAlert(t, result.status);
+            })
+            .finally(() => {
+                if (manualRefreshPromiseRef.current === refreshPromise) {
+                    manualRefreshPromiseRef.current = null;
+                }
+                if (isMountedRef.current) {
+                    setManualRefreshing(false);
+                }
+            });
+        manualRefreshPromiseRef.current = refreshPromise;
+        return refreshPromise;
+    }, [t, userId]);
 
     return {
         archiveData,
@@ -94,7 +149,7 @@ export const useHistoryData = (userId: string, options: UseHistoryDataOptions) =
         journalSummary: archiveViewModel.journalSummary,
         loading,
         initialRegion,
-        refreshing,
+        refreshing: refreshing || manualRefreshing,
         recentEntries: archiveViewModel.recentEntries,
         records,
         onRefresh,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
@@ -6,14 +6,13 @@ import { AnalysisRecord, AnalysisService } from '../../../services/analysisServi
 import { UserProfile } from '../../../models/User';
 import { WeeklyData } from '../../../components/weeklyStatsStrip/types';
 import { HomeModalType } from '../types/home.types';
-import { filterScansByDate } from '../utils/homeDashboard';
+import { buildWeeklyStats, filterScansByDate } from '../utils/homeDashboard';
 import { fetchHomeDashboardData, getProfileRestrictionCount } from '../services/homeDashboardService';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import {
   subscribeUserProfileUpdated,
-  UserProfileUpdateReason,
 } from '@/services/user/userProfileStore';
 import { SafeStorage } from '@/services/storage';
 import { getUserStorageKey } from '@/services/user/constants';
@@ -23,10 +22,10 @@ import {
   updateUserClientState,
 } from '@/services/user/clientStateService';
 import { fromLocalDateString, toLocalDateString } from '@/services/sync/clientState';
+import { queryClient } from '@/services/queryClient';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
-const PROFILE_UPDATE_RELOAD_GUARD_MS = 3_000;
-const DASHBOARD_BACKGROUND_REFRESH_MS = 15_000;
+const DASHBOARD_FOCUS_REFRESH_STALE_MS = 15_000;
 const PROFILE_IMAGE_REUSE_BUFFER_MS = 15_000;
 
 const extractSignedExpiryMs = (uri: string): number | null => {
@@ -82,21 +81,6 @@ const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolea
   return Date.now() - lastLoadedAtMs >= refreshWindowMs;
 };
 
-const shouldReloadFromProfileUpdate = (
-  lastLoadedAtMs: number,
-  reason: UserProfileUpdateReason
-): boolean => {
-  if (reason === 'client_state_write') {
-    return false;
-  }
-
-  if (lastLoadedAtMs <= 0) {
-    return true;
-  }
-
-  return Date.now() - lastLoadedAtMs >= PROFILE_UPDATE_RELOAD_GUARD_MS;
-};
-
 const consumePendingSelectedDateWrite = (pendingWriteIds: Set<number>): boolean => {
   const pendingWriteResult = pendingWriteIds.values().next();
   if (pendingWriteResult.done) {
@@ -107,6 +91,8 @@ const consumePendingSelectedDateWrite = (pendingWriteIds: Set<number>): boolean 
   return true;
 };
 
+const buildHistoryQueryKey = (userId: string): readonly ['history', string] => ['history', userId] as const;
+
 export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const { t } = useI18n();
   const isFocused = useIsFocused();
@@ -116,7 +102,6 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     readHomeSelectedDateSnapshot(initialUserId) || new Date();
   const [recentScans, setRecentScans] = useState<AnalysisRecord[]>([]);
   const [allHistoryCache, setAllHistoryCache] = useState<AnalysisRecord[]>([]);
-  const [filteredScans, setFilteredScans] = useState<AnalysisRecord[]>([]);
   const [selectedDate, setSelectedDateState] = useState<Date>(initialSelectedDate);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyData[]>([]);
   const [allergyCount, setAllergyCount] = useState(() =>
@@ -137,14 +122,21 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const hasSkippedInitialFocusRefreshRef = useRef(false);
   const lastLoadedAtRef = useRef(0);
   const isFocusedRef = useRef(isFocused);
-  const dashboardRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dashboardRefreshTaskRef = useRef<{ cancel?: () => void } | null>(null);
   const pendingSelectedDateWriteIdsRef = useRef<Set<number>>(new Set<number>());
   const nextSelectedDateWriteIdRef = useRef(0);
 
-  useEffect(() => {
-    setFilteredScans(filterScansByDate(allHistoryCache, selectedDate));
-  }, [allHistoryCache, selectedDate]);
+  const applyHistorySnapshot = useCallback((allHistory: AnalysisRecord[]): void => {
+    setRecentScans(allHistory.slice(0, 3));
+    setAllHistoryCache(allHistory);
+    setWeeklyStats(buildWeeklyStats(allHistory));
+    setSafeCount(allHistory.filter((item) => item.safetyStatus === 'SAFE').length);
+  }, []);
+
+  const filteredScans = useMemo(
+    () => filterScansByDate(allHistoryCache, selectedDate),
+    [allHistoryCache, selectedDate],
+  );
 
   useEffect(() => {
     isFocusedRef.current = isFocused;
@@ -156,11 +148,6 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     if (dashboardRefreshTaskRef.current) {
       dashboardRefreshTaskRef.current.cancel?.();
       dashboardRefreshTaskRef.current = null;
-    }
-
-    if (dashboardRefreshIntervalRef.current) {
-      clearInterval(dashboardRefreshIntervalRef.current);
-      dashboardRefreshIntervalRef.current = null;
     }
 
     if (profileRefreshTimerRef.current) {
@@ -217,6 +204,33 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       loadInFlightRef.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    if (!isFocused) {
+      return undefined;
+    }
+
+    const historyQueryKey = buildHistoryQueryKey(getCurrentUserIdSnapshot());
+    const syncFromHistoryQueryCache = (): void => {
+      if (!isFocusedRef.current) {
+        return;
+      }
+
+      const records = queryClient.getQueryData<AnalysisRecord[]>(historyQueryKey);
+      if (!Array.isArray(records)) {
+        return;
+      }
+
+      applyHistorySnapshot(records);
+    };
+
+    const unsubscribe = queryClient.getQueryCache().subscribe(syncFromHistoryQueryCache);
+    syncFromHistoryQueryCache();
+
+    return () => {
+      unsubscribe();
+    };
+  }, [applyHistorySnapshot, isFocused]);
 
   const hydrateProfileFromCache = useCallback(async () => {
     if (profileHydrationInFlightRef.current) {
@@ -285,11 +299,6 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       dashboardRefreshTaskRef.current = null;
     }
 
-    if (dashboardRefreshIntervalRef.current) {
-      clearInterval(dashboardRefreshIntervalRef.current);
-      dashboardRefreshIntervalRef.current = null;
-    }
-
     if (!isFocused) {
       return;
     }
@@ -303,7 +312,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       hasSkippedInitialFocusRefreshRef.current = true;
     } else if (
       hasRequestedInitialLoadRef.current &&
-      isRefreshStale(lastLoadedAtRef.current, DASHBOARD_BACKGROUND_REFRESH_MS)
+      isRefreshStale(lastLoadedAtRef.current, DASHBOARD_FOCUS_REFRESH_STALE_MS)
     ) {
       dashboardRefreshTaskRef.current = InteractionManager.runAfterInteractions(() => {
         if (!isFocusedRef.current) {
@@ -314,23 +323,10 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       });
     }
 
-    dashboardRefreshIntervalRef.current = setInterval(() => {
-      if (!isFocusedRef.current) {
-        return;
-      }
-
-      void loadDashboardData();
-    }, DASHBOARD_BACKGROUND_REFRESH_MS);
-
     return () => {
       if (dashboardRefreshTaskRef.current) {
         dashboardRefreshTaskRef.current.cancel?.();
         dashboardRefreshTaskRef.current = null;
-      }
-
-      if (dashboardRefreshIntervalRef.current) {
-        clearInterval(dashboardRefreshIntervalRef.current);
-        dashboardRefreshIntervalRef.current = null;
       }
     };
   }, [isFocused, loadDashboardData]);
@@ -350,7 +346,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         return;
       }
 
-      if (!shouldReloadFromProfileUpdate(lastLoadedAtRef.current, reason)) {
+      if (reason === 'client_state_write') {
         return;
       }
 
@@ -363,7 +359,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
           return;
         }
 
-        void loadDashboardData();
+        void hydrateProfileFromCache();
       }, PROFILE_REFRESH_DEBOUNCE_MS);
     });
 
@@ -374,7 +370,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         profileRefreshTimerRef.current = null;
       }
     };
-  }, [loadDashboardData]);
+  }, [hydrateProfileFromCache]);
 
   const handleDeleteItem = useCallback(
     async (itemId: string) => {

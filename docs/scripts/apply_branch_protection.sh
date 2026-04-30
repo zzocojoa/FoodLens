@@ -25,7 +25,7 @@ OWNER="zzocojoa"
 REPO="FoodLens"
 BRANCH="main"
 
-# Backend Media Performance Regression은 workflow_dispatch 릴리스 검증이라 PR 필수 컨텍스트로 등록하지 않는다.
+# Backend Media Performance Regression은 baseline 비교가 포함된 PR 필수 컨텍스트다.
 curl --fail-with-body -L \
   -X PUT \
   -H "Accept: application/vnd.github+json" \
@@ -43,6 +43,7 @@ curl --fail-with-body -L \
         "backend-auth-runtime",
         "mobile-auth-runtime",
         "sync-regression",
+        "backend-media-performance-regression",
         "bundle-size",
         "pr-policy-check",
         "image-hydration-policy"

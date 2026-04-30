@@ -1,5 +1,6 @@
 import { fetchHomeDashboardData } from '../homeDashboardService';
 import { AnalysisRecord } from '@/services/analysis/types';
+import { queryClient } from '@/services/queryClient';
 
 const mockLoadUserProfileWithHistory = jest.fn();
 const mockBuildWeeklyStats = jest.fn();
@@ -15,6 +16,7 @@ jest.mock('../../utils/homeDashboard', () => ({
 describe('fetchHomeDashboardData', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient.clear();
   });
 
   it('derives recent scans from the single history snapshot load', async () => {
@@ -71,5 +73,6 @@ describe('fetchHomeDashboardData', () => {
       weeklyStats,
       safeCount: 2,
     });
+    expect(queryClient.getQueryData(['history', 'usr_home'])).toEqual(allHistory);
   });
 });

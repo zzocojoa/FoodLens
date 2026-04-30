@@ -124,7 +124,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-Id", "X-Device-Id"],
-    expose_headers=["Retry-After"],
+    expose_headers=[
+        "Retry-After",
+        "X-Request-Id",
+        "X-Media-Render-Cache",
+        "X-Media-Render-Duration-Ms",
+    ],
 )
 
 logger = logging.getLogger("foodlens.api")
@@ -1012,12 +1017,26 @@ def _media_render_variant_key(
     return f"{asset_id}:{width}:{quality}:{target_format}"
 
 
-async def _media_render_cache_get(variant_key: str, now_ts: int) -> tuple[bytes, str] | None:
+def _is_media_render_cache_operational() -> bool:
     if not bool(getattr(app.state, "media_render_cache_enabled", False)):
-        return None
+        return False
     cache = getattr(app.state, "media_render_cache", None)
     lock = getattr(app.state, "media_render_cache_lock", None)
-    if cache is None or lock is None:
+    return cache is not None and lock is not None
+
+
+def _media_render_cache_header_value(*, cache_hit: bool) -> str:
+    if cache_hit:
+        return "hit"
+    if _is_media_render_cache_operational():
+        return "miss"
+    return "disabled"
+
+
+async def _media_render_cache_get(variant_key: str, now_ts: int) -> tuple[bytes, str] | None:
+    cache = getattr(app.state, "media_render_cache", None)
+    lock = getattr(app.state, "media_render_cache_lock", None)
+    if not _is_media_render_cache_operational() or cache is None or lock is None:
         return None
     async with lock:
         entry = cache.get(variant_key)
@@ -1038,11 +1057,9 @@ async def _media_render_cache_set(
     content_type: str,
     now_ts: int,
 ) -> None:
-    if not bool(getattr(app.state, "media_render_cache_enabled", False)):
-        return
     cache = getattr(app.state, "media_render_cache", None)
     lock = getattr(app.state, "media_render_cache_lock", None)
-    if cache is None or lock is None:
+    if not _is_media_render_cache_operational() or cache is None or lock is None:
         return
     ttl_seconds = max(1, int(getattr(app.state, "media_render_cache_ttl_seconds", 300)))
     max_items = max(1, int(getattr(app.state, "media_render_cache_max_items", 256)))
@@ -2985,6 +3002,7 @@ async def get_media_render(
         if cached is not None:
             rendered_bytes, content_type = cached
             remaining_ttl = max(1, exp - now_ts)
+            render_ms = int((time.time() - started_at) * 1000)
             logger.info(
                 "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
                 request_id,
@@ -2992,7 +3010,7 @@ async def get_media_render(
                 asset_id,
                 "unknown",
                 content_type,
-                int((time.time() - started_at) * 1000),
+                render_ms,
                 True,
             )
             return Response(
@@ -3002,6 +3020,8 @@ async def get_media_render(
                     "Cache-Control": f"public, max-age={remaining_ttl}",
                     "Vary": "Accept",
                     "X-Request-Id": request_id,
+                    "X-Media-Render-Cache": _media_render_cache_header_value(cache_hit=True),
+                    "X-Media-Render-Duration-Ms": str(render_ms),
                 },
             )
 
@@ -3036,6 +3056,7 @@ async def get_media_render(
             _render_variant,
         )
         remaining_ttl = max(1, exp - now_ts)
+        render_ms = int((time.time() - started_at) * 1000)
         logger.info(
             "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
             request_id,
@@ -3043,7 +3064,7 @@ async def get_media_render(
             asset_id,
             asset_scope,
             content_type,
-            int((time.time() - started_at) * 1000),
+            render_ms,
             False,
         )
         return Response(
@@ -3053,6 +3074,8 @@ async def get_media_render(
                 "Cache-Control": f"public, max-age={remaining_ttl}",
                 "Vary": "Accept",
                 "X-Request-Id": request_id,
+                "X-Media-Render-Cache": _media_render_cache_header_value(cache_hit=False),
+                "X-Media-Render-Duration-Ms": str(render_ms),
             },
         )
     except MediaStorageError as error:

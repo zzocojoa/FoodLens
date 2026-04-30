@@ -24,8 +24,29 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Prepare mobile performance artifact directory
+        run: |
+          mkdir -p artifacts/phase6/mobile-bundle-size
+          cat > artifacts/phase6/mobile-bundle-size/gate-manifest.json <<'JSON'
+          {
+            "workflow": "mobile-bundle-size",
+            "requiresFreshExport": true,
+            "gates": [
+              "asset:image:quality:gate",
+              "history:runtime:gate",
+              "bundle:size:gate"
+            ]
+          }
+          JSON
+
+      - name: Run asset image quality gate
+        run: npm run asset:image:quality:gate
+
+      - name: Run History runtime performance gate
+        run: npm run history:runtime:gate
+
       - name: Run mobile bundle size gate
-        run: npm run bundle:size:gate -- --output-dir artifacts/phase6/mobile-bundle-size/export --summary-file artifacts/phase6/mobile-bundle-size/mobile-bundle-size-summary.json
+        run: npm run bundle:size:gate -- --require-fresh-export --output-dir artifacts/phase6/mobile-bundle-size/export --summary-file artifacts/phase6/mobile-bundle-size/mobile-bundle-size-summary.json
 
       - name: Upload mobile bundle size artifacts
         if: always()

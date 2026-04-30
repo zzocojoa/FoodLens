@@ -6,6 +6,8 @@
 
 ## 범위
 - `GET /media/render/{asset_id}`
+  - cache-hit latency는 warmed `MEDIA_RENDER_URL` 또는 `MEDIA_RENDER_CACHE_HIT_URL`로 측정한다.
+  - cache-miss latency는 선택 입력 `MEDIA_RENDER_CACHE_MISS_URLS` 또는 `MEDIA_RENDER_CACHE_MISS_URLS_PATH`로 분리 측정한다.
 - `GET /me/profile` (선택, 인증 토큰 있을 때)
 - `POST /analyze/label` (선택, `ENABLE_ANALYZE=1`일 때)
 
@@ -67,9 +69,16 @@ export BASE_URL="https://<RENDER_BASE_URL>"
 export K6_VUS=20
 export K6_DURATION=60s
 export THINK_TIME_MS=200
+export RENDER_CACHE_HIT_WARMUP_REQUESTS=1
+
+# optional: cache miss 후보는 서로 다른 cold backend variant여야 한다.
+# export MEDIA_RENDER_CACHE_MISS_URLS_PATH="/secure/path/media-render-cache-miss-urls.txt"
+# export RENDER_CACHE_MISS_EVERY=1
 
 bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-baseline.sh
 ```
+
+`MEDIA_RENDER_CACHE_MISS_URLS_PATH`는 newline-delimited signed URL 파일이다. `MEDIA_RENDER_CACHE_MISS_URLS`는 쉼표로 구분한 signed URL 문자열이다. miss 후보는 단순히 `exp`/`sig`만 새로 발급한 같은 variant가 아니라, backend cache key 기준으로 cold인 `asset_id:width:quality:target_format` 조합이어야 한다. 랜덤 query parameter는 backend cache key에 포함되지 않으므로 miss를 만들지 못한다.
 
 ## 2-1) 매트릭스 실행 (권장)
 ```bash
@@ -117,7 +126,15 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
   --enforce-thresholds
 ```
 
-누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다.
+누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다. 이때 cache 상태 판정에 필요한 `render_cache_disabled_rate.rate`, `render_cache_unknown_rate.rate`는 필수 메트릭으로 취급하므로 누락되어도 실패한다.
+
+`Backend Media Performance Regression` workflow는 PR / `release/**` push / release 이벤트에서 필수 게이트로 실행한다. 비교 기준선은 `baseline_summary_path` 입력 또는 GitHub Actions variable `PERF_BASELINE_SUMMARY_PATH`로 지정한 저장소 내 `summary.json`를 우선 사용한다. 저장소 내 파일이 없으면 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID`와 `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`으로 이전 workflow artifact를 내려받는다. 기준선 경로와 artifact 정보가 모두 없거나, 다운로드 후 `summary.json`를 찾지 못하면 비교를 skip하지 않고 실패한다.
+
+secret 없이 workflow/script 배선만 확인해야 할 때는 수동 실행에서 `validate_only=1`을 사용한다. 이 모드는 live backend, signed URL, baseline artifact, k6 설치를 요구하지 않고 `run-media-baseline.sh`와 `compare-media-summaries.py`의 기본 검증 경로만 실행한다. PR / release 기본 실행은 `validate_only=0`이며 실제 성능 게이트를 우회하지 않는다. validate-only 실행도 `backend-media-performance-regression-<run_id>` artifact에 dry-run marker와 synthetic compare summary를 업로드한다.
+
+필수 GitHub variables 또는 secrets:
+- `PERF_BACKEND_BASE_URL`
+- `PERF_BASELINE_SUMMARY_PATH` 또는 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID` + `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`
 
 ## 3-2) GitHub Actions fresh render URL
 `Backend Media Performance Regression` workflow는 아래 순서로 `MEDIA_RENDER_URL`을 정한다.
@@ -136,6 +153,8 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
 선택 GitHub secrets:
 - `PERF_AUTH_BEARER_TOKEN`
 - `PERF_MEDIA_RENDER_URL`
+- `PERF_MEDIA_RENDER_CACHE_HIT_URL`
+- `PERF_MEDIA_RENDER_CACHE_MISS_URLS`
 
 ## 3-3) Backend Media Performance Regression 실패 분류표
 | 분류 | 확정 신호 | 의심 신호 | 1차 조치 |
@@ -174,12 +193,16 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `http_req_failed.rate`
 - `render_failure_rate.rate`
 - `render_latency.p(95)`
+- `render_cache_hit_failure_rate.rate`
+- `render_cache_hit_latency.p(95)`
+- `render_cache_miss_failure_rate.rate`
+- `render_cache_miss_latency.p(95)`
 - `profile_failure_rate.rate`
 - `profile_latency.p(95)`
 - `analyze_failure_rate.rate`
 - `analyze_latency.p(95)`
 
-`run-media-baseline.sh`가 추가로 요약 출력하는 진단용 metric은 아래와 같다. 이 값들은 상태 코드 분포와 content type 불일치를 확인하기 위한 보조 지표이며, 현재 threshold 완화 근거로 단독 사용하지 않는다. `render_content_type_mismatch_rate.rate`는 render 응답이 2xx였지만 `Content-Type`이 `image/*`가 아닌 경우를 센다.
+`run-media-baseline.sh`가 추가로 요약 출력하는 진단용 metric은 아래와 같다. 이 값들은 상태 코드 분포와 content type 불일치를 확인하기 위한 보조 지표다. `render_content_type_mismatch_rate.rate`는 render 응답이 2xx였지만 `Content-Type`이 `image/*`가 아닌 경우를 센다. content-type mismatch 관련 rate는 0보다 크면 k6 threshold와 비교 스크립트 threshold에서 실패한다.
 
 - `http_req_duration.p95`
 - `render_status_2xx_rate.rate`
@@ -188,13 +211,31 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `render_status_5xx_rate.rate`
 - `render_status_other_rate.rate`
 - `render_content_type_mismatch_rate.rate`
+- `render_cache_hit_content_type_mismatch_rate.rate`
+- `render_cache_miss_content_type_mismatch_rate.rate`
+- `render_cache_disabled_rate.rate`
+- `render_cache_unknown_rate.rate`
+- `render_cache_unknown_latency.p(95)`
 
 `run-media-baseline.sh`의 콘솔 요약은 사람이 읽기 쉬운 별칭으로 latency를 `render_latency.p95`, `profile_latency.p95`, `analyze_latency.p95`처럼 출력한다. `summary.json`, threshold, 비교 스크립트의 필드 이름은 위의 주요 metric 목록처럼 `render_latency.p(95)`, `profile_latency.p(95)`, `analyze_latency.p(95)`를 기준으로 한다.
+
+`render_cache_*` metric은 backend 응답 헤더 `X-Media-Render-Cache: hit|miss|disabled`를 기준으로 채워진다. cache가 꺼진 backend는 `X-Media-Render-Cache: disabled`를 반환하며 k6는 이를 `render_cache_disabled_rate`와 `render_cache_unknown_latency`로 분류한다. 배포 대상 backend가 아직 이 헤더를 내보내지 않거나 알 수 없는 값을 내보내면 k6는 `render_cache_unknown_rate`와 `render_cache_unknown_latency`로 분류한다. k6 threshold와 비교 스크립트는 `render_cache_disabled_rate.rate`와 `render_cache_unknown_rate.rate`가 0보다 크면 실패하도록 구성한다. workflow의 비교 단계는 cache-hit, cache-disabled, cache-unknown metric을 필수로 요구하므로 헤더 누락, 오래된 k6 summary, cache 비활성화 배포는 실패한다. `MEDIA_RENDER_CACHE_MISS_URLS` 또는 `MEDIA_RENDER_CACHE_MISS_URLS_PATH`를 설정한 실행에서는 cache-miss metric도 필수다.
+
+다운로드한 baseline artifact 안에 `summary.json`이 여러 개 있으면 workflow는 임의 선택하지 않고 실패한다. 이 경우 `baseline_summary_path` 또는 `PERF_BASELINE_SUMMARY_PATH`를 정확한 파일 경로로 지정한다.
 
 ## 4) 1차 판정 기준 (초기값)
 - `http_req_failed.rate < 0.10`
 - `render_failure_rate.rate < 0.05`
 - `render_latency.p(95) < 1500ms`
+- `render_cache_hit_failure_rate.rate < 0.05`
+- `render_cache_hit_content_type_mismatch_rate.rate < 0.00001`
+- `render_cache_hit_latency.p(95) < 1500ms`
+- `render_cache_miss_failure_rate.rate < 0.05`
+- `render_cache_miss_content_type_mismatch_rate.rate < 0.00001`
+- `render_cache_miss_latency.p(95) < 2500ms`
+- `render_content_type_mismatch_rate.rate < 0.00001`
+- `render_cache_disabled_rate.rate < 0.00001`
+- `render_cache_unknown_rate.rate < 0.00001`
 - `profile_failure_rate.rate < 0.10`
 - `profile_latency.p(95) < 1200ms`
 - `analyze_failure_rate.rate < 0.20`

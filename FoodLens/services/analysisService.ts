@@ -15,15 +15,30 @@ import {
   startPhase2SyncRuntime,
 } from './sync/phase2SyncQueue';
 import { queryClient } from './queryClient';
+import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
 
 export type { AnalysisRecord } from './analysis/types';
+export type HistoryCloudSyncStatus = 'synced' | 'local_only' | 'auth_required' | 'failed' | 'stale_user';
+export type HistoryCloudSyncResult = {
+  records: AnalysisRecord[];
+  status: HistoryCloudSyncStatus;
+  errorCode?: string;
+  requestId?: string;
+};
+
+type HistoryServerSyncResult =
+  | { status: 'synced'; records: AnalysisRecord[] }
+  | { status: 'skipped' }
+  | { status: 'stale_user' }
+  | { status: 'auth_required'; errorCode: string; requestId?: string }
+  | { status: 'failed'; errorCode: string; requestId?: string };
 
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
 const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
 const BARCODE_SAVE_DEDUP_WINDOW_MS = 10_000;
 
-const historyServerPullInFlight = new Map<string, Promise<AnalysisRecord[] | null>>();
+const historyServerPullInFlight = new Map<string, Promise<HistoryServerSyncResult>>();
 const historyServerPullLastAt = new Map<string, number>();
 
 const historyMigrationMarkerKey = (userId: string): string => `${HISTORY_MIGRATION_MARKER_PREFIX}${userId}`;
@@ -33,8 +48,32 @@ const historyQueryKey = (userId: string): readonly [string, string] => ['history
 const sortByRecentTimestamp = (records: AnalysisRecord[]): AnalysisRecord[] =>
   [...records].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
+const getHistoryRecordIds = (records: AnalysisRecord[]): Set<string> => {
+  return new Set(records.map((record) => record.id));
+};
+
+const getLocalOnlyIdsCreatedDuringPull = (
+  pullStartRecords: AnalysisRecord[],
+  latestRecords: AnalysisRecord[]
+): Set<string> => {
+  const pullStartIds = getHistoryRecordIds(pullStartRecords);
+  return new Set(
+    latestRecords
+      .filter((record) => !pullStartIds.has(record.id))
+      .map((record) => record.id)
+  );
+};
+
+const unionHistoryRecordIds = (left: Set<string>, right: Set<string>): Set<string> => {
+  return new Set([...left, ...right]);
+};
+
 const updateHistoryQueryCache = (userId: string, records: AnalysisRecord[]): void => {
   queryClient.setQueryData(historyQueryKey(userId), sortByRecentTimestamp(records));
+};
+
+const isActiveHistorySyncUser = (userId: string): boolean => {
+  return hasAuthenticatedUser() && getCurrentUserId() === userId;
 };
 
 const getHistoryDeleteSet = async (userId: string): Promise<Set<string>> => {
@@ -97,8 +136,8 @@ const getPendingHistoryMergeHints = async (
 const syncHistoryFromServer = async (
   userId: string,
   local: AnalysisRecord[],
-  options: { force?: boolean } = {}
-): Promise<AnalysisRecord[] | null> => {
+  options: { force?: boolean }
+): Promise<HistoryServerSyncResult> => {
   const force = options.force === true;
   const activePull = historyServerPullInFlight.get(userId);
   if (activePull) {
@@ -107,38 +146,68 @@ const syncHistoryFromServer = async (
 
   const lastPulledAt = historyServerPullLastAt.get(userId);
   if (!force && typeof lastPulledAt === 'number' && Date.now() - lastPulledAt < HISTORY_SERVER_PULL_COOLDOWN_MS) {
-    return null;
+    return { status: 'skipped' };
   }
+  const previousLastPulledAt = lastPulledAt;
   historyServerPullLastAt.set(userId, Date.now());
 
-  const pullPromise = (async (): Promise<AnalysisRecord[] | null> => {
+  const pullPromise = (async (): Promise<HistoryServerSyncResult> => {
     try {
       const deleteSet = await getHistoryDeleteSet(userId);
       const remote = await Phase2Api.getHistory();
+      if (!isActiveHistorySyncUser(userId)) {
+        if (typeof previousLastPulledAt === 'number') {
+          historyServerPullLastAt.set(userId, previousLastPulledAt);
+        } else {
+          historyServerPullLastAt.delete(userId);
+        }
+        return { status: 'stale_user' };
+      }
       const filteredRemote = remote.history.filter((item) => {
         const remoteEntryId =
           typeof item.entry?.['id'] === 'string' ? item.entry['id'] : item.id;
         return !deleteSet.has(remoteEntryId);
       });
+      const latestLocal = await getStoredAnalyses(userId);
       const pendingMergeHints = await getPendingHistoryMergeHints(userId);
-      const merged = mergeRemoteHistory(local, filteredRemote, {
-        keepLocalOnlyIds: pendingMergeHints.keepLocalOnlyIds,
+      const keepLocalOnlyIds = unionHistoryRecordIds(
+        pendingMergeHints.keepLocalOnlyIds,
+        getLocalOnlyIdsCreatedDuringPull(local, latestLocal)
+      );
+      if (!isActiveHistorySyncUser(userId)) {
+        if (typeof previousLastPulledAt === 'number') {
+          historyServerPullLastAt.set(userId, previousLastPulledAt);
+        } else {
+          historyServerPullLastAt.delete(userId);
+        }
+        return { status: 'stale_user' };
+      }
+      const merged = mergeRemoteHistory(latestLocal, filteredRemote, {
+        keepLocalOnlyIds,
         preserveLocalTimestampIds: pendingMergeHints.preserveLocalTimestampIds,
       });
       await saveAnalyses(userId, merged);
       updateHistoryQueryCache(userId, merged);
-      return merged;
+      return { status: 'synced', records: merged };
     } catch (error) {
       const apiError = error instanceof Phase2SyncApiError ? error : null;
       if (apiError?.code === 'AUTH_SESSION_REQUIRED') {
-        return null;
+        return {
+          status: 'auth_required',
+          errorCode: apiError.code,
+          requestId: apiError.requestId,
+        };
       }
       logger.warn('[Phase2Sync] history pull failed', {
         request_id: apiError?.requestId || 'unknown',
         user_id: userId,
         code: apiError?.code || 'PHASE2_HISTORY_PULL_FAILED',
       });
-      return null;
+      return {
+        status: 'failed',
+        errorCode: apiError?.code || 'PHASE2_HISTORY_PULL_FAILED',
+        requestId: apiError?.requestId,
+      };
     } finally {
       historyServerPullInFlight.delete(userId);
     }
@@ -362,16 +431,12 @@ export const AnalysisService = {
 
     syncHistoryFromCloud: async (
       userId: string,
-      options: { force?: boolean } = {}
+      options: { force?: boolean }
     ): Promise<AnalysisRecord[]> => {
       try {
         startPhase2SyncRuntime();
-        const local = await getStoredAnalyses(userId);
-        const remote = await syncHistoryFromServer(userId, local, {
-          force: options.force === true,
-        });
-        if (Array.isArray(remote)) return remote;
-        return local;
+        const syncResult = await AnalysisService.syncHistoryFromCloudWithStatus(userId, options);
+        return syncResult.records;
       } catch (error) {
         logger.warn('[Phase2Sync] background history sync failed', {
           request_id: 'unknown',
@@ -379,6 +444,63 @@ export const AnalysisService = {
           code: error instanceof Error ? error.message : 'PHASE2_HISTORY_BACKGROUND_SYNC_FAILED',
         });
         return getStoredAnalyses(userId);
+      }
+    },
+
+    syncHistoryFromCloudWithStatus: async (
+      userId: string,
+      options: { force?: boolean }
+    ): Promise<HistoryCloudSyncResult> => {
+      try {
+        startPhase2SyncRuntime();
+        await flushHistoryWrites(userId);
+        const local = await getStoredAnalyses(userId);
+        const remote = await syncHistoryFromServer(userId, local, {
+          force: options.force === true,
+        });
+        if (remote.status === 'synced') {
+          return {
+            records: remote.records,
+            status: 'synced',
+          };
+        }
+        if (remote.status === 'auth_required') {
+          return {
+            records: local,
+            status: 'auth_required',
+            errorCode: remote.errorCode,
+            requestId: remote.requestId,
+          };
+        }
+        if (remote.status === 'failed') {
+          return {
+            records: local,
+            status: 'failed',
+            errorCode: remote.errorCode,
+            requestId: remote.requestId,
+          };
+        }
+        if (remote.status === 'stale_user') {
+          return {
+            records: local,
+            status: 'stale_user',
+          };
+        }
+        return {
+          records: local,
+          status: 'local_only',
+        };
+      } catch (error) {
+        logger.warn('[Phase2Sync] background history sync failed', {
+          request_id: 'unknown',
+          user_id: userId,
+          code: error instanceof Error ? error.message : 'PHASE2_HISTORY_BACKGROUND_SYNC_FAILED',
+        });
+        return {
+          records: await getStoredAnalyses(userId),
+          status: 'failed',
+          errorCode: error instanceof Error ? error.message : 'PHASE2_HISTORY_BACKGROUND_SYNC_FAILED',
+        };
       }
     },
 

@@ -13,7 +13,7 @@ import { SafeStorage, initializeSafeStorage } from '../services/storage';
 import { cleanupOrphanedImages } from '../services/imageStorage';
 import { clearSession, restoreSession } from '../services/auth/sessionManager';
 import { getCurrentUserIdSnapshot } from '../services/auth/currentUser';
-import { startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue';
+import { dispatchPhase2SyncQueue, startPhase2SyncRuntime } from '../services/sync/phase2SyncQueue';
 import { hasCompletedOnboarding } from '../services/onboardingGateService';
 import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore';
 import { AnalysisService } from '../services/analysisService';
@@ -191,6 +191,20 @@ function LayoutContent() {
   useAppActivePolling(() => {
     runWithAuthenticatedUser((userId) => {
       void AnalysisService.syncHistoryFromCloud(userId, { force: false });
+    });
+  }, CROSS_DEVICE_SYNC_INTERVAL_MS, {
+    initialDelayMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    minimumGapMs: PROFILE_SYNC_STARTUP_DELAY_MS,
+    runImmediately: false,
+  });
+
+  useAppActivePolling(() => {
+    void dispatchPhase2SyncQueue().catch((error) => {
+      console.warn('[Phase2Sync] foreground queue flush failed', {
+        request_id: `phase2-foreground-${Date.now().toString(36)}`,
+        user_id: getCurrentUserIdSnapshot(),
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
   }, CROSS_DEVICE_SYNC_INTERVAL_MS, {
     initialDelayMs: PROFILE_SYNC_STARTUP_DELAY_MS,
