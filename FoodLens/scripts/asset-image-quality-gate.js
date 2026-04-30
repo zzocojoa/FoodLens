@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const zlib = require('zlib');
 
 const KiB_BYTES = 1024;
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -10,6 +12,7 @@ const PNG_IHDR_LENGTH = 13;
 const PNG_MINIMUM_BYTES = 45;
 const JPEG_END_OF_IMAGE_MARKER = 0xd9;
 const PNG_CRC32_POLYNOMIAL = 0xedb88320;
+const PNG_PERCEPTUAL_GRID_SIZE = 8;
 const CRITICAL_ASSETS = [
   {
     path: 'assets/images/guide-good.jpg',
@@ -18,6 +21,12 @@ const CRITICAL_ASSETS = [
     height: 1024,
     minBytes: 180 * KiB_BYTES,
     maxBytes: 600 * KiB_BYTES,
+    fingerprint: {
+      kind: 'jpeg-scan-v1',
+      quantizationHash: '8423b202e68ddf4404fecda87fa3abc7de552d38ae396b5b300577783f6ca099',
+      scanHash: 'fbaf55f338b6007216a5cf8cc1c6f12e57e2c5eec9108f502e923c6079be1670',
+      scanHistogramHash: '6882f5f37e832aea1496f84d21d9e5d71c9ff8f24b63362e5b204ea14dce51c9',
+    },
   },
   {
     path: 'assets/images/guide-bad.jpg',
@@ -26,6 +35,12 @@ const CRITICAL_ASSETS = [
     height: 1024,
     minBytes: 250 * KiB_BYTES,
     maxBytes: 700 * KiB_BYTES,
+    fingerprint: {
+      kind: 'jpeg-scan-v1',
+      quantizationHash: '8423b202e68ddf4404fecda87fa3abc7de552d38ae396b5b300577783f6ca099',
+      scanHash: '09c8a6195ac5f9f71b1bcd9a286a82b77fab59a1ea7bfcf727c9d30bd168b06c',
+      scanHistogramHash: 'ac319e2229ae90dff436337b01a8123140a4241eae6be488d390de586f1e4a95',
+    },
   },
   {
     path: 'assets/images/allergens/sesame.png',
@@ -34,6 +49,12 @@ const CRITICAL_ASSETS = [
     height: 1024,
     minBytes: 250 * KiB_BYTES,
     maxBytes: 700 * KiB_BYTES,
+    fingerprint: {
+      kind: 'png-pixel-v1',
+      decodedHash: '478d435b7564870de6790e66ab89553f3ec21c15c402508f4fa750ccf4cb3f90',
+      luminanceHash: '00001c7e7e300000',
+      alphaHash: '00001c3e7e300000',
+    },
   },
 ];
 
@@ -51,6 +72,8 @@ const createCrc32Table = () => {
 
 const PNG_CRC32_TABLE = createCrc32Table();
 
+const hashBuffer = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex');
+
 const calculateCrc32 = (buffer, startOffset, endOffset) => {
   let crc = 0xffffffff;
   for (let offset = startOffset; offset < endOffset; offset += 1) {
@@ -59,7 +82,7 @@ const calculateCrc32 = (buffer, startOffset, endOffset) => {
   return (crc ^ 0xffffffff) >>> 0;
 };
 
-const readPngDimensions = (buffer) => {
+const readPngMetadata = (buffer) => {
   if (buffer.length < PNG_MINIMUM_BYTES) {
     throw new Error('PNG header is incomplete');
   }
@@ -75,6 +98,7 @@ const readPngDimensions = (buffer) => {
     throw new Error('PNG IHDR chunk is missing or invalid');
   }
 
+  const chunks = [];
   let offset = 8;
   let foundImageEnd = false;
   while (offset < buffer.length) {
@@ -95,6 +119,12 @@ const readPngDimensions = (buffer) => {
       throw new Error(`PNG chunk CRC mismatch at offset ${offset}`);
     }
 
+    chunks.push({
+      type: chunkType,
+      dataOffset: offset + 8,
+      dataLength: chunkLength,
+    });
+
     offset = chunkEndOffset;
     if (chunkType === 'IEND') {
       foundImageEnd = true;
@@ -113,6 +143,192 @@ const readPngDimensions = (buffer) => {
   return {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20),
+    bitDepth: buffer[24],
+    colorType: buffer[25],
+    compressionMethod: buffer[26],
+    filterMethod: buffer[27],
+    interlaceMethod: buffer[28],
+    chunks,
+  };
+};
+
+const readPngDimensions = (buffer) => {
+  const metadata = readPngMetadata(buffer);
+  return {
+    width: metadata.width,
+    height: metadata.height,
+  };
+};
+
+const getPngBytesPerPixel = (metadata) => {
+  if (metadata.bitDepth !== 8) {
+    throw new Error(`Unsupported PNG bit depth for pixel fingerprint: ${metadata.bitDepth}`);
+  }
+  if (metadata.colorType === 0) {
+    return 1;
+  }
+  if (metadata.colorType === 2) {
+    return 3;
+  }
+  if (metadata.colorType === 4) {
+    return 2;
+  }
+  if (metadata.colorType === 6) {
+    return 4;
+  }
+  throw new Error(`Unsupported PNG color type for pixel fingerprint: ${metadata.colorType}`);
+};
+
+const paethPredictor = (left, up, upLeft) => {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) {
+    return left;
+  }
+  if (upDistance <= upLeftDistance) {
+    return up;
+  }
+  return upLeft;
+};
+
+const unfilterPngScanlines = (inflated, metadata, bytesPerPixel) => {
+  const rowLength = metadata.width * bytesPerPixel;
+  const expectedLength = (rowLength + 1) * metadata.height;
+  if (inflated.length !== expectedLength) {
+    throw new Error(`PNG inflated payload length ${inflated.length} does not match expected ${expectedLength}`);
+  }
+
+  const output = Buffer.alloc(rowLength * metadata.height);
+  for (let rowIndex = 0; rowIndex < metadata.height; rowIndex += 1) {
+    const sourceOffset = rowIndex * (rowLength + 1);
+    const targetOffset = rowIndex * rowLength;
+    const filterType = inflated[sourceOffset];
+    const previousOffset = rowIndex > 0 ? targetOffset - rowLength : -1;
+
+    for (let columnOffset = 0; columnOffset < rowLength; columnOffset += 1) {
+      const rawValue = inflated[sourceOffset + 1 + columnOffset];
+      const left = columnOffset >= bytesPerPixel ? output[targetOffset + columnOffset - bytesPerPixel] : 0;
+      const up = previousOffset >= 0 ? output[previousOffset + columnOffset] : 0;
+      const upLeft = previousOffset >= 0 && columnOffset >= bytesPerPixel
+        ? output[previousOffset + columnOffset - bytesPerPixel]
+        : 0;
+
+      if (filterType === 0) {
+        output[targetOffset + columnOffset] = rawValue;
+      } else if (filterType === 1) {
+        output[targetOffset + columnOffset] = (rawValue + left) & 0xff;
+      } else if (filterType === 2) {
+        output[targetOffset + columnOffset] = (rawValue + up) & 0xff;
+      } else if (filterType === 3) {
+        output[targetOffset + columnOffset] = (rawValue + Math.floor((left + up) / 2)) & 0xff;
+      } else if (filterType === 4) {
+        output[targetOffset + columnOffset] = (rawValue + paethPredictor(left, up, upLeft)) & 0xff;
+      } else {
+        throw new Error(`Unsupported PNG filter type ${filterType} at row ${rowIndex}`);
+      }
+    }
+  }
+  return output;
+};
+
+const readPngPixelData = (buffer) => {
+  const metadata = readPngMetadata(buffer);
+  if (metadata.compressionMethod !== 0 || metadata.filterMethod !== 0 || metadata.interlaceMethod !== 0) {
+    throw new Error('Unsupported PNG compression, filter, or interlace method for pixel fingerprint');
+  }
+
+  const idatBuffers = metadata.chunks
+    .filter((chunk) => chunk.type === 'IDAT')
+    .map((chunk) => buffer.subarray(chunk.dataOffset, chunk.dataOffset + chunk.dataLength));
+  if (idatBuffers.length === 0) {
+    throw new Error('PNG IDAT chunk was not found');
+  }
+
+  const bytesPerPixel = getPngBytesPerPixel(metadata);
+  const inflated = zlib.inflateSync(Buffer.concat(idatBuffers));
+  const pixelData = unfilterPngScanlines(inflated, metadata, bytesPerPixel);
+  return {
+    metadata,
+    bytesPerPixel,
+    pixelData,
+  };
+};
+
+const readPngPixel = (pixelData, metadata, bytesPerPixel, x, y) => {
+  const offset = (y * metadata.width + x) * bytesPerPixel;
+  if (metadata.colorType === 0) {
+    const gray = pixelData[offset];
+    return { red: gray, green: gray, blue: gray, alpha: 255 };
+  }
+  if (metadata.colorType === 2) {
+    return {
+      red: pixelData[offset],
+      green: pixelData[offset + 1],
+      blue: pixelData[offset + 2],
+      alpha: 255,
+    };
+  }
+  if (metadata.colorType === 4) {
+    const gray = pixelData[offset];
+    return {
+      red: gray,
+      green: gray,
+      blue: gray,
+      alpha: pixelData[offset + 1],
+    };
+  }
+  if (metadata.colorType === 6) {
+    return {
+      red: pixelData[offset],
+      green: pixelData[offset + 1],
+      blue: pixelData[offset + 2],
+      alpha: pixelData[offset + 3],
+    };
+  }
+  throw new Error(`Unsupported PNG color type for pixel read: ${metadata.colorType}`);
+};
+
+const calculatePngAverageHashes = (pixelData, metadata, bytesPerPixel) => {
+  const luminanceCells = [];
+  const alphaCells = [];
+  for (let gridY = 0; gridY < PNG_PERCEPTUAL_GRID_SIZE; gridY += 1) {
+    for (let gridX = 0; gridX < PNG_PERCEPTUAL_GRID_SIZE; gridX += 1) {
+      const startX = Math.floor((gridX * metadata.width) / PNG_PERCEPTUAL_GRID_SIZE);
+      const endX = Math.floor(((gridX + 1) * metadata.width) / PNG_PERCEPTUAL_GRID_SIZE);
+      const startY = Math.floor((gridY * metadata.height) / PNG_PERCEPTUAL_GRID_SIZE);
+      const endY = Math.floor(((gridY + 1) * metadata.height) / PNG_PERCEPTUAL_GRID_SIZE);
+      let luminanceTotal = 0;
+      let alphaTotal = 0;
+      let pixelCount = 0;
+
+      for (let y = startY; y < endY; y += 1) {
+        for (let x = startX; x < endX; x += 1) {
+          const pixel = readPngPixel(pixelData, metadata, bytesPerPixel, x, y);
+          luminanceTotal += (pixel.red * 299 + pixel.green * 587 + pixel.blue * 114) / 1000;
+          alphaTotal += pixel.alpha;
+          pixelCount += 1;
+        }
+      }
+
+      luminanceCells.push(luminanceTotal / pixelCount);
+      alphaCells.push(alphaTotal / pixelCount);
+    }
+  }
+
+  const buildAverageHash = (cells) => {
+    const average = cells.reduce((total, value) => total + value, 0) / cells.length;
+    let bits = 0n;
+    cells.forEach((value) => {
+      bits = (bits << 1n) | (value >= average ? 1n : 0n);
+    });
+    return bits.toString(16).padStart(16, '0');
+  };
+
+  return {
+    luminanceHash: buildAverageHash(luminanceCells),
+    alphaHash: buildAverageHash(alphaCells),
   };
 };
 
@@ -173,6 +389,107 @@ const readJpegDimensions = (buffer) => {
   throw new Error('JPEG dimensions were not found');
 };
 
+const readJpegFingerprintData = (buffer) => {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    throw new Error('JPEG signature mismatch');
+  }
+  if (buffer[buffer.length - 2] !== 0xff || buffer[buffer.length - 1] !== JPEG_END_OF_IMAGE_MARKER) {
+    throw new Error('JPEG end-of-image marker was not found');
+  }
+
+  const quantizationTables = [];
+  let offset = 2;
+  while (offset < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    if (marker === 0xd9) {
+      break;
+    }
+    if (offset + 4 > buffer.length) {
+      throw new Error(`JPEG segment header is incomplete at offset ${offset}`);
+    }
+    const segmentLength = buffer.readUInt16BE(offset + 2);
+    if (segmentLength < 2) {
+      throw new Error(`Invalid JPEG segment length at offset ${offset}`);
+    }
+    if (offset + 2 + segmentLength > buffer.length) {
+      throw new Error(`JPEG segment is incomplete at offset ${offset}`);
+    }
+
+    const segmentDataStart = offset + 4;
+    const segmentDataEnd = offset + 2 + segmentLength;
+    if (marker === 0xdb) {
+      quantizationTables.push(buffer.subarray(segmentDataStart, segmentDataEnd));
+    }
+    if (marker === 0xda) {
+      return {
+        quantizationTables,
+        scanData: buffer.subarray(segmentDataEnd, buffer.length - 2),
+      };
+    }
+
+    offset += 2 + segmentLength;
+  }
+
+  throw new Error('JPEG scan payload was not found');
+};
+
+const createByteHistogramHash = (buffer) => {
+  const buckets = Buffer.alloc(16 * 4);
+  for (const value of buffer.values()) {
+    const bucketIndex = Math.floor(value / 16);
+    const offset = bucketIndex * 4;
+    buckets.writeUInt32BE(buckets.readUInt32BE(offset) + 1, offset);
+  }
+  return hashBuffer(buckets);
+};
+
+const createPngFingerprint = (buffer) => {
+  const { metadata, bytesPerPixel, pixelData } = readPngPixelData(buffer);
+  const averageHashes = calculatePngAverageHashes(pixelData, metadata, bytesPerPixel);
+  return {
+    kind: 'png-pixel-v1',
+    decodedHash: hashBuffer(pixelData),
+    luminanceHash: averageHashes.luminanceHash,
+    alphaHash: averageHashes.alphaHash,
+  };
+};
+
+const createJpegFingerprint = (buffer) => {
+  const fingerprintData = readJpegFingerprintData(buffer);
+  return {
+    kind: 'jpeg-scan-v1',
+    quantizationHash: hashBuffer(Buffer.concat(fingerprintData.quantizationTables)),
+    scanHash: hashBuffer(fingerprintData.scanData),
+    scanHistogramHash: createByteHistogramHash(fingerprintData.scanData),
+  };
+};
+
+const createImageFingerprint = (buffer, format) => {
+  if (format === 'png') {
+    return createPngFingerprint(buffer);
+  }
+  if (format === 'jpeg') {
+    return createJpegFingerprint(buffer);
+  }
+  throw new Error(`Unsupported image format for fingerprint: ${format}`);
+};
+
+const compareImageFingerprint = (actualFingerprint, expectedFingerprint) => {
+  if (!expectedFingerprint) {
+    return [];
+  }
+  if (actualFingerprint.kind !== expectedFingerprint.kind) {
+    return [`fingerprint kind ${actualFingerprint.kind}, expected ${expectedFingerprint.kind}`];
+  }
+  return Object.keys(expectedFingerprint)
+    .filter((key) => actualFingerprint[key] !== expectedFingerprint[key])
+    .map((key) => `fingerprint ${key} mismatch`);
+};
+
 const readImageDimensions = (buffer, format) => {
   if (format === 'png') {
     return readPngDimensions(buffer);
@@ -207,6 +524,13 @@ const createAssetResult = (asset, rootDir) => {
   }
 
   const errors = [];
+  let fingerprint;
+  try {
+    fingerprint = createImageFingerprint(buffer, asset.format);
+    errors.push(...compareImageFingerprint(fingerprint, asset.fingerprint));
+  } catch (error) {
+    errors.push(`invalid image fingerprint: ${error.message}`);
+  }
 
   if (dimensions.width !== asset.width || dimensions.height !== asset.height) {
     errors.push(
@@ -226,6 +550,7 @@ const createAssetResult = (asset, rootDir) => {
     asset,
     ok: errors.length === 0,
     dimensions,
+    fingerprint,
     bytes: buffer.length,
     errors,
   };
@@ -271,6 +596,10 @@ if (require.main === module) {
 
 module.exports = {
   CRITICAL_ASSETS,
+  compareImageFingerprint,
+  createImageFingerprint,
   readImageDimensions,
+  readJpegFingerprintData,
+  readPngPixelData,
   runAssetImageQualityGate,
 };

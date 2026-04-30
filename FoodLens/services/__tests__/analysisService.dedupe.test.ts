@@ -451,6 +451,49 @@ describe('AnalysisService barcode dedupe', () => {
     expect(queryClient.getQueryData(['history', 'usr_a'])).toBeUndefined();
   });
 
+  it('skips save and cache writes when the active user changes after merge but before persist', async () => {
+    const localRecord = {
+      id: 'record-local',
+      foodName: 'Local rice',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+      timestamp: new Date('2026-03-02T14:05:09.000Z'),
+    } as any;
+    const remoteRecord = {
+      id: 'record-remote',
+      foodName: 'Remote soup',
+      safetyStatus: 'CAUTION',
+      ingredients: [],
+      timestamp: new Date('2026-03-03T14:05:09.000Z'),
+    } as any;
+    const remoteHistoryItem = {
+      id: 'remote-history-item',
+      user_id: 'usr_a',
+      entry: {
+        id: 'record-remote',
+      },
+    };
+    mockedGetStoredAnalyses.mockResolvedValue([localRecord]);
+    mockedGetHistory.mockResolvedValueOnce({
+      history: [remoteHistoryItem],
+      requestId: 'req-history',
+    });
+    mockedGetCurrentUserId.mockReturnValue('usr_a');
+    mockedMergeRemoteHistory.mockImplementationOnce(() => {
+      mockedGetCurrentUserId.mockReturnValue('usr_b');
+      return [remoteRecord];
+    });
+
+    await expect(AnalysisService.syncHistoryFromCloudWithStatus('usr_a', {
+      force: true,
+    })).resolves.toEqual({
+      records: [localRecord],
+      status: 'stale_user',
+    });
+    expect(mockedSaveAnalyses).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(['history', 'usr_a'])).toBeUndefined();
+  });
+
   it('does not poison the history pull cooldown when an account switch marks the pull stale', async () => {
     const localRecord = {
       id: 'record-local',

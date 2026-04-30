@@ -41,6 +41,38 @@ const corruptFirstPngDataChunk = (buffer: Buffer): Buffer => {
   throw new Error('IDAT chunk was not found');
 };
 
+const createJpegPayloadRegression = (buffer: Buffer): Buffer => {
+  const mutatedBuffer = Buffer.from(buffer);
+  let offset = 2;
+  while (offset + 4 < mutatedBuffer.length) {
+    if (mutatedBuffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = mutatedBuffer[offset + 1];
+    if (marker === 0xda) {
+      const segmentLength = mutatedBuffer.readUInt16BE(offset + 2);
+      const payloadStart = offset + 2 + segmentLength;
+      const payloadEnd = mutatedBuffer.length - 2;
+      if (payloadStart >= payloadEnd) {
+        throw new Error('JPEG scan payload is empty');
+      }
+      const mutationOffset = payloadStart + Math.floor((payloadEnd - payloadStart) / 2);
+      mutatedBuffer[mutationOffset] = mutatedBuffer[mutationOffset] ^ 0x01;
+      return mutatedBuffer;
+    }
+
+    if (marker === 0xd9) {
+      break;
+    }
+
+    const segmentLength = mutatedBuffer.readUInt16BE(offset + 2);
+    offset += 2 + segmentLength;
+  }
+  throw new Error('JPEG scan payload was not found');
+};
+
 describe('asset-image-quality-gate', () => {
   it('keeps compressed critical images inside the reviewed quality envelope', () => {
     const result = assetImageQualityGate.runAssetImageQualityGate(projectRootDir);
@@ -112,6 +144,26 @@ describe('asset-image-quality-gate', () => {
       expect(result.failures).toHaveLength(1);
       expect(result.failures[0].asset.path).toBe('assets/images/guide-good.jpg');
       expect(result.failures[0].errors.join(' ')).toContain('JPEG end-of-image marker was not found');
+    } finally {
+      cleanupTempRoot(rootDir);
+    }
+  });
+
+  it('rejects a JPEG payload regression that preserves dimensions and file size', () => {
+    const rootDir = createTempRoot();
+
+    try {
+      copyCriticalAssets(rootDir);
+      const guidePath = path.join(rootDir, 'assets/images/guide-good.jpg');
+      const guideBuffer = fs.readFileSync(guidePath);
+      fs.writeFileSync(guidePath, createJpegPayloadRegression(guideBuffer));
+
+      const result = assetImageQualityGate.runAssetImageQualityGate(rootDir);
+
+      expect(fs.statSync(guidePath).size).toBe(guideBuffer.length);
+      expect(result.ok).toBe(false);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].asset.path).toBe('assets/images/guide-good.jpg');
     } finally {
       cleanupTempRoot(rootDir);
     }

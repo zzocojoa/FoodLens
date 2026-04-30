@@ -1,3 +1,7 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 const mobileBundleSizeGate = require('../mobile-bundle-size-gate.js');
 
 describe('mobile-bundle-size-gate', () => {
@@ -60,5 +64,23 @@ describe('mobile-bundle-size-gate', () => {
     expect(() => mobileBundleSizeGate.parseArguments(['--require-fresh-export', '--skip-export'])).toThrow(
       '--require-fresh-export cannot be combined with --skip-export',
     );
+  });
+
+  it('rejects asset map files outside the export output directory', () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'foodlens-bundle-gate-'));
+
+    expect(() => mobileBundleSizeGate.resolveAssetMapFilePath(outputDir, '/etc/hosts')).toThrow(
+      'Asset map file path must stay inside project root or export output',
+    );
+    expect(() => mobileBundleSizeGate.resolveAssetMapFilePath(outputDir, '../outside.bin')).toThrow(
+      'Asset map file path must stay inside project root or export output',
+    );
+  });
+
+  it('allows absolute asset map files under the project root', () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'foodlens-bundle-gate-'));
+    const projectAssetPath = path.resolve(__dirname, '../../assets/images/guide-good.jpg');
+
+    expect(mobileBundleSizeGate.resolveAssetMapFilePath(outputDir, projectAssetPath)).toBe(projectAssetPath);
   });
 });

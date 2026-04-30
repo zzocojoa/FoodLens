@@ -46,6 +46,10 @@ cache_miss_urls_include() {
   return 1
 }
 
+redact_media_render_urls() {
+  perl -pe 's#https?://[^\s"'\''<>]+/media/render/[^\s"'\''<>]+#<redacted-media-render-url>#g'
+}
+
 if [[ -z "${MEDIA_RENDER_URL:-}" ]]; then
   echo "[perf] MEDIA_RENDER_URL is required."
   exit 1
@@ -107,7 +111,7 @@ env -u K6_VUS -u K6_DURATION k6 run "${SCRIPT_PATH}" \
   --env "BASELINE_VUS=${BASELINE_SCRIPT_VUS}" \
   --env "BASELINE_DURATION=${BASELINE_SCRIPT_DURATION}" \
   --summary-export "${OUT_DIR}/summary.json" \
-  2>&1 | tee "${OUT_DIR}/k6.log"
+  2>&1 | redact_media_render_urls | tee "${OUT_DIR}/k6.log"
 
 echo "[perf] done."
 echo "[perf] summary json: ${OUT_DIR}/summary.json"

@@ -186,6 +186,14 @@ const syncHistoryFromServer = async (
         keepLocalOnlyIds,
         preserveLocalTimestampIds: pendingMergeHints.preserveLocalTimestampIds,
       });
+      if (!isActiveHistorySyncUser(userId)) {
+        if (typeof previousLastPulledAt === 'number') {
+          historyServerPullLastAt.set(userId, previousLastPulledAt);
+        } else {
+          historyServerPullLastAt.delete(userId);
+        }
+        return { status: 'stale_user' };
+      }
       await saveAnalyses(userId, merged);
       updateHistoryQueryCache(userId, merged);
       return { status: 'synced', records: merged };
