@@ -2,6 +2,7 @@
 
 const { spawnSync } = require('child_process');
 
+const HISTORY_RUNTIME_HEAP_LIMIT_MB = 192;
 const HISTORY_RUNTIME_TEST_FILES = [
   'features/history/components/__tests__/HistoryCountryChapters.test.tsx',
 ];
@@ -19,20 +20,55 @@ const FORBIDDEN_LOG_PATTERNS = [
     label: 'Jest console warn',
     pattern: /\bconsole\.warn\b/,
   },
+  {
+    label: 'VirtualizedList slow update warning',
+    pattern: /VirtualizedList:.*slow to update/i,
+  },
+  {
+    label: 'Frame drop warning',
+    pattern: /\b(?:dropped frames?|frame drops?|frame-drop|frame drop)\b/i,
+  },
+  {
+    label: 'Memory pressure warning',
+    pattern: /\b(?:JavaScript heap out of memory|Allocation failed|memory leak|Possible EventEmitter memory leak detected)\b/i,
+  },
 ];
 
+const HEAP_USAGE_PATTERN = /(\d+(?:\.\d+)?)\s*MB heap size/g;
+
+const createJestCommand = () => process.execPath;
+
 const createJestArguments = () => [
-  'jest',
+  '--expose-gc',
+  require.resolve('jest/bin/jest'),
   '--ci',
   '--runInBand',
+  '--logHeapUsage',
   ...HISTORY_RUNTIME_TEST_FILES,
 ];
 
 const createForbiddenLogFindings = (output) =>
   FORBIDDEN_LOG_PATTERNS.filter((entry) => entry.pattern.test(output)).map((entry) => entry.label);
 
+const collectHeapUsages = (output) =>
+  Array.from(output.matchAll(HEAP_USAGE_PATTERN)).map((match) => Number(match[1]));
+
+const createHeapUsageFindings = (output) => {
+  const heapUsages = collectHeapUsages(output);
+
+  if (heapUsages.length === 0) {
+    return ['History runtime heap usage metric missing'];
+  }
+
+  return heapUsages
+    .filter((heapUsageMb) => heapUsageMb > HISTORY_RUNTIME_HEAP_LIMIT_MB)
+    .map((heapUsageMb) => (
+      `History runtime heap usage ${heapUsageMb} MB exceeded ${HISTORY_RUNTIME_HEAP_LIMIT_MB} MB`
+    ));
+};
+
 const runHistoryRuntimePerformanceGate = (spawnCommand, writeOutput) => {
-  const result = spawnCommand('npx', createJestArguments(), {
+  const result = spawnCommand(createJestCommand(), createJestArguments(), {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -60,6 +96,11 @@ const runHistoryRuntimePerformanceGate = (spawnCommand, writeOutput) => {
   if (noisyFindings.length > 0) {
     throw new Error(`History runtime performance gate produced noisy logs: ${noisyFindings.join(', ')}`);
   }
+
+  const heapFindings = createHeapUsageFindings(output);
+  if (heapFindings.length > 0) {
+    throw new Error(`History runtime performance gate exceeded runtime budgets: ${heapFindings.join(', ')}`);
+  }
 };
 
 const main = () => {
@@ -77,6 +118,8 @@ if (require.main === module) {
 
 module.exports = {
   createForbiddenLogFindings,
+  createHeapUsageFindings,
   createJestArguments,
+  createJestCommand,
   runHistoryRuntimePerformanceGate,
 };

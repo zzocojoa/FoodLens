@@ -2,6 +2,9 @@ name: Mobile Bundle Size
 
 on:
   pull_request:
+  push:
+    branches:
+      - "release/**"
   workflow_dispatch:
 
 jobs:

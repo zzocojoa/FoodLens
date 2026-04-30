@@ -13,6 +13,10 @@ const PNG_MINIMUM_BYTES = 45;
 const JPEG_END_OF_IMAGE_MARKER = 0xd9;
 const PNG_CRC32_POLYNOMIAL = 0xedb88320;
 const PNG_PERCEPTUAL_GRID_SIZE = 8;
+const FINGERPRINT_KEYS_BY_KIND = {
+  'jpeg-scan-v1': ['kind', 'quantizationHash', 'scanHash', 'scanHistogramHash'],
+  'png-pixel-v1': ['kind', 'decodedHash', 'luminanceHash', 'alphaHash'],
+};
 const CRITICAL_ASSETS = [
   {
     path: 'assets/images/guide-good.jpg',
@@ -332,6 +336,21 @@ const calculatePngAverageHashes = (pixelData, metadata, bytesPerPixel) => {
   };
 };
 
+const normalizePngPixelData = (pixelData, metadata, bytesPerPixel) => {
+  const normalizedPixelData = Buffer.alloc(metadata.width * metadata.height * 4);
+  for (let y = 0; y < metadata.height; y += 1) {
+    for (let x = 0; x < metadata.width; x += 1) {
+      const pixel = readPngPixel(pixelData, metadata, bytesPerPixel, x, y);
+      const offset = (y * metadata.width + x) * 4;
+      normalizedPixelData[offset] = pixel.red;
+      normalizedPixelData[offset + 1] = pixel.green;
+      normalizedPixelData[offset + 2] = pixel.blue;
+      normalizedPixelData[offset + 3] = pixel.alpha;
+    }
+  }
+  return normalizedPixelData;
+};
+
 const isJpegStartOfFrameMarker = (marker) =>
   (marker >= 0xc0 && marker <= 0xc3) ||
   (marker >= 0xc5 && marker <= 0xc7) ||
@@ -449,10 +468,11 @@ const createByteHistogramHash = (buffer) => {
 
 const createPngFingerprint = (buffer) => {
   const { metadata, bytesPerPixel, pixelData } = readPngPixelData(buffer);
+  const normalizedPixelData = normalizePngPixelData(pixelData, metadata, bytesPerPixel);
   const averageHashes = calculatePngAverageHashes(pixelData, metadata, bytesPerPixel);
   return {
     kind: 'png-pixel-v1',
-    decodedHash: hashBuffer(pixelData),
+    decodedHash: hashBuffer(normalizedPixelData),
     luminanceHash: averageHashes.luminanceHash,
     alphaHash: averageHashes.alphaHash,
   };
@@ -478,14 +498,42 @@ const createImageFingerprint = (buffer, format) => {
   throw new Error(`Unsupported image format for fingerprint: ${format}`);
 };
 
+const compareFingerprintSchema = (fingerprint, label) => {
+  const requiredKeys = FINGERPRINT_KEYS_BY_KIND[fingerprint.kind];
+  if (!requiredKeys) {
+    return [`${label} fingerprint kind ${fingerprint.kind} is not supported`];
+  }
+
+  const actualKeys = Object.keys(fingerprint).sort((left, right) => left.localeCompare(right));
+  const expectedKeys = requiredKeys.slice().sort((left, right) => left.localeCompare(right));
+  const missingKeys = expectedKeys.filter((key) => !actualKeys.includes(key));
+  const unexpectedKeys = actualKeys.filter((key) => !expectedKeys.includes(key));
+  const errors = [];
+  if (missingKeys.length > 0) {
+    errors.push(`${label} fingerprint missing required fields: ${missingKeys.join(', ')}`);
+  }
+  if (unexpectedKeys.length > 0) {
+    errors.push(`${label} fingerprint has unexpected fields: ${unexpectedKeys.join(', ')}`);
+  }
+  return errors;
+};
+
 const compareImageFingerprint = (actualFingerprint, expectedFingerprint) => {
   if (!expectedFingerprint) {
     return [];
   }
+  const expectedSchemaErrors = compareFingerprintSchema(expectedFingerprint, 'expected');
+  if (expectedSchemaErrors.length > 0) {
+    return expectedSchemaErrors;
+  }
   if (actualFingerprint.kind !== expectedFingerprint.kind) {
     return [`fingerprint kind ${actualFingerprint.kind}, expected ${expectedFingerprint.kind}`];
   }
-  return Object.keys(expectedFingerprint)
+  const actualSchemaErrors = compareFingerprintSchema(actualFingerprint, 'actual');
+  if (actualSchemaErrors.length > 0) {
+    return actualSchemaErrors;
+  }
+  return FINGERPRINT_KEYS_BY_KIND[expectedFingerprint.kind]
     .filter((key) => actualFingerprint[key] !== expectedFingerprint[key])
     .map((key) => `fingerprint ${key} mismatch`);
 };

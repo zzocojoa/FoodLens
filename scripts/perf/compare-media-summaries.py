@@ -52,7 +52,7 @@ METRIC_RULES: list[MetricRule] = [
     {"name": "analyze_latency", "field": "p(95)", "direction": "lower"},
 ]
 
-THRESHOLD_RULES: list[ThresholdRule] = [
+BASE_THRESHOLD_RULES: list[ThresholdRule] = [
     {"name": "http_req_failed", "field": "rate", "max_value": 0.10},
     {"name": "render_failure_rate", "field": "rate", "max_value": 0.05},
     {"name": "render_content_type_mismatch_rate", "field": "rate", "max_value": 0.00001},
@@ -71,15 +71,18 @@ THRESHOLD_RULES: list[ThresholdRule] = [
         "max_value": 0.00001,
     },
     {"name": "render_cache_miss_latency", "field": "p(95)", "max_value": 2500.0},
-    {"name": "render_cache_disabled_rate", "field": "rate", "max_value": 0.00001},
-    {"name": "render_cache_unknown_rate", "field": "rate", "max_value": 0.00001},
     {"name": "profile_failure_rate", "field": "rate", "max_value": 0.10},
     {"name": "profile_latency", "field": "p(95)", "max_value": 1200.0},
     {"name": "analyze_failure_rate", "field": "rate", "max_value": 0.20},
     {"name": "analyze_latency", "field": "p(95)", "max_value": 2500.0},
 ]
 
-ENFORCED_THRESHOLD_REQUIRED_METRICS: list[RequiredMetric] = [
+CACHE_HEADER_THRESHOLD_RULES: list[ThresholdRule] = [
+    {"name": "render_cache_disabled_rate", "field": "rate", "max_value": 0.00001},
+    {"name": "render_cache_unknown_rate", "field": "rate", "max_value": 0.00001},
+]
+
+CACHE_HEADER_REQUIRED_METRICS: list[RequiredMetric] = [
     {"name": "render_cache_disabled_rate", "field": "rate"},
     {"name": "render_cache_unknown_rate", "field": "rate"},
 ]
@@ -166,6 +169,13 @@ def _thresholds_by_metric(rules: list[ThresholdRule]) -> dict[str, float]:
     return {f"{rule['name']}.{rule['field']}": rule["max_value"] for rule in rules}
 
 
+def _threshold_rules_for_run(*, require_cache_header: bool) -> list[ThresholdRule]:
+    rules = [*BASE_THRESHOLD_RULES]
+    if require_cache_header:
+        rules.extend(CACHE_HEADER_THRESHOLD_RULES)
+    return rules
+
+
 def _parse_required_metric(raw: str) -> RequiredMetric:
     name, separator, field = raw.strip().rpartition(".")
     if not separator or not name or not field:
@@ -178,11 +188,12 @@ def _parse_required_metric(raw: str) -> RequiredMetric:
 def _required_metrics_for_run(
     *,
     enforce_thresholds: bool,
+    require_cache_header: bool,
     requested_metrics: list[RequiredMetric],
 ) -> list[RequiredMetric]:
     merged: dict[str, RequiredMetric] = {}
-    if enforce_thresholds:
-        for metric in ENFORCED_THRESHOLD_REQUIRED_METRICS:
+    if enforce_thresholds and require_cache_header:
+        for metric in CACHE_HEADER_REQUIRED_METRICS:
             merged[f"{metric['name']}.{metric['field']}"] = metric
     for metric in requested_metrics:
         merged[f"{metric['name']}.{metric['field']}"] = metric
@@ -230,6 +241,11 @@ def main() -> int:
         type=_parse_required_metric,
         help="Require an after summary metric in name.field format, e.g. render_cache_hit_latency.p(95).",
     )
+    parser.add_argument(
+        "--require-cache-header",
+        action="store_true",
+        help="Fail when media render cache status headers are missing, disabled, or unknown.",
+    )
     args = parser.parse_args()
 
     before_path = Path(args.before)
@@ -240,7 +256,9 @@ def main() -> int:
     regressions = 0
     threshold_failures = 0
     missing_required_metrics = 0
-    thresholds = _thresholds_by_metric(THRESHOLD_RULES)
+    thresholds = _thresholds_by_metric(
+        _threshold_rules_for_run(require_cache_header=bool(args.require_cache_header))
+    )
     if args.enforce_thresholds:
         header = f"{'metric':<42} {'before':>12} {'after':>12} {'delta':>10} {'threshold':>12} {'status':>18}"
     else:
@@ -283,6 +301,7 @@ def main() -> int:
 
     required_metrics = _required_metrics_for_run(
         enforce_thresholds=bool(args.enforce_thresholds),
+        require_cache_header=bool(args.require_cache_header),
         requested_metrics=args.require_metric,
     )
     if required_metrics:

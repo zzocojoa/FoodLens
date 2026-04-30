@@ -9,10 +9,13 @@ type SpawnResult = {
 
 describe('history-runtime-performance-gate', () => {
   it('runs the History virtualized fixture contract test only', () => {
+    expect(historyRuntimePerformanceGate.createJestCommand()).toBe(process.execPath);
     expect(historyRuntimePerformanceGate.createJestArguments()).toEqual([
-      'jest',
+      '--expose-gc',
+      expect.stringMatching(/jest[/\\]bin[/\\]jest\.js$/),
       '--ci',
       '--runInBand',
+      '--logHeapUsage',
       'features/history/components/__tests__/HistoryCountryChapters.test.tsx',
     ]);
   });
@@ -28,6 +31,51 @@ describe('history-runtime-performance-gate', () => {
       'React act warning',
       'Jest console warn',
     ]);
+  });
+
+  it('detects runtime warnings that map to History frame-drop and memory risk', () => {
+    const output = [
+      'VirtualizedList: You have a large list that is slow to update',
+      'Dropped frames while rendering the history list',
+      'Possible EventEmitter memory leak detected',
+    ].join('\n');
+
+    expect(historyRuntimePerformanceGate.createForbiddenLogFindings(output)).toEqual([
+      'VirtualizedList slow update warning',
+      'Frame drop warning',
+      'Memory pressure warning',
+    ]);
+  });
+
+  it('fails when heap usage exceeds the synthetic History budget', () => {
+    expect(historyRuntimePerformanceGate.createHeapUsageFindings('PASS (193 MB heap size)')).toEqual([
+      'History runtime heap usage 193 MB exceeded 192 MB',
+    ]);
+  });
+
+  it('fails when heap usage is missing from a passing focused run', () => {
+    expect(historyRuntimePerformanceGate.createHeapUsageFindings('PASS')).toEqual([
+      'History runtime heap usage metric missing',
+    ]);
+  });
+
+  it('passes when the focused Jest run is clean and inside the heap budget', () => {
+    const spawnCommand = jest.fn((): SpawnResult => ({
+      status: 0,
+      stdout: 'PASS (110 MB heap size)\n',
+      stderr: '',
+    }));
+
+    expect(() => historyRuntimePerformanceGate.runHistoryRuntimePerformanceGate(spawnCommand, false)).not.toThrow();
+    expect(spawnCommand).toHaveBeenCalledWith(
+      process.execPath,
+      historyRuntimePerformanceGate.createJestArguments(),
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
   });
 
   it('fails when the focused Jest run passes with noisy output', () => {

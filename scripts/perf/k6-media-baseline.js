@@ -14,6 +14,7 @@ const analyzeAllergy = (__ENV.ANALYZE_ALLERGY || 'egg').trim();
 const thinkTimeMs = Number(__ENV.THINK_TIME_MS || '200');
 const analyzeEvery = Math.max(1, Number(__ENV.ANALYZE_EVERY || '10'));
 const renderCacheMissEvery = Math.max(1, Number(__ENV.RENDER_CACHE_MISS_EVERY || '1'));
+const requireMediaRenderCacheHeader = (__ENV.REQUIRE_MEDIA_RENDER_CACHE_HEADER || '0').trim() === '1';
 
 function parseUrlList(raw) {
   return String(raw || '')
@@ -79,9 +80,21 @@ const thresholds = {
   render_content_type_mismatch_rate: ['rate<0.00001'],
   render_latency: ['p(95)<1500'],
   render_cache_hit_content_type_mismatch_rate: ['rate<0.00001'],
+  ...(requireMediaRenderCacheHeader
+    ? {
+      render_cache_hit_failure_rate: ['rate<0.05'],
+      render_cache_hit_latency: ['p(95)<1500'],
+      render_cache_disabled_rate: ['rate<0.00001'],
+      render_cache_unknown_rate: ['rate<0.00001'],
+    }
+    : {}),
+  ...(requireMediaRenderCacheHeader && mediaRenderCacheMissUrls.length > 0
+    ? {
+      render_cache_miss_failure_rate: ['rate<0.05'],
+      render_cache_miss_latency: ['p(95)<2500'],
+    }
+    : {}),
   render_cache_miss_content_type_mismatch_rate: ['rate<0.00001'],
-  render_cache_disabled_rate: ['rate<0.00001'],
-  render_cache_unknown_rate: ['rate<0.00001'],
   ...(profileMetrics
     ? {
       profile_failure_rate: ['rate<0.10'],
