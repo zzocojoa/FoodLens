@@ -274,6 +274,7 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
             return (
               <Pressable
                 key={item.key}
+                testID={`bottom-nav-${item.key}`}
                 accessibilityLabel={t(item.labelKey, item.fallbackLabel)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}

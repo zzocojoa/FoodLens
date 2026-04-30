@@ -47,7 +47,7 @@ export default function ScanCameraScreen() {
 
     if (!camera.permission.granted) {
         return (
-            <View style={styles.permissionContainer}>
+            <View testID="scan-camera-screen" style={styles.permissionContainer}>
                 <Text style={styles.permissionText}>{t('scan.permission.cameraRequired', 'Camera access is required.')}</Text>
                 <TouchableOpacity
                     accessibilityLabel={t('scan.permission.grant', 'Grant Permission')}
@@ -60,6 +60,7 @@ export default function ScanCameraScreen() {
                 <TouchableOpacity
                     accessibilityLabel={t('scan.action.close', 'Close camera')}
                     accessibilityRole="button"
+                    testID="scan-camera-close-button"
                     style={styles.closeButton}
                     onPress={camera.handleClose}
                 >
@@ -70,7 +71,7 @@ export default function ScanCameraScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <View testID="scan-camera-screen" style={styles.container}>
             <InfoBottomSheet isOpen={camera.showInfoSheet} onClose={() => camera.setShowInfoSheet(false)} />
 
             {camera.isAnalyzing && (
@@ -184,6 +185,7 @@ export default function ScanCameraScreen() {
                 <TouchableOpacity
                     accessibilityLabel={t('scan.action.close', 'Close camera')}
                     accessibilityRole="button"
+                    testID="scan-camera-close-button"
                     onPress={camera.handleClose}
                     style={styles.iconButton}
                 >

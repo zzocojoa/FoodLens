@@ -1,0 +1,77 @@
+name: Mobile Maestro Real Device E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Connected device platform"
+        required: true
+        default: android
+        type: choice
+        options:
+          - android
+          - ios
+      app_id:
+        description: "Installed app id / bundle id on the connected device"
+        required: true
+        default: com.hoihou.foodlens
+        type: string
+      runs_on_json:
+        description: "JSON array for a self-hosted runner with a real device"
+        required: true
+        default: '["self-hosted","macOS"]'
+        type: string
+      flow_path:
+        description: "Maestro flow path"
+        required: true
+        default: maestro/flows/release-smoke.yaml
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-maestro-e2e:
+    name: mobile-maestro-e2e
+    runs-on: ${{ fromJSON(inputs.runs_on_json) }}
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Maestro when missing
+        run: |
+          if ! command -v maestro >/dev/null 2>&1; then
+            curl -Ls "https://get.maestro.mobile.dev" | bash
+            echo "${HOME}/.maestro/bin" >> "${GITHUB_PATH}"
+          fi
+
+      - name: Run Maestro real-device release smoke
+        env:
+          FOODLENS_E2E_PLATFORM: ${{ inputs.platform }}
+          FOODLENS_E2E_APP_ID: ${{ inputs.app_id }}
+          FOODLENS_E2E_EMAIL: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_EMAIL }}
+          FOODLENS_E2E_PASSWORD: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_PASSWORD }}
+          FOODLENS_MAESTRO_FLOW_PATH: ${{ inputs.flow_path }}
+        run: npm run phase6:mobile-maestro:e2e
+
+      - name: Upload Maestro E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-maestro-e2e-${{ github.run_id }}
+          path: FoodLens/artifacts/phase6/mobile-maestro-e2e
+          if-no-files-found: error
+          retention-days: 14

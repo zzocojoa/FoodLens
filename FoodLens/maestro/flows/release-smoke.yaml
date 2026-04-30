@@ -1,0 +1,45 @@
+appId: ${FOODLENS_E2E_APP_ID}
+name: FoodLens release smoke
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: login-continue-button
+    timeout: 60000
+- tapOn:
+    id: login-continue-button
+- extendedWaitUntil:
+    visible:
+      id: login-email-input
+    timeout: 30000
+- tapOn:
+    id: login-email-input
+- inputText: ${FOODLENS_E2E_EMAIL}
+- tapOn:
+    id: login-password-input
+- inputText: ${FOODLENS_E2E_PASSWORD}
+- tapOn:
+    id: login-submit-button
+- extendedWaitUntil:
+    visible:
+      id: home-screen
+    timeout: 90000
+- tapOn:
+    id: bottom-nav-scan
+- extendedWaitUntil:
+    visible:
+      id: scan-camera-screen
+    timeout: 60000
+- tapOn:
+    id: scan-camera-close-button
+- extendedWaitUntil:
+    visible:
+      id: home-screen
+    timeout: 30000
+- tapOn:
+    id: bottom-nav-history
+- extendedWaitUntil:
+    visible:
+      id: history-screen
+    timeout: 60000
