@@ -24,6 +24,21 @@ fi
 OWNER="zzocojoa"
 REPO="FoodLens"
 BRANCH="main"
+MOBILE_E2E_CONTEXT="mobile-e2e"
+MOBILE_E2E_WORKFLOW_PATH=".github/workflows/mobile-e2e-release-gate.yml"
+
+# workflow_dispatch는 기본 브랜치에 workflow 파일이 있어야 실행할 수 있다.
+echo "Checking default-branch workflow exists for required context: ${MOBILE_E2E_CONTEXT}"
+if ! curl --fail-with-body -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/contents/${MOBILE_E2E_WORKFLOW_PATH}?ref=${BRANCH}" \
+  >/dev/null; then
+  echo ""
+  echo "Cannot require ${MOBILE_E2E_CONTEXT}: ${MOBILE_E2E_WORKFLOW_PATH} must exist on ${BRANCH} before applying branch protection."
+  exit 1
+fi
 
 # Backend Media Performance Regression은 baseline 비교가 포함된 PR 필수 컨텍스트다.
 curl --fail-with-body -L \

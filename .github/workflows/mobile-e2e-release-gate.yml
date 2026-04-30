@@ -2,13 +2,41 @@ name: Mobile E2E Release Gate
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - "release/**"
   workflow_dispatch:
+    inputs:
+      require_real_device_evidence:
+        description: "Require iOS/Android real-device evidence URIs"
+        required: true
+        default: false
+        type: boolean
+      ios_real_device_evidence_uri:
+        description: "iOS real-device evidence URL or CI artifact reference"
+        required: false
+        type: string
+      android_real_device_evidence_uri:
+        description: "Android real-device evidence URL or CI artifact reference"
+        required: false
+        type: string
+      ios_real_device_runner:
+        description: "iOS runner source, for example manual, Maestro, Detox, Appium"
+        required: false
+        type: string
+      android_real_device_runner:
+        description: "Android runner source, for example manual, Maestro, Detox, Appium"
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   mobile-e2e:
+    name: mobile-e2e
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,6 +56,12 @@ jobs:
         run: npm ci
 
       - name: Run mobile E2E release gate
+        env:
+          MOBILE_E2E_REAL_DEVICE_EVIDENCE_REQUIRED: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) && '1' || (github.event_name == 'workflow_dispatch' && inputs.require_real_device_evidence) && '1' || '0' }}
+          MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios_real_device_evidence_uri) || vars.MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI || '' }}
+          MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI: ${{ (github.event_name == 'workflow_dispatch' && inputs.android_real_device_evidence_uri) || vars.MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI || '' }}
+          MOBILE_E2E_IOS_REAL_DEVICE_RUNNER: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios_real_device_runner) || vars.MOBILE_E2E_IOS_REAL_DEVICE_RUNNER || '' }}
+          MOBILE_E2E_ANDROID_REAL_DEVICE_RUNNER: ${{ (github.event_name == 'workflow_dispatch' && inputs.android_real_device_runner) || vars.MOBILE_E2E_ANDROID_REAL_DEVICE_RUNNER || '' }}
         run: npm run phase6:mobile-e2e:gate
 
       - name: Upload mobile E2E release artifacts

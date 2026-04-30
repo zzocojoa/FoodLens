@@ -101,6 +101,7 @@ bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-matrix.
 ```
 
 mixed analyze + cold cache-miss 매트릭스는 signed URL 값을 터미널 출력이나 문서에 남기지 않도록 파일 경로로 넘긴다.
+이 실행은 full live matrix로 취급하므로 `REQUIRE_FULL_LIVE_MATRIX=1`을 함께 설정한다. 이 값이 켜지면 스크립트는 `BASE_URL`, `AUTH_BEARER_TOKEN`, `ENABLE_ANALYZE=1`, `ANALYZE_PATH`, `REQUIRE_MEDIA_RENDER_CACHE_HEADER=1`, `MEDIA_RENDER_CACHE_MISS_URLS_PATH`가 모두 준비되지 않은 경우 실행을 중단한다. signed miss URL은 inline 환경변수 `MEDIA_RENDER_CACHE_MISS_URLS`가 아니라 파일 경로로만 넘긴다.
 
 ```bash
 cd /Users/beatlefeed/Documents/FoodLens-project
@@ -113,6 +114,8 @@ export RENDER_CACHE_MISS_EVERY=1
 export ENABLE_ANALYZE=1
 export ANALYZE_PATH="/Users/beatlefeed/Documents/FoodLens-project/label.jpeg"
 export ANALYZE_EVERY=10
+export REQUIRE_MEDIA_RENDER_CACHE_HEADER=1
+export REQUIRE_FULL_LIVE_MATRIX=1
 export K6_MATRIX_VUS="20 50 100"
 export K6_DURATION=60s
 export THINK_TIME_MS=200
@@ -121,6 +124,7 @@ bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-matrix.
 ```
 
 `ENABLE_ANALYZE=1`을 설정한 매트릭스 실행에서 `ANALYZE_PATH`가 없으면 scenario B를 건너뛰지 않고 실패한다. 이 상태는 analyze 혼합 부하를 측정하지 못한 것이므로 통과로 취급하지 않는다.
+`REQUIRE_FULL_LIVE_MATRIX=1`을 설정한 실행에서 cache miss URL 파일이 없거나 inline signed URL 문자열만 있으면 실패한다. 이 상태는 cold miss 부하를 측정하지 못한 것이므로 통과로 취급하지 않는다.
 
 ## 3) 결과 위치
 - `artifacts/perf/<timestamp>/summary.json`
@@ -151,7 +155,15 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
 
 누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다. `--min-latency-regression-ms 100`은 p95 latency가 낮은 기준선에서 수십 ms 노이즈만으로 percent 회귀가 나는 것을 막는다. cache 상태 헤더까지 강제해야 하는 실행에서는 `--require-cache-header`를 함께 사용한다. 이때 `render_cache_disabled_rate.rate`, `render_cache_unknown_rate.rate`는 필수 메트릭으로 취급하므로 누락되어도 실패한다.
 
-`Backend Media Performance Regression` workflow는 PR / `release/**` push / release 이벤트에서 필수 게이트로 실행한다. 비교 기준선은 `baseline_summary_path` 입력 또는 GitHub Actions variable `PERF_BASELINE_SUMMARY_PATH`로 지정한 저장소 내 `summary.json`를 우선 사용한다. 저장소 내 파일이 없으면 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID`와 `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`으로 이전 workflow artifact를 내려받는다. 기준선 경로와 artifact 정보가 모두 없거나, 다운로드 후 `summary.json`를 찾지 못하면 비교를 skip하지 않고 실패한다. 배포 대상 backend가 `X-Media-Render-Cache` 헤더를 내보내는 버전이고 fresh signed render URL이 200 `image/*` 응답을 반환할 때만 `require_cache_header=1`을 사용한다.
+`Backend Media Performance Regression` workflow는 PR / `release/**` push / release 이벤트에서 필수 게이트로 실행한다. 비교 기준선은 `baseline_summary_path` 입력 또는 GitHub Actions variable `PERF_BASELINE_SUMMARY_PATH`로 지정한 저장소 내 `summary.json`를 우선 사용한다. 저장소 내 파일이 없으면 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID`와 `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`으로 이전 workflow artifact를 내려받는다. 기준선 경로와 artifact 정보가 모두 없거나, 다운로드 후 `summary.json`를 찾지 못하면 비교를 skip하지 않고 실패한다. 배포 대상 backend가 `X-Media-Render-Cache` 헤더를 내보내는 버전이고 fresh signed render URL이 200 `image/*` 응답을 반환할 때만 `require_cache_header=1`을 사용한다. `REQUIRE_MEDIA_RENDER_CACHE_HEADER=1`이면 baseline runner는 k6 실행 전에 warmed render URL을 한 번 더 probe한다. 이 preflight가 `status=200`, `Content-Type: image/*`, `X-Media-Render-Cache: hit|miss`를 확인하지 못하면 strict 실행을 시작하지 않는다. 즉 live 배포본이 `render_cache_unknown_rate=0`와 `render_cache_disabled_rate=0`를 만들 수 있음을 먼저 증명한 뒤에만 strict gate를 켠다.
+
+strict 전환 전 live readiness만 확인하려면 같은 `MEDIA_RENDER_URL` 또는 `MEDIA_RENDER_CACHE_HIT_URL`을 주입한 뒤 아래 명령을 먼저 실행한다. signed URL 전체는 출력하지 않는다.
+
+```bash
+REQUIRE_MEDIA_RENDER_CACHE_HEADER=1 \
+MEDIA_RENDER_URL="${MEDIA_RENDER_URL}" \
+bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/check-media-render-cache-header-readiness.sh
+```
 
 secret 없이 workflow/script 배선만 확인해야 할 때는 수동 실행에서 `validate_only=1`을 사용한다. 이 모드는 live backend, signed URL, baseline artifact, k6 설치를 요구하지 않고 `run-media-baseline.sh`와 `compare-media-summaries.py`의 기본 검증 경로만 실행한다. PR / release 기본 실행은 `validate_only=0`이며 실제 성능 게이트를 우회하지 않는다. validate-only 실행도 `backend-media-performance-regression-<run_id>` artifact에 dry-run marker와 synthetic compare summary를 업로드한다.
 
@@ -185,7 +197,7 @@ secret 없이 workflow/script 배선만 확인해야 할 때는 수동 실행에
 | URL source fetch 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `profile` 또는 `history`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret 경로에서는 diagnostics가 비어 있을 수 있어 workflow 로그와 함께 봐야 한다. | 같은 backend base URL의 live readiness, 배포 상태, 인증 상태를 먼저 확인한다. Render/GCS와 smoke 계정 데이터는 그 다음에 확인한다. |
 | render candidate probe 503 | `artifacts/perf/url-resolution/diagnostics.jsonl`에 `candidate_source`가 `history[<index>].image_render_url` 또는 `profile.profile_image_render_url`인 행의 HTTP `status`가 `503`이고, k6 실행 전 `MEDIA_RENDER_URL` 확정에 실패한다. | 같은 attempt에서 `profile`과 `history` fetch는 성공했지만 candidate probe만 실패했거나, `recovered`가 `true`인 이전 transient 행이 남아 있다. | `/media/render` 경로, Render/GCS 상태, asset 존재 여부를 먼저 확인한다. smoke 계정 데이터와 권한은 URL 후보 자체가 없을 때 확인한다. |
 | k6 threshold failure | `summary.json`의 `thresholds` 항목 또는 `k6.log`에 threshold 실패가 기록되고, 실행 자체는 `summary.json`를 생성했다. | 특정 지표의 p95 또는 failure rate가 근소하게 초과했지만 외부 장애 로그가 동시에 있다. | `summary.json`의 실제 값과 직전 기준선을 비교한다. threshold 완화는 기본 추천하지 않으며, 서비스 목표가 바뀐 경우에만 별도 승인 후 조정한다. |
-| cache header unknown 1.0 | `render_cache_unknown_rate.rate`가 `1`이고 동시에 `render_status_2xx_rate.rate`가 `0`이거나 `render_failure_rate.rate`가 높다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret이 선택된 실행은 fresh URL probe를 건너뛰므로 만료된 signed URL을 계속 사용할 수 있다. | 먼저 `MEDIA_RENDER_URL source`가 workflow input 또는 `PERF_MEDIA_RENDER_URL secret`인지 확인한다. 가능하면 smoke 계정 로그인 경로로 fresh URL을 발급받고, 그 다음 배포 버전의 cache header 지원 여부를 확인한다. |
+| cache header unknown 1.0 | `render_cache_unknown_rate.rate`가 `1`이고 동시에 `render_status_2xx_rate.rate`가 `0`이거나 `render_failure_rate.rate`가 높다. strict 실행에서는 k6 전에 cache header readiness preflight가 `X-Media-Render-Cache` 누락 또는 알 수 없는 값으로 실패한다. | workflow 입력 또는 `PERF_MEDIA_RENDER_URL` secret이 선택된 실행은 fresh URL probe를 건너뛰므로 만료된 signed URL을 계속 사용할 수 있다. | 먼저 `MEDIA_RENDER_URL source`가 workflow input 또는 `PERF_MEDIA_RENDER_URL secret`인지 확인한다. 가능하면 smoke 계정 로그인 경로로 fresh URL을 발급받고, 그 다음 배포 버전의 cache header 지원 여부를 확인한다. |
 | workflow probe parsing bug | candidate probe의 HTTP status와 content type이 정상인데도 URL 선택이 실패하거나, diagnostics의 probe 원시값과 workflow 로그의 판정이 서로 맞지 않는다. | curl은 성공했지만 probe meta의 `status` 또는 `content_type`이 비어 있거나 workflow 로그와 다르다. | workflow의 probe 파싱 로직을 결함 후보로 분리한다. backend 성능 회귀로 확정하지 않는다. |
 | smoke data missing | 로그인 또는 인증은 성공했지만 `/me/profile`, `/me/history`에서 signed `/media/render` URL 후보가 없다는 메시지가 기록된다. | profile 이미지는 없고 history도 비어 있거나, history 항목에 이미지 필드가 있지만 signed render URL 형식이 아니다. | smoke 계정에 유효한 이미지 데이터를 다시 준비한다. secret이나 signed URL을 새로 장기 저장하는 방식은 기본 조치로 사용하지 않는다. |
 | live readiness failure | URL 해석 전후의 backend 호출이 연결 실패, timeout, `5xx`, readiness 실패로 끝난다. | k6 지표 전체가 나빠졌지만 URL 해석 단계 로그에도 일시적인 `5xx`가 있다. | 배포 상태, readiness endpoint, Render 인스턴스 상태를 먼저 확인한다. 성능 threshold 변경으로 우회하지 않는다. |

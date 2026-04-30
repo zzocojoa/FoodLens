@@ -7,7 +7,7 @@
 - 기능을 빨리 넣는 것보다 "안정적으로 배포"하는 체계를 고정하는 단계입니다.
 - 한 번 정하면 계속 반복 사용할 운영 습관(게이트)을 만드는 것이 목표입니다.
 
-## 2) 현재 상태 (2026-04-11 기준)
+## 2) 현재 상태 (2026-04-30 기준)
 
 - Android release gate: **Go 승인 완료**
 - Android: Play Console 내부 테스트 수동 업로드 단계
@@ -79,11 +79,25 @@
     - bundle summary의 `exportMode`가 `fresh-export`인지 확인
   - mobile E2E release gate를 릴리스 후보 검증 명령으로 등록:
     - workflow: `.github/workflows/mobile-e2e-release-gate.yml`
+    - PR 필수 컨텍스트: `mobile-e2e`
     - 로컬/CI 재현 명령: `npm run phase6:mobile-e2e:gate`
+    - 릴리스 증적 필수 로컬 재현 명령: `npm run phase6:mobile-e2e:release-gate`
     - 자동화 범위: login/session, scan 분석 진입, result 저장/리포트, history 조회/이동
     - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-e2e-release-gate/`
+    - `workflow_dispatch` 수동 실행은 workflow 파일이 default branch(`main`)에 merge된 뒤부터 가능
+    - default branch merge 전 검증 경로는 PR의 `mobile-e2e` check와 로컬 재현 명령으로 고정
+    - `docs/scripts/apply_branch_protection.sh`는 default branch에 workflow 파일이 확인된 뒤 `mobile-e2e`를 필수 컨텍스트로 등록
     - `gate-manifest.json`의 `deviceRunnerConfigured=false`는 Detox/Maestro/Appium 같은 실디바이스 자동화 러너가 아직 없다는 뜻
-    - 릴리스 후보 Go 판정 전 iOS/Android 실디바이스 수동 E2E 증적은 별도로 첨부
+    - 모든 실행은 `real-device-evidence.json`에 iOS/Android 실디바이스 증적 상태를 기록
+    - 일반 PR에서는 실디바이스 증적이 없어도 Jest 기반 smoke gate만 실행
+    - `release/**` 브랜치 push 또는 `workflow_dispatch`에서 `require_real_device_evidence=true`인 실행은 iOS/Android 증적 URI가 없으면 실패
+    - 증적 URI 입력값:
+      - `MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI`
+      - `MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI`
+    - 증적 URI는 GitHub Actions artifact, TestFlight/Play Internal Testing 결과, 또는 수동 QA 리포트 링크 중 하나를 사용
+    - 선택 입력값:
+      - `MOBILE_E2E_IOS_REAL_DEVICE_RUNNER`
+      - `MOBILE_E2E_ANDROID_REAL_DEVICE_RUNNER`
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -197,6 +211,6 @@
 
 ---
 
-문서 버전: v1.1
+문서 버전: v1.2
 연결 문서: [Master Plan](./master-plan.md), [API 계약 기준서](../contracts/api-contracts.md), [아키텍처 요약](../architecture-overview.md)
-최종 수정: 2026-04-11
+최종 수정: 2026-04-30

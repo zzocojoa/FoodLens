@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_PATH="${ROOT_DIR}/scripts/perf/k6-media-baseline.js"
+CACHE_HEADER_READINESS_SCRIPT="${ROOT_DIR}/scripts/perf/check-media-render-cache-header-readiness.sh"
 RUN_TS="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/artifacts/perf/${RUN_TS}}"
 BASELINE_SCRIPT_VUS="${BASELINE_VUS:-${K6_VUS:-20}}"
@@ -176,6 +177,11 @@ if [[ "${PERF_VALIDATE_ONLY}" == "1" ]]; then
   exit 0
 fi
 
+if [[ "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" != "0" && "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" != "1" ]]; then
+  echo "[perf] REQUIRE_MEDIA_RENDER_CACHE_HEADER must be 0 or 1."
+  exit 1
+fi
+
 if ! command -v k6 >/dev/null 2>&1; then
   echo "[perf] k6 is not installed. Install with: brew install k6"
   exit 1
@@ -191,6 +197,10 @@ if [[ "${RENDER_CACHE_HIT_WARMUP_REQUESTS}" =~ ^[0-9]+$ ]]; then
 else
   echo "[perf] RENDER_CACHE_HIT_WARMUP_REQUESTS must be a non-negative integer."
   exit 1
+fi
+
+if [[ "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" == "1" ]]; then
+  bash "${CACHE_HEADER_READINESS_SCRIPT}"
 fi
 
 echo "[perf] output: ${OUT_DIR}"
