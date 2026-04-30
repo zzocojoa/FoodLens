@@ -16,6 +16,10 @@ on:
         required: true
         default: com.hoihou.foodlens
         type: string
+      device_id:
+        description: "Optional connected device UDID / serial"
+        required: false
+        type: string
       runs_on_json:
         description: "JSON array for a self-hosted runner with a real device"
         required: true
@@ -62,6 +66,7 @@ jobs:
         env:
           FOODLENS_E2E_PLATFORM: ${{ inputs.platform }}
           FOODLENS_E2E_APP_ID: ${{ inputs.app_id }}
+          FOODLENS_E2E_DEVICE_ID: ${{ inputs.device_id }}
           FOODLENS_E2E_EMAIL: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_EMAIL }}
           FOODLENS_E2E_PASSWORD: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_PASSWORD }}
           FOODLENS_MAESTRO_FLOW_PATH: ${{ inputs.flow_path }}

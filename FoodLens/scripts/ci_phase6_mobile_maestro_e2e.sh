@@ -51,9 +51,47 @@ load_local_env_file() {
     exit 1
   fi
 
+  local original_foodlens_e2e_platform="${FOODLENS_E2E_PLATFORM:-}"
+  local original_foodlens_e2e_app_id="${FOODLENS_E2E_APP_ID:-}"
+  local original_foodlens_e2e_device_id="${FOODLENS_E2E_DEVICE_ID:-}"
+  local original_foodlens_e2e_email="${FOODLENS_E2E_EMAIL:-}"
+  local original_foodlens_e2e_password="${FOODLENS_E2E_PASSWORD:-}"
+  local original_foodlens_maestro_validate_only="${FOODLENS_MAESTRO_VALIDATE_ONLY:-}"
+  local original_foodlens_maestro_flow_path="${FOODLENS_MAESTRO_FLOW_PATH:-}"
+  local has_foodlens_e2e_platform="${FOODLENS_E2E_PLATFORM+x}"
+  local has_foodlens_e2e_app_id="${FOODLENS_E2E_APP_ID+x}"
+  local has_foodlens_e2e_device_id="${FOODLENS_E2E_DEVICE_ID+x}"
+  local has_foodlens_e2e_email="${FOODLENS_E2E_EMAIL+x}"
+  local has_foodlens_e2e_password="${FOODLENS_E2E_PASSWORD+x}"
+  local has_foodlens_maestro_validate_only="${FOODLENS_MAESTRO_VALIDATE_ONLY+x}"
+  local has_foodlens_maestro_flow_path="${FOODLENS_MAESTRO_FLOW_PATH+x}"
+
   set -a
   source "${LOCAL_ENV_FILE}"
   set +a
+
+  if [[ -n "${has_foodlens_e2e_platform}" ]]; then
+    export FOODLENS_E2E_PLATFORM="${original_foodlens_e2e_platform}"
+  fi
+  if [[ -n "${has_foodlens_e2e_app_id}" ]]; then
+    export FOODLENS_E2E_APP_ID="${original_foodlens_e2e_app_id}"
+  fi
+  if [[ -n "${has_foodlens_e2e_device_id}" ]]; then
+    export FOODLENS_E2E_DEVICE_ID="${original_foodlens_e2e_device_id}"
+  fi
+  if [[ -n "${has_foodlens_e2e_email}" ]]; then
+    export FOODLENS_E2E_EMAIL="${original_foodlens_e2e_email}"
+  fi
+  if [[ -n "${has_foodlens_e2e_password}" ]]; then
+    export FOODLENS_E2E_PASSWORD="${original_foodlens_e2e_password}"
+  fi
+  if [[ -n "${has_foodlens_maestro_validate_only}" ]]; then
+    export FOODLENS_MAESTRO_VALIDATE_ONLY="${original_foodlens_maestro_validate_only}"
+  fi
+  if [[ -n "${has_foodlens_maestro_flow_path}" ]]; then
+    export FOODLENS_MAESTRO_FLOW_PATH="${original_foodlens_maestro_flow_path}"
+  fi
+
   echo "[Phase6 Mobile Maestro E2E] loaded local env file: ${LOCAL_ENV_FILE}"
 }
 
@@ -63,12 +101,14 @@ load_local_env_file
 
 FOODLENS_E2E_PLATFORM="$(normalize_platform "$(trim_value "${FOODLENS_E2E_PLATFORM:-android}")")"
 FOODLENS_E2E_APP_ID="$(trim_value "${FOODLENS_E2E_APP_ID:-com.hoihou.foodlens}")"
+FOODLENS_E2E_DEVICE_ID="$(trim_value "${FOODLENS_E2E_DEVICE_ID:-}")"
 FOODLENS_E2E_EMAIL="$(trim_value "${FOODLENS_E2E_EMAIL:-}")"
 FOODLENS_E2E_PASSWORD="$(trim_value "${FOODLENS_E2E_PASSWORD:-}")"
 FOODLENS_MAESTRO_VALIDATE_ONLY="$(trim_value "${FOODLENS_MAESTRO_VALIDATE_ONLY:-0}")"
 
 export FOODLENS_E2E_PLATFORM
 export FOODLENS_E2E_APP_ID
+export FOODLENS_E2E_DEVICE_ID
 export FOODLENS_E2E_EMAIL
 export FOODLENS_E2E_PASSWORD
 
@@ -83,12 +123,14 @@ node - "${SUMMARY_FILE}" "${FLOW_PATH}" "${FOODLENS_E2E_PLATFORM}" "${FOODLENS_E
 const fs = require('fs');
 
 const [summaryFile, flowPath, platform, appId, validateOnly] = process.argv.slice(2);
+const deviceId = process.env.FOODLENS_E2E_DEVICE_ID || '';
 const summary = {
   gate: 'phase6-mobile-maestro-e2e',
   runner: 'maestro',
   deviceRunnerConfigured: true,
   platform,
   appId,
+  deviceId: deviceId.length > 0 ? deviceId : null,
   flowPath,
   validateOnly: validateOnly === '1',
   requiredFlows: ['login', 'scan', 'history'],
@@ -111,17 +153,26 @@ if ! command -v maestro >/dev/null 2>&1; then
   exit 1
 fi
 
+MAESTRO_ARGS=(
+  test
+  --no-ansi
+  --platform "${FOODLENS_E2E_PLATFORM}"
+  --format junit
+  --output "${JUNIT_FILE}"
+  --debug-output "${DEBUG_OUTPUT_DIR}"
+  --test-output-dir "${TEST_OUTPUT_DIR}"
+  -e "FOODLENS_E2E_APP_ID=${FOODLENS_E2E_APP_ID}"
+  -e "FOODLENS_E2E_EMAIL=${FOODLENS_E2E_EMAIL}"
+  -e "FOODLENS_E2E_PASSWORD=${FOODLENS_E2E_PASSWORD}"
+)
+
+if [[ -n "${FOODLENS_E2E_DEVICE_ID}" ]]; then
+  MAESTRO_ARGS+=(--udid "${FOODLENS_E2E_DEVICE_ID}")
+fi
+
+MAESTRO_ARGS+=("${FLOW_PATH}")
+
 echo "[Phase6 Mobile Maestro E2E] platform=${FOODLENS_E2E_PLATFORM} app_id=${FOODLENS_E2E_APP_ID}"
-maestro test \
-  --no-ansi \
-  --format junit \
-  --output "${JUNIT_FILE}" \
-  --debug-output "${DEBUG_OUTPUT_DIR}" \
-  --test-output-dir "${TEST_OUTPUT_DIR}" \
-  -e "FOODLENS_E2E_APP_ID=${FOODLENS_E2E_APP_ID}" \
-  -e "FOODLENS_E2E_EMAIL=${FOODLENS_E2E_EMAIL}" \
-  -e "FOODLENS_E2E_PASSWORD=${FOODLENS_E2E_PASSWORD}" \
-  "${FLOW_PATH}" \
-  2>&1 | tee "${LOG_FILE}"
+maestro "${MAESTRO_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
 
 echo "[Phase6 Mobile Maestro E2E] passed"
