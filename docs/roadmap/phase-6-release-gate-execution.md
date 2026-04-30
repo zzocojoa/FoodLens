@@ -88,17 +88,24 @@
     - default branch merge 전 검증 경로는 PR의 `mobile-e2e` check와 로컬 재현 명령으로 고정
     - `docs/scripts/apply_branch_protection.sh`는 default branch에 workflow 파일이 확인된 뒤 `mobile-e2e`를 필수 컨텍스트로 등록
     - `gate-manifest.json`의 `deviceRunnerConfigured=false`는 이 PR 필수 컨텍스트가 Jest 기반 smoke gate라는 뜻
-    - 실디바이스 자동화 러너는 Maestro로 분리:
+    - Android 실디바이스 자동화 러너는 Maestro로 분리:
       - workflow: `.github/workflows/mobile-maestro-real-device-e2e.yml`
       - 로컬/러너 재현 명령: `npm run phase6:mobile-maestro:e2e`
       - 배선 검증 명령: `npm run phase6:mobile-maestro:validate`
       - flow: `FoodLens/maestro/flows/release-smoke.yaml`
       - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-maestro-e2e/`
-      - 실행 환경: Maestro CLI가 설치되어 있거나 설치 가능한 self-hosted macOS runner + 실제 Android/iOS device + 설치된 앱
+      - 실행 환경: Maestro CLI가 설치되어 있거나 설치 가능한 self-hosted macOS runner + 실제 Android device + 설치된 앱
       - 필수 secret: `PHASE6_POSTDEPLOY_SMOKE_EMAIL`, `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`
       - Android 기본 app id: `com.hoihou.foodlens`
+      - Maestro artifact URL을 release gate의 `MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI`로 사용
+    - iOS 실디바이스 자동화 러너는 XCUITest로 분리:
+      - workflow: `.github/workflows/mobile-ios-xcuitest-real-device-e2e.yml`
+      - 로컬/러너 재현 명령: `npm run phase6:mobile-ios-xcuitest:e2e`
+      - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-ios-xcuitest-e2e/`
+      - 실행 환경: Xcode가 설치된 self-hosted macOS runner + 신뢰된 실제 iPhone + 자동 서명 가능한 Apple Developer Team
+      - 필수 secret: `PHASE6_POSTDEPLOY_SMOKE_EMAIL`, `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`
       - iOS 기본 bundle id: `com.hoihou.foodlens`
-      - Maestro artifact URL을 release gate의 `MOBILE_E2E_ANDROID_REAL_DEVICE_EVIDENCE_URI` 또는 `MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI`로 사용
+      - XCUITest artifact URL을 release gate의 `MOBILE_E2E_IOS_REAL_DEVICE_EVIDENCE_URI`로 사용
     - 모든 실행은 `real-device-evidence.json`에 iOS/Android 실디바이스 증적 상태를 기록
     - 일반 PR에서는 실디바이스 증적이 없어도 Jest 기반 smoke gate만 실행
     - `release/**` 브랜치 push 또는 `workflow_dispatch`에서 `require_real_device_evidence=true`인 실행은 iOS/Android 증적 URI가 없으면 실패
