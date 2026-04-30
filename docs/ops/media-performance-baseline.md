@@ -123,10 +123,11 @@ python3 /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/compare-media-
   --after artifacts/perf/<after>/summary.json \
   --fail-on-regression \
   --max-regression-percent 15 \
+  --min-latency-regression-ms 100 \
   --enforce-thresholds
 ```
 
-누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다. cache 상태 헤더까지 강제해야 하는 실행에서는 `--require-cache-header`를 함께 사용한다. 이때 `render_cache_disabled_rate.rate`, `render_cache_unknown_rate.rate`는 필수 메트릭으로 취급하므로 누락되어도 실패한다.
+누락된 메트릭은 `n/a`로 표시하며 회귀로 판정하지 않는다. `--enforce-thresholds`를 켜면 현재 k6 임계값을 초과한 after 메트릭에서 실패한다. `--min-latency-regression-ms 100`은 p95 latency가 낮은 기준선에서 수십 ms 노이즈만으로 percent 회귀가 나는 것을 막는다. cache 상태 헤더까지 강제해야 하는 실행에서는 `--require-cache-header`를 함께 사용한다. 이때 `render_cache_disabled_rate.rate`, `render_cache_unknown_rate.rate`는 필수 메트릭으로 취급하므로 누락되어도 실패한다.
 
 `Backend Media Performance Regression` workflow는 PR / `release/**` push / release 이벤트에서 필수 게이트로 실행한다. 비교 기준선은 `baseline_summary_path` 입력 또는 GitHub Actions variable `PERF_BASELINE_SUMMARY_PATH`로 지정한 저장소 내 `summary.json`를 우선 사용한다. 저장소 내 파일이 없으면 `PERF_BASELINE_SUMMARY_ARTIFACT_RUN_ID`와 `PERF_BASELINE_SUMMARY_ARTIFACT_NAME`으로 이전 workflow artifact를 내려받는다. 기준선 경로와 artifact 정보가 모두 없거나, 다운로드 후 `summary.json`를 찾지 못하면 비교를 skip하지 않고 실패한다. 배포 대상 backend가 `X-Media-Render-Cache` 헤더를 내보내는 버전일 때만 `require_cache_header=1`을 사용한다.
 

@@ -782,6 +782,9 @@ jobs:
           elif grep -q -- "--tolerance" <<< "${compare_help}"; then
             tolerance_args=(--tolerance 0.15)
           fi
+          if grep -q -- "--min-latency-regression-ms" <<< "${compare_help}"; then
+            tolerance_args+=(--min-latency-regression-ms 100)
+          fi
           required_metric_args=(
             --require-metric render_failure_rate.rate
             --require-metric "render_latency.p(95)"

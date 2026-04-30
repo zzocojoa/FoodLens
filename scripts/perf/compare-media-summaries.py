@@ -145,14 +145,19 @@ def _is_regression(
     after: float | None,
     direction: str,
     max_regression_percent: float,
+    minimum_regression_delta: float,
 ) -> bool:
     if before is None or after is None:
         return False
     if direction == "lower":
+        if after - before <= minimum_regression_delta:
+            return False
         if before == 0:
             return after > before
         allowed_after = before * (1 + (max_regression_percent / 100))
         return after > allowed_after
+    if before - after <= minimum_regression_delta:
+        return False
     if before == 0:
         return after < before
     allowed_after = before * (1 - (max_regression_percent / 100))
@@ -214,6 +219,14 @@ def _non_negative_float(raw: str) -> float:
     return value
 
 
+def _minimum_regression_delta(rule: MetricRule, min_latency_regression_ms: float) -> float:
+    if rule["field"].startswith("p(") and (
+        "latency" in rule["name"] or "duration" in rule["name"]
+    ):
+        return min_latency_regression_ms
+    return 0.0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare two k6 summary.json files.")
     parser.add_argument("--before", required=True, help="Path to baseline summary.json")
@@ -228,6 +241,12 @@ def main() -> int:
         type=_non_negative_float,
         default=0.0,
         help="Allowed percent increase before lower-is-better metrics are flagged.",
+    )
+    parser.add_argument(
+        "--min-latency-regression-ms",
+        type=_non_negative_float,
+        default=0.0,
+        help="Ignore latency regressions smaller than this absolute p95 delta in milliseconds.",
     )
     parser.add_argument(
         "--enforce-thresholds",
@@ -277,6 +296,7 @@ def main() -> int:
             after_value,
             direction,
             args.max_regression_percent,
+            _minimum_regression_delta(rule, float(args.min_latency_regression_ms)),
         )
         threshold = thresholds.get(metric_key)
         threshold_failed = args.enforce_thresholds and _is_threshold_failure(after_value, threshold)
@@ -326,6 +346,8 @@ def main() -> int:
     print(f"after={after_path}")
     if args.max_regression_percent > 0:
         print(f"max_regression_percent={args.max_regression_percent:.2f}")
+    if args.min_latency_regression_ms > 0:
+        print(f"min_latency_regression_ms={args.min_latency_regression_ms:.2f}")
     print(f"regressions={regressions}")
     if args.enforce_thresholds:
         print(f"threshold_failures={threshold_failures}")
