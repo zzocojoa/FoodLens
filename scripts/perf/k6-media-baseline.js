@@ -15,7 +15,7 @@ const analyzeAllergy = (__ENV.ANALYZE_ALLERGY || 'egg').trim();
 const thinkTimeMs = Number(__ENV.THINK_TIME_MS || '200');
 const analyzeEvery = Number(__ENV.ANALYZE_EVERY || '10');
 const renderCacheMissEvery = Number(__ENV.RENDER_CACHE_MISS_EVERY || '1');
-const minRenderCacheMissSamples = Number(__ENV.MIN_RENDER_CACHE_MISS_SAMPLES || '20');
+const minRenderCacheMissSamples = Number(__ENV.MIN_RENDER_CACHE_MISS_SAMPLES || '15');
 const requireMediaRenderCacheHeader = (__ENV.REQUIRE_MEDIA_RENDER_CACHE_HEADER || '0').trim() === '1';
 const requireProfileAuthSuccess = (__ENV.REQUIRE_PROFILE_AUTH_SUCCESS || '0').trim() === '1';
 

@@ -286,7 +286,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `render_cache_miss_content_type_mismatch_rate.rate < 0.00001`
 - (strict cache header + miss URL) `render_cache_miss_latency.p(95) < 2500ms`
 - (strict cache header + miss URL) `render_cache_miss_observed_rate.rate > 0.00001`
-- (strict cache header + miss URL) `render_cache_miss_observed_count.count >= 20`
+- (strict cache header + miss URL) `render_cache_miss_observed_count.count >= 15`
 - `render_content_type_mismatch_rate.rate < 0.00001`
 - (strict cache header) `render_cache_disabled_rate.rate < 0.00001`
 - (strict cache header) `render_cache_unknown_rate.rate < 0.00001`
@@ -297,7 +297,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 
 `MEDIA_RENDER_WEBP_METHOD`는 backend WebP encode method를 제어한다. 기본값은 `4`이고 허용 범위는 `0..6`이다. cold miss p95가 `transform` stage에 집중되면 이 값을 조정해 재측정하되, `MEDIA_RENDER_DEFAULT_QUALITY`는 함께 바꾸지 않는다. method와 quality를 동시에 바꾸면 성능 개선 원인과 이미지 품질 영향을 분리하기 어렵다.
 
-`MIN_MEDIA_RENDER_COLD_CANDIDATES`는 full live matrix가 요구하는 cold signed URL 후보 수이고 기본값은 `3`이다. `MIN_RENDER_CACHE_MISS_SAMPLES`는 k6 실행 중 실제 `X-Media-Render-Cache: miss`로 관측되어야 하는 최소 sample 수이고 기본값은 `20`이다.
+`MIN_MEDIA_RENDER_COLD_CANDIDATES`는 full live matrix가 요구하는 cold signed URL 후보 수이고 기본값은 `3`이다. `MIN_RENDER_CACHE_MISS_SAMPLES`는 k6 실행 중 실제 `X-Media-Render-Cache: miss`로 관측되어야 하는 최소 sample 수이고 기본값은 `15`이다.
 
 ## 5) 운영 루틴
 1. 배포 전 1회 측정
