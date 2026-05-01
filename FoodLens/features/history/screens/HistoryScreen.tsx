@@ -377,7 +377,10 @@ export default function HistoryScreen() {
             backgroundColor={dashboardColors.paper}
             hideNav={ui.isEditMode}
         >
-            <View style={[historyDashboardStyles.screenBackground, { backgroundColor: dashboardColors.paper }]}>
+            <View
+                testID="history-screen"
+                style={[historyDashboardStyles.screenBackground, { backgroundColor: dashboardColors.paper }]}
+            >
                 <Stack.Screen options={{ headerShown: false }} />
                 {colorScheme === 'light' ? <HistoryHomeBackgroundAtmosphere /> : null}
                 <SafeAreaView style={{ flex: 1 }} edges={['top']}>

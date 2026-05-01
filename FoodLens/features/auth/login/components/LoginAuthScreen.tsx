@@ -27,6 +27,7 @@ type InputGroupProps = {
   Icon: LucideIcon;
   value: string;
   onChangeText: (value: string) => void;
+  inputTestID?: string;
   secureTextEntry?: boolean;
   RightIcon?: LucideIcon;
   onPressRightIcon?: () => void;
@@ -47,6 +48,7 @@ const InputGroup = ({
   Icon,
   value,
   onChangeText,
+  inputTestID,
   secureTextEntry,
   RightIcon,
   onPressRightIcon,
@@ -66,6 +68,7 @@ const InputGroup = ({
       <Icon size={16} color={LOGIN_COLORS.inputIcon} />
       <Text style={loginStyles.inputPipe}>|</Text>
       <TextInput
+        testID={inputTestID}
         autoCapitalize="none"
         placeholder={placeholder}
         placeholderTextColor={LOGIN_COLORS.textSecondary}
@@ -235,7 +238,12 @@ export default function LoginAuthScreen({
         </View>
       ) : null}
 
-      <Pressable disabled={loading} onPress={onSubmit} style={loginStyles.primaryButton}>
+      <Pressable
+        testID="login-submit-button"
+        disabled={loading}
+        onPress={onSubmit}
+        style={loginStyles.primaryButton}
+      >
         {loading ? (
           <ActivityIndicator color={LOGIN_COLORS.white} />
         ) : (
@@ -348,6 +356,7 @@ export default function LoginAuthScreen({
         </View>
 
         <InputGroup
+          inputTestID="login-email-input"
           label={copy.emailLabel}
           placeholder={copy.emailPlaceholder}
           Icon={Mail}
@@ -359,6 +368,7 @@ export default function LoginAuthScreen({
         />
 
         <InputGroup
+          inputTestID="login-password-input"
           label={passwordResetStepActive ? copy.newPasswordLabel : copy.passwordLabel}
           placeholder={passwordResetStepActive ? copy.newPasswordPlaceholder : copy.passwordPlaceholder}
           Icon={Lock}
@@ -389,6 +399,7 @@ export default function LoginAuthScreen({
         {!verificationStepActive || passwordResetStepActive ? (
           <Animated.View style={[loginStyles.collapsibleField, signupFieldStyle]}>
             <InputGroup
+              inputTestID="login-confirm-password-input"
               label={passwordResetStepActive ? copy.confirmNewPasswordLabel : copy.confirmPasswordLabel}
               placeholder={passwordResetStepActive ? copy.confirmNewPasswordPlaceholder : copy.confirmPasswordPlaceholder}
               Icon={Lock}
@@ -408,6 +419,7 @@ export default function LoginAuthScreen({
           <>
             <View style={loginStyles.verificationFieldWrap}>
               <InputGroup
+                inputTestID="login-verification-code-input"
                 label={copy.verificationCodeLabel}
                 placeholder={copy.verificationCodePlaceholder}
                 Icon={Shield}

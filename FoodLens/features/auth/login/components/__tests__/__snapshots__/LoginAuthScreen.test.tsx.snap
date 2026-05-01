@@ -130,6 +130,7 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
                 "paddingVertical": 2,
               }
             }
+            testID="login-email-input"
             value=""
           />
         </View>
@@ -200,6 +201,7 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
                 "paddingVertical": 2,
               }
             }
+            testID="login-password-input"
             value=""
           />
           <View
@@ -449,6 +451,7 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
                   "paddingVertical": 2,
                 }
               }
+              testID="login-confirm-password-input"
               value=""
             />
             <View
@@ -555,6 +558,7 @@ exports[`LoginAuthScreen matches snapshot in login mode 1`] = `
             "width": "100%",
           }
         }
+        testID="login-submit-button"
       >
         <Text
           style={
@@ -1238,6 +1242,7 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
                 "paddingVertical": 2,
               }
             }
+            testID="login-email-input"
             value="example@foodlens.ai"
           />
         </View>
@@ -1308,6 +1313,7 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
                 "paddingVertical": 2,
               }
             }
+            testID="login-password-input"
             value=""
           />
           <View
@@ -1557,6 +1563,7 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
                   "paddingVertical": 2,
                 }
               }
+              testID="login-confirm-password-input"
               value=""
             />
             <View
@@ -1678,6 +1685,7 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
                   "paddingVertical": 2,
                 }
               }
+              testID="login-verification-code-input"
               value=""
             />
           </View>
@@ -1767,6 +1775,7 @@ exports[`LoginAuthScreen matches snapshot in signup mode 1`] = `
             "width": "100%",
           }
         }
+        testID="login-submit-button"
       >
         <Text
           style={

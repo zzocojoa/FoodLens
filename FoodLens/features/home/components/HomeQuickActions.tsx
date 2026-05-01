@@ -46,6 +46,7 @@ type QuickActionCardProps = {
   overlayAccentColor: string;
   overlayCoolColor: string;
   overlayWarmColor: string;
+  testID: string;
   title: string;
   value: string;
   onPress: () => void;
@@ -61,6 +62,7 @@ function QuickActionCard({
   overlayAccentColor,
   overlayCoolColor,
   overlayWarmColor,
+  testID,
   title,
   value,
   onPress,
@@ -72,6 +74,7 @@ function QuickActionCard({
 
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       onPress={handlePress}
       style={({ pressed }) => [
@@ -136,6 +139,7 @@ export function HomeQuickActions({
         overlayCoolColor={homeDashboardColors.pearlGlow}
         overlayWarmColor={homeDashboardColors.pearlPeach}
         navigationTraceTarget="allergies"
+        testID="home-quick-action-allergies"
         title={allergiesTitle}
         value={allergiesValue}
         onPress={onOpenAllergies}
@@ -150,6 +154,7 @@ export function HomeQuickActions({
         overlayCoolColor={homeDashboardColors.pearlMist}
         overlayWarmColor={homeDashboardColors.pearlGlow}
         navigationTraceTarget="history"
+        testID="home-quick-action-history"
         title={historyTitle}
         value={historyValue}
         onPress={onOpenHistory}
@@ -164,6 +169,7 @@ export function HomeQuickActions({
         overlayCoolColor={homeDashboardColors.pearlSage}
         overlayWarmColor={homeDashboardColors.pearlGlow}
         navigationTraceTarget="trip_stats"
+        testID="home-quick-action-trip-stats"
         title={tripStatsTitle}
         value={tripStatsValue}
         onPress={onOpenTripStats}
