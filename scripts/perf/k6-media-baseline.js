@@ -93,6 +93,7 @@ const renderCacheMissObservedRate = new Rate('render_cache_miss_observed_rate');
 const renderCacheMissObservedCount = new Counter('render_cache_miss_observed_count');
 const renderStageCacheSetLatency = new Trend('render_stage_cache_set_latency', true);
 const renderStageFetchLatency = new Trend('render_stage_fetch_latency', true);
+const renderStageLimitWaitLatency = new Trend('render_stage_limit_wait_latency', true);
 const renderStageLookupLatency = new Trend('render_stage_lookup_latency', true);
 const renderStageTouchLatency = new Trend('render_stage_touch_latency', true);
 const renderStageTransformLatency = new Trend('render_stage_transform_latency', true);
@@ -235,6 +236,7 @@ function recordRenderStageMetrics(headers) {
   const stageMs = parseRenderStageHeader(headers);
   if (Number.isFinite(stageMs.cache_set)) renderStageCacheSetLatency.add(stageMs.cache_set);
   if (Number.isFinite(stageMs.fetch)) renderStageFetchLatency.add(stageMs.fetch);
+  if (Number.isFinite(stageMs.limit_wait)) renderStageLimitWaitLatency.add(stageMs.limit_wait);
   if (Number.isFinite(stageMs.lookup)) renderStageLookupLatency.add(stageMs.lookup);
   if (Number.isFinite(stageMs.touch)) renderStageTouchLatency.add(stageMs.touch);
   if (Number.isFinite(stageMs.transform)) renderStageTransformLatency.add(stageMs.transform);

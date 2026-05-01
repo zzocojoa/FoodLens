@@ -115,6 +115,8 @@ class ProcessRoleRuntimeTests(unittest.TestCase):
         self.assertTrue(hasattr(app.state, "media_render_cache_lock"))
         self.assertTrue(hasattr(app.state, "media_render_inflight_tasks"))
         self.assertTrue(hasattr(app.state, "media_render_inflight_lock"))
+        self.assertEqual(getattr(app.state, "media_render_max_concurrent_misses"), 2)
+        self.assertIsNotNone(getattr(app.state, "media_render_miss_semaphore"))
 
     def test_web_role_readiness_requires_remote_worker_heartbeat_for_postgres_job_backend(self) -> None:
         self._prime_common_runtime_state()

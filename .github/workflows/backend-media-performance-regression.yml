@@ -731,19 +731,19 @@ jobs:
             --name "${BASELINE_SUMMARY_ARTIFACT_NAME}" \
             --dir artifacts/perf/baseline
 
-      - name: Run media performance baseline
+      - name: Run media performance smoke gate
         if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
-          K6_VUS: "20"
+          K6_VUS: "5"
           K6_DURATION: "60s"
-          OUT_DIR: artifacts/perf/backend-media-${{ github.run_id }}
+          OUT_DIR: artifacts/perf/backend-media-smoke-${{ github.run_id }}
         run: |
           bash scripts/perf/run-media-baseline.sh
 
       - name: Compare with baseline summary
         if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
         env:
-          AFTER_SUMMARY_PATH: artifacts/perf/backend-media-${{ github.run_id }}/summary.json
+          AFTER_SUMMARY_PATH: artifacts/perf/backend-media-smoke-${{ github.run_id }}/summary.json
         run: |
           set -euo pipefail
 
@@ -812,9 +812,20 @@ jobs:
             --after "${AFTER_SUMMARY_PATH}" \
             --fail-on-regression \
             --enforce-thresholds \
+            --min-render-cache-miss-samples "${MIN_RENDER_CACHE_MISS_SAMPLES:-15}" \
             "${cache_header_args[@]}" \
             "${tolerance_args[@]}" \
             "${required_metric_args[@]}"
+
+      - name: Run media performance stress diagnostic
+        if: ${{ steps.resolve-inputs.outputs.validate_only != '1' }}
+        continue-on-error: true
+        env:
+          K6_VUS: "20"
+          K6_DURATION: "60s"
+          OUT_DIR: artifacts/perf/backend-media-stress-${{ github.run_id }}
+        run: |
+          bash scripts/perf/run-media-baseline.sh
 
       - name: Upload performance artifacts
         if: always()

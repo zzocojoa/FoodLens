@@ -116,6 +116,117 @@ cache_miss_urls_include() {
   return 1
 }
 
+validate_cache_miss_variant_keys() {
+  if [[ -z "${MEDIA_RENDER_CACHE_MISS_URLS:-}" && -z "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
+    return
+  fi
+  python3 - <<'PY'
+import os
+import sys
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+
+def split_urls(value: str) -> list[str]:
+    normalized = value.replace("\n", ",")
+    return [item.strip() for item in normalized.split(",") if item.strip()]
+
+
+def read_miss_urls() -> list[str]:
+    urls: list[str] = []
+    urls.extend(split_urls(os.environ.get("MEDIA_RENDER_CACHE_MISS_URLS", "")))
+    path_value = os.environ.get("MEDIA_RENDER_CACHE_MISS_URLS_PATH", "").strip()
+    if path_value:
+        path = Path(path_value)
+        if path.exists():
+            urls.extend(split_urls(path.read_text()))
+    return urls
+
+
+def env_int(name: str, fallback: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return fallback
+    try:
+        return int(raw)
+    except ValueError:
+        return fallback
+
+
+def allowed_widths() -> set[int]:
+    raw = os.environ.get("MEDIA_RENDER_ALLOWED_WIDTHS", "128,256,512,1024")
+    values = {int(part.strip()) for part in raw.split(",") if part.strip().isdigit()}
+    return values or {128, 256, 512, 1024}
+
+
+def normalized_query_value(query: dict[str, list[str]], name: str, fallback: str) -> str:
+    values = query.get(name)
+    if not values:
+        return fallback
+    value = values[0].strip()
+    return value or fallback
+
+
+def render_variant_key(url: str) -> tuple[str, str, str, str]:
+    parsed = urlparse(url)
+    marker = "/media/render/"
+    if marker not in parsed.path:
+        raise ValueError("missing media render path")
+    asset_id = parsed.path.split(marker, 1)[1].strip("/")
+    query = parse_qs(parsed.query)
+    default_width = env_int("MEDIA_RENDER_DEFAULT_WIDTH", 512)
+    raw_width = env_int("MEDIA_RENDER_DEFAULT_WIDTH", default_width)
+    try:
+        raw_width = int(normalized_query_value(query, "w", str(default_width)))
+    except ValueError:
+        raw_width = default_width
+    width = raw_width if raw_width in allowed_widths() else default_width
+
+    quality_min = max(1, env_int("MEDIA_RENDER_QUALITY_MIN", 50))
+    quality_max = min(100, env_int("MEDIA_RENDER_QUALITY_MAX", 85))
+    default_quality = env_int("MEDIA_RENDER_DEFAULT_QUALITY", 75)
+    try:
+        raw_quality = int(normalized_query_value(query, "q", str(default_quality)))
+    except ValueError:
+        raw_quality = default_quality
+    quality = max(quality_min, min(quality_max, raw_quality))
+
+    raw_fmt = normalized_query_value(query, "fmt", "auto").lower()
+    if raw_fmt in {"jpg", "jpeg"}:
+        fmt = "jpeg"
+    elif raw_fmt == "auto":
+        fmt = "webp"
+    elif raw_fmt in {"webp", "png"}:
+        fmt = raw_fmt
+    else:
+        fmt = "jpeg"
+    return asset_id, str(width), str(quality), fmt
+
+
+warm_url = os.environ.get("MEDIA_RENDER_CACHE_HIT_URL") or os.environ.get("MEDIA_RENDER_URL") or ""
+warm_key = render_variant_key(warm_url)
+seen: dict[tuple[str, str, str, str], int] = {}
+for index, url in enumerate(read_miss_urls(), start=1):
+    key = render_variant_key(url)
+    if key == warm_key:
+        print(
+            "[perf] cache-miss URL variant must not match the warmed cache-hit variant. "
+            f"entry_index={index}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    previous_index = seen.get(key)
+    if previous_index is not None:
+        print(
+            "[perf] cache-miss URLs must be unique by backend variant key. "
+            f"first_entry_index={previous_index} duplicate_entry_index={index}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    seen[key] = index
+PY
+}
+
 redact_media_render_urls() {
   perl -pe 's#https?://[^\s"'\''<>]+/media/render/[^\s"'\''<>]+#<redacted-media-render-url>#g'
 }
@@ -141,6 +252,7 @@ if cache_miss_urls_include "${MEDIA_RENDER_CACHE_HIT_URL:-${MEDIA_RENDER_URL}}";
   echo "[perf] cache-miss URLs must not include the warmed cache-hit render URL."
   exit 1
 fi
+validate_cache_miss_variant_keys
 if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
   if ! is_positive_integer "${RENDER_CACHE_MISS_EVERY:-1}"; then
     echo "[perf] RENDER_CACHE_MISS_EVERY must be a positive integer when cache-miss URLs are configured."
@@ -256,6 +368,7 @@ if command -v jq >/dev/null 2>&1; then
       "render_cache_miss_observed_count.count=\(metric_value("render_cache_miss_observed_count"; "count"))",
       "render_stage_lookup_latency.p95=\(metric_value("render_stage_lookup_latency"; "p(95)"))",
       "render_stage_fetch_latency.p95=\(metric_value("render_stage_fetch_latency"; "p(95)"))",
+      "render_stage_limit_wait_latency.p95=\(metric_value("render_stage_limit_wait_latency"; "p(95)"))",
       "render_stage_transform_latency.p95=\(metric_value("render_stage_transform_latency"; "p(95)"))",
       "render_stage_touch_latency.p95=\(metric_value("render_stage_touch_latency"; "p(95)"))",
       "render_stage_cache_set_latency.p95=\(metric_value("render_stage_cache_set_latency"; "p(95)"))",

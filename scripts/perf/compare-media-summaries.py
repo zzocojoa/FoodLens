@@ -21,6 +21,12 @@ class ThresholdRule(TypedDict):
     max_value: float
 
 
+class MinimumThresholdRule(TypedDict):
+    name: str
+    field: str
+    min_value: float
+
+
 class RequiredMetric(TypedDict):
     name: str
     field: str
@@ -48,6 +54,7 @@ METRIC_RULES: list[MetricRule] = [
     {"name": "render_cache_miss_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_stage_lookup_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_stage_fetch_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_limit_wait_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_stage_transform_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_stage_touch_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_stage_cache_set_latency", "field": "p(95)", "direction": "lower"},
@@ -94,6 +101,7 @@ CACHE_HEADER_REQUIRED_METRICS: list[RequiredMetric] = [
     {"name": "render_cache_unknown_rate", "field": "rate"},
     {"name": "render_cache_miss_observed_rate", "field": "rate"},
     {"name": "render_cache_miss_observed_count", "field": "count"},
+    {"name": "render_stage_limit_wait_latency", "field": "p(95)"},
 ]
 
 WARNING_THRESHOLDS: dict[str, float] = {
@@ -183,8 +191,18 @@ def _is_threshold_failure(after: float | None, threshold: float | None) -> bool:
     return after >= threshold
 
 
+def _is_minimum_threshold_failure(after: float | None, threshold: float | None) -> bool:
+    if after is None or threshold is None:
+        return False
+    return after < threshold
+
+
 def _thresholds_by_metric(rules: list[ThresholdRule]) -> dict[str, float]:
     return {f"{rule['name']}.{rule['field']}": rule["max_value"] for rule in rules}
+
+
+def _minimum_thresholds_by_metric(rules: list[MinimumThresholdRule]) -> dict[str, float]:
+    return {f"{rule['name']}.{rule['field']}": rule["min_value"] for rule in rules}
 
 
 def _threshold_rules_for_run(*, require_cache_header: bool) -> list[ThresholdRule]:
@@ -192,6 +210,23 @@ def _threshold_rules_for_run(*, require_cache_header: bool) -> list[ThresholdRul
     if require_cache_header:
         rules.extend(CACHE_HEADER_THRESHOLD_RULES)
     return rules
+
+
+def _minimum_threshold_rules_for_run(
+    *,
+    require_cache_header: bool,
+    min_render_cache_miss_samples: int,
+) -> list[MinimumThresholdRule]:
+    if not require_cache_header:
+        return []
+    return [
+        {"name": "render_cache_miss_observed_rate", "field": "rate", "min_value": 0.00001},
+        {
+            "name": "render_cache_miss_observed_count",
+            "field": "count",
+            "min_value": float(min_render_cache_miss_samples),
+        },
+    ]
 
 
 def _parse_required_metric(raw: str) -> RequiredMetric:
@@ -228,6 +263,20 @@ def _non_negative_float(raw: str) -> float:
     if value < 0 or math.isnan(value) or math.isinf(value):
         raise argparse.ArgumentTypeError(
             f"must be a non-negative finite number: value={raw}"
+        )
+    return value
+
+
+def _positive_int(raw: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"must be a positive integer: value={raw}"
+        ) from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"must be a positive integer: value={raw}"
         )
     return value
 
@@ -278,6 +327,12 @@ def main() -> int:
         action="store_true",
         help="Fail when media render cache status headers are missing, disabled, or unknown.",
     )
+    parser.add_argument(
+        "--min-render-cache-miss-samples",
+        type=_positive_int,
+        default=15,
+        help="Minimum observed cache-miss sample count when --require-cache-header is set.",
+    )
     args = parser.parse_args()
 
     before_path = Path(args.before)
@@ -291,6 +346,12 @@ def main() -> int:
     missing_required_metrics = 0
     thresholds = _thresholds_by_metric(
         _threshold_rules_for_run(require_cache_header=bool(args.require_cache_header))
+    )
+    minimum_thresholds = _minimum_thresholds_by_metric(
+        _minimum_threshold_rules_for_run(
+            require_cache_header=bool(args.require_cache_header),
+            min_render_cache_miss_samples=int(args.min_render_cache_miss_samples),
+        )
     )
     if args.enforce_thresholds:
         header = f"{'metric':<42} {'before':>12} {'after':>12} {'delta':>10} {'threshold':>12} {'status':>18}"
@@ -314,15 +375,23 @@ def main() -> int:
         )
         threshold = thresholds.get(metric_key)
         threshold_failed = args.enforce_thresholds and _is_threshold_failure(after_value, threshold)
+        minimum_threshold = minimum_thresholds.get(metric_key)
+        minimum_threshold_failed = (
+            args.enforce_thresholds
+            and _is_minimum_threshold_failure(after_value, minimum_threshold)
+        )
         warning_threshold = WARNING_THRESHOLDS.get(metric_key)
         warned = (
             args.enforce_thresholds
             and not threshold_failed
+            and not minimum_threshold_failed
             and _is_threshold_failure(after_value, warning_threshold)
         )
         if regressed:
             regressions += 1
         if threshold_failed:
+            threshold_failures += 1
+        if minimum_threshold_failed:
             threshold_failures += 1
         if warned:
             warnings += 1
@@ -330,6 +399,8 @@ def main() -> int:
         if regressed:
             status_parts.append("regressed")
         if threshold_failed:
+            status_parts.append("threshold")
+        if minimum_threshold_failed:
             status_parts.append("threshold")
         if warned:
             status_parts.append("warning")
