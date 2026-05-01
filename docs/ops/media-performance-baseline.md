@@ -278,7 +278,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 ## 4) 1차 판정 기준 (초기값)
 - `http_req_failed.rate < 0.10`
 - `render_failure_rate.rate < 0.05`
-- `render_latency.p(95) < 1500ms`
+- `render_latency.p(95) < 1500ms` (miss URL이 있으면 기본값은 `RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS`)
 - (strict cache header) `render_cache_hit_failure_rate.rate < 0.05`
 - `render_cache_hit_content_type_mismatch_rate.rate < 0.00001`
 - (strict cache header) `render_cache_hit_latency.p(95) < 1500ms`
@@ -301,7 +301,7 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 `MEDIA_RENDER_MAX_CONCURRENT_MISSES`는 per-process cold miss render 동시 실행 수를 제한한다. 기본값은 `2`이다. hit 응답은 이 제한을 거치지 않고, miss 응답의 `X-Media-Render-Stage-Ms`에는 semaphore 대기 시간인 `limit_wait`가 포함된다. `limit_wait`가 높고 `profile_latency`가 안정적이면 backend 보호가 동작하는 상태이고, `limit_wait`가 낮은데 `fetch` 또는 `transform`이 높으면 GCS/source image 또는 CPU 변환 병목을 우선 본다.
 
 `MIN_MEDIA_RENDER_COLD_CANDIDATES`는 full live matrix가 요구하는 cold signed URL 후보 수이고 기본값은 `3`이다. `MIN_RENDER_CACHE_MISS_SAMPLES`는 k6 실행 중 실제 `X-Media-Render-Cache: miss`로 관측되어야 하는 최소 sample 수이고 기본값은 `15`이다.
-`RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS` 기본값은 `2500`이고, `RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS` 기본값은 `3000`이다. warning 구간은 GCS/origin fetch 변동으로 분류하되, hard threshold 초과는 릴리스 차단으로 유지한다.
+`RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS` 기본값은 `2500`이고, `RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS` 기본값은 `3000`이다. warning 구간은 GCS/origin fetch 변동으로 분류하되, hard threshold 초과는 릴리스 차단으로 유지한다. `RENDER_P95_THRESHOLD_MS`를 직접 설정하지 않으면 `render_latency.p(95)` 기준은 hit-only 실행에서 `1500`, miss URL을 섞은 실행에서 `RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS`를 사용한다.
 
 운영 gate는 5 VU smoke hard gate와 20 VU stress gate로 분리한다. 5 VU는 PR/release 차단용으로 사용하고 failure rate, cache header, content-type, profile latency, miss sample floor를 hard fail로 본다. 20 VU는 Render starter에서 tail latency와 limiter 동작을 보는 stress gate로 사용한다. 20 VU에서 `render_stage_limit_wait_latency`가 높고 `profile_latency`와 cache hit latency가 안정적이면 limiter가 cold miss burst를 흡수한 것으로 본다. 반대로 `limit_wait`가 낮고 `fetch` 또는 `transform`만 높으면 GCS/source image 또는 CPU 변환 병목으로 분류한다.
 
