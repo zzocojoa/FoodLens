@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
@@ -12,12 +13,18 @@ from unittest.mock import patch
 
 ROOT_DIR: Path = Path(__file__).resolve().parents[3]
 SMOKE_SCRIPT_PATH: Path = ROOT_DIR / "backend" / "scripts" / "staging_integration_smoke.py"
+RENDER_JOB_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_one_off_job_gate.py"
 WORKFLOW_PATH: Path = ROOT_DIR / ".github" / "workflows" / "staging-integration-smoke.yml"
 EXPECTED_REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "DATABASE_URL",
     "AUTH_STATE_KEY",
     "MEDIA_GCS_BUCKET",
     "GCP_SERVICE_ACCOUNT_JSON",
+)
+EXPECTED_RENDER_JOB_ENV_NAMES: tuple[str, ...] = (
+    "RENDER_API_KEY",
+    "RENDER_SERVICE_ID",
+    "RENDER_START_COMMAND",
 )
 FORBIDDEN_SUMMARY_DETAIL_KEYS: frozenset[str] = frozenset(
     (
@@ -63,6 +70,16 @@ def _load_smoke_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("staging_integration_smoke", SMOKE_SCRIPT_PATH)
     if spec is None or spec.loader is None:
         raise RuntimeError("staging integration smoke module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_render_job_gate_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("render_one_off_job_gate", RENDER_JOB_GATE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("render one-off job gate module is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -141,14 +158,10 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
 
         self.assertEqual(missing, ["MEDIA_GCS_BUCKET"])
 
-    def test_required_env_matches_staging_workflow_secret_contract(self) -> None:
+    def test_required_env_matches_staging_smoke_runtime_contract(self) -> None:
         smoke = _load_smoke_module()
-        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
         self.assertEqual(smoke.REQUIRED_ENV_NAMES, EXPECTED_REQUIRED_ENV_NAMES)
-        for env_name in EXPECTED_REQUIRED_ENV_NAMES:
-            expected_line = f"{env_name}: ${{{{ secrets.STAGING_{env_name} }}}}"
-            self.assertIn(expected_line, workflow)
 
     def test_check_env_only_does_not_run_live_smokes(self) -> None:
         smoke = _load_smoke_module()
@@ -252,15 +265,72 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
         self.assertIn("environment: staging", workflow)
-        self.assertIn("STAGING_DATABASE_URL", workflow)
-        self.assertIn("STAGING_MEDIA_GCS_BUCKET", workflow)
-        self.assertIn("STAGING_GCP_SERVICE_ACCOUNT_JSON", workflow)
+        self.assertIn("STAGING_RENDER_API_KEY", workflow)
+        self.assertIn("STAGING_RENDER_SERVICE_ID", workflow)
+        self.assertIn("render_one_off_job_gate.py", workflow)
+        self.assertIn("RENDER_START_COMMAND: >-", workflow)
+        self.assertIn("env\n        OPENAPI_EXPORT_ONLY=1", workflow)
+        self.assertIn("python backend/scripts/staging_integration_smoke.py", workflow)
         self.assertIn("scan_artifact_secrets.py artifacts/phase6/staging-integration-smoke", workflow)
         self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
         self.assertLess(
             workflow.index("Scan staging smoke artifacts for secret leaks"),
             workflow.index("Upload staging smoke artifacts"),
         )
+
+    def test_render_one_off_job_gate_reports_missing_env_without_values(self) -> None:
+        gate = _load_render_job_gate_module()
+        self.assertEqual(gate.REQUIRED_ENV_NAMES, EXPECTED_RENDER_JOB_ENV_NAMES)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+            }
+
+            status = gate.run_gate(
+                env,
+                lambda method, url, api_key, payload: (_ for _ in ()).throw(AssertionError("request should not run")),
+                lambda seconds: None,
+                lambda: 0.0,
+            )
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 2)
+        self.assertEqual(summary["missing_env"], ["RENDER_SERVICE_ID", "RENDER_START_COMMAND"])
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_one_off_job_gate_polls_until_success(self) -> None:
+        gate = _load_render_job_gate_module()
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+        statuses = iter(("running", "succeeded"))
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            calls.append((method, url, payload))
+            if method == "POST":
+                return {"id": "job-test", "status": "created", "createdAt": "2026-05-01T00:00:00Z"}
+            return {"id": "job-test", "status": next(statuses), "finishedAt": "2026-05-01T00:01:00Z"}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_POLL_SECONDS": "1",
+                "RENDER_JOB_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(calls[0][0], "POST")
+        self.assertEqual(calls[0][2], {"startCommand": "python backend/scripts/staging_integration_smoke.py"})
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_job"]["status"], "succeeded")
 
 
 if __name__ == "__main__":
