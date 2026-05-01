@@ -189,6 +189,7 @@ def main() -> None:
         "MEDIA_RENDER_DEFAULT_WIDTH",
         "MEDIA_RENDER_DEFAULT_QUALITY",
         "MEDIA_RENDER_WEBP_METHOD",
+        "MEDIA_RENDER_MAX_CONCURRENT_MISSES",
         "MEDIA_RENDER_CACHE_ENABLED",
         "MEDIA_RENDER_CACHE_MAX_ITEMS",
         "MEDIA_RENDER_CACHE_TTL_SECONDS",
@@ -262,6 +263,13 @@ def main() -> None:
     web = service_map["foodlens-api"]
     worker = service_map["foodlens-worker"]
     cron = service_map["foodlens-retention-cron"]
+    media_render_expected_values = {
+        "MEDIA_RENDER_WEBP_METHOD": "4",
+        "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
+    }
+    for service in (web, worker, cron):
+        for key, value in media_render_expected_values.items():
+            require_env_value(service["env_vars"], key, value)
 
     require(web["type"] == "web", f"foodlens-api type must be web, got {web['type']}")
     require(web["runtime"] == "docker", f"foodlens-api runtime must be docker, got {web['runtime']}")

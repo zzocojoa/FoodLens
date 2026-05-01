@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlparse
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, TypeVar
 import requests
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -132,6 +132,9 @@ app.add_middleware(
         "X-Media-Render-Stage-Ms",
     ],
 )
+
+MediaRenderResult = tuple[bytes, str, str, str, dict[str, int]]
+MediaRenderValue = TypeVar("MediaRenderValue")
 
 logger = logging.getLogger("foodlens.api")
 if not logging.getLogger().handlers:
@@ -388,6 +391,13 @@ def _initialize_auth_and_media_runtime() -> None:
     app.state.media_render_cache_lock = asyncio.Lock()
     app.state.media_render_inflight_tasks = {}
     app.state.media_render_inflight_lock = asyncio.Lock()
+    app.state.media_render_max_concurrent_misses = max(
+        0,
+        _env_int("MEDIA_RENDER_MAX_CONCURRENT_MISSES", 2),
+    )
+    app.state.media_render_miss_semaphore = _build_media_render_miss_semaphore(
+        app.state.media_render_max_concurrent_misses
+    )
     logger.info(
         "[Auth] state backend initialized backend=%s",
         getattr(app.state.auth_service, "state_backend", "memory"),
@@ -1117,9 +1127,29 @@ def _media_render_cache_set_locked(
         cache.popitem(last=False)
 
 
+def _build_media_render_miss_semaphore(max_concurrent_misses: int) -> asyncio.Semaphore | None:
+    if max_concurrent_misses <= 0:
+        return None
+    return asyncio.Semaphore(max_concurrent_misses)
+
+
+async def _run_media_render_miss_limited(
+    render_factory: Callable[[], Awaitable[MediaRenderValue]],
+) -> tuple[MediaRenderValue, int]:
+    semaphore = getattr(app.state, "media_render_miss_semaphore", None)
+    if semaphore is None:
+        return await render_factory(), 0
+
+    started_at = time.time()
+    async with semaphore:
+        limit_wait_ms = int((time.time() - started_at) * 1000)
+        result = await render_factory()
+        return result, limit_wait_ms
+
+
 async def _clear_media_render_inflight_task(
     variant_key: str,
-    task: asyncio.Task[tuple[bytes, str, str, str, dict[str, int]]],
+    task: asyncio.Task[MediaRenderResult],
 ) -> None:
     inflight_tasks = getattr(app.state, "media_render_inflight_tasks", None)
     inflight_lock = getattr(app.state, "media_render_inflight_lock", None)
@@ -1133,8 +1163,8 @@ async def _clear_media_render_inflight_task(
 
 async def _run_media_render_singleflight(
     variant_key: str,
-    render_factory: Callable[[], Awaitable[tuple[bytes, str, str, str, dict[str, int]]]],
-) -> tuple[bytes, str, str, str, dict[str, int]]:
+    render_factory: Callable[[], Awaitable[MediaRenderResult]],
+) -> MediaRenderResult:
     inflight_tasks = getattr(app.state, "media_render_inflight_tasks", None)
     inflight_lock = getattr(app.state, "media_render_inflight_lock", None)
     if inflight_tasks is None or inflight_lock is None:
@@ -3116,15 +3146,18 @@ async def get_media_render(
         )
         cached = await _media_render_cache_get(variant_key, now_ts)
         if cached is not None:
+            asset = await run_in_threadpool(auth_service.get_media_asset, asset_id=asset_id)
             rendered_bytes, content_type = cached
+            owner_id = str(asset.get("user_id") or "unknown")
+            asset_scope = str(asset.get("scope") or "unknown")
             remaining_ttl = max(1, exp - now_ts)
             render_ms = int((time.time() - started_at) * 1000)
             logger.info(
                 "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
                 request_id,
-                "unknown",
+                owner_id,
                 asset_id,
-                "unknown",
+                asset_scope,
                 content_type,
                 render_ms,
                 True,
@@ -3140,7 +3173,7 @@ async def get_media_render(
                 },
             )
 
-        def _render_variant_sync() -> tuple[bytes, str, str, str, dict[str, int]]:
+        def _render_variant_sync() -> MediaRenderResult:
             stage_started_at = time.time()
             asset = auth_service.get_media_asset(asset_id=asset_id)
             lookup_ms = int((time.time() - stage_started_at) * 1000)
@@ -3167,10 +3200,12 @@ async def get_media_render(
                 "transform": transform_ms,
             }
 
-        async def _render_variant() -> tuple[bytes, str, str, str, dict[str, int]]:
-            rendered_bytes, content_type, owner_id, scope, stage_ms = await run_in_threadpool(
-                _render_variant_sync
+        async def _render_variant() -> MediaRenderResult:
+            render_result, limit_wait_ms = await _run_media_render_miss_limited(
+                lambda: run_in_threadpool(_render_variant_sync)
             )
+            rendered_bytes, content_type, owner_id, scope, stage_ms = render_result
+            stage_ms["limit_wait"] = limit_wait_ms
             cache_set_started_at = time.time()
             await _media_render_cache_set(
                 variant_key,

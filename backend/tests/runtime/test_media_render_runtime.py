@@ -74,6 +74,21 @@ class _FailingTouchAuthService(_FakeAuthService):
         )
 
 
+class _RevokedMediaAuthService(_FakeAuthService):
+    def __init__(self, *, object_key: str) -> None:
+        super().__init__(object_key=object_key)
+        self.revoked = False
+
+    def get_media_asset(self, *, asset_id: str) -> dict[str, object]:
+        if self.revoked:
+            raise server.AuthServiceError(
+                code="AUTH_MEDIA_NOT_FOUND",
+                message="Media asset not found.",
+                status_code=404,
+            )
+        return super().get_media_asset(asset_id=asset_id)
+
+
 class _FailingFetchMediaStorage:
     enabled: bool = True
 
@@ -160,6 +175,8 @@ class MediaRenderRuntimeTests(unittest.TestCase):
         server.app.state.media_render_cache_lock = asyncio.Lock()
         server.app.state.media_render_inflight_tasks = {}
         server.app.state.media_render_inflight_lock = asyncio.Lock()
+        server.app.state.media_render_max_concurrent_misses = 2
+        server.app.state.media_render_miss_semaphore = server._build_media_render_miss_semaphore(2)
 
     def test_build_render_url_is_stable_within_sign_bucket(self) -> None:
         request = _FakeRequest(base_url="https://example.com/")
@@ -269,6 +286,30 @@ class MediaRenderRuntimeTests(unittest.TestCase):
 
         asyncio.run(_scenario())
 
+    def test_media_render_miss_limiter_caps_distinct_variant_work(self) -> None:
+        async def _scenario() -> None:
+            server.app.state.media_render_miss_semaphore = server._build_media_render_miss_semaphore(1)
+            active_count: dict[str, int] = {"value": 0}
+            max_active_count: dict[str, int] = {"value": 0}
+
+            async def factory() -> str:
+                active_count["value"] += 1
+                max_active_count["value"] = max(max_active_count["value"], active_count["value"])
+                await asyncio.sleep(0.02)
+                active_count["value"] -= 1
+                return "done"
+
+            first_task = asyncio.create_task(server._run_media_render_miss_limited(factory))
+            second_task = asyncio.create_task(server._run_media_render_miss_limited(factory))
+            first_result, second_result = await asyncio.gather(first_task, second_task)
+
+            self.assertEqual(first_result[0], "done")
+            self.assertEqual(second_result[0], "done")
+            self.assertEqual(max_active_count["value"], 1)
+            self.assertGreaterEqual(second_result[1], 0)
+
+        asyncio.run(_scenario())
+
     def test_media_render_touch_after_render_records_access(self) -> None:
         async def _scenario() -> None:
             auth_service = _TrackingTouchAuthService(
@@ -343,7 +384,36 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertNotIn("x-media-render-stage-ms", second_response.headers)
             self.assertIn("fetch=", first_response.headers["x-media-render-stage-ms"])
             self.assertIn("transform=", first_response.headers["x-media-render-stage-ms"])
+            self.assertIn("limit_wait=", first_response.headers["x-media-render-stage-ms"])
             self.assertNotIn("touch=", first_response.headers["x-media-render-stage-ms"])
+            self.assertEqual(media_storage.fetch_count, 1)
+
+    def test_media_render_cache_hit_revalidates_media_asset(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_revoked_cache"
+            auth_service = _RevokedMediaAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            server.app.state.auth_service = auth_service
+            media_storage = _SuccessfulFetchMediaStorage(
+                bytes_data=_create_jpeg_bytes(),
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+
+            url = server._build_media_render_url(
+                _FakeRequest(base_url="http://testserver/"),
+                asset_id=asset_id,
+            )
+            parsed = urlparse(url)
+            first_response = client.get(f"{parsed.path}?{parsed.query}")
+            auth_service.revoked = True
+            second_response = client.get(f"{parsed.path}?{parsed.query}")
+
+            self.assertEqual(first_response.status_code, 200)
+            self.assertEqual(first_response.headers["x-media-render-cache"], "miss")
+            self.assertEqual(second_response.status_code, 404)
+            self.assertNotEqual(second_response.headers.get("content-type"), "image/webp")
             self.assertEqual(media_storage.fetch_count, 1)
 
     def test_media_render_cache_disabled_header_does_not_report_miss(self) -> None:

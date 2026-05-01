@@ -5,18 +5,61 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="${FULL_LIVE_MEDIA_MATRIX_ENV_FILE:-${ROOT_DIR}/.env.media-performance.local}"
 MAESTRO_ENV_FILE="${FULL_LIVE_MEDIA_MATRIX_MAESTRO_ENV_FILE:-${ROOT_DIR}/FoodLens/.env.maestro.local}"
 MATRIX_SCRIPT="${ROOT_DIR}/scripts/perf/run-media-matrix.sh"
-MIN_MEDIA_RENDER_COLD_CANDIDATES="${MIN_MEDIA_RENDER_COLD_CANDIDATES:-3}"
 
-if ! [[ "${MIN_MEDIA_RENDER_COLD_CANDIDATES}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "[perf-full-live] MIN_MEDIA_RENDER_COLD_CANDIDATES must be a positive integer."
-  exit 1
-fi
+LOAD_OVERRIDE_NAMES=(
+  K6_MATRIX_VUS
+  K6_DURATION
+  THINK_TIME_MS
+  RENDER_CACHE_MISS_EVERY
+  MIN_MEDIA_RENDER_COLD_CANDIDATES
+  MIN_RENDER_CACHE_MISS_SAMPLES
+  RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS
+  RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS
+  PERF_REFRESH_MEDIA_RENDER_URLS
+)
+
+capture_env_override() {
+  local name="${1}"
+  local has_name="HAS_OVERRIDE_${name}"
+  local value_name="OVERRIDE_${name}"
+  if [[ -v "${name}" ]]; then
+    printf -v "${has_name}" '%s' "1"
+    printf -v "${value_name}" '%s' "${!name}"
+  else
+    printf -v "${has_name}" '%s' "0"
+    printf -v "${value_name}" '%s' ""
+  fi
+}
+
+restore_env_override() {
+  local name="${1}"
+  local has_name="HAS_OVERRIDE_${name}"
+  local value_name="OVERRIDE_${name}"
+  if [[ "${!has_name:-0}" == "1" ]]; then
+    export "${name}=${!value_name}"
+  fi
+}
+
+for override_name in "${LOAD_OVERRIDE_NAMES[@]}"; do
+  capture_env_override "${override_name}"
+done
 
 if [[ -f "${ENV_FILE}" ]]; then
   set -a
   # shellcheck disable=SC1090
   source "${ENV_FILE}"
   set +a
+fi
+
+for override_name in "${LOAD_OVERRIDE_NAMES[@]}"; do
+  restore_env_override "${override_name}"
+done
+
+MIN_MEDIA_RENDER_COLD_CANDIDATES="${MIN_MEDIA_RENDER_COLD_CANDIDATES:-3}"
+
+if ! [[ "${MIN_MEDIA_RENDER_COLD_CANDIDATES}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[perf-full-live] MIN_MEDIA_RENDER_COLD_CANDIDATES must be a positive integer."
+  exit 1
 fi
 
 if [[ -f "${MAESTRO_ENV_FILE}" ]]; then
