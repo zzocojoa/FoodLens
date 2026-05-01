@@ -121,7 +121,9 @@
     - `GET /me/allergies`
     - `GET /me/settings`
     - `GET /me/history`
-    - signed media render 1건
+    - 기존 signed media render 1건
+    - fresh media upload 기반 cold render 1건: `X-Media-Render-Cache=miss`, `X-Media-Render-Stage-Ms` 필수 key 확인
+    - 동일 fresh render URL 재요청 1건: `X-Media-Render-Cache=hit` 확인
     - `POST /analyze/jobs` (`mode=food`) submit -> `completed|fallback_completed` terminal poll 1건
   - smoke 인증 입력 고정:
     - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_EMAIL`
@@ -191,7 +193,7 @@
   - 모니터링/알림/런북 상시 운영
   - 내부 테스트 트랙 배포 증적 보관
   - `eas submit` 자동 제출/재시도 로그 보관(최초 수동 제출 예외 사유 포함)
-  - 배포 후 live smoke 증적(`summary.md`, endpoint logs, media render headers, analyze-jobs submit/poll evidence) 보관
+  - 배포 후 live smoke 증적(`summary.md`, endpoint logs, media render cache/stage headers, analyze-jobs submit/poll evidence) 보관
   - 최근 rollback rehearsal 참조값과 readiness verdict 보관
 
 ## 9) 리스크와 대응

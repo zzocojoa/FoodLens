@@ -79,8 +79,8 @@ assert_header_contains() {
   local headers_path="${ARTIFACT_DIR}/${label}.headers"
 
   if ! awk -v header_name="${header_name}" -v expected_substring="${expected_substring}" '
-    BEGIN { IGNORECASE = 1; matched = 0 }
-    $0 ~ ("^" header_name ":") && index(tolower($0), tolower(expected_substring)) > 0 { matched = 1 }
+    BEGIN { matched = 0; header_prefix = tolower(header_name) ":"; expected = tolower(expected_substring) }
+    index(tolower($0), header_prefix) == 1 && index(tolower($0), expected) > 0 { matched = 1 }
     END { exit matched ? 0 : 1 }
   ' "${headers_path}"; then
     echo "[Phase6 Postdeploy Smoke] ${label} missing header ${header_name} containing ${expected_substring}"
@@ -164,6 +164,45 @@ with open(sys.argv[1], "wb") as handle:
 PY
 }
 
+write_smoke_media_render_fixture() {
+  local output_path="$1"
+
+  python3 - "$output_path" <<'PY'
+import struct
+import sys
+import zlib
+
+
+def png_chunk(kind: bytes, payload: bytes) -> bytes:
+    checksum = zlib.crc32(kind)
+    checksum = zlib.crc32(payload, checksum) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", checksum)
+
+
+width = 16
+height = 16
+rows = []
+for y in range(height):
+    pixels = bytearray()
+    for x in range(width):
+        pixels.extend((48 + x * 4, 96 + y * 5, 160))
+    rows.append(b"\x00" + bytes(pixels))
+
+ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+payload = b"".join(
+    [
+        b"\x89PNG\r\n\x1a\n",
+        png_chunk(b"IHDR", ihdr),
+        png_chunk(b"IDAT", zlib.compress(b"".join(rows), level=9)),
+        png_chunk(b"IEND", b""),
+    ]
+)
+
+with open(sys.argv[1], "wb") as handle:
+    handle.write(payload)
+PY
+}
+
 post_multipart_status() {
   local label="$1"
   local url="$2"
@@ -209,6 +248,32 @@ post_multipart_status() {
   printf '%s\n' "${status_code}"
 }
 
+post_media_upload_status() {
+  local label="$1"
+  local url="$2"
+  local file_path="$3"
+  local file_content_type="$4"
+  local scope="$5"
+  local authorization_header="$6"
+  local headers_path="${ARTIFACT_DIR}/${label}.headers"
+  local body_path="${ARTIFACT_DIR}/${label}.body"
+  local status_code=""
+
+  status_code="$(
+    curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+      -X POST \
+      -H "${authorization_header}" \
+      -D "${headers_path}" \
+      -o "${body_path}" \
+      -w '%{http_code}' \
+      -F "file=@${file_path};type=${file_content_type}" \
+      -F "scope=${scope}" \
+      "${url}"
+  )"
+
+  printf '%s\n' "${status_code}"
+}
+
 extract_json_field() {
   local body_path="$1"
   local field_name="$2"
@@ -225,6 +290,145 @@ if value is None:
     raise SystemExit(f"Missing field: {sys.argv[2]}")
 
 print(str(value))
+PY
+}
+
+extract_media_upload_render_url() {
+  local body_path="$1"
+
+  python3 - "$body_path" <<'PY'
+import json
+import sys
+from urllib.parse import parse_qs, urlparse
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+asset = payload.get("asset")
+if not isinstance(asset, dict):
+    raise SystemExit("Media upload response is missing asset.")
+
+render_url = str(asset.get("render_url") or "").strip()
+parsed = urlparse(render_url)
+query = parse_qs(parsed.query)
+if parsed.scheme not in {"http", "https"}:
+    raise SystemExit("Media upload render_url must be absolute http(s).")
+if "/media/render/" not in parsed.path:
+    raise SystemExit("Media upload render_url must use /media/render/.")
+if not str((query.get("exp") or [""])[0]).strip():
+    raise SystemExit("Media upload render_url is missing exp.")
+if not str((query.get("sig") or [""])[0]).strip():
+    raise SystemExit("Media upload render_url is missing sig.")
+
+print(render_url)
+PY
+}
+
+redact_sensitive_json_artifact() {
+  local body_path="$1"
+
+  python3 - "$body_path" <<'PY'
+import json
+import sys
+from urllib.parse import parse_qs, urlparse
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+token_keys = {"access_token", "refresh_token", "id_token"}
+
+
+def is_signed_media_render_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if "/media/render/" not in parsed.path:
+        return False
+    query = parse_qs(parsed.query)
+    return bool(query.get("sig") or query.get("exp"))
+
+
+def redact(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if key in token_keys and isinstance(item, str) and item:
+                redacted["redacted_token_count"] = int(redacted.get("redacted_token_count", 0)) + 1
+            else:
+                redacted[key] = redact(item)
+        return redacted
+    if isinstance(value, list):
+        return [redact(item) for item in value]
+    if isinstance(value, str) and is_signed_media_render_url(value):
+        return "[redacted-signed-media-render-url]"
+    return value
+
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(redact(payload), handle, ensure_ascii=False, sort_keys=True)
+    handle.write("\n")
+PY
+}
+
+get_header_value() {
+  local label="$1"
+  local header_name="$2"
+  local headers_path="${ARTIFACT_DIR}/${label}.headers"
+
+  awk -v header_name="${header_name}" '
+    BEGIN { header_prefix = tolower(header_name) ":" }
+    index(tolower($0), header_prefix) == 1 {
+      sub("^[^:]+:[[:space:]]*", "", $0)
+      sub("\r$", "", $0)
+      print $0
+      exit
+    }
+  ' "${headers_path}"
+}
+
+assert_header_equals() {
+  local label="$1"
+  local header_name="$2"
+  local expected_value="$3"
+  local actual_value=""
+
+  actual_value="$(get_header_value "${label}" "${header_name}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${actual_value}" != "${expected_value}" ]]; then
+    echo "[Phase6 Postdeploy Smoke] ${label} expected ${header_name}=${expected_value}, got ${actual_value:-missing}"
+    exit 1
+  fi
+}
+
+assert_media_render_stage_header() {
+  local label="$1"
+  local stage_header=""
+
+  stage_header="$(get_header_value "${label}" "X-Media-Render-Stage-Ms")"
+  if [[ -z "${stage_header}" ]]; then
+    echo "[Phase6 Postdeploy Smoke] ${label} missing X-Media-Render-Stage-Ms"
+    exit 1
+  fi
+
+  python3 - "$label" "$stage_header" <<'PY'
+import re
+import sys
+
+label = sys.argv[1]
+header = sys.argv[2]
+required = {"lookup", "fetch", "limit_wait", "transform", "cache_set"}
+parts: dict[str, int] = {}
+for item in header.split(","):
+    key, sep, raw_value = item.strip().partition("=")
+    if not sep:
+        continue
+    if not re.fullmatch(r"[a-z_]+", key):
+        continue
+    if not re.fullmatch(r"\d+", raw_value.strip()):
+        raise SystemExit(f"{label} has non-numeric stage value for {key}.")
+    parts[key] = int(raw_value.strip())
+
+missing = sorted(required.difference(parts))
+if missing:
+    raise SystemExit(f"{label} missing stage keys: {', '.join(missing)}")
 PY
 }
 
@@ -410,6 +614,7 @@ if [[ "${AUTH_LOGIN_STATUS}" != "200" ]]; then
   exit 1
 fi
 AUTH_BEARER_TOKEN="$(extract_access_token "${ARTIFACT_DIR}/auth-login.body")"
+redact_sensitive_json_artifact "${ARTIFACT_DIR}/auth-login.body"
 record_result "auth-login" "PASS" "200"
 
 CURRENT_STEP="root-health"
@@ -434,11 +639,46 @@ assert_status "me-history" "${BASE_URL}/me/history" "200" "Authorization: Bearer
 
 CURRENT_STEP="media-render"
 MEDIA_RENDER_RESOLUTION="$(resolve_media_render_url "${ARTIFACT_DIR}/me-profile.body" "${ARTIFACT_DIR}/me-history.body")"
+redact_sensitive_json_artifact "${ARTIFACT_DIR}/me-profile.body"
+redact_sensitive_json_artifact "${ARTIFACT_DIR}/me-history.body"
 IFS=$'\t' read -r MEDIA_RENDER_SOURCE MEDIA_RENDER_URL <<< "${MEDIA_RENDER_RESOLUTION}"
 record_result "media-render-source" "PASS" "${MEDIA_RENDER_SOURCE}"
 assert_status "media-render" "${MEDIA_RENDER_URL}" "200" ""
 assert_header_contains "media-render" "content-type" "image/"
 record_result "media-render-header" "PASS" "content-type=image/*"
+
+CURRENT_STEP="media-cold-upload"
+SMOKE_MEDIA_IMAGE_PATH="${ARTIFACT_DIR}/media-cold-smoke.png"
+write_smoke_media_render_fixture "${SMOKE_MEDIA_IMAGE_PATH}"
+MEDIA_COLD_UPLOAD_STATUS="$(
+  post_media_upload_status \
+    "media-cold-upload" \
+    "${BASE_URL}/me/media/upload" \
+    "${SMOKE_MEDIA_IMAGE_PATH}" \
+    "image/png" \
+    "history" \
+    "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
+)"
+if [[ "${MEDIA_COLD_UPLOAD_STATUS}" != "200" ]]; then
+  echo "[Phase6 Postdeploy Smoke] media-cold-upload expected 200, got ${MEDIA_COLD_UPLOAD_STATUS}"
+  exit 1
+fi
+MEDIA_COLD_RENDER_URL="$(extract_media_upload_render_url "${ARTIFACT_DIR}/media-cold-upload.body")"
+redact_sensitive_json_artifact "${ARTIFACT_DIR}/media-cold-upload.body"
+record_result "media-cold-upload" "PASS" "fresh-render-url-redacted"
+
+CURRENT_STEP="media-cold-render-miss"
+assert_status "media-cold-render-miss" "${MEDIA_COLD_RENDER_URL}" "200" ""
+assert_header_contains "media-cold-render-miss" "content-type" "image/"
+assert_header_equals "media-cold-render-miss" "X-Media-Render-Cache" "miss"
+assert_media_render_stage_header "media-cold-render-miss"
+record_result "media-cold-render-miss" "PASS" "cache=miss;stage=lookup,fetch,limit_wait,transform,cache_set"
+
+CURRENT_STEP="media-cold-render-hit"
+assert_status "media-cold-render-hit" "${MEDIA_COLD_RENDER_URL}" "200" ""
+assert_header_contains "media-cold-render-hit" "content-type" "image/"
+assert_header_equals "media-cold-render-hit" "X-Media-Render-Cache" "hit"
+record_result "media-cold-render-hit" "PASS" "cache=hit"
 
 CURRENT_STEP="analyze-jobs-submit"
 SMOKE_ANALYZE_IMAGE_PATH="${ARTIFACT_DIR}/analyze-jobs-smoke.png"
