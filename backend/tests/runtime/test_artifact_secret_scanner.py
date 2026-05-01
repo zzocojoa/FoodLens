@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 SCANNER_PATH = ROOT_DIR / ".github" / "scripts" / "scan_artifact_secrets.py"
+PERF_WORKFLOW_PATH = ROOT_DIR / ".github" / "workflows" / "backend-media-performance-regression.yml"
 
 
 def _load_scanner_module():
@@ -69,6 +70,60 @@ class ArtifactSecretScannerTests(unittest.TestCase):
                     ("request.headers", "authorization-bearer"),
                 ],
             )
+
+    def test_scan_passes_redacted_backend_performance_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_dir = Path(temp_dir)
+            run_dir = artifact_dir / "backend-media-smoke-123"
+            run_dir.mkdir()
+            (run_dir / "summary.json").write_text(
+                '{"metrics":{"render_latency":{"p(95)":123}}}',
+                encoding="utf-8",
+            )
+            (run_dir / "k6.log").write_text(
+                "GET <redacted-media-render-url> status=200\n",
+                encoding="utf-8",
+            )
+            diagnostics_dir = artifact_dir / "url-resolution"
+            diagnostics_dir.mkdir()
+            (diagnostics_dir / "diagnostics.jsonl").write_text(
+                '{"candidate_source":"history[0].image_render_url","url":"<redacted-media-render-url>"}\n',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(self.scanner.scan_artifacts(artifact_dir), [])
+
+    def test_scan_finds_signed_media_render_url_in_backend_performance_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_dir = Path(temp_dir)
+            run_dir = artifact_dir / "backend-media-smoke-123"
+            run_dir.mkdir()
+            (run_dir / "k6.log").write_text(
+                "GET https://example.com/media/render/asset_1?exp=1&sig=secret status=200\n",
+                encoding="utf-8",
+            )
+            (run_dir / "cache-miss-urls.txt").write_text(
+                "https://example.com/media/render/asset_2?exp=2&sig=secret\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                self.scanner.scan_artifacts(artifact_dir),
+                [
+                    ("backend-media-smoke-123/cache-miss-urls.txt", "signed-media-render-url"),
+                    ("backend-media-smoke-123/k6.log", "signed-media-render-url"),
+                ],
+            )
+
+    def test_backend_media_performance_workflow_scans_before_artifact_upload(self) -> None:
+        workflow = PERF_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        scan_index = workflow.index("Scan performance artifacts for secret leaks")
+        upload_index = workflow.index("Upload performance artifacts")
+
+        self.assertLess(scan_index, upload_index)
+        self.assertIn("python3 .github/scripts/scan_artifact_secrets.py artifacts/perf", workflow)
+        self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
 
 
 if __name__ == "__main__":

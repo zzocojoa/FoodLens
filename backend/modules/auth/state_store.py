@@ -276,8 +276,8 @@ class PostgresAuthProjectionStore:
                         cursor.execute(
                             (
                                 f"INSERT INTO {self._table('media_assets')} "
-                                "(asset_id,user_id,scope,mime_type,size_bytes,sha256,object_key,created_at,updated_at,last_accessed_at) "
-                                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::timestamptz,%s::timestamptz,%s::timestamptz) "
+                                "(asset_id,user_id,scope,mime_type,size_bytes,sha256,object_key,object_generation,created_at,updated_at,last_accessed_at) "
+                                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::timestamptz,%s::timestamptz,%s::timestamptz) "
                                 "ON CONFLICT (asset_id) DO UPDATE SET "
                                 "user_id=EXCLUDED.user_id,"
                                 "scope=EXCLUDED.scope,"
@@ -285,6 +285,7 @@ class PostgresAuthProjectionStore:
                                 "size_bytes=EXCLUDED.size_bytes,"
                                 "sha256=EXCLUDED.sha256,"
                                 "object_key=EXCLUDED.object_key,"
+                                "object_generation=EXCLUDED.object_generation,"
                                 "updated_at=EXCLUDED.updated_at,"
                                 "last_accessed_at=EXCLUDED.last_accessed_at"
                             ),
@@ -296,6 +297,7 @@ class PostgresAuthProjectionStore:
                                 int(row.get("size_bytes") or 0),
                                 row.get("sha256"),
                                 row.get("object_key"),
+                                row.get("object_generation"),
                                 row.get("created_at"),
                                 row.get("updated_at"),
                                 row.get("last_accessed_at"),
@@ -435,12 +437,14 @@ class PostgresAuthProjectionStore:
                     "size_bytes INTEGER NOT NULL,"
                     "sha256 TEXT NOT NULL,"
                     "object_key TEXT NOT NULL,"
+                    "object_generation BIGINT NULL,"
                     "created_at TIMESTAMPTZ NOT NULL,"
                     "updated_at TIMESTAMPTZ NOT NULL,"
                     "last_accessed_at TIMESTAMPTZ NOT NULL"
                     ")"
                 )
             )
+            cursor.execute(f"ALTER TABLE {media_assets} ADD COLUMN IF NOT EXISTS object_generation BIGINT NULL")
             cursor.execute(f"CREATE INDEX IF NOT EXISTS {media_assets}_user_id_idx ON {media_assets} (user_id)")
 
     def _load_connect(self):

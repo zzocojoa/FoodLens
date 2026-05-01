@@ -4,7 +4,7 @@ import json
 import re
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -69,6 +69,12 @@ class DeletionQueueStorage(Protocol):
     def dequeue_by_queue_id(self, queue_id: str) -> DeletionRequest | None:
         ...
 
+    def complete(self, queue_id: str) -> None:
+        ...
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        ...
+
     def size(self) -> int:
         ...
 
@@ -103,21 +109,45 @@ class InMemoryDeletionQueueStorage:
         )
 
     def dequeue(self) -> DeletionRequest | None:
-        if not self._queue:
-            return None
-        return self._queue.popleft()
+        for item in self._queue:
+            if self._is_claimable(item.queue_id):
+                self._claim(item)
+                return item
+        return None
 
     def dequeue_by_queue_id(self, queue_id: str) -> DeletionRequest | None:
-        items = list(self._queue)
-        target_index = next((index for index, item in enumerate(items) if item.queue_id == queue_id), None)
-        if target_index is None:
-            return None
-        target = items.pop(target_index)
-        self._queue = deque(items)
-        return target
+        for item in self._queue:
+            if item.queue_id == queue_id and self._is_claimable(item.queue_id):
+                self._claim(item)
+                return item
+        return None
+
+    def complete(self, queue_id: str) -> None:
+        self._queue = deque(item for item in self._queue if item.queue_id != queue_id)
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(1, lease_seconds))
+        recovered = 0
+        for item in list(self._queue):
+            snapshot = self._statuses.get(item.queue_id)
+            if snapshot is None or snapshot.status != DeletionStatus.IN_PROGRESS or snapshot.updated_at > cutoff:
+                continue
+            self._statuses[item.queue_id] = DeletionStatusSnapshot(
+                queue_id=snapshot.queue_id,
+                created_at=snapshot.created_at,
+                updated_at=datetime.now(timezone.utc),
+                status=DeletionStatus.PENDING,
+                target=snapshot.target,
+                user_id=snapshot.user_id,
+                request_id=snapshot.request_id,
+                reason=snapshot.reason,
+                error="stale lease requeued",
+            )
+            recovered += 1
+        return recovered
 
     def size(self) -> int:
-        return len(self._queue)
+        return len([item for item in self._queue if self._is_claimable(item.queue_id)])
 
     def save_status(self, snapshot: DeletionStatusSnapshot) -> None:
         self._statuses[snapshot.queue_id] = snapshot
@@ -131,6 +161,24 @@ class InMemoryDeletionQueueStorage:
             return None
         candidates.sort(key=lambda item: item.created_at, reverse=True)
         return candidates[0]
+
+    def _is_claimable(self, queue_id: str) -> bool:
+        snapshot = self._statuses.get(queue_id)
+        return snapshot is None or snapshot.status in {DeletionStatus.PENDING}
+
+    def _claim(self, item: DeletionRequest) -> None:
+        self.save_status(
+            DeletionStatusSnapshot(
+                queue_id=item.queue_id,
+                created_at=item.created_at,
+                updated_at=datetime.now(timezone.utc),
+                status=DeletionStatus.IN_PROGRESS,
+                target=item.target,
+                user_id=item.user_id,
+                request_id=item.request_id,
+                reason=item.reason,
+            )
+        )
 
 
 class JsonFileDeletionQueueStorage:
@@ -245,25 +293,58 @@ class JsonFileDeletionQueueStorage:
     def dequeue(self) -> DeletionRequest | None:
         items = self._load()
         statuses = self._load_statuses()
-        if not items:
+        first = next((item for item in items if self._is_claimable(item=item, statuses=statuses)), None)
+        if first is None:
             return None
-        first = items.popleft()
+        statuses[first.queue_id] = _in_progress_snapshot(first)
         self._save(items, statuses)
         return first
 
     def dequeue_by_queue_id(self, queue_id: str) -> DeletionRequest | None:
         items = self._load()
         statuses = self._load_statuses()
-        target_index = next((index for index, item in enumerate(items) if item.queue_id == queue_id), None)
-        if target_index is None:
+        first = next(
+            (item for item in items if item.queue_id == queue_id and self._is_claimable(item=item, statuses=statuses)),
+            None,
+        )
+        if first is None:
             return None
-        first = list(items)[target_index]
-        items = deque([item for item in items if item.queue_id != queue_id])
+        statuses[first.queue_id] = _in_progress_snapshot(first)
         self._save(items, statuses)
         return first
 
+    def complete(self, queue_id: str) -> None:
+        items = deque(item for item in self._load() if item.queue_id != queue_id)
+        self._save(items, self._load_statuses())
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        items = self._load()
+        statuses = self._load_statuses()
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(1, lease_seconds))
+        recovered = 0
+        for item in items:
+            snapshot = statuses.get(item.queue_id)
+            if snapshot is None or snapshot.status != DeletionStatus.IN_PROGRESS or snapshot.updated_at > cutoff:
+                continue
+            statuses[item.queue_id] = DeletionStatusSnapshot(
+                queue_id=snapshot.queue_id,
+                created_at=snapshot.created_at,
+                updated_at=datetime.now(timezone.utc),
+                status=DeletionStatus.PENDING,
+                target=snapshot.target,
+                user_id=snapshot.user_id,
+                request_id=snapshot.request_id,
+                reason=snapshot.reason,
+                error="stale lease requeued",
+            )
+            recovered += 1
+        if recovered > 0:
+            self._save(items, statuses)
+        return recovered
+
     def size(self) -> int:
-        return len(self._load())
+        statuses = self._load_statuses()
+        return len([item for item in self._load() if self._is_claimable(item=item, statuses=statuses)])
 
     def save_status(self, snapshot: DeletionStatusSnapshot) -> None:
         items = self._load()
@@ -280,6 +361,15 @@ class JsonFileDeletionQueueStorage:
             return None
         statuses.sort(key=lambda item: item.created_at, reverse=True)
         return statuses[0]
+
+    @staticmethod
+    def _is_claimable(
+        *,
+        item: DeletionRequest,
+        statuses: dict[str, DeletionStatusSnapshot],
+    ) -> bool:
+        snapshot = statuses.get(item.queue_id)
+        return snapshot is None or snapshot.status == DeletionStatus.PENDING
 
 
 @dataclass(slots=True)
@@ -339,12 +429,14 @@ class PostgresDeletionQueueStorage:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
-                            f"SELECT queue_id,created_at,target,user_id,request_id,reason "
-                            f"FROM {self.queue_table_name} "
-                            "WHERE dequeued_at IS NULL "
-                            "ORDER BY created_at ASC "
+                            "SELECT q.queue_id,q.created_at,q.target,q.user_id,q.request_id,q.reason "
+                            f"FROM {self.queue_table_name} q "
+                            f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
+                            "WHERE q.dequeued_at IS NULL "
+                            "AND COALESCE(s.status, 'pending') = 'pending' "
+                            "ORDER BY q.created_at ASC "
                             "LIMIT 1 "
-                            "FOR UPDATE SKIP LOCKED"
+                            "FOR UPDATE OF q SKIP LOCKED"
                         )
                     )
                     row = cursor.fetchone()
@@ -368,10 +460,12 @@ class PostgresDeletionQueueStorage:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
-                            f"SELECT queue_id,created_at,target,user_id,request_id,reason "
-                            f"FROM {self.queue_table_name} "
-                            "WHERE queue_id = %s AND dequeued_at IS NULL "
-                            "FOR UPDATE SKIP LOCKED"
+                            "SELECT q.queue_id,q.created_at,q.target,q.user_id,q.request_id,q.reason "
+                            f"FROM {self.queue_table_name} q "
+                            f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
+                            "WHERE q.queue_id = %s AND q.dequeued_at IS NULL "
+                            "AND COALESCE(s.status, 'pending') = 'pending' "
+                            "FOR UPDATE OF q SKIP LOCKED"
                         ),
                         (queue_id,),
                     )
@@ -390,6 +484,56 @@ class PostgresDeletionQueueStorage:
                 f"Failed to dequeue deletion item by queue_id from postgres: {error}"
             ) from error
 
+    def complete(self, queue_id: str) -> None:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_tables(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        f"DELETE FROM {self.queue_table_name} WHERE queue_id = %s",
+                        (queue_id,),
+                    )
+        except Exception as error:
+            raise DeletionQueueStoreError(f"Failed to complete deletion queue row in postgres: {error}") from error
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_tables(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            "WITH stale AS ("
+                            f"UPDATE {self.queue_table_name} q "
+                            "SET dequeued_at = NULL "
+                            "WHERE q.dequeued_at IS NOT NULL "
+                            "AND q.dequeued_at <= NOW() - (%s || ' seconds')::interval "
+                            f"AND NOT EXISTS ("
+                            f"SELECT 1 FROM {self.status_table_name} terminal "
+                            "WHERE terminal.queue_id = q.queue_id "
+                            "AND terminal.status IN ('done','failed')"
+                            ") "
+                            "RETURNING q.queue_id"
+                            "), status_updates AS ("
+                            f"UPDATE {self.status_table_name} s "
+                            "SET status = 'pending', updated_at = NOW(), error = 'stale lease requeued' "
+                            "FROM stale "
+                            "WHERE s.queue_id = stale.queue_id "
+                            "AND s.status = 'in_progress' "
+                            "RETURNING s.queue_id"
+                            ") "
+                            "SELECT COUNT(*) FROM stale"
+                        ),
+                        (str(max(1, lease_seconds)),),
+                    )
+                    row = cursor.fetchone()
+                    recovered = int(row[0]) if row is not None else 0
+            return recovered
+        except Exception as error:
+            raise DeletionQueueStoreError(f"Failed to requeue stale deletion rows in postgres: {error}") from error
+
     def size(self) -> int:
         connect = _load_connect()
         try:
@@ -397,7 +541,12 @@ class PostgresDeletionQueueStorage:
                 self._ensure_tables(conn)
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        f"SELECT COUNT(*) FROM {self.queue_table_name} WHERE dequeued_at IS NULL"
+                        (
+                            f"SELECT COUNT(*) FROM {self.queue_table_name} q "
+                            f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
+                            "WHERE q.dequeued_at IS NULL "
+                            "AND COALESCE(s.status, 'pending') = 'pending'"
+                        )
                     )
                     row = cursor.fetchone()
             return int(row[0]) if row is not None else 0
@@ -536,6 +685,13 @@ class NoOpDeletionQueueStorage:
         _ = queue_id
         return None
 
+    def complete(self, queue_id: str) -> None:
+        _ = queue_id
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        _ = lease_seconds
+        return 0
+
     def size(self) -> int:
         return 0
 
@@ -644,7 +800,11 @@ class DeletionQueueConsumer:
                 error=result.error,
             )
         )
+        self.storage.complete(item.queue_id)
         return result
+
+    def requeue_stale(self, *, lease_seconds: int) -> int:
+        return self.storage.requeue_stale(lease_seconds=lease_seconds)
 
 
 def _row_to_request(row: tuple[object, ...]) -> DeletionRequest:
@@ -655,6 +815,19 @@ def _row_to_request(row: tuple[object, ...]) -> DeletionRequest:
         user_id=str(row[3]) if row[3] is not None else None,
         request_id=str(row[4]) if row[4] is not None else None,
         reason=str(row[5]),
+    )
+
+
+def _in_progress_snapshot(item: DeletionRequest) -> DeletionStatusSnapshot:
+    return DeletionStatusSnapshot(
+        queue_id=item.queue_id,
+        created_at=item.created_at,
+        updated_at=datetime.now(timezone.utc),
+        status=DeletionStatus.IN_PROGRESS,
+        target=item.target,
+        user_id=item.user_id,
+        request_id=item.request_id,
+        reason=item.reason,
     )
 
 

@@ -60,6 +60,14 @@ def _status_code_from_error(exc: Exception) -> int | None:
     return None
 
 
+def _coerce_generation(raw_value: object) -> int | None:
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value.isdigit():
+        return int(raw_value)
+    return None
+
+
 class MediaStorageError(Exception):
     def __init__(self, *, code: str, message: str, status_code: int = 500):
         super().__init__(message)
@@ -76,6 +84,7 @@ class MediaUploadResult:
     size_bytes: int
     sha256: str
     created_at: str
+    generation: int | None = None
 
 
 @dataclass(slots=True)
@@ -99,7 +108,9 @@ class MediaStorage(Protocol):
 
     def fetch_original(self, *, object_key: str) -> MediaObjectPayload: ...
 
-    def delete_original(self, *, object_key: str) -> None: ...
+    def get_original_generation(self, *, object_key: str) -> int: ...
+
+    def delete_original(self, *, object_key: str, generation: int | None = None) -> None: ...
 
 
 class DisabledMediaStorage:
@@ -127,7 +138,14 @@ class DisabledMediaStorage:
             status_code=503,
         )
 
-    def delete_original(self, *, object_key: str) -> None:
+    def get_original_generation(self, *, object_key: str) -> int:
+        raise MediaStorageError(
+            code="MEDIA_STORAGE_DISABLED",
+            message="Media storage is disabled.",
+            status_code=503,
+        )
+
+    def delete_original(self, *, object_key: str, generation: int | None = None) -> None:
         raise MediaStorageError(
             code="MEDIA_STORAGE_DISABLED",
             message="Media storage is disabled.",
@@ -213,7 +231,7 @@ class GcsMediaStorage:
         blob = self._bucket.blob(object_key)
         blob.cache_control = "private, max-age=0, no-store"
         try:
-            blob.upload_from_string(payload, content_type=mime_type)
+            blob.upload_from_string(payload, content_type=mime_type, if_generation_match=0)
         except Exception as exc:
             status_code = _status_code_from_error(exc)
             if status_code == 404:
@@ -233,6 +251,23 @@ class GcsMediaStorage:
                 message="Failed to upload media to storage.",
                 status_code=502,
             ) from exc
+        generation = _coerce_generation(getattr(blob, "generation", None))
+        if generation is None:
+            try:
+                blob.reload()
+            except Exception as exc:
+                raise MediaStorageError(
+                    code="MEDIA_UPLOAD_GENERATION_LOOKUP_FAILED",
+                    message="Failed to load media object generation after upload.",
+                    status_code=502,
+                ) from exc
+            generation = _coerce_generation(getattr(blob, "generation", None))
+        if generation is None:
+            raise MediaStorageError(
+                code="MEDIA_UPLOAD_GENERATION_MISSING",
+                message="Media object generation is unavailable after upload.",
+                status_code=502,
+            )
 
         return MediaUploadResult(
             asset_id=asset_id,
@@ -241,6 +276,7 @@ class GcsMediaStorage:
             size_bytes=len(payload),
             sha256=sha256,
             created_at=created_at,
+            generation=generation,
         )
 
     def fetch_original(self, *, object_key: str) -> MediaObjectPayload:
@@ -269,10 +305,10 @@ class GcsMediaStorage:
         mime_type = (blob.content_type or "").strip().lower() or "application/octet-stream"
         return MediaObjectPayload(bytes_data=payload, mime_type=mime_type)
 
-    def delete_original(self, *, object_key: str) -> None:
-        blob = self._bucket.blob(object_key)
+    def _load_delete_generation(self, *, blob: object) -> int:
         try:
-            deleted = blob.delete()
+            reload_blob = getattr(blob, "reload")
+            reload_blob()
         except Exception as exc:
             status_code = _status_code_from_error(exc)
             if status_code in {401, 403}:
@@ -286,6 +322,52 @@ class GcsMediaStorage:
                     code="MEDIA_NOT_FOUND",
                     message="Media object not found.",
                     status_code=404,
+                ) from exc
+            raise MediaStorageError(
+                code="MEDIA_DELETE_GENERATION_LOOKUP_FAILED",
+                message="Failed to load media object generation before delete.",
+                status_code=502,
+            ) from exc
+
+        generation = _coerce_generation(getattr(blob, "generation", None))
+        if generation is None:
+            raise MediaStorageError(
+                code="MEDIA_DELETE_GENERATION_MISSING",
+                message="Media object generation is unavailable before delete.",
+                status_code=502,
+            )
+        return generation
+
+    def get_original_generation(self, *, object_key: str) -> int:
+        blob = self._bucket.blob(object_key)
+        return self._load_delete_generation(blob=blob)
+
+    def delete_original(self, *, object_key: str, generation: int | None = None) -> None:
+        blob = self._bucket.blob(object_key)
+        delete_generation = generation
+        if delete_generation is None:
+            delete_generation = self.get_original_generation(object_key=object_key)
+        try:
+            deleted = blob.delete(if_generation_match=delete_generation)
+        except Exception as exc:
+            status_code = _status_code_from_error(exc)
+            if status_code in {401, 403}:
+                raise MediaStorageError(
+                    code="MEDIA_GCS_PERMISSION_DENIED",
+                    message="Media bucket access denied.",
+                    status_code=503,
+                ) from exc
+            if status_code == 404:
+                raise MediaStorageError(
+                    code="MEDIA_NOT_FOUND",
+                    message="Media object not found.",
+                    status_code=404,
+                ) from exc
+            if status_code == 412:
+                raise MediaStorageError(
+                    code="MEDIA_DELETE_PRECONDITION_FAILED",
+                    message="Media object generation changed before delete.",
+                    status_code=409,
                 ) from exc
             raise MediaStorageError(
                 code="MEDIA_DELETE_FAILED",

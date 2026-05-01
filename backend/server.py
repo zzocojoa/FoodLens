@@ -193,6 +193,10 @@ def _deletion_queue_max_batch() -> int:
     return max(1, _env_int("DELETION_QUEUE_MAX_BATCH", 20))
 
 
+def _deletion_queue_lease_seconds() -> int:
+    return max(30, _env_int("DELETION_QUEUE_LEASE_SECONDS", 300))
+
+
 PROCESS_ROLE_WEB = "web"
 PROCESS_ROLE_WORKER = "worker"
 PROCESS_ROLE_CRON = "cron"
@@ -1983,6 +1987,7 @@ def _register_media_retention_record(
     asset_id: str,
     user_id: str,
     object_key: str,
+    object_generation: int | None,
 ) -> None:
     retention_store = getattr(app.state, "retention_store", None)
     if retention_store is None:
@@ -1994,8 +1999,135 @@ def _register_media_retention_record(
             created_at=datetime.now(timezone.utc),
             user_id=user_id,
             storage_key=object_key,
+            object_generation=object_generation,
         )
     )
+
+
+def _schedule_media_deletion_retry_record(
+    *,
+    asset_id: str,
+    user_id: str,
+    object_key: str,
+    object_generation: int | None,
+    request_id: str,
+    cause_code: str,
+    status_code: int,
+) -> None:
+    retention_store = getattr(app.state, "retention_store", None)
+    if retention_store is None:
+        raise RetentionStoreError("retention_store is not configured")
+    retention_store.add(
+        RetentionRecord(
+            record_id=asset_id,
+            data_class=RetentionDataClass.ORIGINAL,
+            created_at=datetime.fromtimestamp(0, timezone.utc),
+            user_id=user_id,
+            request_id=request_id,
+            storage_key=object_key,
+            object_generation=object_generation,
+        )
+    )
+    logger.warning(
+        "[Media] delete retry scheduled request_id=%s user_id=%s asset_id=%s object_key_hash=%s code=%s status=%s",
+        request_id,
+        user_id,
+        asset_id,
+        _media_object_key_log_hash(object_key),
+        cause_code,
+        status_code,
+    )
+
+
+def _coerce_optional_generation(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _resolve_media_asset_generation(
+    *,
+    auth_service: Any,
+    media_storage: Any,
+    asset: dict[str, object],
+    request_id: str,
+) -> int:
+    object_key = str(asset.get("object_key") or "").strip()
+    if not object_key:
+        raise MediaStorageError(
+            code="MEDIA_OBJECT_KEY_MISSING",
+            message="Media asset storage key is missing.",
+            status_code=500,
+        )
+    asset_id = str(asset.get("asset_id") or "").strip()
+    user_id = str(asset.get("user_id") or "").strip()
+    scope = str(asset.get("scope") or "").strip()
+    object_prefix = str(getattr(media_storage, "object_prefix", "media"))
+    if not _is_compensatable_media_object_key(
+        object_key=object_key,
+        object_prefix=object_prefix,
+        user_id=user_id,
+        scope=scope,
+        asset_id=asset_id,
+    ):
+        raise MediaStorageError(
+            code="MEDIA_OBJECT_KEY_MISMATCH",
+            message="Media asset storage key does not match owner metadata.",
+            status_code=409,
+        )
+    object_generation = _coerce_optional_generation(asset.get("object_generation"))
+    if object_generation is not None:
+        return object_generation
+
+    payload = media_storage.fetch_original(object_key=object_key)
+    expected_size = int(asset.get("size_bytes") or -1)
+    expected_sha256 = str(asset.get("sha256") or "").strip().lower()
+    actual_sha256 = hashlib.sha256(payload.bytes_data).hexdigest()
+    if expected_size != len(payload.bytes_data) or expected_sha256 != actual_sha256:
+        raise MediaStorageError(
+            code="MEDIA_GENERATION_BACKFILL_MISMATCH",
+            message="Legacy media object content does not match stored metadata.",
+            status_code=409,
+        )
+    generation = media_storage.get_original_generation(object_key=object_key)
+    auth_service.update_media_asset_generation(
+        asset_id=asset_id,
+        object_generation=generation,
+    )
+    retention_store = getattr(app.state, "retention_store", None)
+    if retention_store is not None:
+        retention_store.add(
+            RetentionRecord(
+                record_id=asset_id,
+                data_class=RetentionDataClass.ORIGINAL,
+                created_at=datetime.now(timezone.utc),
+                user_id=str(asset.get("user_id") or "") or None,
+                request_id=request_id,
+                storage_key=object_key,
+                object_generation=generation,
+            )
+        )
+    logger.info(
+        "[Media] legacy generation backfilled request_id=%s user_id=%s asset_id=%s object_key_hash=%s",
+        request_id,
+        str(asset.get("user_id") or "unknown"),
+        asset_id,
+        _media_object_key_log_hash(object_key),
+    )
+    return generation
+
+
+def _is_media_deletion_retryable_error(error: MediaStorageError) -> bool:
+    return error.code not in {
+        "MEDIA_NOT_FOUND",
+        "MEDIA_OBJECT_KEY_MISSING",
+        "MEDIA_OBJECT_KEY_MISMATCH",
+        "MEDIA_GENERATION_BACKFILL_MISMATCH",
+    }
 
 
 def _is_compensatable_media_object_key(
@@ -2053,7 +2185,10 @@ def _compensate_failed_media_upload(
         return
 
     try:
-        media_storage.delete_original(object_key=upload_result.object_key)
+        media_storage.delete_original(
+            object_key=upload_result.object_key,
+            generation=upload_result.generation,
+        )
     except MediaStorageError as error:
         logger.error(
             "[Media] upload compensation delete failed request_id=%s user_id=%s asset_id=%s scope=%s object_key_hash=%s cause_code=%s cleanup_code=%s cleanup_status=%s",
@@ -2107,12 +2242,105 @@ def _delete_media_retention_record(record: RetentionRecord) -> bool:
     auth_service = _service("auth_service")
     if record.storage_key:
         try:
-            media_storage.delete_original(object_key=record.storage_key)
+            asset = auth_service.get_media_asset(
+                asset_id=record.record_id,
+                user_id=record.user_id,
+            )
+        except AuthServiceError as error:
+            logger.warning(
+                "[Media] retention delete retry metadata missing request_id=%s user_id=%s asset_id=%s code=%s",
+                record.request_id,
+                record.user_id,
+                record.record_id,
+                error.code,
+            )
+            return False
+        if str(asset.get("object_key") or "").strip() != record.storage_key:
+            logger.warning(
+                "[Media] retention delete retry skipped request_id=%s user_id=%s asset_id=%s reason=%s",
+                record.request_id,
+                record.user_id,
+                record.record_id,
+                "object_key_mismatch",
+            )
+            return False
+        object_generation = record.object_generation
+        if object_generation is None:
+            try:
+                object_generation = _resolve_media_asset_generation(
+                    auth_service=auth_service,
+                    media_storage=media_storage,
+                    asset=asset,
+                    request_id=record.request_id or "retention-retry",
+                )
+            except MediaStorageError as error:
+                if _is_media_deletion_retryable_error(error):
+                    logger.warning(
+                        "[Media] retention delete retry failed request_id=%s user_id=%s asset_id=%s object_key_hash=%s code=%s status=%s",
+                        record.request_id,
+                        record.user_id,
+                        record.record_id,
+                        _media_object_key_log_hash(record.storage_key),
+                        error.code,
+                        error.status_code,
+                    )
+                    return False
+                logger.error(
+                    "[Media] retention delete retry requires reconciliation request_id=%s user_id=%s asset_id=%s object_key_hash=%s code=%s status=%s",
+                    record.request_id,
+                    record.user_id,
+                    record.record_id,
+                    _media_object_key_log_hash(record.storage_key),
+                    error.code,
+                    error.status_code,
+                )
+                return True
+        elif asset.get("object_generation") is not None and _coerce_optional_generation(
+            asset.get("object_generation")
+        ) != object_generation:
+            logger.warning(
+                "[Media] retention delete retry skipped request_id=%s user_id=%s asset_id=%s reason=%s",
+                record.request_id,
+                record.user_id,
+                record.record_id,
+                "object_generation_mismatch",
+            )
+            return False
+        try:
+            media_storage.delete_original(
+                object_key=record.storage_key,
+                generation=object_generation,
+            )
         except MediaStorageError as error:
+            if _is_media_deletion_retryable_error(error):
+                logger.warning(
+                    "[Media] retention delete retry failed request_id=%s user_id=%s asset_id=%s object_key_hash=%s code=%s status=%s",
+                    record.request_id,
+                    record.user_id,
+                    record.record_id,
+                    _media_object_key_log_hash(record.storage_key),
+                    error.code,
+                    error.status_code,
+                )
+                return False
             if error.code != "MEDIA_NOT_FOUND":
-                raise
+                logger.error(
+                    "[Media] retention delete retry requires reconciliation request_id=%s user_id=%s asset_id=%s object_key_hash=%s code=%s status=%s",
+                    record.request_id,
+                    record.user_id,
+                    record.record_id,
+                    _media_object_key_log_hash(record.storage_key),
+                    error.code,
+                    error.status_code,
+                )
     if record.record_id:
         auth_service.delete_media_asset(asset_id=record.record_id)
+        logger.info(
+            "[Media] retention delete retry succeeded request_id=%s user_id=%s asset_id=%s",
+            record.request_id,
+            record.user_id,
+            record.record_id,
+        )
     return True
 
 
@@ -2156,8 +2384,25 @@ async def _deletion_queue_loop() -> None:
             consumer = getattr(app.state, "deletion_queue_consumer", None)
             if consumer is None:
                 continue
+            try:
+                recovered_count = await run_in_threadpool(
+                    consumer.requeue_stale,
+                    lease_seconds=_deletion_queue_lease_seconds(),
+                )
+                if recovered_count > 0:
+                    logger.warning(
+                        "[Deletion] queue_stale_requeued count=%s lease_seconds=%s",
+                        recovered_count,
+                        _deletion_queue_lease_seconds(),
+                    )
+            except Exception as error:
+                logger.warning("[Deletion] queue_stale_requeue_failed error=%s", str(error))
             for _ in range(_deletion_queue_max_batch()):
-                result = await run_in_threadpool(consumer.consume_once)
+                try:
+                    result = await run_in_threadpool(consumer.consume_once)
+                except Exception as error:
+                    logger.warning("[Deletion] queue_process_failed error=%s", str(error))
+                    break
                 if result is None:
                     break
                 logger.info(
@@ -3155,12 +3400,14 @@ async def post_me_media_upload(
                     sha256=upload_result.sha256,
                     object_key=upload_result.object_key,
                     asset_id=upload_result.asset_id,
+                    object_generation=upload_result.generation,
                 )
                 registered_asset_id = str(registered_asset["asset_id"])
                 _register_media_retention_record(
                     asset_id=upload_result.asset_id,
                     user_id=user.user_id,
                     object_key=upload_result.object_key,
+                    object_generation=upload_result.generation,
                 )
             except AuthServiceError as error:
                 _compensate_failed_media_upload(
@@ -3314,15 +3561,42 @@ async def delete_me_media_asset(asset_id: str, request: Request):
             )
 
         try:
-            await run_in_threadpool(media_storage.delete_original, object_key=object_key)
+            object_generation = await run_in_threadpool(
+                _resolve_media_asset_generation,
+                auth_service=auth_service,
+                media_storage=media_storage,
+                asset=asset,
+                request_id=request_id,
+            )
+            await run_in_threadpool(
+                media_storage.delete_original,
+                object_key=object_key,
+                generation=object_generation,
+            )
         except MediaStorageError as error:
-            if error.code != "MEDIA_NOT_FOUND":
+            if error.code == "MEDIA_NOT_FOUND":
+                pass
+            else:
+                if _is_media_deletion_retryable_error(error):
+                    await run_in_threadpool(
+                        _schedule_media_deletion_retry_record,
+                        asset_id=normalized_asset_id,
+                        user_id=user.user_id,
+                        object_key=object_key,
+                        object_generation=asset.get("object_generation"),
+                        request_id=request_id,
+                        cause_code=error.code,
+                        status_code=error.status_code,
+                    )
                 raise
         purged_cache_entries = await _media_render_cache_purge_asset(normalized_asset_id)
         retention_store = getattr(app.state, "retention_store", None)
         if retention_store is not None:
             try:
-                await run_in_threadpool(retention_store.remove, normalized_asset_id)
+                await run_in_threadpool(
+                    retention_store.remove,
+                    normalized_asset_id,
+                )
             except RetentionStoreError as error:
                 raise HTTPException(
                     status_code=500,

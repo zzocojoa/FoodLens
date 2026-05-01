@@ -387,6 +387,7 @@ class UserMediaAsset:
     size_bytes: int
     sha256: str
     object_key: str
+    object_generation: int | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
     last_accessed_at: datetime = field(default_factory=_utc_now)
@@ -1796,6 +1797,7 @@ class InMemoryAuthSessionService:
         sha256: str,
         object_key: str,
         asset_id: str,
+        object_generation: int | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if user_id not in self._users_by_id:
@@ -1814,6 +1816,7 @@ class InMemoryAuthSessionService:
                 size_bytes=int(size_bytes),
                 sha256=sha256.strip().lower(),
                 object_key=object_key.strip(),
+                object_generation=object_generation,
                 created_at=now,
                 updated_at=now,
                 last_accessed_at=now,
@@ -1871,6 +1874,21 @@ class InMemoryAuthSessionService:
             self._persist_state_unlocked()
             return payload
 
+    def update_media_asset_generation(self, *, asset_id: str, object_generation: int) -> dict[str, object]:
+        with self._lock:
+            record = self._media_assets_by_id.get(asset_id.strip())
+            if record is None:
+                raise AuthServiceError(
+                    code="AUTH_MEDIA_NOT_FOUND",
+                    message="Media asset not found.",
+                    status_code=404,
+                )
+            record.object_generation = int(object_generation)
+            record.updated_at = _utc_now()
+            payload = self._serialize_media_asset(record)
+            self._persist_state_unlocked()
+            return payload
+
     def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, object]]:
         with self._lock:
             if user_id not in self._users_by_id:
@@ -1882,6 +1900,11 @@ class InMemoryAuthSessionService:
                 )
             assets = [item for item in self._media_assets_by_id.values() if item.user_id == user_id]
             assets.sort(key=lambda item: item.created_at)
+            return [self._serialize_media_asset(item) for item in assets]
+
+    def list_media_assets(self) -> list[dict[str, object]]:
+        with self._lock:
+            assets = sorted(self._media_assets_by_id.values(), key=lambda item: item.asset_id)
             return [self._serialize_media_asset(item) for item in assets]
 
     def delete_media_asset(self, *, asset_id: str) -> bool:
@@ -2427,6 +2450,7 @@ class InMemoryAuthSessionService:
             "size_bytes": record.size_bytes,
             "sha256": record.sha256,
             "object_key": record.object_key,
+            "object_generation": record.object_generation,
             "created_at": _to_iso8601(record.created_at),
             "updated_at": _to_iso8601(record.updated_at),
             "last_accessed_at": _to_iso8601(record.last_accessed_at),
