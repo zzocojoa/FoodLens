@@ -1155,6 +1155,42 @@ async def _run_media_render_singleflight(
     return await asyncio.shield(task)
 
 
+async def _touch_media_asset_after_render(
+    *,
+    auth_service: Any,
+    asset_id: str,
+    request_id: str,
+) -> None:
+    started_at = time.time()
+    try:
+        await run_in_threadpool(auth_service.touch_media_asset, asset_id=asset_id)
+    except AuthServiceError as error:
+        logger.warning(
+            "[Media] render touch failed request_id=%s asset_id=%s code=%s status_code=%s",
+            request_id,
+            asset_id,
+            error.code,
+            error.status_code,
+        )
+        return
+    except AuthStateStoreError as error:
+        logger.warning(
+            "[Media] render touch state save failed request_id=%s asset_id=%s error=%s",
+            request_id,
+            asset_id,
+            str(error),
+        )
+        return
+
+    touch_ms = int((time.time() - started_at) * 1000)
+    logger.info(
+        "[Media] render touch completed request_id=%s asset_id=%s touch_ms=%s",
+        request_id,
+        asset_id,
+        touch_ms,
+    )
+
+
 def _resolve_media_format(fmt: str, accept_header: str) -> str:
     requested = (fmt or "auto").strip().lower()
     if requested == "auto":
@@ -3079,16 +3115,12 @@ async def get_media_render(
             )
             transform_ms = int((time.time() - stage_started_at) * 1000)
 
-            stage_started_at = time.time()
-            auth_service.touch_media_asset(asset_id=asset_id)
-            touch_ms = int((time.time() - stage_started_at) * 1000)
-
             owner_id = str(asset.get("user_id") or "unknown")
             scope = str(asset.get("scope") or "unknown")
             return rendered_bytes, content_type, owner_id, scope, {
                 "fetch": fetch_ms,
                 "lookup": lookup_ms,
-                "touch": touch_ms,
+                "touch": 0,
                 "transform": transform_ms,
             }
 
@@ -3104,6 +3136,13 @@ async def get_media_render(
                 now_ts=int(time.time()),
             )
             stage_ms["cache_set"] = int((time.time() - cache_set_started_at) * 1000)
+            asyncio.create_task(
+                _touch_media_asset_after_render(
+                    auth_service=auth_service,
+                    asset_id=asset_id,
+                    request_id=request_id,
+                )
+            )
             return rendered_bytes, content_type, owner_id, scope, stage_ms
 
         rendered_bytes, content_type, owner_id, asset_scope, stage_ms = await _run_media_render_singleflight(
