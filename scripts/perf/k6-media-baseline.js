@@ -32,6 +32,10 @@ const mediaRenderCacheMissUrls = parseUrlList(
     ? open(mediaRenderCacheMissUrlsPath)
     : (__ENV.MEDIA_RENDER_CACHE_MISS_URLS || __ENV.MEDIA_RENDER_CACHE_MISS_URL || ''),
 );
+const renderP95ThresholdMs = Number(
+  __ENV.RENDER_P95_THRESHOLD_MS
+    || (mediaRenderCacheMissUrls.length > 0 ? String(renderCacheMissP95HardThresholdMs) : '1500'),
+);
 
 if (!mediaRenderUrl) {
   throw new Error('MEDIA_RENDER_URL is required.');
@@ -56,6 +60,9 @@ if (mediaRenderCacheMissUrls.length > 0 && !isPositiveInteger(minRenderCacheMiss
 }
 if (mediaRenderCacheMissUrls.length > 0 && !isPositiveInteger(renderCacheMissP95HardThresholdMs)) {
   throw new Error('RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS must be a positive integer when cache-miss URLs are configured.');
+}
+if (!isPositiveInteger(renderP95ThresholdMs)) {
+  throw new Error('RENDER_P95_THRESHOLD_MS must be a positive integer.');
 }
 if ((authBearerToken || enableAnalyze) && !baseUrl) {
   throw new Error('BASE_URL is required when AUTH_BEARER_TOKEN is set or ENABLE_ANALYZE=1.');
@@ -117,7 +124,7 @@ const thresholds = {
   http_req_failed: ['rate<0.10'],
   render_failure_rate: ['rate<0.05'],
   render_content_type_mismatch_rate: ['rate<0.00001'],
-  render_latency: ['p(95)<1500'],
+  render_latency: [`p(95)<${renderP95ThresholdMs}`],
   render_cache_hit_content_type_mismatch_rate: ['rate<0.00001'],
   ...(requireMediaRenderCacheHeader
     ? {
