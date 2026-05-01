@@ -1,0 +1,75 @@
+name: Staging Integration Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "release/**"
+
+jobs:
+  staging-integration-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      AUTH_STATE_BACKEND: postgres
+      AUTH_STATE_TABLE: auth_runtime_state
+      AUTH_STATE_KEY: ${{ secrets.STAGING_AUTH_STATE_KEY }}
+      RETENTION_STORE_BACKEND: postgres
+      RETENTION_STORE_TABLE: retention_records
+      RETENTION_DELETE_BACKEND: media_asset
+      DELETION_QUEUE_BACKEND: postgres
+      DELETION_QUEUE_TABLE: deletion_queue
+      DELETION_STATUS_TABLE: deletion_statuses
+      DELETION_HANDLER_BACKEND: user
+      MEDIA_STORAGE_BACKEND: gcs
+      MEDIA_GCS_BUCKET: ${{ secrets.STAGING_MEDIA_GCS_BUCKET }}
+      MEDIA_GCS_PREFIX: media
+      MEDIA_MAX_UPLOAD_MB: "10"
+      GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.STAGING_GCP_SERVICE_ACCOUNT_JSON }}
+      OPENAPI_EXPORT_ONLY: "1"
+      AUTH_EMAIL_VERIFICATION_REQUIRED: "1"
+      AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED: "1"
+      AUTH_EMAIL_VERIFICATION_DELIVERY_MODE: log
+      STAGING_SMOKE_ARTIFACT_DIR: artifacts/phase6/staging-integration-smoke
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Check staging smoke environment
+        run: python backend/scripts/staging_integration_smoke.py --check-env-only
+
+      - name: Run staging integration smoke
+        run: python backend/scripts/staging_integration_smoke.py
+
+      - name: Scan staging smoke artifacts for secret leaks
+        id: artifact_secret_scan
+        if: always()
+        run: python .github/scripts/scan_artifact_secrets.py artifacts/phase6/staging-integration-smoke
+
+      - name: Upload staging smoke artifacts
+        if: ${{ always() && steps.artifact_secret_scan.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-integration-smoke-${{ github.run_id }}
+          path: artifacts/phase6/staging-integration-smoke
+          if-no-files-found: error
+          retention-days: 14
