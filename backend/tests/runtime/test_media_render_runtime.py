@@ -126,6 +126,7 @@ class MediaRenderRuntimeTests(unittest.TestCase):
     def _prime_media_render_runtime(self, *, media_public_base_url: str) -> None:
         server.app.state.media_render_default_width = 512
         server.app.state.media_render_default_quality = 75
+        server.app.state.media_render_webp_method = 4
         server.app.state.media_render_url_ttl_seconds = 86_400
         server.app.state.media_render_allowed_widths = {128, 256, 512, 1024}
         server.app.state.media_render_quality_min = 50
@@ -202,10 +203,10 @@ class MediaRenderRuntimeTests(unittest.TestCase):
         async def _scenario() -> None:
             call_count: dict[str, int] = {"value": 0}
 
-            async def factory() -> tuple[bytes, str, str, str]:
+            async def factory() -> tuple[bytes, str, str, str, dict[str, int]]:
                 call_count["value"] += 1
                 await asyncio.sleep(0.05)
-                return b"img", "image/jpeg", "usr_1", "profile"
+                return b"img", "image/jpeg", "usr_1", "profile", {"fetch": 1}
 
             first, second = await asyncio.gather(
                 server._run_media_render_singleflight("same-key", factory),
@@ -213,6 +214,38 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(first, second)
             self.assertEqual(call_count["value"], 1)
+            self.assertEqual(server.app.state.media_render_inflight_tasks, {})
+
+        asyncio.run(_scenario())
+
+    def test_singleflight_waiter_cancellation_does_not_cancel_shared_render(self) -> None:
+        async def _scenario() -> None:
+            render_started = asyncio.Event()
+            release_render = asyncio.Event()
+            call_count: dict[str, int] = {"value": 0}
+
+            async def factory() -> tuple[bytes, str, str, str, dict[str, int]]:
+                call_count["value"] += 1
+                render_started.set()
+                await release_render.wait()
+                return b"img", "image/jpeg", "usr_1", "profile", {"fetch": 1}
+
+            first_task = asyncio.create_task(
+                server._run_media_render_singleflight("cancel-key", factory)
+            )
+            await render_started.wait()
+            second_task = asyncio.create_task(
+                server._run_media_render_singleflight("cancel-key", factory)
+            )
+            second_task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await second_task
+
+            release_render.set()
+            result = await first_task
+            self.assertEqual(result[0], b"img")
+            self.assertEqual(call_count["value"], 1)
+            await asyncio.sleep(0)
             self.assertEqual(server.app.state.media_render_inflight_tasks, {})
 
         asyncio.run(_scenario())
@@ -243,6 +276,11 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertEqual(second_response.headers["x-media-render-cache"], "hit")
             self.assertIn("x-media-render-duration-ms", first_response.headers)
             self.assertIn("x-media-render-duration-ms", second_response.headers)
+            self.assertIn("x-media-render-stage-ms", first_response.headers)
+            self.assertNotIn("x-media-render-stage-ms", second_response.headers)
+            self.assertIn("fetch=", first_response.headers["x-media-render-stage-ms"])
+            self.assertIn("transform=", first_response.headers["x-media-render-stage-ms"])
+            self.assertIn("touch=", first_response.headers["x-media-render-stage-ms"])
             self.assertEqual(media_storage.fetch_count, 1)
 
     def test_media_render_cache_disabled_header_does_not_report_miss(self) -> None:
@@ -322,6 +360,7 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertIn("x-request-id", exposed_headers)
             self.assertIn("x-media-render-cache", exposed_headers)
             self.assertIn("x-media-render-duration-ms", exposed_headers)
+            self.assertIn("x-media-render-stage-ms", exposed_headers)
 
     def test_media_render_auto_format_cache_preserves_content_type(self) -> None:
         with TestClient(server.app) as client:
@@ -357,6 +396,36 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertEqual(first_response.headers["x-media-render-cache"], "miss")
             self.assertEqual(second_response.headers["x-media-render-cache"], "hit")
             self.assertEqual(media_storage.fetch_count, 1)
+
+    def test_media_render_webp_method_uses_configured_value(self) -> None:
+        captured_methods: list[int] = []
+        original_save = Image.Image.save
+
+        def capture_save(
+            image: Image.Image,
+            fp: object,
+            format: str | None = None,
+            **params: object,
+        ) -> None:
+            if format == "WEBP":
+                method = params.get("method")
+                if not isinstance(method, int):
+                    raise TypeError("WEBP method must be an integer.")
+                captured_methods.append(method)
+            original_save(image, fp, format=format, **params)
+
+        with patch.object(Image.Image, "save", new=capture_save):
+            rendered_bytes, content_type = server._render_image_bytes(
+                source_bytes=_create_jpeg_bytes(),
+                target_width=512,
+                target_quality=75,
+                target_format="webp",
+                target_webp_method=3,
+            )
+
+        self.assertEqual(content_type, "image/webp")
+        self.assertGreater(len(rendered_bytes), 0)
+        self.assertEqual(captured_methods, [3])
 
     def test_media_render_invalid_signed_urls_do_not_leak_secret_values(self) -> None:
         with TestClient(server.app) as client:

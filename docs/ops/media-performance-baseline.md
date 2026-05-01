@@ -123,6 +123,15 @@ export THINK_TIME_MS=200
 bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-media-matrix.sh
 ```
 
+로컬에서 full live matrix 입력을 파일로 관리하려면 아래 템플릿을 복사해 `.env.media-performance.local`에 실제 값을 넣고, 래퍼 스크립트를 실행한다. 이 local env 파일은 git ignore 대상이며 signed URL과 token을 출력하지 않는다.
+
+```bash
+cp /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/full-live-media-matrix.env.example \
+  /Users/beatlefeed/Documents/FoodLens-project/.env.media-performance.local
+
+bash /Users/beatlefeed/Documents/FoodLens-project/scripts/perf/run-full-live-media-matrix.sh
+```
+
 `ENABLE_ANALYZE=1`을 설정한 매트릭스 실행에서 `ANALYZE_PATH`가 없으면 scenario B를 건너뛰지 않고 실패한다. 이 상태는 analyze 혼합 부하를 측정하지 못한 것이므로 통과로 취급하지 않는다.
 `REQUIRE_FULL_LIVE_MATRIX=1`을 설정한 실행에서 cache miss URL 파일이 없거나 inline signed URL 문자열만 있으면 실패한다. 이 상태는 cold miss 부하를 측정하지 못한 것이므로 통과로 취급하지 않는다.
 
@@ -249,13 +258,20 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `render_content_type_mismatch_rate.rate`
 - `render_cache_hit_content_type_mismatch_rate.rate`
 - `render_cache_miss_content_type_mismatch_rate.rate`
+- `render_cache_miss_observed_rate.rate`
+- `render_cache_miss_observed_count.count`
+- `render_stage_lookup_latency.p(95)`
+- `render_stage_fetch_latency.p(95)`
+- `render_stage_transform_latency.p(95)`
+- `render_stage_touch_latency.p(95)`
+- `render_stage_cache_set_latency.p(95)`
 - `render_cache_disabled_rate.rate`
 - `render_cache_unknown_rate.rate`
 - `render_cache_unknown_latency.p(95)`
 
 `run-media-baseline.sh`의 콘솔 요약은 사람이 읽기 쉬운 별칭으로 latency를 `render_latency.p95`, `profile_latency.p95`, `analyze_latency.p95`처럼 출력한다. `summary.json`, threshold, 비교 스크립트의 필드 이름은 위의 주요 metric 목록처럼 `render_latency.p(95)`, `profile_latency.p(95)`, `analyze_latency.p(95)`를 기준으로 한다.
 
-`render_cache_*` metric은 backend 응답 헤더 `X-Media-Render-Cache: hit|miss|disabled`를 기준으로 채워진다. cache가 꺼진 backend는 `X-Media-Render-Cache: disabled`를 반환하며 k6는 이를 `render_cache_disabled_rate`와 `render_cache_unknown_latency`로 분류한다. 배포 대상 backend가 아직 이 헤더를 내보내지 않거나 알 수 없는 값을 내보내면 k6는 `render_cache_unknown_rate`와 `render_cache_unknown_latency`로 분류한다. 헤더 지원 전 배포본에서는 만료된 signed URL, signature 불일치, storage/auth 실패처럼 성공 이미지 응답이 아닌 경로도 header 없이 반환되어 `render_cache_unknown_rate.rate=1`로 보일 수 있다. 현재 backend는 `/media/render` 오류 응답에도 `X-Media-Render-Cache`를 붙이지만, 이 값이 있어도 `render_failure_rate.rate`와 상태 코드 분포가 실패 원인 판정의 우선 근거다. 기본 workflow 실행은 이 값을 진단 지표로 기록하되 render/profile latency와 failure rate를 우선 차단한다. `require_cache_header=1` 또는 비교 스크립트의 `--require-cache-header`를 켠 실행에서는 `render_cache_disabled_rate.rate`와 `render_cache_unknown_rate.rate`가 0보다 크면 실패한다. 이 strict 모드는 cache-hit, cache-disabled, cache-unknown metric을 필수로 요구하며, `MEDIA_RENDER_CACHE_MISS_URLS` 또는 `MEDIA_RENDER_CACHE_MISS_URLS_PATH`를 설정한 실행에서는 cache-miss metric도 필수다.
+`render_cache_*` metric은 backend 응답 헤더 `X-Media-Render-Cache: hit|miss|disabled`를 기준으로 채워진다. cache가 꺼진 backend는 `X-Media-Render-Cache: disabled`를 반환하며 k6는 이를 `render_cache_disabled_rate`와 `render_cache_unknown_latency`로 분류한다. 배포 대상 backend가 아직 이 헤더를 내보내지 않거나 알 수 없는 값을 내보내면 k6는 `render_cache_unknown_rate`와 `render_cache_unknown_latency`로 분류한다. 헤더 지원 전 배포본에서는 만료된 signed URL, signature 불일치, storage/auth 실패처럼 성공 이미지 응답이 아닌 경로도 header 없이 반환되어 `render_cache_unknown_rate.rate=1`로 보일 수 있다. 현재 backend는 `/media/render` 오류 응답에도 `X-Media-Render-Cache`를 붙이지만, 이 값이 있어도 `render_failure_rate.rate`와 상태 코드 분포가 실패 원인 판정의 우선 근거다. 기본 workflow 실행은 이 값을 진단 지표로 기록하되 render/profile latency와 failure rate를 우선 차단한다. `require_cache_header=1` 또는 비교 스크립트의 `--require-cache-header`를 켠 실행에서는 `render_cache_disabled_rate.rate`와 `render_cache_unknown_rate.rate`가 0보다 크면 실패한다. 이 strict 모드는 cache-hit, cache-disabled, cache-unknown metric을 필수로 요구하며, `MEDIA_RENDER_CACHE_MISS_URLS` 또는 `MEDIA_RENDER_CACHE_MISS_URLS_PATH`를 설정한 실행에서는 cache-miss metric, `render_cache_miss_observed_rate`, `render_cache_miss_observed_count`도 필수다. 배포본이 `X-Media-Render-Stage-Ms`를 내보내면 k6는 miss 응답의 `lookup`, `fetch`, `transform`, `touch`, `cache_set` stage latency를 별도 trend로 기록한다.
 
 다운로드한 baseline artifact 안에 이전 비교 기준선이 `baseline/` 하위 디렉터리로 함께 들어 있으면 workflow는 그 중첩 기준선을 후보에서 제외하고 artifact 자체 실행의 `summary.json`을 우선 사용한다. 제외 후에도 `summary.json`이 여러 개 남으면 임의 선택하지 않고 실패한다. 이 경우 `baseline_summary_path` 또는 `PERF_BASELINE_SUMMARY_PATH`를 정확한 파일 경로로 지정한다.
 
@@ -269,6 +285,8 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - (strict cache header + miss URL) `render_cache_miss_failure_rate.rate < 0.05`
 - `render_cache_miss_content_type_mismatch_rate.rate < 0.00001`
 - (strict cache header + miss URL) `render_cache_miss_latency.p(95) < 2500ms`
+- (strict cache header + miss URL) `render_cache_miss_observed_rate.rate > 0.00001`
+- (strict cache header + miss URL) `render_cache_miss_observed_count.count >= 20`
 - `render_content_type_mismatch_rate.rate < 0.00001`
 - (strict cache header) `render_cache_disabled_rate.rate < 0.00001`
 - (strict cache header) `render_cache_unknown_rate.rate < 0.00001`
@@ -276,6 +294,10 @@ diagnostics를 공유할 때는 token, secret 값, signed URL 전체를 붙여 �
 - `profile_latency.p(95) < 1200ms`
 - `analyze_failure_rate.rate < 0.20`
 - (옵션) `analyze_latency.p(95) < 2500ms`
+
+`MEDIA_RENDER_WEBP_METHOD`는 backend WebP encode method를 제어한다. 기본값은 `4`이고 허용 범위는 `0..6`이다. cold miss p95가 `transform` stage에 집중되면 이 값을 조정해 재측정하되, `MEDIA_RENDER_DEFAULT_QUALITY`는 함께 바꾸지 않는다. method와 quality를 동시에 바꾸면 성능 개선 원인과 이미지 품질 영향을 분리하기 어렵다.
+
+`MIN_MEDIA_RENDER_COLD_CANDIDATES`는 full live matrix가 요구하는 cold signed URL 후보 수이고 기본값은 `3`이다. `MIN_RENDER_CACHE_MISS_SAMPLES`는 k6 실행 중 실제 `X-Media-Render-Cache: miss`로 관측되어야 하는 최소 sample 수이고 기본값은 `20`이다.
 
 ## 5) 운영 루틴
 1. 배포 전 1회 측정

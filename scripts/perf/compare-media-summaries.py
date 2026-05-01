@@ -38,12 +38,19 @@ METRIC_RULES: list[MetricRule] = [
     },
     {"name": "render_cache_hit_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_cache_miss_failure_rate", "field": "rate", "direction": "lower"},
+    {"name": "render_cache_miss_observed_rate", "field": "rate", "direction": "higher"},
+    {"name": "render_cache_miss_observed_count", "field": "count", "direction": "higher"},
     {
         "name": "render_cache_miss_content_type_mismatch_rate",
         "field": "rate",
         "direction": "lower",
     },
     {"name": "render_cache_miss_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_lookup_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_fetch_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_transform_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_touch_latency", "field": "p(95)", "direction": "lower"},
+    {"name": "render_stage_cache_set_latency", "field": "p(95)", "direction": "lower"},
     {"name": "render_cache_disabled_rate", "field": "rate", "direction": "lower"},
     {"name": "render_cache_unknown_rate", "field": "rate", "direction": "lower"},
     {"name": "profile_failure_rate", "field": "rate", "direction": "lower"},
@@ -85,6 +92,8 @@ CACHE_HEADER_THRESHOLD_RULES: list[ThresholdRule] = [
 CACHE_HEADER_REQUIRED_METRICS: list[RequiredMetric] = [
     {"name": "render_cache_disabled_rate", "field": "rate"},
     {"name": "render_cache_unknown_rate", "field": "rate"},
+    {"name": "render_cache_miss_observed_rate", "field": "rate"},
+    {"name": "render_cache_miss_observed_count", "field": "count"},
 ]
 
 

@@ -9,6 +9,7 @@ K6_MATRIX_VUS="${K6_MATRIX_VUS:-20 50 100}"
 K6_DURATION="${K6_DURATION:-60s}"
 THINK_TIME_MS="${THINK_TIME_MS:-200}"
 REQUIRE_FULL_LIVE_MATRIX="${REQUIRE_FULL_LIVE_MATRIX:-0}"
+MIN_MEDIA_RENDER_COLD_CANDIDATES="${MIN_MEDIA_RENDER_COLD_CANDIDATES:-3}"
 
 if [[ -z "${MEDIA_RENDER_URL:-}" ]]; then
   echo "[perf-matrix] MEDIA_RENDER_URL is required."
@@ -20,6 +21,10 @@ if [[ "${ENABLE_ANALYZE:-0}" != "0" && "${ENABLE_ANALYZE:-0}" != "1" ]]; then
 fi
 if [[ "${REQUIRE_FULL_LIVE_MATRIX}" != "0" && "${REQUIRE_FULL_LIVE_MATRIX}" != "1" ]]; then
   echo "[perf-matrix] REQUIRE_FULL_LIVE_MATRIX must be 0 or 1."
+  exit 1
+fi
+if ! [[ "${MIN_MEDIA_RENDER_COLD_CANDIDATES}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[perf-matrix] MIN_MEDIA_RENDER_COLD_CANDIDATES must be a positive integer."
   exit 1
 fi
 if [[ -n "${AUTH_BEARER_TOKEN:-}" || -n "${BASE_URL:-}" ]]; then
@@ -47,12 +52,21 @@ if [[ "${REQUIRE_FULL_LIVE_MATRIX}" == "1" ]]; then
     echo "[perf-matrix] REQUIRE_MEDIA_RENDER_CACHE_HEADER=1 is required when REQUIRE_FULL_LIVE_MATRIX=1 so cache-miss metrics cannot be n/a."
     exit 1
   fi
+  if [[ "${REQUIRE_PROFILE_AUTH_SUCCESS:-0}" != "1" ]]; then
+    echo "[perf-matrix] REQUIRE_PROFILE_AUTH_SUCCESS=1 is required when REQUIRE_FULL_LIVE_MATRIX=1 so profile 401 cannot be treated as success."
+    exit 1
+  fi
   if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" ]]; then
     echo "[perf-matrix] MEDIA_RENDER_CACHE_MISS_URLS must be unset when REQUIRE_FULL_LIVE_MATRIX=1; use MEDIA_RENDER_CACHE_MISS_URLS_PATH to avoid exposing signed URLs inline."
     exit 1
   fi
   if [[ -z "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" || ! -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
     echo "[perf-matrix] MEDIA_RENDER_CACHE_MISS_URLS_PATH file is required when REQUIRE_FULL_LIVE_MATRIX=1."
+    exit 1
+  fi
+  cold_candidate_count="$(grep -Ec '[^[:space:]]' "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" || true)"
+  if [[ "${cold_candidate_count}" -lt "${MIN_MEDIA_RENDER_COLD_CANDIDATES}" ]]; then
+    echo "[perf-matrix] MEDIA_RENDER_CACHE_MISS_URLS_PATH needs at least ${MIN_MEDIA_RENDER_COLD_CANDIDATES} cold candidates when REQUIRE_FULL_LIVE_MATRIX=1; found ${cold_candidate_count}."
     exit 1
   fi
 fi
@@ -74,6 +88,9 @@ run_case() {
   K6_VUS="${vus}" \
   K6_DURATION="${K6_DURATION}" \
   THINK_TIME_MS="${THINK_TIME_MS}" \
+  MIN_RENDER_CACHE_MISS_SAMPLES="${MIN_RENDER_CACHE_MISS_SAMPLES:-20}" \
+  REQUIRE_PROFILE_AUTH_SUCCESS="${REQUIRE_PROFILE_AUTH_SUCCESS:-0}" \
+  REQUIRE_MEDIA_RENDER_CACHE_HEADER="${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" \
   ENABLE_ANALYZE="${enable_analyze}" \
   ANALYZE_PATH="${analyze_path}" \
   ANALYZE_LOCALE="${analyze_locale}" \
