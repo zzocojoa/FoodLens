@@ -55,6 +55,25 @@ class _FakeAuthService:
         }
 
 
+class _TrackingTouchAuthService(_FakeAuthService):
+    def __init__(self, *, object_key: str) -> None:
+        super().__init__(object_key=object_key)
+        self.touched_asset_ids: list[str] = []
+
+    def touch_media_asset(self, *, asset_id: str) -> dict[str, object]:
+        self.touched_asset_ids.append(asset_id)
+        return super().touch_media_asset(asset_id=asset_id)
+
+
+class _FailingTouchAuthService(_FakeAuthService):
+    def touch_media_asset(self, *, asset_id: str) -> dict[str, object]:
+        raise server.AuthServiceError(
+            code="AUTH_MEDIA_NOT_FOUND",
+            message="Media asset not found.",
+            status_code=404,
+        )
+
+
 class _FailingFetchMediaStorage:
     enabled: bool = True
 
@@ -250,6 +269,34 @@ class MediaRenderRuntimeTests(unittest.TestCase):
 
         asyncio.run(_scenario())
 
+    def test_media_render_touch_after_render_records_access(self) -> None:
+        async def _scenario() -> None:
+            auth_service = _TrackingTouchAuthService(
+                object_key="media/usr_render/profile/asset_touch/original.jpg",
+            )
+
+            await server._touch_media_asset_after_render(
+                auth_service=auth_service,
+                asset_id="asset_touch",
+                request_id="req_touch",
+            )
+
+            self.assertEqual(auth_service.touched_asset_ids, ["asset_touch"])
+
+        asyncio.run(_scenario())
+
+    def test_media_render_touch_after_render_does_not_raise_auth_error(self) -> None:
+        async def _scenario() -> None:
+            await server._touch_media_asset_after_render(
+                auth_service=_FailingTouchAuthService(
+                    object_key="media/usr_render/profile/asset_missing/original.jpg",
+                ),
+                asset_id="asset_missing",
+                request_id="req_missing",
+            )
+
+        asyncio.run(_scenario())
+
     def test_media_render_response_headers_expose_cache_hit_and_miss(self) -> None:
         with TestClient(server.app) as client:
             asset_id = "asset_header_cache"
@@ -280,7 +327,7 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertNotIn("x-media-render-stage-ms", second_response.headers)
             self.assertIn("fetch=", first_response.headers["x-media-render-stage-ms"])
             self.assertIn("transform=", first_response.headers["x-media-render-stage-ms"])
-            self.assertIn("touch=", first_response.headers["x-media-render-stage-ms"])
+            self.assertIn("touch=0", first_response.headers["x-media-render-stage-ms"])
             self.assertEqual(media_storage.fetch_count, 1)
 
     def test_media_render_cache_disabled_header_does_not_report_miss(self) -> None:
