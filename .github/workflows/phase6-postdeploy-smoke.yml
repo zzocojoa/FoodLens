@@ -48,8 +48,13 @@ jobs:
           set -o pipefail
           bash backend/scripts/ci_phase6_postdeploy_smoke.sh
 
-      - name: Upload postdeploy smoke artifacts (summary + media/analyze evidence)
+      - name: Scan postdeploy smoke artifacts for secret leaks
+        id: artifact_secret_scan
         if: always()
+        run: python3 .github/scripts/scan_artifact_secrets.py FoodLens/artifacts/phase6/postdeploy-smoke
+
+      - name: Upload postdeploy smoke artifacts (summary + media/analyze evidence)
+        if: ${{ always() && steps.artifact_secret_scan.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: phase6-postdeploy-smoke-${{ github.run_id }}

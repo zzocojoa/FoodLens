@@ -1986,7 +1986,7 @@ def _register_media_retention_record(
 ) -> None:
     retention_store = getattr(app.state, "retention_store", None)
     if retention_store is None:
-        return
+        raise RetentionStoreError("retention_store is not configured")
     retention_store.add(
         RetentionRecord(
             record_id=asset_id,
@@ -1995,6 +1995,103 @@ def _register_media_retention_record(
             user_id=user_id,
             storage_key=object_key,
         )
+    )
+
+
+def _is_compensatable_media_object_key(
+    *,
+    object_key: str,
+    user_id: str,
+    scope: str,
+    asset_id: str,
+) -> bool:
+    key_parts = object_key.strip().split("/")
+    if len(key_parts) < 5:
+        return False
+    return (
+        key_parts[-4] == user_id.strip()
+        and key_parts[-3] == scope.strip()
+        and key_parts[-2] == asset_id.strip()
+        and key_parts[-1].startswith("original.")
+    )
+
+
+def _compensate_failed_media_upload(
+    *,
+    auth_service: Any,
+    media_storage: Any,
+    upload_result: MediaUploadResult,
+    registered_asset_id: str | None,
+    request_id: str,
+    user_id: str,
+    scope: str,
+    cause_code: str,
+) -> None:
+    if not _is_compensatable_media_object_key(
+        object_key=upload_result.object_key,
+        user_id=user_id,
+        scope=scope,
+        asset_id=upload_result.asset_id,
+    ):
+        logger.error(
+            "[Media] upload compensation skipped request_id=%s user_id=%s asset_id=%s scope=%s object_key=%s cause_code=%s reason=%s",
+            request_id,
+            user_id,
+            upload_result.asset_id,
+            scope,
+            upload_result.object_key,
+            cause_code,
+            "object_key_mismatch",
+        )
+        return
+
+    try:
+        media_storage.delete_original(object_key=upload_result.object_key)
+    except MediaStorageError as error:
+        logger.error(
+            "[Media] upload compensation delete failed request_id=%s user_id=%s asset_id=%s scope=%s object_key=%s cause_code=%s cleanup_code=%s cleanup_status=%s",
+            request_id,
+            user_id,
+            upload_result.asset_id,
+            scope,
+            upload_result.object_key,
+            cause_code,
+            error.code,
+            error.status_code,
+        )
+        return
+
+    if registered_asset_id is not None:
+        try:
+            deleted = auth_service.delete_media_asset(asset_id=registered_asset_id)
+        except (AuthServiceError, AuthStateStoreError) as error:
+            logger.error(
+                "[Media] upload compensation metadata delete failed request_id=%s user_id=%s asset_id=%s scope=%s cause_code=%s error=%s",
+                request_id,
+                user_id,
+                registered_asset_id,
+                scope,
+                cause_code,
+                str(error),
+            )
+            return
+        if not deleted:
+            logger.warning(
+                "[Media] upload compensation metadata missing request_id=%s user_id=%s asset_id=%s scope=%s cause_code=%s",
+                request_id,
+                user_id,
+                registered_asset_id,
+                scope,
+                cause_code,
+            )
+
+    logger.info(
+        "[Media] upload compensation success request_id=%s user_id=%s asset_id=%s scope=%s cause_code=%s",
+        request_id,
+        user_id,
+        upload_result.asset_id,
+        scope,
+        cause_code,
     )
 
 
@@ -3041,20 +3138,59 @@ async def post_me_media_upload(
                 payload=payload,
                 filename=file.filename,
             )
-            registered_asset = auth_service.register_media_asset(
-                user_id=user.user_id,
-                scope=normalized_scope,
-                mime_type=upload_result.mime_type,
-                size_bytes=upload_result.size_bytes,
-                sha256=upload_result.sha256,
-                object_key=upload_result.object_key,
-                asset_id=upload_result.asset_id,
-            )
-            _register_media_retention_record(
-                asset_id=upload_result.asset_id,
-                user_id=user.user_id,
-                object_key=upload_result.object_key,
-            )
+            registered_asset_id: str | None = None
+            try:
+                registered_asset = auth_service.register_media_asset(
+                    user_id=user.user_id,
+                    scope=normalized_scope,
+                    mime_type=upload_result.mime_type,
+                    size_bytes=upload_result.size_bytes,
+                    sha256=upload_result.sha256,
+                    object_key=upload_result.object_key,
+                    asset_id=upload_result.asset_id,
+                )
+                registered_asset_id = str(registered_asset["asset_id"])
+                _register_media_retention_record(
+                    asset_id=upload_result.asset_id,
+                    user_id=user.user_id,
+                    object_key=upload_result.object_key,
+                )
+            except AuthServiceError as error:
+                _compensate_failed_media_upload(
+                    auth_service=auth_service,
+                    media_storage=media_storage,
+                    upload_result=upload_result,
+                    registered_asset_id=registered_asset_id,
+                    request_id=request_id,
+                    user_id=user.user_id,
+                    scope=normalized_scope,
+                    cause_code=error.code,
+                )
+                raise
+            except AuthStateStoreError as error:
+                _compensate_failed_media_upload(
+                    auth_service=auth_service,
+                    media_storage=media_storage,
+                    upload_result=upload_result,
+                    registered_asset_id=upload_result.asset_id,
+                    request_id=request_id,
+                    user_id=user.user_id,
+                    scope=normalized_scope,
+                    cause_code="AUTH_STATE_STORE_FAILED",
+                )
+                raise
+            except RetentionStoreError as error:
+                _compensate_failed_media_upload(
+                    auth_service=auth_service,
+                    media_storage=media_storage,
+                    upload_result=upload_result,
+                    registered_asset_id=registered_asset_id,
+                    request_id=request_id,
+                    user_id=user.user_id,
+                    scope=normalized_scope,
+                    cause_code="MEDIA_RETENTION_RECORD_ADD_FAILED",
+                )
+                raise
             return upload_result, registered_asset
 
         upload, asset = await run_in_threadpool(_store_media_upload)
@@ -3100,6 +3236,40 @@ async def post_me_media_upload(
             code=error.code,
         )
         raise _auth_error_to_http_exception(error, request_id) from error
+    except AuthStateStoreError as error:
+        logger.warning(
+            "[Media] upload failed request_id=%s user_id=%s scope=%s code=%s error=%s",
+            request_id,
+            user.user_id,
+            normalized_scope,
+            "AUTH_STATE_STORE_FAILED",
+            str(error),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Failed to persist auth state.",
+                "code": "AUTH_STATE_STORE_FAILED",
+                "request_id": request_id,
+            },
+        ) from error
+    except RetentionStoreError as error:
+        logger.warning(
+            "[Media] upload failed request_id=%s user_id=%s scope=%s code=%s error=%s",
+            request_id,
+            user.user_id,
+            normalized_scope,
+            "MEDIA_RETENTION_RECORD_ADD_FAILED",
+            str(error),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Failed to register media retention record.",
+                "code": "MEDIA_RETENTION_RECORD_ADD_FAILED",
+                "request_id": request_id,
+            },
+        ) from error
 
 
 @app.delete("/me/media/{asset_id}")
