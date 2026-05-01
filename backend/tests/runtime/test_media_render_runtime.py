@@ -297,6 +297,22 @@ class MediaRenderRuntimeTests(unittest.TestCase):
 
         asyncio.run(_scenario())
 
+    def test_media_render_touch_after_render_scheduler_records_access(self) -> None:
+        async def _scenario() -> None:
+            auth_service = _TrackingTouchAuthService(
+                object_key="media/usr_render/profile/asset_scheduled_touch/original.jpg",
+            )
+
+            task = server._schedule_media_render_touch_after_render(
+                auth_service=auth_service,
+                asset_id="asset_scheduled_touch",
+                request_id="req_scheduled_touch",
+            )
+            await task
+            self.assertEqual(auth_service.touched_asset_ids, ["asset_scheduled_touch"])
+
+        asyncio.run(_scenario())
+
     def test_media_render_response_headers_expose_cache_hit_and_miss(self) -> None:
         with TestClient(server.app) as client:
             asset_id = "asset_header_cache"
@@ -327,7 +343,7 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertNotIn("x-media-render-stage-ms", second_response.headers)
             self.assertIn("fetch=", first_response.headers["x-media-render-stage-ms"])
             self.assertIn("transform=", first_response.headers["x-media-render-stage-ms"])
-            self.assertIn("touch=0", first_response.headers["x-media-render-stage-ms"])
+            self.assertNotIn("touch=", first_response.headers["x-media-render-stage-ms"])
             self.assertEqual(media_storage.fetch_count, 1)
 
     def test_media_render_cache_disabled_header_does_not_report_miss(self) -> None:

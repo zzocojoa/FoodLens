@@ -222,6 +222,8 @@ jobs:
                   "render_cache_hit_latency": {"values": {"p(95)": 100.0}},
                   "render_cache_miss_failure_rate": {"values": {"rate": 0.0}},
                   "render_cache_miss_latency": {"values": {"p(95)": 200.0}},
+                  "render_cache_miss_observed_rate": {"values": {"rate": 1.0}},
+                  "render_cache_miss_observed_count": {"values": {"count": 15.0}},
                   "render_cache_disabled_rate": {"values": {"rate": 0.0}},
                   "render_cache_unknown_rate": {"values": {"rate": 0.0}},
               }

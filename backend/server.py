@@ -1190,6 +1190,51 @@ async def _touch_media_asset_after_render(
     )
 
 
+def _log_media_render_touch_task_result(
+    task: asyncio.Task[None],
+    *,
+    asset_id: str,
+    request_id: str,
+) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.warning(
+            "[Media] render touch task cancelled request_id=%s asset_id=%s",
+            request_id,
+            asset_id,
+        )
+    except Exception:
+        logger.exception(
+            "[Media] render touch task failed request_id=%s asset_id=%s",
+            request_id,
+            asset_id,
+        )
+
+
+def _schedule_media_render_touch_after_render(
+    *,
+    auth_service: Any,
+    asset_id: str,
+    request_id: str,
+) -> asyncio.Task[None]:
+    task = asyncio.create_task(
+        _touch_media_asset_after_render(
+            auth_service=auth_service,
+            asset_id=asset_id,
+            request_id=request_id,
+        )
+    )
+    task.add_done_callback(
+        lambda completed_task: _log_media_render_touch_task_result(
+            completed_task,
+            asset_id=asset_id,
+            request_id=request_id,
+        )
+    )
+    return task
+
+
 def _resolve_media_format(fmt: str, accept_header: str) -> str:
     requested = (fmt or "auto").strip().lower()
     if requested == "auto":
@@ -3119,7 +3164,6 @@ async def get_media_render(
             return rendered_bytes, content_type, owner_id, scope, {
                 "fetch": fetch_ms,
                 "lookup": lookup_ms,
-                "touch": 0,
                 "transform": transform_ms,
             }
 
@@ -3135,12 +3179,10 @@ async def get_media_render(
                 now_ts=int(time.time()),
             )
             stage_ms["cache_set"] = int((time.time() - cache_set_started_at) * 1000)
-            asyncio.create_task(
-                _touch_media_asset_after_render(
-                    auth_service=auth_service,
-                    asset_id=asset_id,
-                    request_id=request_id,
-                )
+            _schedule_media_render_touch_after_render(
+                auth_service=auth_service,
+                asset_id=asset_id,
+                request_id=request_id,
             )
             return rendered_bytes, content_type, owner_id, scope, stage_ms
 

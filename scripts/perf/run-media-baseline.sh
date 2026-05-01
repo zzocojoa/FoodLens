@@ -187,6 +187,14 @@ if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_UR
     echo "[perf] MIN_RENDER_CACHE_MISS_SAMPLES must be a positive integer when cache-miss URLs are configured."
     exit 1
   fi
+  if ! is_positive_integer "${RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS:-3000}"; then
+    echo "[perf] RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS must be a positive integer when cache-miss URLs are configured."
+    exit 1
+  fi
+  if ! is_positive_integer "${RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS:-2500}"; then
+    echo "[perf] RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS must be a positive integer when cache-miss URLs are configured."
+    exit 1
+  fi
 fi
 
 if ! command -v k6 >/dev/null 2>&1; then
@@ -258,4 +266,22 @@ if command -v jq >/dev/null 2>&1; then
       "analyze_latency.p95=\(metric_value("analyze_latency"; "p(95)"))"
     ] | .[]
   ' "${OUT_DIR}/summary.json"
+  miss_p95="$(
+    jq -r '
+      (.metrics?.render_cache_miss_latency?.values?["p(95)"]
+        // .metrics?.render_cache_miss_latency?["p(95)"]
+        // "n/a")
+    ' "${OUT_DIR}/summary.json"
+  )"
+  if [[ "${miss_p95}" != "n/a" ]]; then
+    awk \
+      -v value="${miss_p95}" \
+      -v warn="${RENDER_CACHE_MISS_P95_WARN_THRESHOLD_MS:-2500}" \
+      -v hard="${RENDER_CACHE_MISS_P95_HARD_THRESHOLD_MS:-3000}" \
+      'BEGIN {
+        if (value + 0 >= warn + 0 && value + 0 < hard + 0) {
+          printf("[perf] warning: render_cache_miss_latency.p95=%sms is above warning threshold %sms but below hard threshold %sms.\n", value, warn, hard)
+        }
+      }'
+  fi
 fi
