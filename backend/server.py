@@ -3560,6 +3560,7 @@ async def delete_me_media_asset(asset_id: str, request: Request):
                 },
             )
 
+        object_generation = _coerce_optional_generation(asset.get("object_generation"))
         try:
             object_generation = await run_in_threadpool(
                 _resolve_media_asset_generation,
@@ -3583,7 +3584,7 @@ async def delete_me_media_asset(asset_id: str, request: Request):
                         asset_id=normalized_asset_id,
                         user_id=user.user_id,
                         object_key=object_key,
-                        object_generation=asset.get("object_generation"),
+                        object_generation=object_generation,
                         request_id=request_id,
                         cause_code=error.code,
                         status_code=error.status_code,

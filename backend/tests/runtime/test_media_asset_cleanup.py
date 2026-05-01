@@ -490,6 +490,59 @@ class MediaAssetCleanupTests(unittest.TestCase):
         self.assertEqual(media_storage.deleted_generations, [upload.generation])
         self.assertEqual(retention_store.list_records(RetentionDataClass.ORIGINAL, 10), [])
 
+    def test_delete_legacy_media_asset_retry_keeps_backfilled_generation(self) -> None:
+        media_storage = _RecordingMediaStorage(
+            delete_error=MediaStorageError(
+                code="MEDIA_DELETE_FAILED",
+                message="Failed to delete media object from storage.",
+                status_code=502,
+            )
+        )
+        retention_store = InMemoryRetentionStore()
+
+        with TestClient(server.app) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = retention_store
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-legacy-delete-fail"))
+            headers = _auth_headers(str(session["access_token"]))
+            user_id = str(session["user"]["id"])
+            payload = _create_png_bytes()
+            upload = media_storage.upload_original(
+                user_id=user_id,
+                scope="history",
+                mime_type="image/png",
+                payload=payload,
+                filename="legacy.png",
+            )
+            server.app.state.auth_service.register_media_asset(
+                user_id=user_id,
+                scope="history",
+                mime_type=upload.mime_type,
+                size_bytes=upload.size_bytes,
+                sha256=upload.sha256,
+                object_key=upload.object_key,
+                asset_id=upload.asset_id,
+                object_generation=None,
+            )
+            retention_store.add(
+                RetentionRecord(
+                    record_id=upload.asset_id,
+                    data_class=RetentionDataClass.ORIGINAL,
+                    created_at=datetime.now(timezone.utc),
+                    user_id=user_id,
+                    storage_key=upload.object_key,
+                    object_generation=None,
+                )
+            )
+
+            delete_response = client.delete(f"/me/media/{upload.asset_id}", headers=headers)
+
+        self.assertEqual(delete_response.status_code, 502)
+        retry_records = retention_store.list_records(RetentionDataClass.ORIGINAL, 10)
+        self.assertEqual(len(retry_records), 1)
+        self.assertEqual(retry_records[0].object_generation, upload.generation)
+
     def test_retention_retry_backfills_missing_generation_before_delete(self) -> None:
         media_storage = _RecordingMediaStorage(delete_error=None)
         retention_store = InMemoryRetentionStore()
