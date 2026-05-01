@@ -226,6 +226,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             error = RuntimeError(
                 "failed postgresql://user:password@example.com/db "
                 "Bearer token-value server at \"private.example.com\" "
+                "host: 'private.example.com' hostaddr: '203.0.113.10' "
                 "state-key-secret foodlens-private-bucket"
             )
             details = smoke._safe_error_details(error)
@@ -237,6 +238,8 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertNotIn("token-value", serialized)
         self.assertNotIn("state-key-secret", serialized)
         self.assertNotIn("foodlens-private-bucket", serialized)
+        self.assertNotIn("private.example.com", serialized)
+        self.assertNotIn("203.0.113.10", serialized)
 
     def test_run_smokes_keeps_expected_regression_checks(self) -> None:
         called_names = _referenced_function_names("_run_smokes")

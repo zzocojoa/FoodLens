@@ -32,6 +32,8 @@ SENSITIVE_ENV_NAMES: tuple[str, ...] = (
 DATABASE_URL_PATTERN = re.compile(r"postgres(?:ql)?://[^\s'\"),]+", re.IGNORECASE)
 BEARER_TOKEN_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+")
 SERVER_HOST_PATTERN = re.compile(r'(server at|host name)\s+"[^"]+"', re.IGNORECASE)
+PSYCOPG_HOST_FIELD_PATTERN = re.compile(r"(host(?:addr)?):\s*'[^']+'", re.IGNORECASE)
+IPV4_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
 def _ensure_repo_root_on_path() -> None:
@@ -117,6 +119,8 @@ def _safe_error_message(error: BaseException) -> str:
     message = DATABASE_URL_PATTERN.sub("[REDACTED_DATABASE_URL]", message)
     message = BEARER_TOKEN_PATTERN.sub("Bearer [REDACTED_TOKEN]", message)
     message = SERVER_HOST_PATTERN.sub(lambda match: f'{match.group(1)} "[REDACTED_HOST]"', message)
+    message = PSYCOPG_HOST_FIELD_PATTERN.sub(lambda match: f"{match.group(1)}: '[REDACTED_HOST]'", message)
+    message = IPV4_PATTERN.sub("[REDACTED_IP]", message)
     return message[:500]
 
 
