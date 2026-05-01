@@ -1089,8 +1089,7 @@ async def _media_render_cache_set(
     ttl_seconds = max(1, int(getattr(app.state, "media_render_cache_ttl_seconds", 300)))
     max_items = max(1, int(getattr(app.state, "media_render_cache_max_items", 256)))
     async with lock:
-        await run_in_threadpool(
-            _media_render_cache_set_locked,
+        _media_render_cache_set_locked(
             cache,
             variant_key,
             bytes_data,
