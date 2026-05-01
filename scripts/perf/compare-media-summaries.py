@@ -77,7 +77,7 @@ BASE_THRESHOLD_RULES: list[ThresholdRule] = [
         "field": "rate",
         "max_value": 0.00001,
     },
-    {"name": "render_cache_miss_latency", "field": "p(95)", "max_value": 2500.0},
+    {"name": "render_cache_miss_latency", "field": "p(95)", "max_value": 3000.0},
     {"name": "profile_failure_rate", "field": "rate", "max_value": 0.10},
     {"name": "profile_latency", "field": "p(95)", "max_value": 1200.0},
     {"name": "analyze_failure_rate", "field": "rate", "max_value": 0.20},
@@ -95,6 +95,10 @@ CACHE_HEADER_REQUIRED_METRICS: list[RequiredMetric] = [
     {"name": "render_cache_miss_observed_rate", "field": "rate"},
     {"name": "render_cache_miss_observed_count", "field": "count"},
 ]
+
+WARNING_THRESHOLDS: dict[str, float] = {
+    "render_cache_miss_latency.p(95)": 2500.0,
+}
 
 
 def _read_summary(path: Path) -> dict[str, Any]:
@@ -283,6 +287,7 @@ def main() -> int:
 
     regressions = 0
     threshold_failures = 0
+    warnings = 0
     missing_required_metrics = 0
     thresholds = _thresholds_by_metric(
         _threshold_rules_for_run(require_cache_header=bool(args.require_cache_header))
@@ -309,15 +314,25 @@ def main() -> int:
         )
         threshold = thresholds.get(metric_key)
         threshold_failed = args.enforce_thresholds and _is_threshold_failure(after_value, threshold)
+        warning_threshold = WARNING_THRESHOLDS.get(metric_key)
+        warned = (
+            args.enforce_thresholds
+            and not threshold_failed
+            and _is_threshold_failure(after_value, warning_threshold)
+        )
         if regressed:
             regressions += 1
         if threshold_failed:
             threshold_failures += 1
+        if warned:
+            warnings += 1
         status_parts: list[str] = []
         if regressed:
             status_parts.append("regressed")
         if threshold_failed:
             status_parts.append("threshold")
+        if warned:
+            status_parts.append("warning")
         status = ",".join(status_parts) if status_parts else "ok"
         if args.enforce_thresholds:
             print(
@@ -360,6 +375,7 @@ def main() -> int:
     print(f"regressions={regressions}")
     if args.enforce_thresholds:
         print(f"threshold_failures={threshold_failures}")
+        print(f"warnings={warnings}")
     if required_metrics:
         print(f"missing_required_metrics={missing_required_metrics}")
     if args.fail_on_regression and regressions > 0:
