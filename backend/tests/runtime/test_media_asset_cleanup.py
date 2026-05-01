@@ -6,6 +6,7 @@ import sys
 import types
 import unittest
 from collections import OrderedDict
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -21,7 +22,12 @@ os.environ.pop("DATABASE_URL", None)
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 import backend.server as server  # noqa: E402
 from backend.modules.media.service import MediaObjectPayload, MediaStorageError, MediaUploadResult  # noqa: E402
-from backend.modules.ops.data_retention import InMemoryRetentionStore, RetentionDataClass  # noqa: E402
+from backend.modules.ops.data_retention import (  # noqa: E402
+    InMemoryRetentionStore,
+    RetentionDataClass,
+    RetentionRecord,
+    RetentionStoreError,
+)
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -51,6 +57,7 @@ class _RecordingMediaStorage:
     def __init__(self, *, delete_error: MediaStorageError | None) -> None:
         self.delete_error = delete_error
         self.deleted_object_keys: list[str] = []
+        self.uploaded_asset_ids: list[str] = []
         self.uploaded_object_keys: list[str] = []
         self._upload_count = 0
 
@@ -67,6 +74,7 @@ class _RecordingMediaStorage:
         asset_id = f"asset_cleanup_{uuid4().hex[:10]}"
         extension = "png" if mime_type == "image/png" else "jpg"
         object_key = f"media/{user_id}/{scope}/{asset_id}/original.{extension}"
+        self.uploaded_asset_ids.append(asset_id)
         self.uploaded_object_keys.append(object_key)
         return MediaUploadResult(
             asset_id=asset_id,
@@ -84,6 +92,67 @@ class _RecordingMediaStorage:
         if self.delete_error is not None:
             raise self.delete_error
         self.deleted_object_keys.append(object_key)
+
+
+class _RegisterMediaAssetFailingAuthService:
+    def __init__(self, *, delegate: Any) -> None:
+        self._delegate = delegate
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._delegate, name)
+
+    def register_media_asset(
+        self,
+        *,
+        user_id: str,
+        scope: str,
+        mime_type: str,
+        size_bytes: int,
+        sha256: str,
+        object_key: str,
+        asset_id: str,
+    ) -> dict[str, object]:
+        raise server.AuthServiceError(
+            code="AUTH_MEDIA_REGISTER_FAILED",
+            message="Media metadata registration failed.",
+            status_code=503,
+            user_id=user_id,
+        )
+
+
+class _RegisterMediaAssetPersistFailingAuthService:
+    def __init__(self, *, delegate: Any) -> None:
+        self._delegate = delegate
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._delegate, name)
+
+    def register_media_asset(
+        self,
+        *,
+        user_id: str,
+        scope: str,
+        mime_type: str,
+        size_bytes: int,
+        sha256: str,
+        object_key: str,
+        asset_id: str,
+    ) -> dict[str, object]:
+        self._delegate.register_media_asset(
+            user_id=user_id,
+            scope=scope,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            sha256=sha256,
+            object_key=object_key,
+            asset_id=asset_id,
+        )
+        raise server.AuthStateStoreError("forced auth state save failure")
+
+
+class _FailingRetentionStore(InMemoryRetentionStore):
+    def add(self, record: RetentionRecord) -> None:
+        raise RetentionStoreError("forced retention failure")
 
 
 class MediaAssetCleanupTests(unittest.TestCase):
@@ -266,6 +335,108 @@ class MediaAssetCleanupTests(unittest.TestCase):
 
         with self.assertRaises(server.AuthServiceError):
             server.app.state.auth_service.get_media_asset(asset_id=asset_id)
+
+    def test_upload_deletes_uploaded_object_when_auth_registration_fails(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+
+        with TestClient(server.app) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = InMemoryRetentionStore()
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-register-fail"))
+            headers = _auth_headers(str(session["access_token"]))
+            original_auth_service = server.app.state.auth_service
+            server.app.state.auth_service = _RegisterMediaAssetFailingAuthService(delegate=original_auth_service)
+            try:
+                upload_response = client.post(
+                    "/me/media/upload",
+                    files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                    data={"scope": "history"},
+                    headers=headers,
+                )
+            finally:
+                server.app.state.auth_service = original_auth_service
+
+        self.assertEqual(upload_response.status_code, 503)
+        self.assertEqual(upload_response.json()["detail"]["code"], "AUTH_MEDIA_REGISTER_FAILED")
+        self.assertEqual(media_storage.deleted_object_keys, media_storage.uploaded_object_keys)
+        self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
+        with self.assertRaises(server.AuthServiceError):
+            server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])
+
+    def test_upload_deletes_uploaded_object_and_metadata_when_auth_persistence_fails(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+
+        with TestClient(server.app, raise_server_exceptions=False) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = InMemoryRetentionStore()
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-auth-state-fail"))
+            headers = _auth_headers(str(session["access_token"]))
+            original_auth_service = server.app.state.auth_service
+            server.app.state.auth_service = _RegisterMediaAssetPersistFailingAuthService(delegate=original_auth_service)
+            try:
+                upload_response = client.post(
+                    "/me/media/upload",
+                    files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                    data={"scope": "history"},
+                    headers=headers,
+                )
+            finally:
+                server.app.state.auth_service = original_auth_service
+
+        self.assertEqual(upload_response.status_code, 500)
+        self.assertEqual(upload_response.json()["detail"]["code"], "AUTH_STATE_STORE_FAILED")
+        self.assertEqual(media_storage.deleted_object_keys, media_storage.uploaded_object_keys)
+        self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
+        with self.assertRaises(server.AuthServiceError):
+            server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])
+
+    def test_upload_deletes_uploaded_object_and_metadata_when_retention_registration_fails(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+
+        with TestClient(server.app, raise_server_exceptions=False) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = _FailingRetentionStore()
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-retention-fail"))
+            headers = _auth_headers(str(session["access_token"]))
+            upload_response = client.post(
+                "/me/media/upload",
+                files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                data={"scope": "history"},
+                headers=headers,
+            )
+
+        self.assertEqual(upload_response.status_code, 500)
+        self.assertEqual(upload_response.json()["detail"]["code"], "MEDIA_RETENTION_RECORD_ADD_FAILED")
+        self.assertEqual(media_storage.deleted_object_keys, media_storage.uploaded_object_keys)
+        self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
+        with self.assertRaises(server.AuthServiceError):
+            server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])
+
+    def test_upload_deletes_uploaded_object_when_retention_store_is_missing(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+
+        with TestClient(server.app, raise_server_exceptions=False) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = None
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-retention-missing"))
+            headers = _auth_headers(str(session["access_token"]))
+            upload_response = client.post(
+                "/me/media/upload",
+                files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                data={"scope": "history"},
+                headers=headers,
+            )
+
+        self.assertEqual(upload_response.status_code, 500)
+        self.assertEqual(upload_response.json()["detail"]["code"], "MEDIA_RETENTION_RECORD_ADD_FAILED")
+        self.assertEqual(media_storage.deleted_object_keys, media_storage.uploaded_object_keys)
+        self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
+        with self.assertRaises(server.AuthServiceError):
+            server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])
 
 
 if __name__ == "__main__":
