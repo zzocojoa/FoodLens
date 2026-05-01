@@ -75,7 +75,9 @@ jobs:
       RENDER_DEPLOY_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json
       RENDER_JOB_TIMEOUT_SECONDS: "900"
       RENDER_JOB_POLL_SECONDS: "10"
+      RENDER_JOB_LOG_WAIT_SECONDS: "60"
       RENDER_JOB_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-one-off-job-summary.json
+      RENDER_JOB_LOG_PATH: artifacts/phase6/staging-integration-smoke/render-one-off-job.log
       RENDER_START_COMMAND: >-
         env
         OPENAPI_EXPORT_ONLY=1

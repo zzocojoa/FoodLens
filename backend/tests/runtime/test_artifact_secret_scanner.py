@@ -71,6 +71,22 @@ class ArtifactSecretScannerTests(unittest.TestCase):
                 ],
             )
 
+    def test_scan_finds_database_url_and_private_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_dir = Path(temp_dir)
+            (artifact_dir / "render.log").write_text(
+                'postgresql://user:password@example.com/db\n{"private_key":"secret-private-key"}',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                self.scanner.scan_artifacts(artifact_dir),
+                [
+                    ("render.log", "database-url"),
+                    ("render.log", "json-private-key"),
+                ],
+            )
+
     def test_scan_passes_redacted_backend_performance_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact_dir = Path(temp_dir)

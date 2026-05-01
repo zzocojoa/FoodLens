@@ -6,9 +6,11 @@ from pathlib import Path
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("authorization-bearer", re.compile(r"authorization\s*:\s*bearer\s+[\w.\-~+/=]+", re.IGNORECASE)),
+    ("database-url", re.compile(r"postgres(?:ql)?://[^\s\"'<>]+", re.IGNORECASE)),
     ("json-access-token", re.compile(r'"access_token"\s*:\s*"[^"]+"', re.IGNORECASE)),
     ("json-refresh-token", re.compile(r'"refresh_token"\s*:\s*"[^"]+"', re.IGNORECASE)),
     ("json-id-token", re.compile(r'"id_token"\s*:\s*"[^"]+"', re.IGNORECASE)),
+    ("json-private-key", re.compile(r'"private_key"\s*:\s*"[^"]+"', re.IGNORECASE)),
     ("signed-media-render-url", re.compile(r"/media/render/[^\s\"'<>]+[?&][^\s\"'<>]*sig=", re.IGNORECASE)),
 )
 
