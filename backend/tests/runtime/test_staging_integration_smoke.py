@@ -291,6 +291,8 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             workflow.index("Wait for Render deploy readiness"),
             workflow.index("Run Render one-off staging integration smoke"),
         )
+        self.assertIn("RENDER_JOB_LOG_PATH", workflow)
+        self.assertIn("RENDER_JOB_LOG_WAIT_SECONDS", workflow)
         self.assertIn("RENDER_START_COMMAND: >-", workflow)
         self.assertIn("env\n        OPENAPI_EXPORT_ONLY=1", workflow)
         self.assertIn("python backend/scripts/staging_integration_smoke.py", workflow)
@@ -409,27 +411,133 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             calls.append((method, url, payload))
             if method == "POST":
                 return {"id": "job-test", "status": "created", "createdAt": "2026-05-01T00:00:00Z"}
-            return {"id": "job-test", "status": next(statuses), "finishedAt": "2026-05-01T00:01:00Z"}
+            if "/jobs/job-test" in url:
+                return {"id": "job-test", "status": next(statuses), "finishedAt": "2026-05-01T00:01:00Z"}
+            if "/services/srv-test" in url:
+                return {"ownerId": "owner-test"}
+            if "/logs?" in url:
+                return {
+                    "logs": [
+                        {"message": "[StagingSmoke] media_delete: PASS"},
+                        {"message": "[StagingSmoke] retention_retry: PASS"},
+                        {"message": "[StagingSmoke] postgres_queue_crash_rehearsal: PASS"},
+                    ]
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             summary_path = Path(temp_dir) / "summary.json"
+            log_path = Path(temp_dir) / "render.log"
             env = {
                 "RENDER_API_KEY": "render-secret-key",
                 "RENDER_SERVICE_ID": "srv-test",
                 "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
                 "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_LOG_PATH": str(log_path),
                 "RENDER_JOB_POLL_SECONDS": "1",
                 "RENDER_JOB_TIMEOUT_SECONDS": "30",
+                "RENDER_JOB_LOG_WAIT_SECONDS": "30",
             }
 
             status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            log_content = log_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
         self.assertEqual(calls[0][0], "POST")
         self.assertEqual(calls[0][2], {"startCommand": "python backend/scripts/staging_integration_smoke.py"})
         self.assertEqual(summary["passed"], True)
         self.assertEqual(summary["render_job"]["status"], "succeeded")
+        self.assertEqual(summary["smoke_checks"]["media_delete"], "pass")
+        self.assertEqual(summary["smoke_checks"]["retention_retry"], "pass")
+        self.assertEqual(summary["smoke_checks"]["postgres_queue_crash_rehearsal"], "pass")
+        self.assertIn("[StagingSmoke] media_delete: PASS", log_content)
+        self.assertIn("[StagingSmoke] retention_retry: PASS", log_content)
+        self.assertIn("[StagingSmoke] postgres_queue_crash_rehearsal: PASS", log_content)
+
+    def test_render_one_off_job_gate_fails_when_success_logs_omit_checks(self) -> None:
+        gate = _load_render_job_gate_module()
+        now = 0.0
+
+        def clock() -> float:
+            nonlocal now
+            now += 10.0
+            return now
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            if method == "POST":
+                return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
+            if "/services/srv-test" in url:
+                return {"ownerId": "owner-test"}
+            if "/logs?" in url:
+                return {"logs": [{"message": "[Startup] ready"}]}
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            log_path = Path(temp_dir) / "render.log"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_LOG_PATH": str(log_path),
+                "RENDER_JOB_LOG_WAIT_SECONDS": "1",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, clock)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 1)
+        self.assertEqual(summary["passed"], False)
+        self.assertEqual(summary["render_job"]["status"], "succeeded")
+        self.assertEqual(summary["smoke_checks"]["media_delete"], "missing")
+        self.assertEqual(summary["smoke_checks"]["retention_retry"], "missing")
+        self.assertEqual(summary["smoke_checks"]["postgres_queue_crash_rehearsal"], "missing")
+
+    def test_render_one_off_job_gate_redacts_log_artifact_secrets(self) -> None:
+        gate = _load_render_job_gate_module()
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            if method == "POST":
+                return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
+            if "/services/srv-test" in url:
+                return {"ownerId": "owner-test"}
+            if "/logs?" in url:
+                return {
+                    "logs": [
+                        {"message": "Authorization: Bearer secret-token"},
+                        {"message": "postgresql://user:password@example.com/db"},
+                        {"message": 'payload {"private_key":"secret-private-key"}'},
+                        {"message": "https://example.com/media/render/asset-test?expires=1&sig=secret-signature"},
+                        {"message": "[StagingSmoke] media_delete: PASS"},
+                        {"message": "[StagingSmoke] retention_retry: PASS"},
+                        {"message": "[StagingSmoke] postgres_queue_crash_rehearsal: PASS"},
+                    ]
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            log_path = Path(temp_dir) / "render.log"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_LOG_PATH": str(log_path),
+                "RENDER_JOB_LOG_WAIT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            log_content = log_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertNotIn("secret-token", log_content)
+        self.assertNotIn("postgresql://", log_content)
+        self.assertNotIn("secret-private-key", log_content)
+        self.assertNotIn("sig=secret-signature", log_content)
+        self.assertIn("[StagingSmoke] media_delete: PASS", log_content)
 
 
 if __name__ == "__main__":
