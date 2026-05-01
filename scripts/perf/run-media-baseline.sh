@@ -183,7 +183,7 @@ if [[ "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" != "0" && "${REQUIRE_MEDIA_RENDE
 fi
 
 if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
-  if ! is_positive_integer "${MIN_RENDER_CACHE_MISS_SAMPLES:-20}"; then
+  if ! is_positive_integer "${MIN_RENDER_CACHE_MISS_SAMPLES:-15}"; then
     echo "[perf] MIN_RENDER_CACHE_MISS_SAMPLES must be a positive integer when cache-miss URLs are configured."
     exit 1
   fi
