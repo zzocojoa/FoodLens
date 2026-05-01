@@ -124,6 +124,7 @@
     - 기존 signed media render 1건
     - fresh media upload 기반 cold render 1건: `X-Media-Render-Cache=miss`, `X-Media-Render-Stage-Ms` 필수 key 확인
     - 동일 fresh render URL 재요청 1건: `X-Media-Render-Cache=hit` 확인
+    - smoke가 업로드한 fresh media asset cleanup 1건: owner-scoped delete 성공 확인
     - `POST /analyze/jobs` (`mode=food`) submit -> `completed|fallback_completed` terminal poll 1건
   - smoke 인증 입력 고정:
     - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_EMAIL`

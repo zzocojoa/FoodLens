@@ -19,6 +19,8 @@ ROLLBACK_SUMMARY="${PHASE6_ROLLBACK_REHEARSAL_SUMMARY:-}"
 CURRENT_STEP="bootstrap"
 FINAL_VERDICT="FAIL"
 FAILURE_STEP=""
+SMOKE_MEDIA_ASSET_ID=""
+SMOKE_MEDIA_CLEANUP_DONE="0"
 
 require_env() {
   local key="$1"
@@ -325,6 +327,30 @@ print(render_url)
 PY
 }
 
+extract_media_upload_asset_id() {
+  local body_path="$1"
+
+  python3 - "$body_path" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+asset = payload.get("asset")
+if not isinstance(asset, dict):
+    raise SystemExit("Media upload response is missing asset.")
+
+asset_id = str(asset.get("asset_id") or "").strip()
+if not re.fullmatch(r"[A-Za-z0-9_.:-]+", asset_id):
+    raise SystemExit("Media upload response has invalid asset_id.")
+
+print(asset_id)
+PY
+}
+
 redact_sensitive_json_artifact() {
   local body_path="$1"
 
@@ -367,6 +393,59 @@ with open(path, "w", encoding="utf-8") as handle:
     json.dump(redact(payload), handle, ensure_ascii=False, sort_keys=True)
     handle.write("\n")
 PY
+}
+
+delete_media_asset_status() {
+  local label="$1"
+  local url="$2"
+  local authorization_header="$3"
+  local headers_path="${ARTIFACT_DIR}/${label}.headers"
+  local body_path="${ARTIFACT_DIR}/${label}.body"
+  local status_code=""
+
+  status_code="$(
+    curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors \
+      -X DELETE \
+      -H "${authorization_header}" \
+      -D "${headers_path}" \
+      -o "${body_path}" \
+      -w '%{http_code}' \
+      "${url}"
+  )"
+
+  printf '%s\n' "${status_code}"
+}
+
+cleanup_smoke_media_asset() {
+  local label="$1"
+  local failure_mode="$2"
+  local cleanup_status=""
+
+  if [[ -z "${SMOKE_MEDIA_ASSET_ID}" || "${SMOKE_MEDIA_CLEANUP_DONE}" == "1" ]]; then
+    return 0
+  fi
+
+  set +e
+  cleanup_status="$(
+    delete_media_asset_status \
+      "${label}" \
+      "${BASE_URL}/me/media/${SMOKE_MEDIA_ASSET_ID}" \
+      "Authorization: Bearer ${AUTH_BEARER_TOKEN}"
+  )"
+  local cleanup_exit_code="$?"
+  set -e
+
+  if [[ "${cleanup_exit_code}" -eq 0 && "${cleanup_status}" == "200" ]]; then
+    SMOKE_MEDIA_CLEANUP_DONE="1"
+    record_result "${label}" "PASS" "200"
+    return 0
+  fi
+
+  record_result "${label}" "${failure_mode}" "curl=${cleanup_exit_code};status=${cleanup_status:-missing}"
+  if [[ "${failure_mode}" == "FAIL" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 get_header_value() {
@@ -578,6 +657,7 @@ write_summary() {
 
 on_exit() {
   local exit_code="$1"
+  cleanup_smoke_media_asset "media-cold-cleanup-on-exit" "WARN"
   if [[ "${exit_code}" -ne 0 ]]; then
     FAILURE_STEP="${CURRENT_STEP}"
     FINAL_VERDICT="FAIL"
@@ -663,6 +743,7 @@ if [[ "${MEDIA_COLD_UPLOAD_STATUS}" != "200" ]]; then
   echo "[Phase6 Postdeploy Smoke] media-cold-upload expected 200, got ${MEDIA_COLD_UPLOAD_STATUS}"
   exit 1
 fi
+SMOKE_MEDIA_ASSET_ID="$(extract_media_upload_asset_id "${ARTIFACT_DIR}/media-cold-upload.body")"
 MEDIA_COLD_RENDER_URL="$(extract_media_upload_render_url "${ARTIFACT_DIR}/media-cold-upload.body")"
 redact_sensitive_json_artifact "${ARTIFACT_DIR}/media-cold-upload.body"
 record_result "media-cold-upload" "PASS" "fresh-render-url-redacted"
@@ -679,6 +760,12 @@ assert_status "media-cold-render-hit" "${MEDIA_COLD_RENDER_URL}" "200" ""
 assert_header_contains "media-cold-render-hit" "content-type" "image/"
 assert_header_equals "media-cold-render-hit" "X-Media-Render-Cache" "hit"
 record_result "media-cold-render-hit" "PASS" "cache=hit"
+
+CURRENT_STEP="media-cold-cleanup"
+if ! cleanup_smoke_media_asset "media-cold-cleanup" "FAIL"; then
+  echo "[Phase6 Postdeploy Smoke] media-cold-cleanup failed"
+  exit 1
+fi
 
 CURRENT_STEP="analyze-jobs-submit"
 SMOKE_ANALYZE_IMAGE_PATH="${ARTIFACT_DIR}/analyze-jobs-smoke.png"

@@ -3978,6 +3978,43 @@
         "summary": "Post Me Media Upload"
       }
     },
+    "/me/media/{asset_id}": {
+      "delete": {
+        "operationId": "delete_me_media_asset_me_media__asset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Me Media Asset"
+      }
+    },
     "/me/profile": {
       "get": {
         "operationId": "get_me_profile_me_profile_get",

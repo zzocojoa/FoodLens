@@ -41,6 +41,7 @@ from backend.modules.ops.data_retention import (
     PostgresRetentionStore,
     RetentionDataClass,
     RetentionRecord,
+    RetentionStoreError,
     RetentionCleanupJob,
 )
 from backend.modules.ops.data_retention import RetentionPolicyConfig
@@ -1107,6 +1108,19 @@ async def _media_render_cache_set(
             now_ts + ttl_seconds,
             max_items,
         )
+
+
+async def _media_render_cache_purge_asset(asset_id: str) -> int:
+    cache = getattr(app.state, "media_render_cache", None)
+    lock = getattr(app.state, "media_render_cache_lock", None)
+    if not _is_media_render_cache_operational() or cache is None or lock is None:
+        return 0
+    variant_prefix = f"{asset_id}:"
+    async with lock:
+        matching_keys = [key for key in cache if key.startswith(variant_prefix)]
+        for key in matching_keys:
+            cache.pop(key, None)
+        return len(matching_keys)
 
 
 def _media_render_cache_set_locked(
@@ -3067,6 +3081,110 @@ async def post_me_media_upload(
             request_id,
             user.user_id,
             normalized_scope,
+            error.code,
+            error.status_code,
+        )
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={
+                "message": error.message,
+                "code": error.code,
+                "request_id": request_id,
+            },
+        ) from error
+    except AuthServiceError as error:
+        _log_auth_failure(
+            request_id=request_id,
+            user_id=user.user_id,
+            provider=None,
+            code=error.code,
+        )
+        raise _auth_error_to_http_exception(error, request_id) from error
+
+
+@app.delete("/me/media/{asset_id}")
+async def delete_me_media_asset(asset_id: str, request: Request):
+    request_id = _request_id(request)
+    auth_service = _service("auth_service")
+    media_storage = _service("media_storage")
+    user = _resolve_authenticated_user(request, request_id)
+    normalized_asset_id = asset_id.strip()
+    if not normalized_asset_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "asset_id is required.",
+                "code": "MEDIA_INVALID_ASSET_ID",
+                "request_id": request_id,
+            },
+        )
+
+    try:
+        asset = await run_in_threadpool(
+            auth_service.get_media_asset,
+            asset_id=normalized_asset_id,
+            user_id=user.user_id,
+        )
+        object_key = str(asset.get("object_key") or "").strip()
+        if not object_key:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Media asset storage key is missing.",
+                    "code": "MEDIA_OBJECT_KEY_MISSING",
+                    "request_id": request_id,
+                },
+            )
+
+        try:
+            await run_in_threadpool(media_storage.delete_original, object_key=object_key)
+        except MediaStorageError as error:
+            if error.code != "MEDIA_NOT_FOUND":
+                raise
+        purged_cache_entries = await _media_render_cache_purge_asset(normalized_asset_id)
+        retention_store = getattr(app.state, "retention_store", None)
+        if retention_store is not None:
+            try:
+                await run_in_threadpool(retention_store.remove, normalized_asset_id)
+            except RetentionStoreError as error:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "message": "Failed to remove media retention record.",
+                        "code": "MEDIA_RETENTION_RECORD_REMOVE_FAILED",
+                        "request_id": request_id,
+                    },
+                ) from error
+        deleted = await run_in_threadpool(auth_service.delete_media_asset, asset_id=normalized_asset_id)
+        if not deleted:
+            raise AuthServiceError(
+                code="AUTH_MEDIA_NOT_FOUND",
+                message="Media asset not found.",
+                status_code=404,
+                user_id=user.user_id,
+            )
+
+        logger.info(
+            "[Media] delete success request_id=%s user_id=%s asset_id=%s scope=%s purged_cache_entries=%s",
+            request_id,
+            user.user_id,
+            normalized_asset_id,
+            str(asset.get("scope") or "unknown"),
+            purged_cache_entries,
+        )
+        return {
+            "deleted": True,
+            "asset_id": normalized_asset_id,
+            "request_id": request_id,
+        }
+    except HTTPException:
+        raise
+    except MediaStorageError as error:
+        logger.warning(
+            "[Media] delete failed request_id=%s user_id=%s asset_id=%s code=%s status=%s",
+            request_id,
+            user.user_id,
+            normalized_asset_id,
             error.code,
             error.status_code,
         )

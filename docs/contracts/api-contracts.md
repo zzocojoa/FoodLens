@@ -219,11 +219,13 @@
 ### C. Media
 
 - `POST /me/media/upload` (multipart: `file`, `scope=profile|history`, `linked_entry_id?`)
+- `DELETE /me/media/{asset_id}`
 - `GET /media/render/{asset_id}?w=<preset>&q=<50~85>&fmt=auto`
 
 설명:
 
 - 서버 자산은 signed render URL로 다시 읽습니다.
+- media cleanup은 bearer token 사용자 본인이 소유한 `asset_id`에만 허용하며, 원본 object, retention record, profile/history 참조, render cache를 정리합니다.
 - `/me/history` 응답의 `entry.image_render_url`, `/me/profile` 응답의 `profile_image_render_url`이 앱과 smoke에서 사용하는 정규 경로입니다.
 - bare filename, 로컬 파일 경로, 임시 device URI는 서버 측 원격 미디어 참조로 취급하지 않습니다.
 
