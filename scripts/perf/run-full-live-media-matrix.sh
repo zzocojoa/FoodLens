@@ -22,7 +22,7 @@ capture_env_override() {
   local name="${1}"
   local has_name="HAS_OVERRIDE_${name}"
   local value_name="OVERRIDE_${name}"
-  if [[ -v "${name}" ]]; then
+  if [[ "${!name+x}" == "x" ]]; then
     printf -v "${has_name}" '%s' "1"
     printf -v "${value_name}" '%s' "${!name}"
   else
