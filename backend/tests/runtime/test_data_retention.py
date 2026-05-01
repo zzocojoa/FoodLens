@@ -108,6 +108,36 @@ class DataRetentionTests(unittest.TestCase):
         self.assertEqual(result.deleted_count, 0)
         self.assertEqual([item.record_id for item in store.list_records(RetentionDataClass.ORIGINAL, 10)], ["expired-original"])
 
+    def test_in_memory_retention_store_upserts_same_record_id(self) -> None:
+        now = datetime(2026, 2, 14, tzinfo=timezone.utc)
+        store = InMemoryRetentionStore()
+
+        store.add(
+            RetentionRecord(
+                record_id="asset-1",
+                data_class=RetentionDataClass.ORIGINAL,
+                created_at=now,
+                user_id="usr-1",
+                storage_key="media/usr-1/history/asset-1/original.jpg",
+                object_generation=1,
+            )
+        )
+        store.add(
+            RetentionRecord(
+                record_id="asset-1",
+                data_class=RetentionDataClass.ORIGINAL,
+                created_at=now - timedelta(days=31),
+                user_id="usr-1",
+                storage_key="media/usr-1/history/asset-1/original.jpg",
+                object_generation=2,
+            )
+        )
+
+        records = store.list_records(RetentionDataClass.ORIGINAL, 10)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].object_generation, 2)
+        self.assertEqual(records[0].created_at, now - timedelta(days=31))
+
     def test_json_file_retention_store_persists_records(self) -> None:
         now = datetime(2026, 2, 14, tzinfo=timezone.utc)
         with TemporaryDirectory() as tmp:
@@ -124,6 +154,36 @@ class DataRetentionTests(unittest.TestCase):
             records = reopened.list_records(RetentionDataClass.LOG, 10)
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0].record_id, "rec-1")
+
+    def test_json_file_retention_store_upserts_same_record_id(self) -> None:
+        now = datetime(2026, 2, 14, tzinfo=timezone.utc)
+        with TemporaryDirectory() as tmp:
+            store = JsonFileRetentionStore(str(Path(tmp) / "retention.json"))
+            store.add(
+                RetentionRecord(
+                    record_id="asset-1",
+                    data_class=RetentionDataClass.ORIGINAL,
+                    created_at=now,
+                    user_id="usr-1",
+                    storage_key="media/usr-1/history/asset-1/original.jpg",
+                    object_generation=1,
+                )
+            )
+            store.add(
+                RetentionRecord(
+                    record_id="asset-1",
+                    data_class=RetentionDataClass.ORIGINAL,
+                    created_at=now - timedelta(days=31),
+                    user_id="usr-1",
+                    storage_key="media/usr-1/history/asset-1/original.jpg",
+                    object_generation=2,
+                )
+            )
+
+            reopened = JsonFileRetentionStore(str(Path(tmp) / "retention.json"))
+            records = reopened.list_records(RetentionDataClass.ORIGINAL, 10)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0].object_generation, 2)
 
     def test_json_file_retention_store_remove_persists(self) -> None:
         now = datetime(2026, 2, 14, tzinfo=timezone.utc)

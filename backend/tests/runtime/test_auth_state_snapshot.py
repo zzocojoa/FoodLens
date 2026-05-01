@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch
 
@@ -86,6 +87,47 @@ class AuthStateSnapshotTests(unittest.TestCase):
             )
             self.assertEqual(service.state_backend, "postgres")
             mocked_store.assert_called_once()
+
+    def test_state_snapshot_restores_legacy_media_asset_without_object_generation(self):
+        state_store = _MemoryStateStore()
+        service_a = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+        )
+        session = service_a.signup_email(
+            email="legacy-media@example.com",
+            password="Passw0rd!",
+            display_name="Legacy Media User",
+            locale="ko-KR",
+            device_id="ios-device",
+        )
+        user_id = str(session["user"]["id"])
+        asset = service_a.register_media_asset(
+            user_id=user_id,
+            scope="history",
+            mime_type="image/png",
+            size_bytes=3,
+            sha256="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            object_key=f"media/{user_id}/history/asset_legacy/original.png",
+            asset_id="asset_legacy",
+            object_generation=42,
+        )
+        self.assertEqual(asset["object_generation"], 42)
+
+        self.assertIsNotNone(state_store.payload)
+        snapshot = dict(state_store.payload or {})
+        payload = json.loads(str(snapshot["payload"]))
+        media_assets = payload["_media_assets_by_id"]
+        media_assets["asset_legacy"].pop("object_generation", None)
+        snapshot["payload"] = json.dumps(payload, separators=(",", ":"))
+        state_store.payload = snapshot
+
+        service_b = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+        )
+        restored = service_b.get_media_asset(asset_id="asset_legacy", user_id=user_id)
+        self.assertIsNone(restored["object_generation"])
 
 
 if __name__ == "__main__":

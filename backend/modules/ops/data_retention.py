@@ -58,6 +58,7 @@ class RetentionRecord:
     user_id: str | None = None
     request_id: str | None = None
     storage_key: str | None = None
+    object_generation: int | None = None
 
 
 class RetentionStore(Protocol):
@@ -76,6 +77,7 @@ class InMemoryRetentionStore:
         self._records = list(records or [])
 
     def add(self, record: RetentionRecord) -> None:
+        self._records = [item for item in self._records if item.record_id != record.record_id]
         self._records.append(record)
 
     def list_records(self, data_class: RetentionDataClass, limit: int) -> list[RetentionRecord]:
@@ -115,6 +117,7 @@ class JsonFileRetentionStore:
                         user_id=item.get("user_id"),
                         request_id=item.get("request_id"),
                         storage_key=item.get("storage_key"),
+                        object_generation=_coerce_optional_int(item.get("object_generation")),
                     )
                 )
             except Exception:
@@ -130,6 +133,7 @@ class JsonFileRetentionStore:
                 "user_id": record.user_id,
                 "request_id": record.request_id,
                 "storage_key": record.storage_key,
+                "object_generation": record.object_generation,
             }
             for record in records
         ]
@@ -137,6 +141,7 @@ class JsonFileRetentionStore:
 
     def add(self, record: RetentionRecord) -> None:
         records = self._load()
+        records = [item for item in records if item.record_id != record.record_id]
         records.append(record)
         self._save(records)
 
@@ -169,14 +174,15 @@ class PostgresRetentionStore:
                     cursor.execute(
                         (
                             f"INSERT INTO {self.table_name} "
-                            "(record_id,data_class,created_at,user_id,request_id,storage_key,updated_at) "
-                            "VALUES (%s,%s,%s::timestamptz,%s,%s,%s,NOW()) "
+                            "(record_id,data_class,created_at,user_id,request_id,storage_key,object_generation,updated_at) "
+                            "VALUES (%s,%s,%s::timestamptz,%s,%s,%s,%s,NOW()) "
                             "ON CONFLICT (record_id) DO UPDATE SET "
                             "data_class=EXCLUDED.data_class,"
                             "created_at=EXCLUDED.created_at,"
                             "user_id=EXCLUDED.user_id,"
                             "request_id=EXCLUDED.request_id,"
                             "storage_key=EXCLUDED.storage_key,"
+                            "object_generation=EXCLUDED.object_generation,"
                             "updated_at=NOW()"
                         ),
                         (
@@ -186,6 +192,7 @@ class PostgresRetentionStore:
                             record.user_id,
                             record.request_id,
                             record.storage_key,
+                            record.object_generation,
                         ),
                     )
         except Exception as error:
@@ -197,9 +204,10 @@ class PostgresRetentionStore:
             with connect(self.database_url, autocommit=True) as conn:
                 self._ensure_table(conn)
                 with conn.cursor() as cursor:
+                    self._ensure_object_generation_column(conn)
                     cursor.execute(
                         (
-                            f"SELECT record_id,data_class,created_at,user_id,request_id,storage_key "
+                            f"SELECT record_id,data_class,created_at,user_id,request_id,storage_key,object_generation "
                             f"FROM {self.table_name} "
                             "WHERE data_class = %s "
                             "ORDER BY created_at ASC "
@@ -236,14 +244,20 @@ class PostgresRetentionStore:
                     "user_id TEXT NULL,"
                     "request_id TEXT NULL,"
                     "storage_key TEXT NULL,"
+                    "object_generation BIGINT NULL,"
                     "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
                     ")"
                 )
             )
+            self._ensure_object_generation_column(conn)
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.table_name}_class_created_idx "
                 f"ON {self.table_name} (data_class, created_at)"
             )
+
+    def _ensure_object_generation_column(self, conn: object) -> None:
+        with conn.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS object_generation BIGINT NULL")
 
 
 class RetentionCleanupAdapter(Protocol):
@@ -368,6 +382,7 @@ def _row_to_retention_record(row: tuple[object, ...]) -> RetentionRecord:
         user_id=str(row[3]) if row[3] is not None else None,
         request_id=str(row[4]) if row[4] is not None else None,
         storage_key=str(row[5]) if row[5] is not None else None,
+        object_generation=_coerce_optional_int(row[6]) if len(row) > 6 else None,
     )
 
 
@@ -375,6 +390,16 @@ def _coerce_datetime(value: object) -> datetime:
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
     return datetime.fromisoformat(str(value))
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def _load_connect():

@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime, timezone
 
 from backend.modules.auth.email_sender import LoggingEmailVerificationSender
+from backend.modules.auth.service import AuthServiceError
 from backend.modules.ops.deletion_queue import DeletionRequest, DeletionTarget
 from backend.modules.ops.privacy_deletion import UserDeletionHandler
 from backend.server import _log_email_verification_event
@@ -38,14 +39,45 @@ class _FakeAuthService:
         return True
 
 
+class _MissingAccountAuthService(_FakeAuthService):
+    def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, str]]:
+        raise AuthServiceError(
+            code="AUTH_USER_NOT_FOUND",
+            message="User not found.",
+            status_code=404,
+            user_id=user_id,
+        )
+
+
 class _FakeMediaStorage:
-    def delete_original(self, *, object_key: str) -> None:
+    object_prefix: str = "media"
+
+    def __init__(self) -> None:
+        self.deleted: list[tuple[str, int | None]] = []
+
+    def delete_original(self, *, object_key: str, generation: int | None = None) -> None:
+        self.deleted.append((object_key, generation))
         return None
 
 
 class _FakeRetentionStore:
     def remove(self, asset_id: str) -> None:
         return None
+
+
+class _MismatchedMediaAuthService(_FakeAuthService):
+    def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, object]]:
+        return [
+            {
+                "asset_id": "asset_123",
+                "user_id": user_id,
+                "scope": "history",
+                "object_key": "media/other-user/history/asset_123/original.png",
+                "object_generation": 10,
+                "size_bytes": 3,
+                "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            }
+        ]
 
 
 class Phase5LoggingHygieneTests(unittest.TestCase):
@@ -77,6 +109,49 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
             self.assertEqual(getattr(handler.records[0], "request_id", None), "req_123")
         finally:
             logger.removeHandler(handler)
+
+    def test_account_deletion_retry_treats_missing_user_as_done(self) -> None:
+        deletion_handler = UserDeletionHandler(
+            auth_service=_MissingAccountAuthService(),
+            media_storage=_FakeMediaStorage(),
+            retention_store=_FakeRetentionStore(),
+        )
+
+        result = deletion_handler.handle(
+            DeletionRequest(
+                queue_id="del-retry",
+                created_at=datetime.now(timezone.utc),
+                target=DeletionTarget.ACCOUNT,
+                user_id="usr_deleted",
+                request_id="req_retry",
+                reason="user_requested",
+            )
+        )
+
+        self.assertEqual(result.status.value, "done")
+
+    def test_user_deletion_rejects_generated_asset_with_object_key_mismatch(self) -> None:
+        media_storage = _FakeMediaStorage()
+        deletion_handler = UserDeletionHandler(
+            auth_service=_MismatchedMediaAuthService(),
+            media_storage=media_storage,
+            retention_store=_FakeRetentionStore(),
+        )
+
+        result = deletion_handler.handle(
+            DeletionRequest(
+                queue_id="del-key-mismatch",
+                created_at=datetime.now(timezone.utc),
+                target=DeletionTarget.DATA,
+                user_id="usr_owner",
+                request_id="req_key_mismatch",
+                reason="user_requested",
+            )
+        )
+
+        self.assertEqual(result.status.value, "failed")
+        self.assertIn("MEDIA_OBJECT_KEY_MISMATCH", str(result.error))
+        self.assertEqual(media_storage.deleted, [])
 
     def test_logging_sender_masks_email_and_never_logs_code(self) -> None:
         logger = logging.getLogger("foodlens.auth.email")

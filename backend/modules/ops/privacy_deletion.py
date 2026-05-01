@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Any
 
+from backend.modules.auth.service import AuthServiceError
 from backend.modules.media.service import MediaStorage, MediaStorageError
 from backend.modules.ops.data_retention import RetentionStore
 from backend.modules.ops.deletion_queue import (
@@ -61,8 +63,30 @@ class UserDeletionHandler:
 
             if item.target == DeletionTarget.ACCOUNT:
                 user_id = self._require_user_id(item)
-                summary = self._delete_user_media_assets(user_id=user_id)
-                account_summary = self._auth_service.delete_user_account(user_id=user_id)
+                try:
+                    summary = self._delete_user_media_assets(user_id=user_id)
+                    account_summary = self._auth_service.delete_user_account(user_id=user_id)
+                except AuthServiceError as error:
+                    if error.code != "AUTH_USER_NOT_FOUND":
+                        raise
+                    logger.info(
+                        "[Deletion] completed",
+                        extra={
+                            "queue_id": item.queue_id,
+                            "target": item.target.value,
+                            "user_id": item.user_id,
+                            "request_id": item.request_id,
+                            "reason": item.reason,
+                            "deleted_history_count": 0,
+                            "deleted_media_count": 0,
+                            "revoked_sessions_count": 0,
+                        },
+                    )
+                    return DeletionResult(
+                        queue_id=item.queue_id,
+                        status=DeletionStatus.DONE,
+                        target=item.target,
+                    )
                 logger.info(
                     "[Deletion] completed",
                     extra={
@@ -84,6 +108,7 @@ class UserDeletionHandler:
 
             raise ValueError(f"Unsupported deletion target: {item.target.value}")
         except Exception as error:
+            error_message = _deletion_error_message(error)
             logger.warning(
                 "[Deletion] failed",
                 extra={
@@ -92,14 +117,14 @@ class UserDeletionHandler:
                     "user_id": item.user_id,
                     "request_id": item.request_id,
                     "reason": item.reason,
-                    "error": str(error),
+                    "error": error_message,
                 },
             )
             return DeletionResult(
                 queue_id=item.queue_id,
                 status=DeletionStatus.FAILED,
                 target=item.target,
-                error=str(error),
+                error=error_message,
             )
 
     def _delete_user_media_assets(self, *, user_id: str) -> UserDeletionSummary:
@@ -110,7 +135,11 @@ class UserDeletionHandler:
             asset_id = str(asset.get("asset_id", "")).strip()
             if object_key:
                 try:
-                    self._media_storage.delete_original(object_key=object_key)
+                    object_generation = self._resolve_asset_generation(asset=asset)
+                    self._media_storage.delete_original(
+                        object_key=object_key,
+                        generation=object_generation,
+                    )
                 except MediaStorageError as error:
                     if error.code != "MEDIA_NOT_FOUND":
                         raise
@@ -124,8 +153,80 @@ class UserDeletionHandler:
             revoked_sessions_count=0,
         )
 
+    def _resolve_asset_generation(self, *, asset: dict[str, object]) -> int:
+        object_key = str(asset.get("object_key", "")).strip()
+        object_prefix = str(getattr(self._media_storage, "object_prefix", "media"))
+        if not _is_media_asset_object_key(
+            object_key=object_key,
+            object_prefix=object_prefix,
+            user_id=str(asset.get("user_id", "")).strip(),
+            scope=str(asset.get("scope", "")).strip(),
+            asset_id=str(asset.get("asset_id", "")).strip(),
+        ):
+            raise MediaStorageError(
+                code="MEDIA_OBJECT_KEY_MISMATCH",
+                message="Media asset storage key does not match owner metadata.",
+                status_code=409,
+            )
+        object_generation = _coerce_optional_int(asset.get("object_generation"))
+        if object_generation is not None:
+            return object_generation
+
+        payload = self._media_storage.fetch_original(object_key=object_key)
+        expected_size = int(asset.get("size_bytes") or -1)
+        expected_sha256 = str(asset.get("sha256") or "").strip().lower()
+        actual_sha256 = hashlib.sha256(payload.bytes_data).hexdigest()
+        if expected_size != len(payload.bytes_data) or expected_sha256 != actual_sha256:
+            raise MediaStorageError(
+                code="MEDIA_GENERATION_BACKFILL_MISMATCH",
+                message="Legacy media object content does not match stored metadata.",
+                status_code=409,
+            )
+        generation = self._media_storage.get_original_generation(object_key=object_key)
+        asset_id = str(asset.get("asset_id", "")).strip()
+        if asset_id:
+            self._auth_service.update_media_asset_generation(
+                asset_id=asset_id,
+                object_generation=generation,
+            )
+        return generation
+
     @staticmethod
     def _require_user_id(item: DeletionRequest) -> str:
         if item.user_id:
             return item.user_id
         raise ValueError("user_id is required for user deletion requests")
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _deletion_error_message(error: Exception) -> str:
+    if isinstance(error, MediaStorageError):
+        return f"{error.code}: {error.message}"
+    if isinstance(error, AuthServiceError):
+        return f"{error.code}: {error.message}"
+    return str(error)
+
+
+def _is_media_asset_object_key(
+    *,
+    object_key: str,
+    object_prefix: str,
+    user_id: str,
+    scope: str,
+    asset_id: str,
+) -> bool:
+    key_parts = [part for part in object_key.strip().strip("/").split("/") if part]
+    prefix_parts = [part for part in object_prefix.strip().strip("/").split("/") if part] or ["media"]
+    expected_parts = [*prefix_parts, user_id.strip(), scope.strip(), asset_id.strip()]
+    if len(key_parts) != len(expected_parts) + 1:
+        return False
+    return key_parts[:-1] == expected_parts and key_parts[-1].startswith("original.")

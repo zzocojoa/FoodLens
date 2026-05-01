@@ -827,8 +827,13 @@ jobs:
         run: |
           bash scripts/perf/run-media-baseline.sh
 
-      - name: Upload performance artifacts
+      - name: Scan performance artifacts for secret leaks
+        id: artifact_secret_scan
         if: always()
+        run: python3 .github/scripts/scan_artifact_secrets.py artifacts/perf
+
+      - name: Upload performance artifacts
+        if: ${{ always() && steps.artifact_secret_scan.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: backend-media-performance-regression-${{ github.run_id }}

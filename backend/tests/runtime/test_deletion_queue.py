@@ -1,17 +1,63 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from backend.modules.ops.deletion_queue import (
     DeletionQueueConsumer,
     DeletionQueueProducer,
     DeletionResult,
+    DeletionStatusSnapshot,
     DeletionStatus,
     DeletionTarget,
     InMemoryDeletionQueueStorage,
     JsonFileDeletionQueueStorage,
     NoOpDeletionHandler,
+    PostgresDeletionQueueStorage,
 )
+
+
+class _FakePostgresCursor:
+    def __init__(self) -> None:
+        self.executed: list[str] = []
+        self._row: tuple[int] | None = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, query: str, params: tuple[object, ...] | None = None) -> None:
+        self.executed.append(query)
+        if "WITH stale AS" in query:
+            self._row = (1,)
+
+    def fetchone(self) -> tuple[int] | None:
+        return self._row
+
+
+class _FakePostgresConnection:
+    def __init__(self, cursor: _FakePostgresCursor) -> None:
+        self.cursor_instance = cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def cursor(self) -> _FakePostgresCursor:
+        return self.cursor_instance
+
+
+class _FakePostgresConnect:
+    def __init__(self) -> None:
+        self.cursor = _FakePostgresCursor()
+
+    def __call__(self, database_url: str, autocommit: bool = False) -> _FakePostgresConnection:
+        return _FakePostgresConnection(self.cursor)
 
 
 class _FailedDeletionHandler:
@@ -132,6 +178,112 @@ class DeletionQueueTests(unittest.TestCase):
             self.assertIsNotNone(done)
             self.assertEqual(done.status, DeletionStatus.DONE)
             self.assertEqual(storage_b.size(), 0)
+
+    def test_json_file_queue_requeues_stale_in_progress_after_restart(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "queue.json")
+            storage_a = JsonFileDeletionQueueStorage(path)
+            producer = DeletionQueueProducer(storage_a)
+            queued = producer.enqueue_user_deletion(
+                user_id="user-stale",
+                target=DeletionTarget.DATA,
+                reason="user_requested",
+            )
+            claimed = storage_a.dequeue()
+            self.assertIsNotNone(claimed)
+            storage_a.save_status(
+                DeletionStatusSnapshot(
+                    queue_id=queued.queue_id,
+                    created_at=queued.created_at,
+                    updated_at=datetime.now(timezone.utc) - timedelta(seconds=600),
+                    status=DeletionStatus.IN_PROGRESS,
+                    target=queued.target,
+                    user_id=queued.user_id,
+                    request_id=queued.request_id,
+                    reason=queued.reason,
+                )
+            )
+
+            storage_b = JsonFileDeletionQueueStorage(path)
+            consumer = DeletionQueueConsumer(storage_b, NoOpDeletionHandler())
+
+            self.assertEqual(consumer.requeue_stale(lease_seconds=300), 1)
+            self.assertEqual(storage_b.size(), 1)
+            status = storage_b.get_status(queued.queue_id)
+            self.assertIsNotNone(status)
+            self.assertEqual(status.status, DeletionStatus.PENDING)
+            result = consumer.consume_queue_id(queued.queue_id)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.status, DeletionStatus.DONE)
+
+    def test_requeue_stale_ignores_fresh_in_progress_and_terminal_statuses(self) -> None:
+        storage = InMemoryDeletionQueueStorage()
+        producer = DeletionQueueProducer(storage)
+        fresh = producer.enqueue_user_deletion(
+            user_id="user-fresh",
+            target=DeletionTarget.DATA,
+            reason="user_requested",
+        )
+        done = producer.enqueue_user_deletion(
+            user_id="user-done",
+            target=DeletionTarget.DATA,
+            reason="user_requested",
+        )
+        failed = producer.enqueue_user_deletion(
+            user_id="user-failed-terminal",
+            target=DeletionTarget.DATA,
+            reason="user_requested",
+        )
+        storage.save_status(
+            DeletionStatusSnapshot(
+                queue_id=fresh.queue_id,
+                created_at=fresh.created_at,
+                updated_at=datetime.now(timezone.utc),
+                status=DeletionStatus.IN_PROGRESS,
+                target=fresh.target,
+                user_id=fresh.user_id,
+                request_id=fresh.request_id,
+                reason=fresh.reason,
+            )
+        )
+        storage.save_status(
+            DeletionStatusSnapshot(
+                queue_id=done.queue_id,
+                created_at=done.created_at,
+                updated_at=datetime.now(timezone.utc) - timedelta(seconds=600),
+                status=DeletionStatus.DONE,
+                target=done.target,
+                user_id=done.user_id,
+                request_id=done.request_id,
+                reason=done.reason,
+            )
+        )
+        storage.save_status(
+            DeletionStatusSnapshot(
+                queue_id=failed.queue_id,
+                created_at=failed.created_at,
+                updated_at=datetime.now(timezone.utc) - timedelta(seconds=600),
+                status=DeletionStatus.FAILED,
+                target=failed.target,
+                user_id=failed.user_id,
+                request_id=failed.request_id,
+                reason=failed.reason,
+            )
+        )
+
+        self.assertEqual(storage.requeue_stale(lease_seconds=300), 0)
+        self.assertEqual(storage.size(), 0)
+
+    def test_postgres_requeue_stale_resets_in_progress_status(self) -> None:
+        fake_connect = _FakePostgresConnect()
+        storage = PostgresDeletionQueueStorage(database_url="postgresql://unit-test")
+
+        with patch("backend.modules.ops.deletion_queue._load_connect", return_value=fake_connect):
+            self.assertEqual(storage.requeue_stale(lease_seconds=300), 1)
+
+        query = "\n".join(fake_connect.cursor.executed)
+        self.assertIn("SET status = 'pending'", query)
+        self.assertIn("AND s.status = 'in_progress'", query)
 
 
 if __name__ == "__main__":
