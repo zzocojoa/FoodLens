@@ -53,6 +53,7 @@ class _FakeRequest:
 
 class _RecordingMediaStorage:
     enabled: bool = True
+    object_prefix: str = "media"
 
     def __init__(self, *, delete_error: MediaStorageError | None) -> None:
         self.delete_error = delete_error
@@ -92,6 +93,35 @@ class _RecordingMediaStorage:
         if self.delete_error is not None:
             raise self.delete_error
         self.deleted_object_keys.append(object_key)
+
+
+class _ForeignObjectKeyMediaStorage(_RecordingMediaStorage):
+    def upload_original(
+        self,
+        *,
+        user_id: str,
+        scope: str,
+        mime_type: str,
+        payload: bytes,
+        filename: str | None = None,
+    ) -> MediaUploadResult:
+        upload = super().upload_original(
+            user_id=user_id,
+            scope=scope,
+            mime_type=mime_type,
+            payload=payload,
+            filename=filename,
+        )
+        foreign_object_key = f"media/foreign-user/{scope}/{upload.asset_id}/original.png"
+        self.uploaded_object_keys[-1] = foreign_object_key
+        return MediaUploadResult(
+            asset_id=upload.asset_id,
+            object_key=foreign_object_key,
+            mime_type=upload.mime_type,
+            size_bytes=upload.size_bytes,
+            sha256=upload.sha256,
+            created_at=upload.created_at,
+        )
 
 
 class _RegisterMediaAssetFailingAuthService:
@@ -360,6 +390,34 @@ class MediaAssetCleanupTests(unittest.TestCase):
         self.assertEqual(upload_response.status_code, 503)
         self.assertEqual(upload_response.json()["detail"]["code"], "AUTH_MEDIA_REGISTER_FAILED")
         self.assertEqual(media_storage.deleted_object_keys, media_storage.uploaded_object_keys)
+        self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
+        with self.assertRaises(server.AuthServiceError):
+            server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])
+
+    def test_upload_compensation_refuses_foreign_object_key(self) -> None:
+        media_storage = _ForeignObjectKeyMediaStorage(delete_error=None)
+
+        with TestClient(server.app) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = InMemoryRetentionStore()
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-foreign-key"))
+            headers = _auth_headers(str(session["access_token"]))
+            original_auth_service = server.app.state.auth_service
+            server.app.state.auth_service = _RegisterMediaAssetFailingAuthService(delegate=original_auth_service)
+            try:
+                upload_response = client.post(
+                    "/me/media/upload",
+                    files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                    data={"scope": "history"},
+                    headers=headers,
+                )
+            finally:
+                server.app.state.auth_service = original_auth_service
+
+        self.assertEqual(upload_response.status_code, 503)
+        self.assertEqual(upload_response.json()["detail"]["code"], "AUTH_MEDIA_REGISTER_FAILED")
+        self.assertEqual(media_storage.deleted_object_keys, [])
         self.assertEqual(len(media_storage.uploaded_asset_ids), 1)
         with self.assertRaises(server.AuthServiceError):
             server.app.state.auth_service.get_media_asset(asset_id=media_storage.uploaded_asset_ids[0])

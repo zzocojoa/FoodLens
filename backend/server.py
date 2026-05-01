@@ -2001,19 +2001,24 @@ def _register_media_retention_record(
 def _is_compensatable_media_object_key(
     *,
     object_key: str,
+    object_prefix: str,
     user_id: str,
     scope: str,
     asset_id: str,
 ) -> bool:
-    key_parts = object_key.strip().split("/")
-    if len(key_parts) < 5:
+    key_parts = [part for part in object_key.strip().strip("/").split("/") if part]
+    prefix_parts = [part for part in object_prefix.strip().strip("/").split("/") if part] or ["media"]
+    expected_parts = [*prefix_parts, user_id.strip(), scope.strip(), asset_id.strip()]
+    if len(key_parts) != len(expected_parts) + 1:
         return False
     return (
-        key_parts[-4] == user_id.strip()
-        and key_parts[-3] == scope.strip()
-        and key_parts[-2] == asset_id.strip()
+        key_parts[:-1] == expected_parts
         and key_parts[-1].startswith("original.")
     )
+
+
+def _media_object_key_log_hash(object_key: str) -> str:
+    return hashlib.sha256(object_key.encode("utf-8")).hexdigest()[:16]
 
 
 def _compensate_failed_media_upload(
@@ -2027,19 +2032,21 @@ def _compensate_failed_media_upload(
     scope: str,
     cause_code: str,
 ) -> None:
+    object_prefix = str(getattr(media_storage, "object_prefix", "media"))
     if not _is_compensatable_media_object_key(
         object_key=upload_result.object_key,
+        object_prefix=object_prefix,
         user_id=user_id,
         scope=scope,
         asset_id=upload_result.asset_id,
     ):
         logger.error(
-            "[Media] upload compensation skipped request_id=%s user_id=%s asset_id=%s scope=%s object_key=%s cause_code=%s reason=%s",
+            "[Media] upload compensation skipped request_id=%s user_id=%s asset_id=%s scope=%s object_key_hash=%s cause_code=%s reason=%s",
             request_id,
             user_id,
             upload_result.asset_id,
             scope,
-            upload_result.object_key,
+            _media_object_key_log_hash(upload_result.object_key),
             cause_code,
             "object_key_mismatch",
         )
@@ -2049,12 +2056,12 @@ def _compensate_failed_media_upload(
         media_storage.delete_original(object_key=upload_result.object_key)
     except MediaStorageError as error:
         logger.error(
-            "[Media] upload compensation delete failed request_id=%s user_id=%s asset_id=%s scope=%s object_key=%s cause_code=%s cleanup_code=%s cleanup_status=%s",
+            "[Media] upload compensation delete failed request_id=%s user_id=%s asset_id=%s scope=%s object_key_hash=%s cause_code=%s cleanup_code=%s cleanup_status=%s",
             request_id,
             user_id,
             upload_result.asset_id,
             scope,
-            upload_result.object_key,
+            _media_object_key_log_hash(upload_result.object_key),
             cause_code,
             error.code,
             error.status_code,
