@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 ROOT_DIR: Path = Path(__file__).resolve().parents[3]
 SMOKE_SCRIPT_PATH: Path = ROOT_DIR / "backend" / "scripts" / "staging_integration_smoke.py"
+RENDER_DEPLOY_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_deploy_ready_gate.py"
 RENDER_JOB_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_one_off_job_gate.py"
 WORKFLOW_PATH: Path = ROOT_DIR / ".github" / "workflows" / "staging-integration-smoke.yml"
 EXPECTED_REQUIRED_ENV_NAMES: tuple[str, ...] = (
@@ -25,6 +26,11 @@ EXPECTED_RENDER_JOB_ENV_NAMES: tuple[str, ...] = (
     "RENDER_API_KEY",
     "RENDER_SERVICE_ID",
     "RENDER_START_COMMAND",
+)
+EXPECTED_RENDER_DEPLOY_ENV_NAMES: tuple[str, ...] = (
+    "RENDER_API_KEY",
+    "RENDER_SERVICE_ID",
+    "RENDER_DEPLOY_MIN_CREATED_AT",
 )
 FORBIDDEN_SUMMARY_DETAIL_KEYS: frozenset[str] = frozenset(
     (
@@ -80,6 +86,16 @@ def _load_render_job_gate_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("render_one_off_job_gate", RENDER_JOB_GATE_PATH)
     if spec is None or spec.loader is None:
         raise RuntimeError("render one-off job gate module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_render_deploy_gate_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("render_deploy_ready_gate", RENDER_DEPLOY_GATE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("render deploy ready gate module is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -267,7 +283,14 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertIn("environment: staging", workflow)
         self.assertIn("STAGING_RENDER_API_KEY", workflow)
         self.assertIn("STAGING_RENDER_SERVICE_ID", workflow)
+        self.assertIn("render_deploy_ready_gate.py", workflow)
         self.assertIn("render_one_off_job_gate.py", workflow)
+        self.assertIn("Wait for Render deploy readiness", workflow)
+        self.assertIn("Run Render one-off staging integration smoke", workflow)
+        self.assertLess(
+            workflow.index("Wait for Render deploy readiness"),
+            workflow.index("Run Render one-off staging integration smoke"),
+        )
         self.assertIn("RENDER_START_COMMAND: >-", workflow)
         self.assertIn("env\n        OPENAPI_EXPORT_ONLY=1", workflow)
         self.assertIn("python backend/scripts/staging_integration_smoke.py", workflow)
@@ -277,6 +300,82 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             workflow.index("Scan staging smoke artifacts for secret leaks"),
             workflow.index("Upload staging smoke artifacts"),
         )
+
+    def test_render_deploy_ready_gate_reports_missing_env_without_values(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        self.assertEqual(gate.REQUIRED_ENV_NAMES, EXPECTED_RENDER_DEPLOY_ENV_NAMES)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+            }
+
+            status = gate.run_gate(
+                env,
+                lambda method, url, api_key: (_ for _ in ()).throw(AssertionError("request should not run")),
+                lambda seconds: None,
+                lambda: 0.0,
+            )
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 2)
+        self.assertEqual(summary["missing_env"], ["RENDER_SERVICE_ID", "RENDER_DEPLOY_MIN_CREATED_AT"])
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_deploy_ready_gate_waits_until_live_candidate(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        responses = iter(
+            (
+                {"deploys": []},
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-test",
+                            "createdAt": "2026-05-01T00:01:00Z",
+                            "updatedAt": "2026-05-01T00:01:30Z",
+                            "status": "build_in_progress",
+                        }
+                    ]
+                },
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-test",
+                            "createdAt": "2026-05-01T00:01:00Z",
+                            "finishedAt": "2026-05-01T00:02:00Z",
+                            "status": "live",
+                        }
+                    ]
+                },
+            )
+        )
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            return next(responses)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-test")
+        self.assertEqual(summary["render_deploy"]["status"], "live")
 
     def test_render_one_off_job_gate_reports_missing_env_without_values(self) -> None:
         gate = _load_render_job_gate_module()
