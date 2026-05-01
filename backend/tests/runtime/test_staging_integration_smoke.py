@@ -213,6 +213,31 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         for fragment in FORBIDDEN_SUMMARY_FRAGMENTS:
             self.assertNotIn(fragment, serialized)
 
+    def test_safe_error_details_redacts_sensitive_runtime_values(self) -> None:
+        smoke = _load_smoke_module()
+        env = {
+            "DATABASE_URL": "postgresql://user:password@example.com/db",
+            "AUTH_STATE_KEY": "state-key-secret",
+            "GCP_SERVICE_ACCOUNT_JSON": '{"private_key":"redacted-test-key"}',
+            "MEDIA_GCS_BUCKET": "foodlens-private-bucket",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            error = RuntimeError(
+                "failed postgresql://user:password@example.com/db "
+                "Bearer token-value server at \"private.example.com\" "
+                "state-key-secret foodlens-private-bucket"
+            )
+            details = smoke._safe_error_details(error)
+
+        serialized = json.dumps(details, sort_keys=True)
+        self.assertIn("[REDACTED_DATABASE_URL]", serialized)
+        self.assertIn('server at "[REDACTED_HOST]"', str(details["error_message"]))
+        self.assertNotIn("postgresql://", serialized)
+        self.assertNotIn("token-value", serialized)
+        self.assertNotIn("state-key-secret", serialized)
+        self.assertNotIn("foodlens-private-bucket", serialized)
+
     def test_run_smokes_keeps_expected_regression_checks(self) -> None:
         called_names = _referenced_function_names("_run_smokes")
 

@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,15 @@ REQUIRED_ENV_NAMES: tuple[str, ...] = (
 ARTIFACT_DIR_ENV_NAME = "STAGING_SMOKE_ARTIFACT_DIR"
 DEFAULT_ARTIFACT_DIR = "artifacts/phase6/staging-integration-smoke"
 SMOKE_PASSWORD = "Passw0rd!"
+SENSITIVE_ENV_NAMES: tuple[str, ...] = (
+    "DATABASE_URL",
+    "AUTH_STATE_KEY",
+    "GCP_SERVICE_ACCOUNT_JSON",
+    "MEDIA_GCS_BUCKET",
+)
+DATABASE_URL_PATTERN = re.compile(r"postgres(?:ql)?://[^\s'\"),]+", re.IGNORECASE)
+BEARER_TOKEN_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+")
+SERVER_HOST_PATTERN = re.compile(r'(server at|host name)\s+"[^"]+"', re.IGNORECASE)
 
 
 def _ensure_repo_root_on_path() -> None:
@@ -96,6 +106,45 @@ def _summary_payload(results: list[SmokeResult]) -> dict[str, object]:
 
 def _write_summary(artifact_dir: Path, results: list[SmokeResult]) -> None:
     _write_json(artifact_dir / "summary.json", _summary_payload(results))
+
+
+def _safe_error_message(error: BaseException) -> str:
+    message = str(error)
+    for env_name in SENSITIVE_ENV_NAMES:
+        env_value = os.environ.get(env_name)
+        if env_value and len(env_value) >= 6:
+            message = message.replace(env_value, f"[REDACTED_{env_name}]")
+    message = DATABASE_URL_PATTERN.sub("[REDACTED_DATABASE_URL]", message)
+    message = BEARER_TOKEN_PATTERN.sub("Bearer [REDACTED_TOKEN]", message)
+    message = SERVER_HOST_PATTERN.sub(lambda match: f'{match.group(1)} "[REDACTED_HOST]"', message)
+    return message[:500]
+
+
+def _root_error(error: BaseException) -> BaseException:
+    current = error
+    seen: set[int] = set()
+    while id(current) not in seen:
+        seen.add(id(current))
+        next_error = current.__cause__ or current.__context__
+        if next_error is None:
+            return current
+        current = next_error
+    return current
+
+
+def _safe_error_details(error: BaseException) -> dict[str, object]:
+    root_error = _root_error(error)
+    details: dict[str, object] = {
+        "error_type": type(error).__name__,
+        "root_error_type": type(root_error).__name__,
+    }
+    message = _safe_error_message(error)
+    root_message = _safe_error_message(root_error)
+    if message:
+        details["error_message"] = message
+    if root_message and root_message != message:
+        details["root_error_message"] = root_message
+    return details
 
 
 def _png_bytes() -> bytes:
@@ -233,7 +282,9 @@ def _run_media_delete_smoke(server_module: Any) -> SmokeResult:
         cleanup_removed = False
         if user_id:
             cleanup_removed = _delete_smoke_user(getattr(server_module.app.state, "auth_service", None), user_id)
-        return SmokeResult("media_delete", False, {"error_type": type(error).__name__, "cleanup_removed": cleanup_removed})
+        details = _safe_error_details(error)
+        details["cleanup_removed"] = cleanup_removed
+        return SmokeResult("media_delete", False, details)
 
 
 def _retention_record_from_asset(asset: Mapping[str, object], user_id: str) -> RetentionRecord:
@@ -300,7 +351,9 @@ def _run_retention_retry_smoke(server_module: Any) -> SmokeResult:
         cleanup_removed = False
         if user_id:
             cleanup_removed = _delete_smoke_user(getattr(server_module.app.state, "auth_service", None), user_id)
-        return SmokeResult("retention_retry", False, {"error_type": type(error).__name__, "cleanup_removed": cleanup_removed})
+        details = _safe_error_details(error)
+        details["cleanup_removed"] = cleanup_removed
+        return SmokeResult("retention_retry", False, details)
 
 
 def _drop_queue_tables(database_url: str, queue_table: str, status_table: str) -> None:
@@ -339,6 +392,10 @@ def _with_queue_cleanup_result(
         details = dict(result.details)
         details["cleanup_removed"] = False
         details["cleanup_error_type"] = type(error).__name__
+        details["cleanup_root_error_type"] = type(_root_error(error)).__name__
+        cleanup_message = _safe_error_message(_root_error(error))
+        if cleanup_message:
+            details["cleanup_root_error_message"] = cleanup_message
         return replace(result, passed=False, details=details)
     details = dict(result.details)
     details["cleanup_removed"] = True
@@ -420,7 +477,7 @@ def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
             },
         )
     except Exception as error:
-        result = SmokeResult("postgres_queue_crash_rehearsal", False, {"error_type": type(error).__name__})
+        result = SmokeResult("postgres_queue_crash_rehearsal", False, _safe_error_details(error))
     return _with_queue_cleanup_result(result, database_url, queue_table, status_table)
 
 
@@ -429,7 +486,7 @@ def _run_smokes(artifact_dir: Path) -> int:
     try:
         import backend.server as server
     except Exception as error:
-        results.append(SmokeResult("server_import", False, {"error_type": type(error).__name__}))
+        results.append(SmokeResult("server_import", False, _safe_error_details(error)))
         _write_summary(artifact_dir, results)
         for result in results:
             print(f"[StagingSmoke] {result.name}: FAIL")
@@ -438,15 +495,15 @@ def _run_smokes(artifact_dir: Path) -> int:
     try:
         results.append(_run_media_delete_smoke(server))
     except Exception as error:
-        results.append(SmokeResult("media_delete", False, {"error_type": type(error).__name__}))
+        results.append(SmokeResult("media_delete", False, _safe_error_details(error)))
     try:
         results.append(_run_retention_retry_smoke(server))
     except Exception as error:
-        results.append(SmokeResult("retention_retry", False, {"error_type": type(error).__name__}))
+        results.append(SmokeResult("retention_retry", False, _safe_error_details(error)))
     try:
         results.append(_run_postgres_queue_crash_rehearsal())
     except Exception as error:
-        results.append(SmokeResult("postgres_queue_crash_rehearsal", False, {"error_type": type(error).__name__}))
+        results.append(SmokeResult("postgres_queue_crash_rehearsal", False, _safe_error_details(error)))
     _write_summary(artifact_dir, results)
     for result in results:
         status = "PASS" if result.passed else "FAIL"
