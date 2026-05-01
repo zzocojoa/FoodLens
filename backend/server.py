@@ -129,6 +129,7 @@ app.add_middleware(
         "X-Request-Id",
         "X-Media-Render-Cache",
         "X-Media-Render-Duration-Ms",
+        "X-Media-Render-Stage-Ms",
     ],
 )
 
@@ -378,6 +379,7 @@ def _initialize_auth_and_media_runtime() -> None:
     app.state.media_public_base_url = _env_str("MEDIA_PUBLIC_BASE_URL", _env_str("AUTH_PUBLIC_BASE_URL", ""))
     app.state.media_render_default_width = _env_int("MEDIA_RENDER_DEFAULT_WIDTH", 512)
     app.state.media_render_default_quality = _env_int("MEDIA_RENDER_DEFAULT_QUALITY", 75)
+    app.state.media_render_webp_method = max(0, min(6, _env_int("MEDIA_RENDER_WEBP_METHOD", 4)))
     app.state.media_render_sign_bucket_seconds = max(0, _env_int("MEDIA_RENDER_SIGN_BUCKET_SECONDS", 3600))
     app.state.media_render_cache_enabled = os.environ.get("MEDIA_RENDER_CACHE_ENABLED", "1").strip() == "1"
     app.state.media_render_cache_max_items = max(1, _env_int("MEDIA_RENDER_CACHE_MAX_ITEMS", 256))
@@ -1040,6 +1042,10 @@ def _media_render_cache_diagnostic_headers(*, request_id: str, cache_hit: bool) 
     }
 
 
+def _format_media_render_stage_header(stage_ms: dict[str, int]) -> str:
+    return ",".join(f"{name}={stage_ms[name]}" for name in sorted(stage_ms))
+
+
 def _media_render_http_exception(error: HTTPException, *, request_id: str) -> HTTPException:
     headers: dict[str, str] = {}
     if error.headers is not None:
@@ -1112,31 +1118,41 @@ def _media_render_cache_set_locked(
         cache.popitem(last=False)
 
 
+async def _clear_media_render_inflight_task(
+    variant_key: str,
+    task: asyncio.Task[tuple[bytes, str, str, str, dict[str, int]]],
+) -> None:
+    inflight_tasks = getattr(app.state, "media_render_inflight_tasks", None)
+    inflight_lock = getattr(app.state, "media_render_inflight_lock", None)
+    if inflight_tasks is None or inflight_lock is None:
+        return
+    async with inflight_lock:
+        existing = inflight_tasks.get(variant_key)
+        if existing is task:
+            inflight_tasks.pop(variant_key, None)
+
+
 async def _run_media_render_singleflight(
     variant_key: str,
-    render_factory: Callable[[], Awaitable[tuple[bytes, str, str, str]]],
-) -> tuple[bytes, str, str, str]:
+    render_factory: Callable[[], Awaitable[tuple[bytes, str, str, str, dict[str, int]]]],
+) -> tuple[bytes, str, str, str, dict[str, int]]:
     inflight_tasks = getattr(app.state, "media_render_inflight_tasks", None)
     inflight_lock = getattr(app.state, "media_render_inflight_lock", None)
     if inflight_tasks is None or inflight_lock is None:
         return await render_factory()
 
-    created = False
     async with inflight_lock:
         task = inflight_tasks.get(variant_key)
         if task is None:
             task = asyncio.create_task(render_factory())
             inflight_tasks[variant_key] = task
-            created = True
+            task.add_done_callback(
+                lambda completed_task: asyncio.create_task(
+                    _clear_media_render_inflight_task(variant_key, completed_task)
+                )
+            )
 
-    try:
-        return await task
-    finally:
-        if created:
-            async with inflight_lock:
-                existing = inflight_tasks.get(variant_key)
-                if existing is task:
-                    inflight_tasks.pop(variant_key, None)
+    return await asyncio.shield(task)
 
 
 def _resolve_media_format(fmt: str, accept_header: str) -> str:
@@ -1158,6 +1174,7 @@ def _render_image_bytes(
     target_width: int,
     target_quality: int,
     target_format: str,
+    target_webp_method: int,
 ) -> tuple[bytes, str]:
     with Image.open(io.BytesIO(source_bytes)) as image:
         image = ImageOps.exif_transpose(image)
@@ -1168,7 +1185,7 @@ def _render_image_bytes(
 
         out = io.BytesIO()
         if target_format == "webp":
-            image.save(out, format="WEBP", quality=target_quality, method=6)
+            image.save(out, format="WEBP", quality=target_quality, method=target_webp_method)
             return out.getvalue(), "image/webp"
         if target_format == "png":
             image.save(out, format="PNG", optimize=True)
@@ -3043,40 +3060,60 @@ async def get_media_render(
                 },
             )
 
-        def _render_variant_sync() -> tuple[bytes, str, str, str]:
+        def _render_variant_sync() -> tuple[bytes, str, str, str, dict[str, int]]:
+            stage_started_at = time.time()
             asset = auth_service.get_media_asset(asset_id=asset_id)
+            lookup_ms = int((time.time() - stage_started_at) * 1000)
+
+            stage_started_at = time.time()
             source = media_storage.fetch_original(object_key=str(asset["object_key"]))
+            fetch_ms = int((time.time() - stage_started_at) * 1000)
+
+            stage_started_at = time.time()
             rendered_bytes, content_type = _render_image_bytes(
                 source_bytes=source.bytes_data,
                 target_width=final_width,
                 target_quality=final_quality,
                 target_format=final_fmt,
+                target_webp_method=int(getattr(app.state, "media_render_webp_method", 4)),
             )
+            transform_ms = int((time.time() - stage_started_at) * 1000)
+
+            stage_started_at = time.time()
             auth_service.touch_media_asset(asset_id=asset_id)
+            touch_ms = int((time.time() - stage_started_at) * 1000)
+
             owner_id = str(asset.get("user_id") or "unknown")
             scope = str(asset.get("scope") or "unknown")
-            return rendered_bytes, content_type, owner_id, scope
+            return rendered_bytes, content_type, owner_id, scope, {
+                "fetch": fetch_ms,
+                "lookup": lookup_ms,
+                "touch": touch_ms,
+                "transform": transform_ms,
+            }
 
-        async def _render_variant() -> tuple[bytes, str, str, str]:
-            rendered_bytes, content_type, owner_id, scope = await run_in_threadpool(
+        async def _render_variant() -> tuple[bytes, str, str, str, dict[str, int]]:
+            rendered_bytes, content_type, owner_id, scope, stage_ms = await run_in_threadpool(
                 _render_variant_sync
             )
+            cache_set_started_at = time.time()
             await _media_render_cache_set(
                 variant_key,
                 bytes_data=rendered_bytes,
                 content_type=content_type,
                 now_ts=int(time.time()),
             )
-            return rendered_bytes, content_type, owner_id, scope
+            stage_ms["cache_set"] = int((time.time() - cache_set_started_at) * 1000)
+            return rendered_bytes, content_type, owner_id, scope, stage_ms
 
-        rendered_bytes, content_type, owner_id, asset_scope = await _run_media_render_singleflight(
+        rendered_bytes, content_type, owner_id, asset_scope, stage_ms = await _run_media_render_singleflight(
             variant_key,
             _render_variant,
         )
         remaining_ttl = max(1, exp - now_ts)
         render_ms = int((time.time() - started_at) * 1000)
         logger.info(
-            "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s",
+            "[Media] render success request_id=%s user_id=%s asset_id=%s scope=%s format=%s render_ms=%s cache_hit=%s stage_ms=%s",
             request_id,
             owner_id,
             asset_id,
@@ -3084,6 +3121,7 @@ async def get_media_render(
             content_type,
             render_ms,
             False,
+            stage_ms,
         )
         return Response(
             content=rendered_bytes,
@@ -3093,6 +3131,7 @@ async def get_media_render(
                 "Vary": "Accept",
                 **_media_render_cache_diagnostic_headers(request_id=request_id, cache_hit=False),
                 "X-Media-Render-Duration-Ms": str(render_ms),
+                "X-Media-Render-Stage-Ms": _format_media_render_stage_header(stage_ms),
             },
         )
     except HTTPException as error:

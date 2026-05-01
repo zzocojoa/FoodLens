@@ -71,14 +71,14 @@ validate_cache_miss_urls() {
   fi
 
   if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
-    while IFS= read -r candidate; do
+    while IFS= read -r candidate || [[ -n "${candidate}" ]]; do
       candidate="$(trim_value "${candidate}")"
       if [[ -z "${candidate}" ]]; then
         continue
       fi
       saw_candidate="1"
       validate_media_render_url "MEDIA_RENDER_CACHE_MISS_URLS_PATH entry" "${candidate}"
-    done < <(tr '\n' ',' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" | tr ',' '\n')
+    done < <(tr ',' '\n' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}")
   fi
 
   if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
@@ -105,12 +105,12 @@ cache_miss_urls_include() {
   fi
 
   if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" && -f "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" ]]; then
-    while IFS= read -r candidate; do
+    while IFS= read -r candidate || [[ -n "${candidate}" ]]; do
       candidate="$(trim_value "${candidate}")"
       if [[ "${candidate}" == "${needle}" ]]; then
         return 0
       fi
-    done < <(tr '\n' ',' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}" | tr ',' '\n')
+    done < <(tr ',' '\n' < "${MEDIA_RENDER_CACHE_MISS_URLS_PATH}")
   fi
 
   return 1
@@ -182,6 +182,13 @@ if [[ "${REQUIRE_MEDIA_RENDER_CACHE_HEADER:-0}" != "0" && "${REQUIRE_MEDIA_RENDE
   exit 1
 fi
 
+if [[ -n "${MEDIA_RENDER_CACHE_MISS_URLS:-}" || -n "${MEDIA_RENDER_CACHE_MISS_URLS_PATH:-}" ]]; then
+  if ! is_positive_integer "${MIN_RENDER_CACHE_MISS_SAMPLES:-20}"; then
+    echo "[perf] MIN_RENDER_CACHE_MISS_SAMPLES must be a positive integer when cache-miss URLs are configured."
+    exit 1
+  fi
+fi
+
 if ! command -v k6 >/dev/null 2>&1; then
   echo "[perf] k6 is not installed. Install with: brew install k6"
   exit 1
@@ -237,6 +244,13 @@ if command -v jq >/dev/null 2>&1; then
       "render_cache_miss_failure_rate.rate=\(metric_value("render_cache_miss_failure_rate"; "rate"))",
       "render_cache_miss_content_type_mismatch_rate.rate=\(metric_value("render_cache_miss_content_type_mismatch_rate"; "rate"))",
       "render_cache_miss_latency.p95=\(metric_value("render_cache_miss_latency"; "p(95)"))",
+      "render_cache_miss_observed_rate.rate=\(metric_value("render_cache_miss_observed_rate"; "rate"))",
+      "render_cache_miss_observed_count.count=\(metric_value("render_cache_miss_observed_count"; "count"))",
+      "render_stage_lookup_latency.p95=\(metric_value("render_stage_lookup_latency"; "p(95)"))",
+      "render_stage_fetch_latency.p95=\(metric_value("render_stage_fetch_latency"; "p(95)"))",
+      "render_stage_transform_latency.p95=\(metric_value("render_stage_transform_latency"; "p(95)"))",
+      "render_stage_touch_latency.p95=\(metric_value("render_stage_touch_latency"; "p(95)"))",
+      "render_stage_cache_set_latency.p95=\(metric_value("render_stage_cache_set_latency"; "p(95)"))",
       "render_cache_disabled_rate.rate=\(metric_value("render_cache_disabled_rate"; "rate"))",
       "render_cache_unknown_rate.rate=\(metric_value("render_cache_unknown_rate"; "rate"))",
       "render_cache_unknown_latency.p95=\(metric_value("render_cache_unknown_latency"; "p(95)"))",
