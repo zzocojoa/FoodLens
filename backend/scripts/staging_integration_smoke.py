@@ -15,6 +15,7 @@ from uuid import uuid4
 
 REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "DATABASE_URL",
+    "AUTH_STATE_KEY",
     "MEDIA_GCS_BUCKET",
     "GCP_SERVICE_ACCOUNT_JSON",
 )
@@ -168,6 +169,18 @@ def _upload_media(client: Any, access_token: str) -> dict[str, object]:
     return asset
 
 
+def _metadata_removed(auth_service: Any, asset_id: str, user_id: str) -> bool:
+    from backend.modules.auth.service import AuthServiceError
+
+    try:
+        auth_service.get_media_asset(asset_id=asset_id, user_id=user_id)
+        return False
+    except AuthServiceError as error:
+        if error.code == "AUTH_MEDIA_NOT_FOUND":
+            return True
+        raise
+
+
 def _delete_smoke_user(auth_service: Any, user_id: str) -> bool:
     if not user_id:
         return True
@@ -195,11 +208,7 @@ def _run_media_delete_smoke(server_module: Any) -> SmokeResult:
             render_before = client.get(render_url)
             delete_response = client.delete(f"/me/media/{asset_id}", headers=_auth_headers(str(session["access_token"])))
             render_after = client.get(render_url)
-            metadata_removed = False
-            try:
-                auth_service.get_media_asset(asset_id=asset_id, user_id=user_id)
-            except Exception:
-                metadata_removed = True
+            metadata_removed = _metadata_removed(auth_service, asset_id, user_id)
             cleanup_removed = _delete_smoke_user(auth_service, user_id)
             return SmokeResult(
                 name="media_delete",
@@ -241,6 +250,14 @@ def _retention_record_from_asset(asset: Mapping[str, object], user_id: str) -> R
     )
 
 
+def _remove_retention_record(server_module: Any, record_id: str) -> bool:
+    retention_store = getattr(server_module.app.state, "retention_store", None)
+    if retention_store is None:
+        return False
+    retention_store.remove(record_id)
+    return True
+
+
 def _run_retention_retry_smoke(server_module: Any) -> SmokeResult:
     from fastapi.testclient import TestClient
 
@@ -255,19 +272,26 @@ def _run_retention_retry_smoke(server_module: Any) -> SmokeResult:
             record = _retention_record_from_asset(asset, user_id)
             retry_result = bool(server_module._delete_media_retention_record(record))
             render_after = client.get(render_url)
-            metadata_removed = False
-            try:
-                auth_service.get_media_asset(asset_id=str(asset["asset_id"]), user_id=user_id)
-            except Exception:
-                metadata_removed = True
-            cleanup_removed = _delete_smoke_user(auth_service, user_id)
+            asset_id = str(asset["asset_id"])
+            metadata_removed = _metadata_removed(auth_service, asset_id, user_id)
+            retention_removed = False
+            if retry_result and metadata_removed:
+                retention_removed = _remove_retention_record(server_module, asset_id)
+            cleanup_removed = metadata_removed and _delete_smoke_user(auth_service, user_id)
             return SmokeResult(
                 name="retention_retry",
-                passed=retry_result and render_after.status_code == 404 and metadata_removed and cleanup_removed,
+                passed=(
+                    retry_result
+                    and render_after.status_code == 404
+                    and metadata_removed
+                    and retention_removed
+                    and cleanup_removed
+                ),
                 details={
                     "retry_result": retry_result,
                     "render_after_status": render_after.status_code,
                     "metadata_removed": metadata_removed,
+                    "retention_removed": retention_removed,
                     "object_generation_present": asset.get("object_generation") is not None,
                     "cleanup_removed": cleanup_removed,
                 },
@@ -280,23 +304,45 @@ def _run_retention_retry_smoke(server_module: Any) -> SmokeResult:
 
 
 def _drop_queue_tables(database_url: str, queue_table: str, status_table: str) -> None:
-    from psycopg import connect
+    from psycopg import connect, sql
 
     with connect(database_url, autocommit=True) as conn:
         with conn.cursor() as cursor:
-            cursor.execute(f"DROP TABLE IF EXISTS {queue_table}")
-            cursor.execute(f"DROP TABLE IF EXISTS {status_table}")
+            cursor.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(queue_table)))
+            cursor.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(status_table)))
 
 
 def _age_dequeued_row(database_url: str, queue_table: str, queue_id: str) -> None:
-    from psycopg import connect
+    from psycopg import connect, sql
 
     with connect(database_url, autocommit=True) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                f"UPDATE {queue_table} SET dequeued_at = NOW() - INTERVAL '900 seconds' WHERE queue_id = %s",
+                sql.SQL("UPDATE {} SET dequeued_at = NOW() - INTERVAL '900 seconds' WHERE queue_id = %s").format(
+                    sql.Identifier(queue_table)
+                ),
                 (queue_id,),
             )
+
+
+def _with_queue_cleanup_result(
+    result: SmokeResult,
+    database_url: str,
+    queue_table: str,
+    status_table: str,
+) -> SmokeResult:
+    from dataclasses import replace
+
+    try:
+        _drop_queue_tables(database_url, queue_table, status_table)
+    except Exception as error:
+        details = dict(result.details)
+        details["cleanup_removed"] = False
+        details["cleanup_error_type"] = type(error).__name__
+        return replace(result, passed=False, details=details)
+    details = dict(result.details)
+    details["cleanup_removed"] = True
+    return replace(result, details=details)
 
 
 def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
@@ -327,6 +373,7 @@ def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
         user_id=f"staging-user-{suffix}",
         reason="staging_integration_smoke",
     )
+    result: SmokeResult
     try:
         storage.enqueue(item)
         claimed = storage.dequeue()
@@ -348,44 +395,58 @@ def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
         recovered = storage.requeue_stale(lease_seconds=300)
         status_after_requeue = storage.get_status(item.queue_id)
         consumer = DeletionQueueConsumer(storage, NoOpDeletionHandler())
-        result = consumer.consume_queue_id(item.queue_id)
+        consume_result = consumer.consume_queue_id(item.queue_id)
         final_status = storage.get_status(item.queue_id)
         final_size = storage.size()
         passed = (
             recovered == 1
             and status_after_requeue is not None
             and status_after_requeue.status == DeletionStatus.PENDING
-            and result is not None
-            and result.status == DeletionStatus.DONE
+            and consume_result is not None
+            and consume_result.status == DeletionStatus.DONE
             and final_status is not None
             and final_status.status == DeletionStatus.DONE
             and final_size == 0
         )
-        return SmokeResult(
+        result = SmokeResult(
             name="postgres_queue_crash_rehearsal",
             passed=passed,
             details={
                 "recovered": recovered,
                 "status_after_requeue": status_after_requeue.status.value if status_after_requeue else None,
-                "consume_result": result.status.value if result else None,
+                "consume_result": consume_result.status.value if consume_result else None,
                 "final_status": final_status.status.value if final_status else None,
                 "final_size": final_size,
             },
         )
     except Exception as error:
-        return SmokeResult("postgres_queue_crash_rehearsal", False, {"error_type": type(error).__name__})
-    finally:
-        _drop_queue_tables(database_url, queue_table, status_table)
+        result = SmokeResult("postgres_queue_crash_rehearsal", False, {"error_type": type(error).__name__})
+    return _with_queue_cleanup_result(result, database_url, queue_table, status_table)
 
 
 def _run_smokes(artifact_dir: Path) -> int:
-    import backend.server as server
+    results: list[SmokeResult] = []
+    try:
+        import backend.server as server
+    except Exception as error:
+        results.append(SmokeResult("server_import", False, {"error_type": type(error).__name__}))
+        _write_summary(artifact_dir, results)
+        for result in results:
+            print(f"[StagingSmoke] {result.name}: FAIL")
+        return 1
 
-    results = [
-        _run_media_delete_smoke(server),
-        _run_retention_retry_smoke(server),
-        _run_postgres_queue_crash_rehearsal(),
-    ]
+    try:
+        results.append(_run_media_delete_smoke(server))
+    except Exception as error:
+        results.append(SmokeResult("media_delete", False, {"error_type": type(error).__name__}))
+    try:
+        results.append(_run_retention_retry_smoke(server))
+    except Exception as error:
+        results.append(SmokeResult("retention_retry", False, {"error_type": type(error).__name__}))
+    try:
+        results.append(_run_postgres_queue_crash_rehearsal())
+    except Exception as error:
+        results.append(SmokeResult("postgres_queue_crash_rehearsal", False, {"error_type": type(error).__name__}))
     _write_summary(artifact_dir, results)
     for result in results:
         status = "PASS" if result.passed else "FAIL"
@@ -402,12 +463,17 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     _ensure_repo_root_on_path()
-    args = _parse_args(argv)
     _load_backend_env()
+    args = _parse_args(argv)
     _configure_runtime_env()
     _configure_logging()
     missing = missing_required_env(os.environ)
     if missing:
+        if not args.check_env_only:
+            _write_summary(
+                Path(str(args.artifact_dir)),
+                [SmokeResult("required_env", False, {"missing_env": missing})],
+            )
         print(f"[StagingSmoke] Missing required env: {', '.join(missing)}", file=sys.stderr)
         return 2
     if args.check_env_only:

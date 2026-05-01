@@ -1,19 +1,70 @@
 name: Staging Integration Smoke
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
   push:
     branches:
       - main
       - "release/**"
 
+permissions:
+  contents: read
+
 jobs:
+  staging-integration-smoke-ref-guard:
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject unsupported staging smoke ref
+        run: |
+          echo "Staging smoke can only run from main or release/** refs."
+          exit 1
+
+  staging-integration-smoke-pr-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Validate staging smoke automation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/staging-integration-smoke.yml").read_text(encoding="utf-8")
+          required_markers = [
+              "pull_request:",
+              "environment: staging",
+              "permissions:\n  contents: read",
+              "secrets.STAGING_DATABASE_URL",
+              "secrets.STAGING_MEDIA_GCS_BUCKET",
+              "secrets.STAGING_GCP_SERVICE_ACCOUNT_JSON",
+              "Scan staging smoke artifacts for secret leaks",
+              "Upload staging smoke artifacts",
+          ]
+          missing_markers = [marker for marker in required_markers if marker not in workflow]
+          if missing_markers:
+              raise SystemExit(f"Missing staging smoke workflow markers: {missing_markers}")
+          if workflow.index("Scan staging smoke artifacts for secret leaks") > workflow.index("Upload staging smoke artifacts"):
+              raise SystemExit("Artifact upload must run after the secret scan.")
+          PY
+
   staging-integration-smoke:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging
-    permissions:
-      contents: read
     env:
       PYTHONPATH: .
       DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
