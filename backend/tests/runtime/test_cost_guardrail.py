@@ -721,6 +721,49 @@ class CostGuardrailTests(unittest.TestCase):
                 catalog=catalog,
             )
 
+    def test_price_catalog_rejects_partial_breakdown_with_total_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            catalog_path = os.path.join(tmp_dir, "ai-price-catalog.json")
+            with open(catalog_path, "w", encoding="utf-8") as catalog_file:
+                json.dump(
+                    {
+                        "version": "unit-test-2026-05-02",
+                        "entries": [
+                            {
+                                "provider": "google_vertex_ai",
+                                "model": "gemini-2.5-flash",
+                                "input": {
+                                    "usd_per_1m_tokens": 2.0,
+                                    "sku": "synthetic-input-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                                "output": {
+                                    "usd_per_1m_tokens": 8.0,
+                                    "sku": "synthetic-output-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                            }
+                        ],
+                    },
+                    catalog_file,
+                )
+            catalog = load_price_catalog(catalog_path)
+
+        with self.assertRaises(PriceCatalogError):
+            estimate_usage_cost_from_catalog(
+                usage_records=[
+                    {
+                        "provider": "google_vertex_ai",
+                        "model": "gemini-2.5-flash",
+                        "completion_tokens": 1,
+                        "total_tokens": 1000,
+                    }
+                ],
+                catalog=catalog,
+            )
+
     def test_price_catalog_requires_provider_model_identity_for_observed_usage(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             catalog_path = os.path.join(tmp_dir, "ai-price-catalog.json")
@@ -1546,8 +1589,8 @@ class CostGuardrailTests(unittest.TestCase):
             usage = storage.get(service._period_key())
 
         self.assertEqual(response.status_code, 200)
-        self.assertAlmostEqual(usage.total_cost_usd, 0.012)
-        self.assertEqual(usage.total_tokens, 600)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertEqual(usage.total_tokens, 1000)
         self.assertNotIn("_label_usage", response.json())
         self.assertEqual(service.reserve_calls, 1)
         self.assertEqual(service.commit_calls, 1)
@@ -1613,6 +1656,71 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertAlmostEqual(usage.total_cost_usd, 0.0024)
         self.assertEqual(usage.total_tokens, 600)
+        self.assertEqual(service.reserve_calls, 1)
+        self.assertEqual(service.commit_calls, 1)
+        self.assertEqual(service.release_calls, 0)
+
+    def test_label_endpoint_commits_estimate_when_catalog_cannot_price_spent_request(self):
+        spy = _UsageMetadataSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = _TrackingCostGuardrailService(storage, monthly_budget_usd=100.0)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            catalog_path = os.path.join(tmp_dir, "ai-price-catalog.json")
+            with open(catalog_path, "w", encoding="utf-8") as catalog_file:
+                json.dump(
+                    {
+                        "version": "unit-test-2026-05-02",
+                        "entries": [
+                            {
+                                "provider": "google_vertex_ai",
+                                "model": "gemini-2.5-flash",
+                                "input": {
+                                    "usd_per_1m_tokens": 1.0,
+                                    "sku": "synthetic-input-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                                "output": {
+                                    "usd_per_1m_tokens": 10.0,
+                                    "sku": "synthetic-output-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                            }
+                        ],
+                    },
+                    catalog_file,
+                )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                        "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                        "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1000",
+                        "AI_COST_PRICE_CATALOG_PATH": catalog_path,
+                    },
+                    clear=False,
+                ),
+                TestClient(app, raise_server_exceptions=False) as client,
+            ):
+                app.state.analyst = spy
+                app.state.barcode_service = object()
+                app.state.smart_router = object()
+                app.state.label_cost_guardrail = service
+                response = client.post(
+                    "/analyze/label",
+                    files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR"},
+                )
+                usage = storage.get(service._period_key())
+
+        self.assertEqual(response.status_code, 500)
+        self.assertTrue(spy.called)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertEqual(usage.total_tokens, 1000)
         self.assertEqual(service.reserve_calls, 1)
         self.assertEqual(service.commit_calls, 1)
         self.assertEqual(service.release_calls, 0)
@@ -1962,8 +2070,8 @@ class CostGuardrailTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(router.called)
-        self.assertAlmostEqual(usage.total_cost_usd, 0.0015)
-        self.assertEqual(usage.total_tokens, 64)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.003)
+        self.assertEqual(usage.total_tokens, 128)
         self.assertNotIn("_router_usage", response.json())
 
     def test_smart_endpoint_fallbacks_on_router_monthly_budget_without_router_gemini(self):

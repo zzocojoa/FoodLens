@@ -58,7 +58,7 @@ summary는 기본적으로 `artifacts/phase6/render-live-readiness/summary.json`
 - service id가 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 각각 매핑되는지 확인한다.
 - literal env는 값 일치 여부만 확인하고 값 자체는 출력하지 않는다.
 - `sync:false` env는 존재 여부와 빈 값 여부만 확인한다.
-- `AI_COST_PRICE_CATALOG_PATH`는 live service에 존재해야 하며, 값 자체는 출력하지 않는다. 현재 Docker 배포 경로는 `/app/backend/config/ai-price-catalog.json`이다. 실제 파일 존재와 catalog 최신성은 post-deploy smoke와 운영 catalog 검토에서 확인한다.
+- `AI_COST_PRICE_CATALOG_PATH`는 live service에 존재해야 하며, 값 자체는 출력하지 않는다. 현재 Docker 배포 경로는 `/app/backend/config/ai-price-catalog.json`이다. 실제 파일 존재와 catalog 최신성은 운영 catalog 검토에서 확인한다. 비용을 쓰지 않으려면 Phase 6 post-deploy smoke처럼 `/analyze/jobs`를 호출하는 검증은 실행하지 않는다.
 - `foodlens-api`, `foodlens-worker`에는 비용/429 예측 가능성을 위해 Dashboard-only guard key를 요구한다.
   - `GCP_LOCATION`
   - `GEMINI_MAX_CONCURRENT_SLOTS`

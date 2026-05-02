@@ -36,11 +36,13 @@ from backend.modules.ops.cost_guardrail import (
     CostGuardrailReservation,
     CostGuardrailService,
     InMemoryMonthlyUsageStorage,
+    MonthlyUsage,
     MonthlyUsageStorage,
     PostgresMonthlyUsageStorage,
 )
 from backend.modules.ops.price_catalog import (
     PriceCatalog,
+    PriceCatalogError,
     estimate_usage_cost_from_catalog,
     load_price_catalog,
 )
@@ -261,11 +263,11 @@ def _provider_usage_total_tokens(raw_records: object) -> int | None:
     for record in _normalize_provider_usage_records(raw_records):
         record_total_tokens = _usage_record_int(record, "total_tokens")
         if record_total_tokens is None:
-            additive_tokens = [
-                _usage_record_int(record, field_name)
-                for field_name in ("prompt_tokens", "completion_tokens", "thoughts_tokens")
-            ]
-            record_total_tokens = sum(token_count for token_count in additive_tokens if token_count is not None)
+            prompt_tokens = _usage_record_int(record, "prompt_tokens") or 0
+            cached_tokens = _usage_record_int(record, "cached_tokens") or 0
+            completion_tokens = _usage_record_int(record, "completion_tokens") or 0
+            thoughts_tokens = _usage_record_int(record, "thoughts_tokens") or 0
+            record_total_tokens = max(prompt_tokens, cached_tokens) + completion_tokens + thoughts_tokens
         total_tokens += max(0, record_total_tokens)
     if total_tokens <= 0:
         return None
@@ -295,11 +297,23 @@ def _build_usage_accounting_values(
         if catalog_estimate is not None:
             return catalog_estimate.cost_usd, catalog_estimate.tokens, catalog_estimate.source
 
-    provider_tokens = _provider_usage_total_tokens(usage_records) if allow_provider_usage else None
-    if provider_tokens is None or estimated_tokens <= 0:
-        return max(0.0, estimated_cost_usd), max(0, estimated_tokens), "estimate"
-    cost_per_token = max(0.0, estimated_cost_usd) / float(estimated_tokens)
-    return cost_per_token * float(provider_tokens), provider_tokens, "provider_usage_metadata"
+    return max(0.0, estimated_cost_usd), max(0, estimated_tokens), "estimate"
+
+
+def _record_or_commit_cost_guardrail_usage(
+    *,
+    cost_guardrail: CostGuardrailService,
+    reservation: CostGuardrailReservation | None,
+    cost_usd: float,
+    tokens: int,
+) -> MonthlyUsage:
+    if reservation is not None and reservation.reserved:
+        return cost_guardrail.commit(
+            reservation,
+            cost_usd=cost_usd,
+            tokens=tokens,
+        )
+    return cost_guardrail.record(cost_usd=cost_usd, tokens=tokens)
 
 
 def _log_provider_usage_records(
@@ -4927,6 +4941,8 @@ async def _run_label_analysis_pipeline(
             per_request_budget_usd,
         )
         return _build_budget_fallback_response()
+    if _is_label_cost_guardrail_enabled():
+        _load_ai_cost_price_catalog()
     cost_reservation: CostGuardrailReservation | None = None
     if _is_label_cost_guardrail_enabled() and cost_guardrail:
         cost_reservation = cost_guardrail.reserve(cost_usd=projected_request_cost, tokens=projected_request_tokens)
@@ -5053,17 +5069,35 @@ async def _run_label_analysis_pipeline(
         assess_elapsed_ms,
         total_elapsed_ms,
     )
-    usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
-        usage_records=label_usage_records,
-        estimated_cost_usd=estimated_cost,
-        estimated_tokens=estimated_tokens,
-        allow_provider_usage=not label_pro_fallback_used,
-    )
     if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
-        if cost_reservation and cost_reservation.reserved:
-            usage = cost_guardrail.commit(cost_reservation, cost_usd=usage_cost, tokens=usage_tokens)
-        else:
-            usage = cost_guardrail.record(cost_usd=usage_cost, tokens=usage_tokens)
+        try:
+            usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
+                usage_records=label_usage_records,
+                estimated_cost_usd=estimated_cost,
+                estimated_tokens=estimated_tokens,
+                allow_provider_usage=not label_pro_fallback_used,
+            )
+        except PriceCatalogError:
+            usage = _record_or_commit_cost_guardrail_usage(
+                cost_guardrail=cost_guardrail,
+                reservation=cost_reservation,
+                cost_usd=estimated_cost,
+                tokens=estimated_tokens,
+            )
+            logger.exception(
+                "[Server] Label price catalog accounting failed after chargeable response request_id=%s month=%s source=estimate_after_price_catalog_error total_cost_usd=%.4f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
+            raise
+        usage = _record_or_commit_cost_guardrail_usage(
+            cost_guardrail=cost_guardrail,
+            reservation=cost_reservation,
+            cost_usd=usage_cost,
+            tokens=usage_tokens,
+        )
         logger.info(
             "[Server] Label cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.4f total_tokens=%d",
             request_id,
@@ -5185,6 +5219,7 @@ async def _run_smart_router_pipeline(
     if _is_smart_router_cost_guardrail_enabled():
         if smart_router_cost_guardrail is None:
             raise RuntimeError("SMART_ROUTER_COST_GUARDRAIL_ENABLED=1 but smart router cost guardrail is not initialized.")
+        _load_ai_cost_price_catalog()
         smart_router_reservation = smart_router_cost_guardrail.reserve(
             cost_usd=smart_router_estimated_cost,
             tokens=smart_router_estimated_tokens,
@@ -5290,23 +5325,34 @@ async def _run_smart_router_pipeline(
         usage_records=router_usage_records,
     )
     if _is_smart_router_cost_guardrail_enabled() and smart_router_cost_guardrail:
-        usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
-            usage_records=router_usage_records,
-            estimated_cost_usd=smart_router_estimated_cost,
-            estimated_tokens=smart_router_estimated_tokens,
-            allow_provider_usage=True,
+        try:
+            usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
+                usage_records=router_usage_records,
+                estimated_cost_usd=smart_router_estimated_cost,
+                estimated_tokens=smart_router_estimated_tokens,
+                allow_provider_usage=True,
+            )
+        except PriceCatalogError:
+            usage = _record_or_commit_cost_guardrail_usage(
+                cost_guardrail=smart_router_cost_guardrail,
+                reservation=smart_router_reservation,
+                cost_usd=smart_router_estimated_cost,
+                tokens=smart_router_estimated_tokens,
+            )
+            logger.exception(
+                "[Server] Smart router price catalog accounting failed after chargeable response request_id=%s month=%s source=estimate_after_price_catalog_error total_cost_usd=%.6f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
+            raise
+        usage = _record_or_commit_cost_guardrail_usage(
+            cost_guardrail=smart_router_cost_guardrail,
+            reservation=smart_router_reservation,
+            cost_usd=usage_cost,
+            tokens=usage_tokens,
         )
-        if smart_router_reservation and smart_router_reservation.reserved:
-            usage = smart_router_cost_guardrail.commit(
-                smart_router_reservation,
-                cost_usd=usage_cost,
-                tokens=usage_tokens,
-            )
-        else:
-            usage = smart_router_cost_guardrail.record(
-                cost_usd=usage_cost,
-                tokens=usage_tokens,
-            )
         logger.info(
             "[Server] Smart router cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.6f total_tokens=%d",
             request_id,

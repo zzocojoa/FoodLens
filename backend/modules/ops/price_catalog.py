@@ -177,6 +177,15 @@ def _estimate_record_cost(*, record: Mapping[str, object], entry: ModelPrice) ->
             f"AI cost price catalog cannot price total-only usage: provider={entry.provider}; model={entry.model}"
         )
 
+    total_tokens = _read_optional_int(raw=record, field_name="total_tokens")
+    component_total_tokens = _record_component_total_tokens(record=record)
+    if total_tokens is not None and component_total_tokens != total_tokens:
+        raise PriceCatalogError(
+            "AI cost price catalog cannot price partial or inconsistent token breakdown: "
+            f"provider={entry.provider}; model={entry.model}; total_tokens={total_tokens}; "
+            f"component_total_tokens={component_total_tokens}"
+        )
+
     billable_cached_tokens = cached_tokens or 0
     if billable_cached_tokens > 0 and entry.cached_input is None:
         raise PriceCatalogError(
@@ -200,10 +209,7 @@ def _tokens_to_usd(*, tokens: int, price: TokenPrice) -> float:
     return (float(max(0, tokens)) / 1_000_000.0) * price.usd_per_1m_tokens
 
 
-def _record_total_tokens(*, record: Mapping[str, object]) -> int:
-    total_tokens = _read_optional_int(raw=record, field_name="total_tokens")
-    if total_tokens is not None:
-        return total_tokens
+def _record_component_total_tokens(*, record: Mapping[str, object]) -> int:
     prompt_tokens = _read_optional_int(raw=record, field_name="prompt_tokens")
     cached_tokens = _read_optional_int(raw=record, field_name="cached_tokens")
     input_tokens = max(prompt_tokens or 0, cached_tokens or 0)
@@ -213,6 +219,13 @@ def _record_total_tokens(*, record: Mapping[str, object]) -> int:
         _read_optional_int(raw=record, field_name="thoughts_tokens") or 0,
     ]
     return sum(token_counts)
+
+
+def _record_total_tokens(*, record: Mapping[str, object]) -> int:
+    total_tokens = _read_optional_int(raw=record, field_name="total_tokens")
+    if total_tokens is not None:
+        return total_tokens
+    return _record_component_total_tokens(record=record)
 
 
 def _normalize_usage_records(*, raw_records: object) -> list[dict[str, object]]:

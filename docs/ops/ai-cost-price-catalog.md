@@ -17,6 +17,7 @@ catalog는 공식 가격표나 Cloud Billing Console에서 확인한 값을 운�
 - `usd_per_1m_tokens`는 운영자가 공식 출처에서 확인한 양수 숫자여야 한다. `0`, `NaN`, placeholder 값은 배포 catalog에서 허용하지 않는다.
 - 가격 변경 확인 없이 모델 기본값이나 fallback 정책을 바꾸지 않는다.
 - secret, access token, billing account id 전체값은 catalog와 문서에 기록하지 않는다.
+- Gemini 호출을 새로 만들어 catalog를 검증하지 않는다. 비용을 쓰지 않으려면 공식 가격표, Cloud Billing Pricing API, Pricing Table, 기존 Billing Reports만 사용한다.
 
 ## JSON 구조
 
@@ -61,6 +62,7 @@ catalog는 공식 가격표나 Cloud Billing Console에서 확인한 값을 운�
 `thoughts`는 provider usage에 reasoning/thinking token이 있고 해당 과금 항목이 있을 때 설정한다.
 해당 token이 들어왔는데 catalog에 component 단가가 없으면 서버는 catalog 오류를 발생시켜 잘못된 저가 추정을 막는다.
 위 예시는 schema template이다. 실제 JSON 파일에서는 `usd_per_1m_tokens`를 문자열 placeholder가 아니라 공식 출처에서 확인한 양수 숫자로 바꿔야 한다.
+현재 schema는 FoodLens의 표준 text/image Vertex 요청에 필요한 token component만 다룬다. audio, Live API, Batch/Flex/Priority traffic, context cache storage, grounding/search/maps tool, image output, tuning처럼 별도 SKU가 붙는 사용 방식은 catalog schema 확장 전까지 운영에서 켜지 않는다.
 
 ## 비용 계산
 
@@ -71,12 +73,17 @@ catalog는 공식 가격표나 Cloud Billing Console에서 확인한 값을 운�
 
 provider/model에 맞는 catalog entry가 없으면 서버는 catalog 오류를 발생시킨다.
 provider usage에 `total_tokens`가 있으면 기록 token 합계는 그 값을 사용한다. 없으면 `max(prompt_tokens, cached_tokens) + completion_tokens + thoughts_tokens`를 사용해 cached-only usage를 누락하지 않고, prompt token에 포함된 cached token은 중복 집계하지 않는다.
-catalog를 설정하지 않은 경우에만 기존 per-request 추정치로 기록한다. production guardrail에서는 모든 활성 모델을 catalog에 등록해야 한다.
+`total_tokens`와 component token 합계가 맞지 않으면 partial breakdown으로 보고 catalog 오류를 발생시킨다. 일부 component만 내려온 응답을 싼 값으로 잘못 계산하지 않기 위한 fail-closed 정책이다.
+catalog를 설정하지 않은 경우에는 provider token 수로 단가를 역산하지 않고 기존 per-request 추정치로 기록한다. production guardrail에서는 모든 활성 모델을 catalog에 등록해야 한다.
+catalog 오류가 모델 호출 후 발견되면 이미 예약된 요청 비용은 기존 추정치로 커밋한 뒤 오류를 발생시킨다. 이 경우 사용자 응답은 실패할 수 있지만 월간 guardrail 총액이 과소 집계되지 않는다.
 
 ## 운영 확인
 
 1. 공식 가격 문서와 Cloud Billing Console SKU를 확인한다.
-2. `backend/config/ai-price-catalog.json`의 `version`과 각 component `verified_at`를 갱신한다.
-3. `AI_COST_PRICE_CATALOG_PATH`를 API, worker, retention-cron 환경에 같은 경로로 배포한다.
-4. 라벨, smart router 경로의 provider usage 로그에서 `source=price_catalog:<version>` 기록이 나오는지 확인한다. `/analyze`와 `/lookup/barcode`도 AI 비용 guardrail 대상이며, provider usage metadata가 노출될 때까지 route별 추정치를 사용한다.
-5. 월간 guardrail 총액을 Cloud Billing Reports의 Vertex AI 비용과 대조한다.
+2. Cloud Billing SKU ID, SKU description, service, region/location, pricing unit, effective date, currency, list/contract price 여부를 private reconciliation artifact에 기록한다. billing account id 전체값은 저장하지 않는다.
+3. `backend/config/ai-price-catalog.json`의 `version`과 각 component `verified_at`를 갱신한다.
+4. Gemini 2.5 Pro처럼 context length별 tier가 다른 모델은 어떤 tier를 catalog에 넣었는지 명시한다. 현재 checked-in catalog는 과소 집계를 막기 위해 Pro의 `>200K input tokens` tier를 보수적으로 사용한다.
+5. `AI_COST_PRICE_CATALOG_PATH`를 API, worker, retention-cron 환경에 같은 경로로 배포한다.
+6. 라벨, smart router 경로의 provider usage 로그에서 `source=price_catalog:<version>` 기록이 나오는지 확인한다. 이 확인은 기존 자연 트래픽 로그로만 수행하고, catalog 검증 목적으로 `/analyze`, `/analyze/label`, `/analyze/smart`, `/lookup/barcode`를 새로 호출하지 않는다.
+7. `/analyze`와 `/lookup/barcode`도 AI 비용 guardrail 대상이며, provider usage metadata가 노출될 때까지 route별 추정치를 사용한다.
+8. 월간 guardrail 총액을 Cloud Billing Reports의 Vertex AI 비용과 대조한다.
