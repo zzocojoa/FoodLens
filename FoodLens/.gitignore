@@ -34,6 +34,7 @@ yarn-error.*
 .env
 .env.*
 .env*.local
+secrets/*.json
 artifacts/phase2/
 artifacts/phase6/
 artifacts/android-device/

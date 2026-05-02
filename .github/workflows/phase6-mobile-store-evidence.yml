@@ -74,6 +74,20 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare Android Play submit credentials
+        if: ${{ inputs.submit_enabled == true && (inputs.platform == 'android' || inputs.platform == 'all') }}
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "${GOOGLE_PLAY_SERVICE_ACCOUNT_JSON}" ]; then
+            echo "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret is required for non-interactive Android submit."
+            exit 1
+          fi
+          mkdir -p secrets
+          printf '%s' "${GOOGLE_PLAY_SERVICE_ACCOUNT_JSON}" > secrets/google-play-service-account.json
+          jq empty secrets/google-play-service-account.json
+          chmod 600 secrets/google-play-service-account.json
+
       - name: Run mobile store evidence gate
         env:
           PHASE6_PLATFORM: ${{ inputs.platform }}
@@ -83,6 +97,10 @@ jobs:
           PHASE6_SUBMIT_JUSTIFICATION: ${{ inputs.submit_justification }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: npm run phase6:mobile-store-evidence
+
+      - name: Cleanup Android Play submit credentials
+        if: always()
+        run: rm -f secrets/google-play-service-account.json
 
       - name: Upload store evidence artifacts
         if: always()
