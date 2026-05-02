@@ -7,6 +7,7 @@
 - OpenAI API pricing: https://developers.openai.com/api/docs/pricing
 - OpenAI 이미지 입력 토큰 계산: https://developers.openai.com/api/docs/guides/images-vision
 - Google Agent Platform / Vertex Gemini pricing: https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing
+- Render/GCP env 사용 지점 감사: `docs/ops/render-google-cloud-env-audit.md` (`codex/gcp-render-env-audit-clean` 병합 후 같은 경로에서 참조)
 
 가격 정보는 앱 코드에 하드코딩하지 않는다. 이 문서는 운영 의사결정을 위한 현재 시점의 가격 스냅샷이며, 실제 과금 계산은 공식 가격표를 다시 확인한 별도 설정값 또는 가격 카탈로그에서 다룬다.
 
@@ -73,6 +74,7 @@ Google Gemini 2.5 가격표는 텍스트 출력을 응답과 reasoning으로 표
 5. 월간 비용 사용량 저장소를 Postgres 또는 Redis로 옮긴다. 현재 in-memory guardrail은 서버 재시작과 다중 인스턴스에서 정확하지 않다.
 6. 바코드 성분 알러지 분석은 정규화된 성분 목록, 알러지 프로필, locale, prompt version 기준으로 캐시한다.
 7. Pro fallback은 opt-in, 낮은 비율, golden eval 통과 후에만 허용한다.
+8. release gate에 Render env readiness를 추가한다. 최소 확인 항목은 `GEMINI_LABEL_MODEL_NAME`, `GEMINI_MODEL_NAME`, `GCP_PROJECT_ID`, `GCP_LOCATION`, `GCP_SERVICE_ACCOUNT_JSON`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_*`다.
 
 ## 5. A/B 테스트 설계
 
@@ -195,6 +197,30 @@ degrade 순서:
 2. 알러지 평가는 text-only 저가 모델로 낮춘다.
 3. 품질이 낮은 라벨 이미지는 재촬영을 요구한다.
 4. 마지막으로 모델 호출 없이 안전 fallback을 반환한다.
+
+## 9. Render/GCP 감사 문서와 연결되는 운영 확인
+
+`docs/ops/render-google-cloud-env-audit.md`는 실제 Render env key와 비용 발생 코드 경로를 연결한다. 이 문서의 모델 전환 설계는 해당 감사 문서의 Dashboard 확인 항목과 함께 적용해야 한다.
+
+Render Dashboard에서 확인할 항목:
+
+- `foodlens-api`와 `foodlens-worker`의 `GEMINI_LABEL_MODEL_NAME`: 없거나 빈 값이면 코드 기본값 `gemini-2.5-pro`가 적용된다.
+- `GEMINI_MODEL_NAME`: `/analyze`와 `/lookup/barcode`의 Gemini 모델이다. Pro로 설정되어 있으면 라벨 외 경로에서도 Pro 비용이 발생할 수 있다.
+- `GCP_PROJECT_ID`와 `GCP_LOCATION`: GCP Billing Reports와 Vertex AI Usage/Quotas에서 보는 project/region과 일치해야 한다.
+- `LABEL_COST_GUARDRAIL_ENABLED`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE`: 현재는 추정치 기반이므로 실제 provider usage metadata와 차이가 날 수 있다.
+
+GCP Console에서 확인할 항목:
+
+- Billing Reports에서 service를 Vertex AI로 필터링하고 Gemini 2.5 Pro 관련 text output/reasoning SKU의 시간대를 `/analyze/label` 로그와 맞춘다.
+- Vertex AI quota에서 Gemini 2.5 Pro/Flash/Flash Lite별 요청/토큰 제한과 429 발생 여부를 본다.
+- Budget alerts는 앱 내부 guardrail과 별도로 설정한다. 앱 내부 guardrail은 현재 라벨 추정치 중심이고 GCP 전체 비용 차단 장치가 아니다.
+
+Release gate에 추가할 항목:
+
+- PR/릴리스 체크에서 `render.yaml`과 코드가 읽는 AI env key drift를 보고한다.
+- `GEMINI_LABEL_MODEL_NAME`이 비어 있거나 `gemini-2.5-pro`이면 Go/No-Go 회의에서 명시적으로 승인하도록 한다.
+- 모델 기본값 변경 PR은 golden image set, JSON parse rate, allergen recall, p95 latency, request당 비용 추정치를 artifact로 남긴다.
+- fallback-only Pro 정책이 꺼져 있는데 Pro 모델이 기본 경로에 있으면 release warning 이상으로 본다.
 
 ## 바로 착수할 1순위 패치
 
