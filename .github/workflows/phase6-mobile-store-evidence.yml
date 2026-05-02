@@ -105,8 +105,13 @@ jobs:
         if: always()
         run: rm -f secrets/google-play-service-account.json
 
-      - name: Upload store evidence artifacts
+      - name: Scan mobile store evidence artifacts for secret leaks
+        id: artifact_secret_scan
         if: always()
+        run: python3 ../.github/scripts/scan_artifact_secrets.py artifacts/phase6/mobile-store-evidence
+
+      - name: Upload store evidence artifacts
+        if: ${{ always() && steps.artifact_secret_scan.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: phase6-mobile-store-evidence-${{ github.run_id }}

@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[3]
 SCANNER_PATH = ROOT_DIR / ".github" / "scripts" / "scan_artifact_secrets.py"
 PERF_WORKFLOW_PATH = ROOT_DIR / ".github" / "workflows" / "backend-media-performance-regression.yml"
+STORE_WORKFLOW_PATH = ROOT_DIR / ".github" / "workflows" / "phase6-mobile-store-evidence.yml"
 
 
 def _load_scanner_module():
@@ -139,6 +140,19 @@ class ArtifactSecretScannerTests(unittest.TestCase):
 
         self.assertLess(scan_index, upload_index)
         self.assertIn("python3 .github/scripts/scan_artifact_secrets.py artifacts/perf", workflow)
+        self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
+
+    def test_mobile_store_evidence_workflow_scans_before_artifact_upload(self) -> None:
+        workflow = STORE_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        scan_index = workflow.index("Scan mobile store evidence artifacts for secret leaks")
+        upload_index = workflow.index("Upload store evidence artifacts")
+
+        self.assertLess(scan_index, upload_index)
+        self.assertIn(
+            "python3 ../.github/scripts/scan_artifact_secrets.py artifacts/phase6/mobile-store-evidence",
+            workflow,
+        )
         self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
 
 

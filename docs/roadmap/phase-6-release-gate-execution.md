@@ -116,6 +116,8 @@
     - iOS IPA(TestFlight Internal) 1회 이상
     - 운영 workflow: `.github/workflows/phase6-mobile-store-evidence.yml`
     - 증적 아티팩트: `FoodLens/artifacts/phase6/mobile-store-evidence/<timestamp>/`
+    - backend `/analyze`, `/analyze/jobs`를 호출하지 않고 EAS build/submit 증적만 수집
+    - artifact upload 전 secret scan 통과 필수
 - Mobile Lead
   - 릴리스 브랜치 전략 정리
   - staged rollout 계획 수립: `1% -> 5% -> 20% -> 100%`
