@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACT_ROOT="${ROOT_DIR}/artifacts/phase6/mobile-store-evidence"
+EXPECTED_ANDROID_PACKAGE="${PHASE6_EXPECTED_ANDROID_PACKAGE:-com.hoihou.foodlens}"
+
+export FOODLENS_FORCE_CANONICAL_PACKAGE="${FOODLENS_FORCE_CANONICAL_PACKAGE:-1}"
 
 require_env() {
   local name="$1"
@@ -61,6 +64,51 @@ submit_enabled_flag() {
   printf '%s\n' "false"
 }
 
+assert_android_release_identity() {
+  local expected_package="$1"
+
+  EXPECTED_ANDROID_PACKAGE="${expected_package}" node <<'NODE'
+const { resolveBuildIdentity } = require("./buildIdentity");
+
+const expectedAndroidPackage = process.env.EXPECTED_ANDROID_PACKAGE;
+const identity = resolveBuildIdentity({
+  projectDir: process.cwd(),
+  appVariant: process.env.APP_VARIANT,
+  processEnv: process.env,
+});
+
+if (!identity.isCanonicalPackageContext) {
+  console.error(
+    `Phase 6 mobile store evidence requires canonical package context. ` +
+      `Resolved androidPackage=${identity.androidPackage}, ` +
+      `worktreeName=${identity.worktreeName}, ` +
+      `FOODLENS_FORCE_CANONICAL_PACKAGE=${process.env.FOODLENS_FORCE_CANONICAL_PACKAGE || ""}.`
+  );
+  process.exit(1);
+}
+
+if (identity.androidPackage !== expectedAndroidPackage) {
+  console.error(
+    `Phase 6 Android store evidence resolved androidPackage=${identity.androidPackage}, ` +
+      `expected ${expectedAndroidPackage}.`
+  );
+  process.exit(1);
+}
+
+console.log(`Android store evidence package: ${identity.androidPackage}`);
+NODE
+}
+
+assert_release_identity_for_platforms() {
+  local platform
+
+  while IFS= read -r platform; do
+    if [ "${platform}" = "android" ] && [ "${PHASE6_BUILD_PROFILE}" = "production" ]; then
+      assert_android_release_identity "${EXPECTED_ANDROID_PACKAGE}"
+    fi
+  done < <(build_platforms "${PHASE6_PLATFORM}")
+}
+
 write_summary_header() {
   local summary_file="$1"
   {
@@ -70,6 +118,7 @@ write_summary_header() {
     echo "- build_profile: ${PHASE6_BUILD_PROFILE}"
     echo "- submit_profile: ${PHASE6_SUBMIT_PROFILE}"
     echo "- submit_enabled: ${SUBMIT_ENABLED_NORMALIZED}"
+    echo "- foodlens_force_canonical_package: ${FOODLENS_FORCE_CANONICAL_PACKAGE}"
     if [ -n "${PHASE6_SUBMIT_JUSTIFICATION:-}" ]; then
       echo "- submit_justification: ${PHASE6_SUBMIT_JUSTIFICATION}"
     fi
@@ -152,6 +201,8 @@ if [ "${SUBMIT_ENABLED_NORMALIZED}" = "false" ] && [ -z "${PHASE6_SUBMIT_JUSTIFI
   echo "PHASE6_SUBMIT_JUSTIFICATION is required when submit is disabled." >&2
   exit 1
 fi
+
+assert_release_identity_for_platforms
 
 STAMP="$(run_stamp)"
 EVIDENCE_DIR="${ARTIFACT_ROOT}/${STAMP}"

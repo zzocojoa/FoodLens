@@ -40,6 +40,9 @@ on:
 jobs:
   mobile-store-evidence:
     runs-on: ubuntu-latest
+    env:
+      FOODLENS_FORCE_CANONICAL_PACKAGE: "1"
+      PHASE6_EXPECTED_ANDROID_PACKAGE: com.hoihou.foodlens
     defaults:
       run:
         working-directory: FoodLens
