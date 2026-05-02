@@ -75,7 +75,7 @@ provider/model에 맞는 catalog entry가 없으면 서버는 catalog 오류를 
 provider usage에 `total_tokens`가 있으면 기록 token 합계는 그 값을 사용한다. 없으면 `max(prompt_tokens, cached_tokens) + completion_tokens + thoughts_tokens`를 사용해 cached-only usage를 누락하지 않고, prompt token에 포함된 cached token은 중복 집계하지 않는다.
 `total_tokens`와 component token 합계가 맞지 않으면 partial breakdown으로 보고 catalog 오류를 발생시킨다. 일부 component만 내려온 응답을 싼 값으로 잘못 계산하지 않기 위한 fail-closed 정책이다.
 catalog를 설정하지 않은 경우에는 provider token 수로 단가를 역산하지 않고 기존 per-request 추정치로 기록한다. production guardrail에서는 모든 활성 모델을 catalog에 등록해야 한다.
-catalog 오류가 모델 호출 후 발견되면 이미 예약된 요청 비용은 기존 추정치로 커밋한 뒤 오류를 발생시킨다. 이 경우 사용자 응답은 실패할 수 있지만 월간 guardrail 총액이 과소 집계되지 않는다.
+catalog 오류가 모델 호출 후 발견되면 이미 예약된 요청 비용은 기존 추정치로 커밋하고 사용자 응답은 유지한다. 같은 요청을 사용자가 재시도해 추가 비용을 쓰지 않게 하면서 월간 guardrail 총액도 과소 집계하지 않기 위한 정책이다.
 
 ## 운영 확인
 

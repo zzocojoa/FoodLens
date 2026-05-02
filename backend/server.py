@@ -5091,13 +5091,14 @@ async def _run_label_analysis_pipeline(
                 usage.total_cost_usd,
                 usage.total_tokens,
             )
-            raise
-        usage = _record_or_commit_cost_guardrail_usage(
-            cost_guardrail=cost_guardrail,
-            reservation=cost_reservation,
-            cost_usd=usage_cost,
-            tokens=usage_tokens,
-        )
+            usage_source = "estimate_after_price_catalog_error"
+        else:
+            usage = _record_or_commit_cost_guardrail_usage(
+                cost_guardrail=cost_guardrail,
+                reservation=cost_reservation,
+                cost_usd=usage_cost,
+                tokens=usage_tokens,
+            )
         logger.info(
             "[Server] Label cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.4f total_tokens=%d",
             request_id,
@@ -5346,13 +5347,14 @@ async def _run_smart_router_pipeline(
                 usage.total_cost_usd,
                 usage.total_tokens,
             )
-            raise
-        usage = _record_or_commit_cost_guardrail_usage(
-            cost_guardrail=smart_router_cost_guardrail,
-            reservation=smart_router_reservation,
-            cost_usd=usage_cost,
-            tokens=usage_tokens,
-        )
+            usage_source = "estimate_after_price_catalog_error"
+        else:
+            usage = _record_or_commit_cost_guardrail_usage(
+                cost_guardrail=smart_router_cost_guardrail,
+                reservation=smart_router_reservation,
+                cost_usd=usage_cost,
+                tokens=usage_tokens,
+            )
         logger.info(
             "[Server] Smart router cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.6f total_tokens=%d",
             request_id,

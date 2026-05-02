@@ -1660,7 +1660,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(service.commit_calls, 1)
         self.assertEqual(service.release_calls, 0)
 
-    def test_label_endpoint_commits_estimate_when_catalog_cannot_price_spent_request(self):
+    def test_label_endpoint_returns_result_and_commits_estimate_when_catalog_cannot_price_spent_request(self):
         spy = _UsageMetadataSpyAnalyst()
         storage = InMemoryMonthlyUsageStorage()
         service = _TrackingCostGuardrailService(storage, monthly_budget_usd=100.0)
@@ -1704,7 +1704,7 @@ class CostGuardrailTests(unittest.TestCase):
                     },
                     clear=False,
                 ),
-                TestClient(app, raise_server_exceptions=False) as client,
+                TestClient(app) as client,
             ):
                 app.state.analyst = spy
                 app.state.barcode_service = object()
@@ -1717,7 +1717,7 @@ class CostGuardrailTests(unittest.TestCase):
                 )
                 usage = storage.get(service._period_key())
 
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 200)
         self.assertTrue(spy.called)
         self.assertAlmostEqual(usage.total_cost_usd, 0.02)
         self.assertEqual(usage.total_tokens, 1000)
@@ -2073,6 +2073,71 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertAlmostEqual(usage.total_cost_usd, 0.003)
         self.assertEqual(usage.total_tokens, 128)
         self.assertNotIn("_router_usage", response.json())
+
+    def test_smart_endpoint_returns_result_and_commits_estimate_when_catalog_cannot_price_router_usage(self):
+        router = _UsageMetadataFoodSmartRouter()
+        storage = InMemoryMonthlyUsageStorage()
+        service = _TrackingCostGuardrailService(storage, monthly_budget_usd=100.0)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            catalog_path = os.path.join(tmp_dir, "ai-price-catalog.json")
+            with open(catalog_path, "w", encoding="utf-8") as catalog_file:
+                json.dump(
+                    {
+                        "version": "unit-test-2026-05-02",
+                        "entries": [
+                            {
+                                "provider": "google_vertex_ai",
+                                "model": "gemini-2.5-flash",
+                                "input": {
+                                    "usd_per_1m_tokens": 1.0,
+                                    "sku": "synthetic-input-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                                "output": {
+                                    "usd_per_1m_tokens": 10.0,
+                                    "sku": "synthetic-output-sku",
+                                    "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+                                    "verified_at": "2026-05-02",
+                                },
+                            }
+                        ],
+                    },
+                    catalog_file,
+                )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "SMART_ROUTER_COST_GUARDRAIL_ENABLED": "1",
+                        "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.003",
+                        "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "128",
+                        "AI_COST_PRICE_CATALOG_PATH": catalog_path,
+                    },
+                    clear=False,
+                ),
+                TestClient(app) as client,
+            ):
+                app.state.analyst = _SpyAnalyst()
+                app.state.barcode_service = object()
+                app.state.smart_router = router
+                app.state.smart_router_cost_guardrail = service
+                response = client.post(
+                    "/analyze/smart",
+                    files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR"},
+                )
+                usage = storage.get(service._period_key())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(router.called)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.003)
+        self.assertEqual(usage.total_tokens, 128)
+        self.assertEqual(service.reserve_calls, 1)
+        self.assertEqual(service.commit_calls, 1)
+        self.assertEqual(service.release_calls, 0)
 
     def test_smart_endpoint_fallbacks_on_router_monthly_budget_without_router_gemini(self):
         router = _FoodSmartRouter()
