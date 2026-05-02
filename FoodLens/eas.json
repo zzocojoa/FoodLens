@@ -36,7 +36,8 @@
   "submit": {
     "production": {
       "android": {
-        "serviceAccountKeyPath": "./secrets/google-play-service-account.json"
+        "serviceAccountKeyPath": "./secrets/google-play-service-account.json",
+        "releaseStatus": "draft"
       }
     }
   }
