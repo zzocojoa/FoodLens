@@ -16,6 +16,7 @@ SMOKE_SCRIPT_PATH: Path = ROOT_DIR / "backend" / "scripts" / "staging_integratio
 RENDER_DEPLOY_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_deploy_ready_gate.py"
 RENDER_JOB_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_one_off_job_gate.py"
 WORKFLOW_PATH: Path = ROOT_DIR / ".github" / "workflows" / "staging-integration-smoke.yml"
+BRANCH_PROTECTION_SCRIPT_PATH: Path = ROOT_DIR / "docs" / "scripts" / "apply_branch_protection.sh"
 EXPECTED_REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "DATABASE_URL",
     "AUTH_STATE_KEY",
@@ -301,6 +302,17 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertLess(
             workflow.index("Scan staging smoke artifacts for secret leaks"),
             workflow.index("Upload staging smoke artifacts"),
+        )
+
+    def test_branch_protection_requires_staging_smoke_pr_check(self) -> None:
+        script = BRANCH_PROTECTION_SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("STAGING_SMOKE_PR_CONTEXT", script)
+        self.assertIn(".github/workflows/staging-integration-smoke.yml", script)
+        self.assertIn('"staging-integration-smoke-pr-check"', script)
+        self.assertLess(
+            script.index("Checking default-branch workflow exists for required context: ${STAGING_SMOKE_PR_CONTEXT}"),
+            script.rindex('"staging-integration-smoke-pr-check"'),
         )
 
     def test_render_deploy_ready_gate_reports_missing_env_without_values(self) -> None:
