@@ -133,7 +133,7 @@
 - Cloud Storage bucket metrics: `MEDIA_GCS_BUCKET`의 object count, storage bytes, GET/read, PUT/write, DELETE, egress를 본다.
 - Cloud Storage lifecycle: `MEDIA_GCS_PREFIX` 아래 original/derived 객체에 lifecycle rule이 있는지, 앱의 `RETENTION_ORIGINAL_TTL_DAYS=30`, `RETENTION_DERIVED_TTL_DAYS=90`와 충돌하지 않는지 확인한다.
 - Google Maps API key restrictions: `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`가 Android package name과 SHA fingerprint, 필요한 API로 제한되어 있는지 확인한다.
-- Budget alerts: Vertex AI와 Cloud Storage 비용에 월 예산 알림이 있는지 확인한다. 앱 내부 `$10` guardrail은 현재 라벨 추정치용이고 GCP Billing 전체 budget을 대체하지 못한다.
+- Budget alerts: Vertex AI와 Cloud Storage 비용에 월 예산 알림이 있는지 확인한다. 앱 내부 `$10` guardrail은 현재 라벨 추정치용이고 GCP Billing 전체 budget을 대체하지 못한다. Console 확인 절차와 private evidence gate는 `docs/ops/gcp-cost-controls-runbook.md`를 따른다.
 
 ## 8. Release gate / Render blueprint 연결
 
@@ -162,4 +162,4 @@ Live readiness gate `backend/scripts/render_live_readiness_gate.py`는 Render AP
 - `codex/ai-cost-guardrail-routes`: provider/model/route별 실제 token usage를 기록하고 월 예산 guardrail을 `/analyze`, `/lookup/barcode`까지 확장.
 - `codex/label-model-routing-flags`: label extract/assess 모델 분리, `max_output_tokens`, Pro fallback-only 조건, golden set gate 추가.
 - `codex/render-ai-env-readiness-gate`: Render blueprint gate 또는 별도 CI에서 AI env drift/readiness summary를 artifact로 생성.
-- `codex/gcp-budget-ops-runbook`: GCP Budget alert, Vertex AI quota, IAM 최소 권한, Maps key restriction, GCS lifecycle 확인 절차 문서화.
+- GCP Budget alert, Vertex AI quota, IAM 최소 권한, Maps key restriction, GCS lifecycle 확인 절차는 `docs/ops/gcp-cost-controls-runbook.md`와 `backend/scripts/gcp_cost_controls_evidence_gate.py`로 고정한다.
