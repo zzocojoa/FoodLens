@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import Lock
-from typing import Any, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 from uuid import uuid4
 
 from backend.modules.analyst_core.prompts import ANALYSIS_PROMPT_VERSION
@@ -109,6 +109,23 @@ class AnalysisJobWorker:
     get_smart_router: Callable[[], Any]
     decode_image: Callable[[bytes], Any]
     resolve_prompt_country_code: Callable[[str, str | None], str]
+    build_label_analysis_handler: Callable[
+        [str, float, int],
+        Callable[[Any, str, str, str | None], Awaitable[dict[str, Any]]] | None,
+    ]
+    build_smart_analysis_handler: Callable[
+        [str, float, int],
+        Callable[
+            [
+                Any,
+                str,
+                str,
+                str | None,
+                Callable[[Any, str, str, str | None], Awaitable[dict[str, Any]]],
+            ],
+            Awaitable[dict[str, Any]],
+        ] | None,
+    ]
     lease_seconds: int
     poll_interval_seconds: float
     worker_id: str
@@ -186,23 +203,49 @@ class AnalysisJobWorker:
                     prompt_country_code,
                 )
             elif job["mode"] == "label":
-                analyst = self.get_analyst()
-                result = await asyncio.to_thread(
-                    analyst.analyze_label_json,
+                label_analysis_handler = self.build_label_analysis_handler(
+                    request_id,
+                    started_at,
+                    int(stage_latencies.get("preprocessing") or 0),
+                )
+                if label_analysis_handler is None:
+                    raise RuntimeError("build_label_analysis_handler must return a handler for label analysis jobs.")
+                result = await label_analysis_handler(
                     image,
                     str(job["allergy_info"]),
                     prompt_country_code,
                     job.get("locale"),
-                    True,
                 )
             else:
                 smart_router = self.get_smart_router()
-                result = await smart_router.route_analysis(
-                    image=image,
-                    allergy_info=str(job["allergy_info"]),
-                    iso_country_code=prompt_country_code,
-                    locale=job.get("locale"),
+                label_analysis_handler = self.build_label_analysis_handler(
+                    request_id,
+                    started_at,
+                    int(stage_latencies.get("preprocessing") or 0),
                 )
+                if label_analysis_handler is None:
+                    raise RuntimeError("build_label_analysis_handler must return a handler for smart analysis jobs.")
+                smart_analysis_handler = self.build_smart_analysis_handler(
+                    request_id,
+                    started_at,
+                    int(stage_latencies.get("preprocessing") or 0),
+                )
+                if smart_analysis_handler is not None:
+                    result = await smart_analysis_handler(
+                        image,
+                        str(job["allergy_info"]),
+                        prompt_country_code,
+                        job.get("locale"),
+                        label_analysis_handler,
+                    )
+                else:
+                    result = await smart_router.route_analysis(
+                        image=image,
+                        allergy_info=str(job["allergy_info"]),
+                        iso_country_code=prompt_country_code,
+                        locale=job.get("locale"),
+                        label_analysis_handler=label_analysis_handler,
+                    )
             stage_latencies["inference"] = int((time.perf_counter() - inference_started) * 1000)
 
             used_model = _string_or_none((result or {}).get("used_model"))

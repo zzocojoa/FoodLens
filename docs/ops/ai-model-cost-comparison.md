@@ -15,15 +15,17 @@
 
 현재 Gemini 2.5 Pro 비용의 핵심 원인은 라벨 분석 경로다.
 
-- `backend/modules/analyst_runtime/food_analyst.py:120`에서 음식 이미지 분석과 바코드 성분 알러지 분석 모델을 `GEMINI_MODEL_NAME`으로 정한다. 기본값은 `gemini-2.0-flash`다.
-- `backend/modules/analyst_runtime/food_analyst.py:121`에서 라벨 분석 모델을 `GEMINI_LABEL_MODEL_NAME`으로 정한다. 값이 비어 있으면 기본값이 `gemini-2.5-pro`다.
-- `backend/modules/analyst_runtime/food_analyst.py:391`부터 `401`까지가 라벨 이미지 OCR 추출 호출이다. 이때 `self.label_model_name`을 사용한다.
-- `backend/modules/analyst_runtime/food_analyst.py:416`부터 `432`까지가 추출된 성분을 다시 알러지 관점으로 평가하는 두 번째 호출이다. 성분이 있고 평가가 켜져 있으면 같은 모델을 한 번 더 호출한다.
-- `backend/server.py:4357`부터 `4509`까지가 `/analyze/label` 엔드포인트와 `analyst.analyze_label_json` 연결부다.
-- `backend/modules/analyst_runtime/router.py:90`부터 `95`까지는 `/analyze/smart`가 이미지를 영양 라벨로 분류했을 때 같은 라벨 분석 경로로 보낸다.
-- `backend/modules/analysis_jobs.py`의 비동기 job 경로도 `label`, `smart` 작업에서 같은 analyst runtime을 사용한다.
+- `backend/modules/analyst_runtime/food_analyst.py:257`에서 음식 이미지 분석과 바코드 성분 알러지 분석 모델을 `GEMINI_MODEL_NAME`으로 정한다. 기본값은 `gemini-2.0-flash`다.
+- `backend/modules/analyst_runtime/food_analyst.py:167-179`와 `:258-260`에서 라벨 분석 기본 모델은 `GEMINI_LABEL_PRIMARY_MODEL_NAME` 또는 기존 호환용 `GEMINI_LABEL_MODEL_NAME`으로 정한다. 둘 다 비어 있으면 `gemini-2.5-flash`를 사용한다.
+- `GEMINI_LABEL_MODEL_NAME=gemini-2.5-pro`처럼 Pro가 기본 모델로 들어와도 `GEMINI_LABEL_ALLOW_PRO_PRIMARY=1`이 없으면 `gemini-2.5-flash`로 내려간다.
+- Pro는 `backend/modules/analyst_runtime/food_analyst.py:656-663`, `:702-720` 기준 `GEMINI_LABEL_PRO_FALLBACK_ENABLED=1`이고 fallback 모델명이 Pro일 때만 `GEMINI_LABEL_FALLBACK_MODEL_NAME` 경로로 시도된다.
+- `backend/modules/analyst_runtime/food_analyst.py:528-545`가 라벨 이미지 OCR 추출 호출이다. 이때 선택된 `model_name`을 사용한다.
+- `backend/modules/analyst_runtime/food_analyst.py:558-582`가 추출된 성분을 다시 알러지 관점으로 평가하는 두 번째 호출이다. 성분이 있고 평가가 켜져 있으면 같은 모델을 한 번 더 호출한다.
+- `backend/server.py:4578-4805`의 공통 label pipeline은 품질 gate, label cost guardrail, monthly usage 기록 후 `analyst.analyze_label_json`으로 연결된다.
+- `backend/modules/analyst_runtime/router.py:59-104`, `:150-161`은 smart router 분류 후 endpoint가 넘긴 라벨 handler가 있으면 라벨 분석 실행을 그 handler에 위임한다. `router_category`는 optional 응답 metadata로 유지된다.
+- `backend/modules/analysis_jobs.py:205-235`의 비동기 job 경로도 `label`, `smart` 라벨 라우팅에서는 서버가 주입한 label handler를 통해 같은 품질 gate와 비용 guardrail을 사용한다.
 
-따라서 `GEMINI_LABEL_MODEL_NAME`을 명시하지 않은 상태에서 `/analyze/label`이 성공하면, 요청 1건이 Gemini 2.5 Pro 1회 또는 2회 호출로 이어질 수 있다. 일반적인 라벨 분석은 OCR 추출 1회와 알러지 평가 1회가 모두 실행될 수 있으므로 비용이 빠르게 커진다.
+따라서 현재 구현에서는 `GEMINI_LABEL_MODEL_NAME`을 명시하지 않은 상태만으로 Pro가 자동 선택되지 않는다. 일반적인 라벨 분석은 여전히 OCR 추출 1회와 알러지 평가 1회가 모두 실행될 수 있으므로, 기본 모델은 Flash 계열로 고정하고 Pro fallback은 명시적으로 켠 경우에만 허용한다.
 
 다른 경로는 설정에 따라 Pro 비용이 발생할 수 있다.
 
@@ -61,20 +63,20 @@ Google Gemini 2.5 가격표는 텍스트 출력을 응답과 reasoning으로 표
 | 기능 | 현재 동작 | 추천 기본 모델 | Pro 사용 조건 |
 | --- | --- | --- | --- |
 | `/analyze` 음식 이미지 분석 | `GEMINI_MODEL_NAME`, 기본 `gemini-2.0-flash` | Gemini 2.5 Flash 또는 GPT-5.4 mini A/B 후보 | 낮은 confidence, 안전상 중요한 불확실성, 저가 모델 실패 시에만 사용 |
-| `/analyze/label` 라벨 OCR + 알러지 평가 | `GEMINI_LABEL_MODEL_NAME`, 기본 `gemini-2.5-pro`, 1회 또는 2회 호출 | OCR 추출은 Gemini 2.5 Flash 또는 GPT-5.4 mini, 알러지 평가는 Gemini 2.5 Flash Lite 또는 GPT-5.4 nano | JSON parse 실패, OCR confidence 낮음, 알러지 판단 모호함 |
+| `/analyze/label` 라벨 OCR + 알러지 평가 | `GEMINI_LABEL_PRIMARY_MODEL_NAME`, 기본 `gemini-2.5-flash`, 1회 또는 2회 호출 | OCR 추출은 Gemini 2.5 Flash 또는 GPT-5.4 mini, 알러지 평가는 Gemini 2.5 Flash Lite 또는 GPT-5.4 nano | JSON parse 실패 등 기본 모델 실패 후 `GEMINI_LABEL_PRO_FALLBACK_ENABLED=1`일 때만 |
 | `/analyze/smart` router | `gemini-2.0-flash`로 분류 후 음식/라벨 경로로 이동 | Gemini 2.5 Flash Lite 또는 GPT-5.4 nano | router 자체에는 Pro를 쓰지 않음 |
 | `/lookup/barcode` 성분 알러지 텍스트 분석 | 성분과 알러지가 있을 때 `GEMINI_MODEL_NAME` 호출 | Gemini 2.5 Flash Lite 또는 GPT-5.4 nano | 복잡한 다국어 성분명 등에서만 Gemini 2.5 Flash로 승격, Pro는 원칙적으로 제외 |
 
 ## 4. 비용 절감 우선순위
 
-1. 라벨 모델 기본값을 암묵적 Pro에서 명시적 운영 설정으로 바꾼다. `GEMINI_LABEL_MODEL_NAME`이 비어 있다는 이유로 운영에서 `gemini-2.5-pro`를 쓰면 안 된다.
+1. 라벨 모델 기본값을 Flash로 유지한다. `GEMINI_LABEL_MODEL_NAME`이 비어 있다는 이유로 운영에서 `gemini-2.5-pro`를 쓰면 안 된다.
 2. 라벨 OCR 추출 모델과 알러지 평가 모델을 분리한다. 두 번째 pass는 텍스트-only 작업이므로 Pro를 기본으로 재사용할 이유가 약하다.
 3. 라벨 OCR, 라벨 알러지 평가, 바코드 알러지 분석에 명시적인 `max_output_tokens`를 추가한다.
 4. Gemini/OpenAI 호출 경계에서 비용 사용량을 기록한다. route, provider, model, token usage, retry count, fallback count, chargeable 여부를 남겨야 한다.
-5. 월간 비용 사용량 저장소를 Postgres 또는 Redis로 옮긴다. 현재 in-memory guardrail은 서버 재시작과 다중 인스턴스에서 정확하지 않다.
+5. 월간 비용 사용량 저장소는 Render/env 기본값에서 Postgres를 사용한다. Dashboard drift로 `memory` backend가 되지 않도록 release gate에서 확인한다.
 6. 바코드 성분 알러지 분석은 정규화된 성분 목록, 알러지 프로필, locale, prompt version 기준으로 캐시한다.
 7. Pro fallback은 opt-in, 낮은 비율, golden eval 통과 후에만 허용한다.
-8. release gate에 Render env readiness를 추가한다. 최소 확인 항목은 `GEMINI_LABEL_MODEL_NAME`, `GEMINI_MODEL_NAME`, `GCP_PROJECT_ID`, `GCP_LOCATION`, `GCP_SERVICE_ACCOUNT_JSON`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_*`다.
+8. release gate에 Render env readiness를 추가한다. 최소 확인 항목은 `GEMINI_LABEL_PRIMARY_MODEL_NAME`, `GEMINI_LABEL_PRO_FALLBACK_ENABLED`, `GEMINI_LABEL_ALLOW_PRO_PRIMARY`, `GEMINI_MODEL_NAME`, `GCP_PROJECT_ID`, `GCP_LOCATION`, `GCP_SERVICE_ACCOUNT_JSON`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_*`다.
 
 ## 5. A/B 테스트 설계
 
@@ -116,7 +118,11 @@ Google Gemini 2.5 가격표는 텍스트 출력을 응답과 reasoning으로 표
 현재 사용할 수 있는 주요 설정:
 
 - `GEMINI_MODEL_NAME`
-- `GEMINI_LABEL_MODEL_NAME`
+- `GEMINI_LABEL_PRIMARY_MODEL_NAME`
+- `GEMINI_LABEL_FALLBACK_MODEL_NAME`
+- `GEMINI_LABEL_PRO_FALLBACK_ENABLED`
+- `GEMINI_LABEL_ALLOW_PRO_PRIMARY`
+- `GEMINI_LABEL_MODEL_NAME` 기존 호환용 값
 - `LABEL_COST_GUARDRAIL_ENABLED`
 - `LABEL_MONTHLY_BUDGET_USD`
 - `LABEL_ESTIMATED_COST_USD_PER_REQUEST`
@@ -172,16 +178,18 @@ Pro는 smart router의 일반 분류나 바코드 텍스트 알러지 분석에�
 
 문제는 세 가지다.
 
-- 실제 토큰 사용량이 아니라 추정 비용으로 기록한다.
-- `/analyze/label`에만 적용되고 `/analyze`, `/analyze/smart`, async jobs, `/lookup/barcode`에는 적용되지 않는다.
-- 저장소가 in-memory라 서버 재시작 또는 다중 인스턴스에서 월간 비용 집계가 정확하지 않다.
+- `/analyze/label`, `/analyze/smart` 라벨 라우팅, `/analyze` 음식 분석, `/analyze/smart` 음식 라우팅, `/lookup/barcode` 성분 알러지 분석, label/smart async job 라벨 라우팅에 적용된다.
+- `/analyze`와 `/lookup/barcode`는 현재 provider token metadata가 아니라 `FOOD_ANALYSIS_ESTIMATED_*`, `BARCODE_ALLERGEN_ESTIMATED_*` 추정치를 기록한다.
+- Render/env drift로 `LABEL_COST_GUARDRAIL_STORAGE_BACKEND=memory`가 배포되면 서버 재시작 또는 다중 인스턴스에서 월간 비용 집계가 정확하지 않다.
 
 권장 설계:
 
-- 공식 가격표 URL, 확인일, provider, model, 입력 단가, 캐시 입력 단가, 출력 단가, reasoning/thinking 과금 정책을 별도 price catalog로 저장한다.
+- 공식 가격표 URL, 확인일, provider, model, 입력 단가, 캐시 입력 단가, 출력 단가, reasoning/thinking 과금 정책을 별도 price catalog로 저장한다. catalog 단가는 공식 출처에서 확인한 양수 숫자만 허용하고, source URL에는 credential, query string, fragment를 넣지 않는다.
+- `AI_COST_PRICE_CATALOG_PATH`로 배포한 JSON catalog가 있으면 provider token usage를 catalog 단가로 달러 추정치로 변환한다. catalog 구조와 검증 절차는 `docs/ops/ai-cost-price-catalog.md`를 따른다.
 - 모델 호출 전 route, 이미지 토큰 추정치, 프롬프트 토큰 추정치, 요청한 max output, retry budget, fallback 가능성을 기준으로 예상 비용을 계산한다.
-- 응답 후 provider usage metadata가 있으면 실제 사용량을 기록한다.
-- `/analyze`, `/analyze/label`, `/analyze/smart`, async jobs, `/lookup/barcode` 전체에 하나의 월간 예산 guardrail을 적용한다.
+- 응답 후 Gemini `usage_metadata`가 있으면 라벨 추출/평가와 스마트 라우터 분류의 실제 토큰 수를 기록한다. `total_tokens`가 없으면 cached-only usage를 놓치지 않도록 `max(prompt_tokens, cached_tokens) + completion_tokens + thoughts_tokens`를 기록 token 합계로 쓴다. metadata가 없거나 Pro fallback에서 실패한 primary 호출을 과소 집계할 수 있는 경우에는 기존 `LABEL_ESTIMATED_*`, `SMART_ROUTER_ESTIMATED_*` 추정치를 사용한다.
+- 호출 전 예약한 예상 비용은 성공 시 실제/추정 사용량으로 commit하고, 실패/429에서는 release한다. 프로세스 crash 등으로 남은 예약분은 `COST_GUARDRAIL_RESERVATION_TTL_SECONDS`가 지난 뒤 다음 예약 시 자동 release한다.
+- `/analyze`, `/lookup/barcode`, `/analyze/smart`의 음식/라벨 하위 라우팅까지 포함하는 전체 AI 월간 예산 guardrail을 적용한다.
 - 월 예산을 route별로 나눈다. 예를 들어 label 60%, food 25%, barcode 10%, smart router 5%로 시작하고 운영 설정으로 조정한다.
 - route별 최대 요청 수는 아래 공식으로 계산한다.
 
@@ -204,10 +212,14 @@ degrade 순서:
 
 Render Dashboard에서 확인할 항목:
 
-- `foodlens-api`와 `foodlens-worker`의 `GEMINI_LABEL_MODEL_NAME`: 없거나 빈 값이면 코드 기본값 `gemini-2.5-pro`가 적용된다.
+- `foodlens-api`와 `foodlens-worker`의 `GEMINI_LABEL_PRIMARY_MODEL_NAME`: 기본 라벨 모델이다. `render.yaml` 기준값은 `gemini-2.5-flash`다.
+- `GEMINI_LABEL_PRO_FALLBACK_ENABLED`: `0`이면 Pro fallback이 꺼진다. `1`이면 기본 모델 실패 후에만 `GEMINI_LABEL_FALLBACK_MODEL_NAME`을 시도한다.
+- `GEMINI_LABEL_ALLOW_PRO_PRIMARY`: `0`이면 Pro를 기본 라벨 모델로 쓰지 못하게 막는다.
 - `GEMINI_MODEL_NAME`: `/analyze`와 `/lookup/barcode`의 Gemini 모델이다. Pro로 설정되어 있으면 라벨 외 경로에서도 Pro 비용이 발생할 수 있다.
 - `GCP_PROJECT_ID`와 `GCP_LOCATION`: GCP Billing Reports와 Vertex AI Usage/Quotas에서 보는 project/region과 일치해야 한다.
-- `LABEL_COST_GUARDRAIL_ENABLED`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE`: 현재는 추정치 기반이므로 실제 provider usage metadata와 차이가 날 수 있다.
+- `AI_COST_PRICE_CATALOG_PATH`: 공식 가격표 또는 Cloud Billing Console SKU를 확인한 JSON catalog 경로다. 설정되면 Gemini `usage_metadata`의 provider/model/token component를 catalog 단가로 달러 추정치로 변환한다.
+- `LABEL_COST_GUARDRAIL_ENABLED`, `LABEL_MONTHLY_BUDGET_USD`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE`, `FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST`, `BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST`: catalog가 없으면 route별 추정치 또는 Gemini `usage_metadata`의 실제 토큰 수를 기존 추정 단가에 비례 배분한다. `/analyze`와 `/lookup/barcode`도 guardrail 대상이며, catalog가 설정된 상태에서 provider/model entry가 없으면 실패로 처리해 누락 SKU를 드러낸다.
+- `COST_GUARDRAIL_RESERVATION_TTL_SECONDS`: 예약 후 프로세스가 종료되어 release/commit이 실행되지 않은 비용을 자동 해제하기 전까지 기다리는 시간이다. 기본값은 900초다.
 
 GCP Console에서 확인할 항목:
 
@@ -218,7 +230,7 @@ GCP Console에서 확인할 항목:
 Release gate에 추가할 항목:
 
 - PR/릴리스 체크에서 `render.yaml`과 코드가 읽는 AI env key drift를 보고한다.
-- `GEMINI_LABEL_MODEL_NAME`이 비어 있거나 `gemini-2.5-pro`이면 Go/No-Go 회의에서 명시적으로 승인하도록 한다.
+- `GEMINI_LABEL_PRIMARY_MODEL_NAME`이 `gemini-2.5-flash`가 아니거나 `GEMINI_LABEL_ALLOW_PRO_PRIMARY=1`이면 Go/No-Go 회의에서 명시적으로 승인하도록 한다.
 - 모델 기본값 변경 PR은 golden image set, JSON parse rate, allergen recall, p95 latency, request당 비용 추정치를 artifact로 남긴다.
 - fallback-only Pro 정책이 꺼져 있는데 Pro 모델이 기본 경로에 있으면 release warning 이상으로 본다.
 
@@ -228,7 +240,7 @@ Release gate에 추가할 항목:
 
 1. 기존 Gemini 경로는 유지한다.
 2. 라벨 OCR 추출 모델과 라벨 알러지 평가 모델을 별도 env key로 분리한다.
-3. Render 운영 환경에는 명시적인 기본 모델 값을 넣어 코드의 암묵적 Pro fallback에 의존하지 않게 한다.
+3. Render 운영 환경에는 `GEMINI_MODEL_NAME=gemini-2.0-flash`, `GEMINI_LABEL_PRIMARY_MODEL_NAME=gemini-2.5-flash`, `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`, `GEMINI_LABEL_ALLOW_PRO_PRIMARY=0`을 명시한다.
 4. 라벨 두 pass 모두에 `max_output_tokens`를 추가한다.
 5. 운영 모델 변경 전 golden label set으로 품질 회귀를 검증한다.
 

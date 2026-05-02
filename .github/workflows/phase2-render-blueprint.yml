@@ -4,14 +4,20 @@ on:
   pull_request:
     paths:
       - render.yaml
+      - .env.example
       - backend/scripts/ci_render_blueprint_gate.sh
+      - backend/scripts/render_live_readiness_gate.py
+      - docs/roadmap/phase-6-release-gate-execution.md
       - .github/workflows/phase2-render-blueprint.yml
   push:
     branches:
       - main
     paths:
       - render.yaml
+      - .env.example
       - backend/scripts/ci_render_blueprint_gate.sh
+      - backend/scripts/render_live_readiness_gate.py
+      - docs/roadmap/phase-6-release-gate-execution.md
       - .github/workflows/phase2-render-blueprint.yml
   workflow_dispatch:
 
@@ -24,3 +30,6 @@ jobs:
 
       - name: Validate Render blueprint and env parity
         run: bash backend/scripts/ci_render_blueprint_gate.sh
+
+      - name: Validate Render live readiness gate dry-run
+        run: python3 backend/scripts/render_live_readiness_gate.py --mode dry-run

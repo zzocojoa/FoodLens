@@ -62,6 +62,13 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
         normalized = self._validate_and_normalize(payload)
         self.assertEqual(normalized["latency_ms"]["total"], 123)
 
+    def test_router_category_metadata_is_backward_compatible(self):
+        payload = _load_json("analyze_smart_response.snapshot.json")
+        payload["router_category"] = "NUTRITION_LABEL"
+
+        normalized = self._validate_and_normalize(payload)
+        self.assertEqual(normalized["router_category"], "NUTRITION_LABEL")
+
     def test_analysis_decision_fields_are_backward_compatible(self):
         payload = _load_json("analyze_response.snapshot.json")
         payload["decision_status"] = "ASK"

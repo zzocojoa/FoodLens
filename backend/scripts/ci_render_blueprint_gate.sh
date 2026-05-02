@@ -3,15 +3,20 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BLUEPRINT_PATH="${ROOT_DIR}/render.yaml"
+ENV_EXAMPLE_PATH="${ROOT_DIR}/.env.example"
 
 if [[ ! -f "${BLUEPRINT_PATH}" ]]; then
   echo "[Render Blueprint Gate] missing file: ${BLUEPRINT_PATH}"
   exit 1
 fi
+if [[ ! -f "${ENV_EXAMPLE_PATH}" ]]; then
+  echo "[Render Blueprint Gate] missing file: ${ENV_EXAMPLE_PATH}"
+  exit 1
+fi
 
 echo "[Render Blueprint Gate] validating ${BLUEPRINT_PATH}"
 
-python3 - "${BLUEPRINT_PATH}" <<'PY'
+python3 - "${BLUEPRINT_PATH}" "${ENV_EXAMPLE_PATH}" <<'PY'
 from __future__ import annotations
 
 import re
@@ -65,6 +70,17 @@ def parse_env_vars(block: list[str]) -> dict[str, dict[str, str | None]]:
     return env_vars
 
 
+def parse_env_example(path: Path) -> dict[str, str]:
+    env_vars: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        env_vars[key.strip()] = unquote(value.strip())
+    return env_vars
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         fail(message)
@@ -78,6 +94,24 @@ def require_env_value(env_vars: dict[str, dict[str, str | None]], key: str, expe
     require_env_key(env_vars, key)
     actual = env_vars[key]["value"]
     require(actual == expected, f"unexpected env value for {key}: expected {expected}, got {actual}")
+
+
+def require_example_value(env_vars: dict[str, str], key: str, expected: str) -> None:
+    actual = env_vars.get(key)
+    require(actual == expected, f"unexpected .env.example value for {key}: expected {expected}, got {actual}")
+
+
+def require_example_placeholder(env_vars: dict[str, str], key: str, expected: str) -> None:
+    actual = env_vars.get(key)
+    require(actual == expected, f"unexpected .env.example placeholder for {key}")
+
+
+def require_env_secret_sync_false(env_vars: dict[str, dict[str, str | None]], key: str) -> None:
+    require_env_key(env_vars, key)
+    actual_value = env_vars[key]["value"]
+    actual_sync = env_vars[key]["sync"]
+    require(actual_value is None, f"secret-like env {key} must not define a literal value in render.yaml")
+    require(actual_sync == "false", f"secret-like env {key} must use sync: false in render.yaml")
 
 
 def require_env_int_at_least(env_vars: dict[str, dict[str, str | None]], key: str, minimum: int) -> None:
@@ -121,7 +155,9 @@ def parse_services(lines: list[str]) -> list[dict[str, Any]]:
 
 def main() -> None:
     path = Path(sys.argv[1])
+    env_example_path = Path(sys.argv[2])
     lines = path.read_text(encoding="utf-8").splitlines()
+    env_example = parse_env_example(env_example_path)
     services = parse_services(lines)
 
     require(len(services) == 3, f"expected 3 services, found {len(services)}")
@@ -166,12 +202,34 @@ def main() -> None:
         "UPSTREAM_429_RETRY_AFTER_SECONDS",
         "GEMINI_RETRY_TIMEOUT_SECONDS",
         "GEMINI_RETRY_MAX_ATTEMPTS",
+        "GEMINI_MODEL_NAME",
+        "GEMINI_LABEL_PRIMARY_MODEL_NAME",
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME",
+        "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
+        "GEMINI_LABEL_ALLOW_PRO_PRIMARY",
         "LABEL_COST_GUARDRAIL_ENABLED",
+        "LABEL_COST_GUARDRAIL_STORAGE_BACKEND",
+        "LABEL_COST_GUARDRAIL_TABLE",
         "LABEL_MONTHLY_BUDGET_USD",
         "LABEL_ESTIMATED_COST_USD_PER_REQUEST",
         "LABEL_ESTIMATED_TOKENS_PER_REQUEST",
         "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE",
         "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+        "LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK",
+        "LABEL_PER_REQUEST_BUDGET_USD",
+        "COST_GUARDRAIL_RESERVATION_TTL_SECONDS",
+        "FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST",
+        "FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST",
+        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST",
+        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST",
+        "AI_COST_PRICE_CATALOG_PATH",
+        "SMART_ROUTER_COST_GUARDRAIL_ENABLED",
+        "SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND",
+        "SMART_ROUTER_COST_GUARDRAIL_TABLE",
+        "SMART_ROUTER_MONTHLY_BUDGET_USD",
+        "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST",
+        "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST",
         "GCP_PROJECT_ID",
         "GCP_SERVICE_ACCOUNT_JSON",
         "AUTH_PUBLIC_BASE_URL",
@@ -251,7 +309,6 @@ def main() -> None:
         "DELETION_HANDLER_BACKEND",
         "DELETION_QUEUE_INTERVAL_SECONDS",
         "DELETION_QUEUE_MAX_BATCH",
-        "SENTRY_DSN",
         "SENTRY_ENVIRONMENT",
     ]
 
@@ -267,9 +324,99 @@ def main() -> None:
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
     }
+    ai_cost_expected_values = {
+        "GEMINI_MODEL_NAME": "gemini-2.0-flash",
+        "GEMINI_LABEL_PRIMARY_MODEL_NAME": "gemini-2.5-flash",
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
+        "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+        "GEMINI_LABEL_ALLOW_PRO_PRIMARY": "0",
+        "LABEL_COST_GUARDRAIL_ENABLED": "1",
+        "LABEL_COST_GUARDRAIL_STORAGE_BACKEND": "postgres",
+        "LABEL_COST_GUARDRAIL_TABLE": "label_monthly_usage",
+        "LABEL_MONTHLY_BUDGET_USD": "10",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+        "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE": "0.012",
+        "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE": "900",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK": "0.05",
+        "LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK": "2500",
+        "LABEL_PER_REQUEST_BUDGET_USD": "0.07",
+        "COST_GUARDRAIL_RESERVATION_TTL_SECONDS": "900",
+        "FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+        "FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.003",
+        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "256",
+        "SMART_ROUTER_COST_GUARDRAIL_ENABLED": "1",
+        "SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND": "postgres",
+        "SMART_ROUTER_COST_GUARDRAIL_TABLE": "smart_router_monthly_usage",
+        "SMART_ROUTER_MONTHLY_BUDGET_USD": "2",
+        "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.003",
+        "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "128",
+    }
+    secret_like_keys = [
+        "DATABASE_URL",
+        "GCP_SERVICE_ACCOUNT_JSON",
+        "MEDIA_RENDER_SIGNING_SECRET",
+        "AUTH_GOOGLE_CLIENT_SECRET",
+        "AUTH_KAKAO_CLIENT_SECRET",
+        "AUTH_EMAIL_SMTP_PASSWORD",
+        "DATAGO_API_KEY",
+        "DATAGO_I2790_API_KEY",
+        "KOREAN_FDA_API_KEY",
+    ]
+    dashboard_only_keys = [
+        "AI_COST_PRICE_CATALOG_PATH",
+    ]
     for service in (web, worker, cron):
         for key, value in media_render_expected_values.items():
             require_env_value(service["env_vars"], key, value)
+        for key, value in ai_cost_expected_values.items():
+            require_env_value(service["env_vars"], key, value)
+        for key in secret_like_keys:
+            require_env_secret_sync_false(service["env_vars"], key)
+        for key in dashboard_only_keys:
+            require_env_secret_sync_false(service["env_vars"], key)
+
+    require_example_value(env_example, "GEMINI_MODEL_NAME", "gemini-2.0-flash")
+    require_example_value(env_example, "GEMINI_LABEL_PRIMARY_MODEL_NAME", "gemini-2.5-flash")
+    require_example_value(env_example, "GEMINI_LABEL_FALLBACK_MODEL_NAME", "gemini-2.5-pro")
+    require_example_value(env_example, "GEMINI_LABEL_PRO_FALLBACK_ENABLED", "0")
+    require_example_value(env_example, "GEMINI_LABEL_ALLOW_PRO_PRIMARY", "0")
+    require_example_value(env_example, "LABEL_COST_GUARDRAIL_ENABLED", "1")
+    require_example_value(env_example, "LABEL_COST_GUARDRAIL_STORAGE_BACKEND", "postgres")
+    require_example_value(env_example, "LABEL_COST_GUARDRAIL_TABLE", "label_monthly_usage")
+    require_example_value(env_example, "LABEL_MONTHLY_BUDGET_USD", "10.0")
+    require_example_value(env_example, "LABEL_ESTIMATED_COST_USD_PER_REQUEST", "0.02")
+    require_example_value(env_example, "LABEL_ESTIMATED_TOKENS_PER_REQUEST", "1500")
+    require_example_value(env_example, "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", "0.012")
+    require_example_value(env_example, "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", "900")
+    require_example_value(env_example, "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", "0.05")
+    require_example_value(env_example, "LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK", "2500")
+    require_example_value(env_example, "LABEL_PER_REQUEST_BUDGET_USD", "0.07")
+    require_example_value(env_example, "COST_GUARDRAIL_RESERVATION_TTL_SECONDS", "900")
+    require_example_value(env_example, "FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST", "0.02")
+    require_example_value(env_example, "FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST", "1500")
+    require_example_value(env_example, "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", "0.003")
+    require_example_value(env_example, "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", "256")
+    require_example_value(env_example, "AI_COST_PRICE_CATALOG_PATH", "")
+    require_example_value(env_example, "SMART_ROUTER_COST_GUARDRAIL_ENABLED", "1")
+    require_example_value(env_example, "SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND", "postgres")
+    require_example_value(env_example, "SMART_ROUTER_COST_GUARDRAIL_TABLE", "smart_router_monthly_usage")
+    require_example_value(env_example, "SMART_ROUTER_MONTHLY_BUDGET_USD", "2.0")
+    require_example_value(env_example, "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", "0.003")
+    require_example_value(env_example, "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", "128")
+    example_secret_placeholders = {
+        "DATABASE_URL": "",
+        "GOOGLE_API_KEY": "your_google_api_key_here",
+        "GCP_SERVICE_ACCOUNT_JSON": "replace_with_render_secret_json",
+        "KOREAN_FDA_API_KEY": "your_korean_fda_api_key_here",
+        "DATAGO_API_KEY": "your_datago_api_key_here",
+        "DATAGO_I2790_API_KEY": "your_datago_i2790_api_key_here",
+        "AUTH_KAKAO_CLIENT_SECRET": "",
+        "MEDIA_RENDER_SIGNING_SECRET": "change-me",
+    }
+    for key, value in example_secret_placeholders.items():
+        require_example_placeholder(env_example, key, value)
 
     require(web["type"] == "web", f"foodlens-api type must be web, got {web['type']}")
     require(web["runtime"] == "docker", f"foodlens-api runtime must be docker, got {web['runtime']}")

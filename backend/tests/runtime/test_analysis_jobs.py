@@ -152,6 +152,12 @@ class _AsyncJobAnalyst:
 
 class AnalysisJobRuntimeTests(unittest.TestCase):
     def _build_worker(self) -> AnalysisJobWorker:
+        def build_unexpected_label_handler(_request_id: str, _started_at: float, _preprocess_ms: int):
+            async def handler(_image, _allergy_info: str, _iso_country_code: str, _locale: str | None):
+                raise AssertionError("label handler should not be used for food jobs")
+
+            return handler
+
         return AnalysisJobWorker(
             store=app.state.analysis_job_store,
             nutrition_service=NutritionEnrichmentService(
@@ -174,6 +180,8 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
             get_smart_router=lambda: app.state.smart_router,
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=build_unexpected_label_handler,
+            build_smart_analysis_handler=lambda _request_id, _started_at, _preprocess_ms: None,
             lease_seconds=60,
             poll_interval_seconds=0.1,
             worker_id="worker-test",
@@ -188,6 +196,352 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         )
         self.assertIsNotNone(claimed_job)
         asyncio.run(worker._process_job(claimed_job))
+
+    def test_label_job_uses_runtime_label_handler_when_available(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        payload = create_analysis_job_payload(
+            request_id="req-analysis-job-label-handler",
+            mode="label",
+            allergy_info="None",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=_build_image_bytes(),
+            image_sha256="hash",
+            poll_after_ms=1000,
+        )
+        store.create_job(
+            job_id=payload.job_id,
+            request_id=payload.request_id,
+            mode=payload.mode,
+            allergy_info=payload.allergy_info,
+            iso_country_code=payload.iso_country_code,
+            locale=payload.locale,
+            content_type=payload.content_type,
+            image_base64=payload.image_base64,
+            image_sha256=payload.image_sha256,
+            accepted_at=payload.accepted_at,
+            poll_after_ms=payload.poll_after_ms,
+        )
+        handler_calls: list[tuple[str, str | None]] = []
+
+        def build_handler(
+            _request_id: str,
+            _started_at: float,
+            _preprocess_ms: int,
+        ):
+            async def handler(_image, _allergy_info: str, iso_country_code: str, locale: str | None):
+                handler_calls.append((iso_country_code, locale))
+                return {
+                    "foodName": "Guarded Label",
+                    "safetyStatus": "SAFE",
+                    "ingredients": [],
+                    "raw_result": "ok",
+                    "used_model": "gemini-2.5-flash",
+                    "prompt_version": "label-v1.2-2pass-locale-country",
+                }
+
+            return handler
+
+        worker = AnalysisJobWorker(
+            store=store,
+            nutrition_service=NutritionEnrichmentService(
+                cache_store=InMemoryNutritionCacheStore(),
+                lookup_func=lambda _name, _origin: None,
+                budget_seconds=0.5,
+                max_parallelism=1,
+            ),
+            get_analyst=lambda: _AsyncJobAnalyst(),
+            get_smart_router=lambda: app.state.smart_router,
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=build_handler,
+            build_smart_analysis_handler=lambda _request_id, _started_at, _preprocess_ms: None,
+            lease_seconds=60,
+            poll_interval_seconds=0.1,
+            worker_id="worker-label-handler",
+        )
+        claimed_job = store.claim_next_job(
+            worker_id=worker.worker_id,
+            lease_seconds=worker.lease_seconds,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertIsNotNone(claimed_job)
+
+        asyncio.run(worker._process_job(claimed_job))
+        completed = store.get_job(job_id=payload.job_id)
+
+        self.assertEqual(handler_calls, [("US", "en-US")])
+        self.assertIsNotNone(completed)
+        assert completed is not None
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["result_json"]["foodName"], "Guarded Label")
+
+    def test_label_job_fails_closed_without_runtime_label_handler(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        payload = create_analysis_job_payload(
+            request_id="req-analysis-job-label-missing-handler",
+            mode="label",
+            allergy_info="None",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=_build_image_bytes(),
+            image_sha256="hash-missing-handler",
+            poll_after_ms=1000,
+        )
+        store.create_job(
+            job_id=payload.job_id,
+            request_id=payload.request_id,
+            mode=payload.mode,
+            allergy_info=payload.allergy_info,
+            iso_country_code=payload.iso_country_code,
+            locale=payload.locale,
+            content_type=payload.content_type,
+            image_base64=payload.image_base64,
+            image_sha256=payload.image_sha256,
+            accepted_at=payload.accepted_at,
+            poll_after_ms=payload.poll_after_ms,
+        )
+
+        worker = AnalysisJobWorker(
+            store=store,
+            nutrition_service=NutritionEnrichmentService(
+                cache_store=InMemoryNutritionCacheStore(),
+                lookup_func=lambda _name, _origin: None,
+                budget_seconds=0.5,
+                max_parallelism=1,
+            ),
+            get_analyst=lambda: _AsyncJobAnalyst(),
+            get_smart_router=lambda: app.state.smart_router,
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=lambda _request_id, _started_at, _preprocess_ms: None,
+            build_smart_analysis_handler=lambda _request_id, _started_at, _preprocess_ms: None,
+            lease_seconds=60,
+            poll_interval_seconds=0.1,
+            worker_id="worker-label-missing-handler",
+        )
+        claimed_job = store.claim_next_job(
+            worker_id=worker.worker_id,
+            lease_seconds=worker.lease_seconds,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertIsNotNone(claimed_job)
+
+        asyncio.run(worker._process_job(claimed_job))
+        completed = store.get_job(job_id=payload.job_id)
+
+        self.assertIsNotNone(completed)
+        assert completed is not None
+        self.assertEqual(completed["status"], "failed")
+        self.assertEqual(completed["error_code"], "ANALYSIS_JOB_FAILED")
+        self.assertIn("build_label_analysis_handler must return a handler", completed["error_message"])
+
+    def test_smart_job_passes_runtime_label_handler_to_router(self) -> None:
+        class SmartRouterWithLabelHandler:
+            def __init__(self) -> None:
+                self.received_handler = None
+
+            async def route_analysis(self, **kwargs):
+                self.received_handler = kwargs.get("label_analysis_handler")
+                result = await self.received_handler(
+                    kwargs["image"],
+                    kwargs["allergy_info"],
+                    kwargs["iso_country_code"],
+                    kwargs["locale"],
+                )
+                result["router_category"] = "NUTRITION_LABEL"
+                return result
+
+        store = InMemoryAnalysisJobStore()
+        payload = create_analysis_job_payload(
+            request_id="req-analysis-job-smart-handler",
+            mode="smart",
+            allergy_info="None",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=_build_image_bytes(),
+            image_sha256="hash-smart",
+            poll_after_ms=1000,
+        )
+        store.create_job(
+            job_id=payload.job_id,
+            request_id=payload.request_id,
+            mode=payload.mode,
+            allergy_info=payload.allergy_info,
+            iso_country_code=payload.iso_country_code,
+            locale=payload.locale,
+            content_type=payload.content_type,
+            image_base64=payload.image_base64,
+            image_sha256=payload.image_sha256,
+            accepted_at=payload.accepted_at,
+            poll_after_ms=payload.poll_after_ms,
+        )
+        router = SmartRouterWithLabelHandler()
+        handler_calls: list[tuple[str, str | None]] = []
+
+        def build_handler(
+            _request_id: str,
+            _started_at: float,
+            _preprocess_ms: int,
+        ):
+            async def handler(_image, _allergy_info: str, iso_country_code: str, locale: str | None):
+                handler_calls.append((iso_country_code, locale))
+                return {
+                    "foodName": "Smart Guarded Label",
+                    "safetyStatus": "SAFE",
+                    "ingredients": [],
+                    "raw_result": "ok",
+                    "used_model": "gemini-2.5-flash",
+                    "prompt_version": "label-v1.2-2pass-locale-country",
+                }
+
+            return handler
+
+        worker = AnalysisJobWorker(
+            store=store,
+            nutrition_service=NutritionEnrichmentService(
+                cache_store=InMemoryNutritionCacheStore(),
+                lookup_func=lambda _name, _origin: None,
+                budget_seconds=0.5,
+                max_parallelism=1,
+            ),
+            get_analyst=lambda: _AsyncJobAnalyst(),
+            get_smart_router=lambda: router,
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=build_handler,
+            build_smart_analysis_handler=lambda _request_id, _started_at, _preprocess_ms: None,
+            lease_seconds=60,
+            poll_interval_seconds=0.1,
+            worker_id="worker-smart-handler",
+        )
+        claimed_job = store.claim_next_job(
+            worker_id=worker.worker_id,
+            lease_seconds=worker.lease_seconds,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertIsNotNone(claimed_job)
+
+        asyncio.run(worker._process_job(claimed_job))
+        completed = store.get_job(job_id=payload.job_id)
+
+        self.assertIsNotNone(router.received_handler)
+        self.assertEqual(handler_calls, [("US", "en-US")])
+        self.assertIsNotNone(completed)
+        assert completed is not None
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["result_json"]["foodName"], "Smart Guarded Label")
+
+    def test_smart_job_uses_runtime_smart_handler_when_available(self) -> None:
+        class UnexpectedSmartRouter:
+            async def route_analysis(self, **_kwargs):
+                raise AssertionError("smart router should be called through runtime smart handler")
+
+        store = InMemoryAnalysisJobStore()
+        payload = create_analysis_job_payload(
+            request_id="req-analysis-job-smart-runtime-handler",
+            mode="smart",
+            allergy_info="None",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=_build_image_bytes(),
+            image_sha256="hash-smart-runtime",
+            poll_after_ms=1000,
+        )
+        store.create_job(
+            job_id=payload.job_id,
+            request_id=payload.request_id,
+            mode=payload.mode,
+            allergy_info=payload.allergy_info,
+            iso_country_code=payload.iso_country_code,
+            locale=payload.locale,
+            content_type=payload.content_type,
+            image_base64=payload.image_base64,
+            image_sha256=payload.image_sha256,
+            accepted_at=payload.accepted_at,
+            poll_after_ms=payload.poll_after_ms,
+        )
+        smart_handler_calls: list[tuple[str, str | None]] = []
+
+        def build_label_handler(
+            _request_id: str,
+            _started_at: float,
+            _preprocess_ms: int,
+        ):
+            async def handler(_image, _allergy_info: str, iso_country_code: str, locale: str | None):
+                return {
+                    "foodName": "Label handler should be delegated",
+                    "safetyStatus": "SAFE",
+                    "ingredients": [],
+                    "raw_result": "ok",
+                    "used_model": "gemini-2.5-flash",
+                    "prompt_version": "label-v1.2-2pass-locale-country",
+                }
+
+            return handler
+
+        def build_smart_handler(
+            _request_id: str,
+            _started_at: float,
+            _preprocess_ms: int,
+        ):
+            async def handler(
+                _image,
+                _allergy_info: str,
+                iso_country_code: str,
+                locale: str | None,
+                _label_analysis_handler,
+            ):
+                smart_handler_calls.append((iso_country_code, locale))
+                return {
+                    "foodName": "Smart Runtime Guarded",
+                    "safetyStatus": "SAFE",
+                    "ingredients": [],
+                    "raw_result": "ok",
+                    "router_category": "REAL_FOOD",
+                    "used_model": "gemini-2.0-flash",
+                    "prompt_version": "food-v3.2-context-engineered",
+                }
+
+            return handler
+
+        worker = AnalysisJobWorker(
+            store=store,
+            nutrition_service=NutritionEnrichmentService(
+                cache_store=InMemoryNutritionCacheStore(),
+                lookup_func=lambda _name, _origin: None,
+                budget_seconds=0.5,
+                max_parallelism=1,
+            ),
+            get_analyst=lambda: _AsyncJobAnalyst(),
+            get_smart_router=lambda: UnexpectedSmartRouter(),
+            decode_image=decode_upload_to_image,
+            resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=build_label_handler,
+            build_smart_analysis_handler=build_smart_handler,
+            lease_seconds=60,
+            poll_interval_seconds=0.1,
+            worker_id="worker-smart-runtime-handler",
+        )
+        claimed_job = store.claim_next_job(
+            worker_id=worker.worker_id,
+            lease_seconds=worker.lease_seconds,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertIsNotNone(claimed_job)
+
+        asyncio.run(worker._process_job(claimed_job))
+        completed = store.get_job(job_id=payload.job_id)
+
+        self.assertEqual(smart_handler_calls, [("US", "en-US")])
+        self.assertIsNotNone(completed)
+        assert completed is not None
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["result_json"]["foodName"], "Smart Runtime Guarded")
 
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)

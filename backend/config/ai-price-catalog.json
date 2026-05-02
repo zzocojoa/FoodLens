@@ -1,0 +1,105 @@
+{
+  "version": "vertex-ai-gemini-2026-05-03",
+  "entries": [
+    {
+      "provider": "google_vertex_ai",
+      "model": "gemini-2.0-flash",
+      "input": {
+        "usd_per_1m_tokens": 0.15,
+        "sku": "Vertex AI Gemini 2.0 Flash input tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "output": {
+        "usd_per_1m_tokens": 0.6,
+        "sku": "Vertex AI Gemini 2.0 Flash output text tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      }
+    },
+    {
+      "provider": "google_vertex_ai",
+      "model": "gemini-2.5-flash",
+      "input": {
+        "usd_per_1m_tokens": 0.3,
+        "sku": "Vertex AI Gemini 2.5 Flash input tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "cached_input": {
+        "usd_per_1m_tokens": 0.03,
+        "sku": "Vertex AI Gemini 2.5 Flash cached input tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "output": {
+        "usd_per_1m_tokens": 2.5,
+        "sku": "Vertex AI Gemini 2.5 Flash text output and thinking tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "thoughts": {
+        "usd_per_1m_tokens": 2.5,
+        "sku": "Vertex AI Gemini 2.5 Flash text output and thinking tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      }
+    },
+    {
+      "provider": "google_vertex_ai",
+      "model": "gemini-2.5-flash-lite",
+      "input": {
+        "usd_per_1m_tokens": 0.1,
+        "sku": "Vertex AI Gemini 2.5 Flash-Lite input tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "cached_input": {
+        "usd_per_1m_tokens": 0.01,
+        "sku": "Vertex AI Gemini 2.5 Flash-Lite cached input tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "output": {
+        "usd_per_1m_tokens": 0.4,
+        "sku": "Vertex AI Gemini 2.5 Flash-Lite text output and thinking tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "thoughts": {
+        "usd_per_1m_tokens": 0.4,
+        "sku": "Vertex AI Gemini 2.5 Flash-Lite text output and thinking tokens",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      }
+    },
+    {
+      "provider": "google_vertex_ai",
+      "model": "gemini-2.5-pro",
+      "input": {
+        "usd_per_1m_tokens": 2.5,
+        "sku": "Vertex AI Gemini 2.5 Pro input tokens conservative high-context rate",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "cached_input": {
+        "usd_per_1m_tokens": 0.25,
+        "sku": "Vertex AI Gemini 2.5 Pro cached input tokens conservative high-context rate",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "output": {
+        "usd_per_1m_tokens": 15.0,
+        "sku": "Vertex AI Gemini 2.5 Pro text output and thinking tokens conservative high-context rate",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      },
+      "thoughts": {
+        "usd_per_1m_tokens": 15.0,
+        "sku": "Vertex AI Gemini 2.5 Pro text output and thinking tokens conservative high-context rate",
+        "source_url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "verified_at": "2026-05-03"
+      }
+    }
+  ]
+}

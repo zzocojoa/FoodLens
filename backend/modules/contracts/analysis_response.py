@@ -12,6 +12,7 @@ AnalysisOrigin = Literal["food_photo", "label_photo", "barcode_lookup", "barcode
 RecommendedAction = Literal["eat", "verify_label", "ask_staff", "avoid"]
 UncertaintyReason = Literal["image_ambiguity", "missing_label_text", "barcode_not_found", "low_confidence", "unknown"]
 DecisionConfidence = Literal["high", "medium", "low"]
+RouterCategory = Literal["REAL_FOOD", "NUTRITION_LABEL", "BARCODE", "MENU", "NOT_FOOD", "BUDGET_FALLBACK"]
 
 
 class TranslationCardContract(BaseModel):
@@ -64,4 +65,5 @@ class AnalysisResponseContract(BaseModel):
     request_id: Optional[str] = None
     prompt_version: Optional[str] = None
     used_model: Optional[str] = None
+    router_category: Optional[RouterCategory] = None
     latency_ms: Optional[LatencyMsContract] = None

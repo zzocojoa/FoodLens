@@ -1,8 +1,8 @@
-import os
 import atexit
-import time
 import logging
-from typing import Any
+import os
+import time
+from typing import Any, TypedDict
 from google.api_core.exceptions import ResourceExhausted
 import vertexai
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
@@ -47,6 +47,143 @@ import traceback
 
 
 logger = logging.getLogger("foodlens.analyst_runtime")
+
+
+LABEL_PRIMARY_MODEL_DEFAULT = "gemini-2.5-flash"
+LABEL_PRO_FALLBACK_MODEL_DEFAULT = "gemini-2.5-pro"
+
+
+class ProviderUsageRecord(TypedDict, total=False):
+    provider: str
+    route: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    cached_tokens: int
+    thoughts_tokens: int
+    total_tokens: int
+    source: str
+
+
+def _read_usage_field(metadata: object, field_name: str) -> object:
+    if isinstance(metadata, dict):
+        return metadata.get(field_name)
+    return getattr(metadata, field_name, None)
+
+
+def _read_usage_int(metadata: object, field_names: tuple[str, ...]) -> int | None:
+    for field_name in field_names:
+        raw_value = _read_usage_field(metadata, field_name)
+        if raw_value is None or isinstance(raw_value, bool):
+            continue
+        try:
+            parsed_value = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if parsed_value >= 0:
+            return parsed_value
+    return None
+
+
+def extract_provider_usage_record(
+    response: object,
+    *,
+    route: str,
+    model_name: str,
+) -> ProviderUsageRecord | None:
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata is None:
+        return None
+
+    prompt_tokens = _read_usage_int(metadata, ("prompt_token_count", "prompt_tokens", "input_tokens"))
+    completion_tokens = _read_usage_int(
+        metadata,
+        ("candidates_token_count", "completion_tokens", "output_tokens"),
+    )
+    cached_tokens = _read_usage_int(metadata, ("cached_content_token_count", "cached_tokens"))
+    thoughts_tokens = _read_usage_int(metadata, ("thoughts_token_count", "thought_tokens", "reasoning_tokens"))
+    total_tokens = _read_usage_int(metadata, ("total_token_count", "total_tokens"))
+
+    if total_tokens is None:
+        additive_counts = [
+            value
+            for value in (prompt_tokens, completion_tokens, thoughts_tokens)
+            if value is not None
+        ]
+        if additive_counts:
+            total_tokens = sum(additive_counts)
+
+    if not any(
+        value is not None and value > 0
+        for value in (prompt_tokens, completion_tokens, cached_tokens, thoughts_tokens, total_tokens)
+    ):
+        return None
+
+    usage_record: ProviderUsageRecord = {
+        "provider": "google_vertex_ai",
+        "route": route,
+        "model": model_name,
+        "source": "provider_usage_metadata",
+    }
+    if prompt_tokens is not None:
+        usage_record["prompt_tokens"] = prompt_tokens
+    if completion_tokens is not None:
+        usage_record["completion_tokens"] = completion_tokens
+    if cached_tokens is not None:
+        usage_record["cached_tokens"] = cached_tokens
+    if thoughts_tokens is not None:
+        usage_record["thoughts_tokens"] = thoughts_tokens
+    if total_tokens is not None:
+        usage_record["total_tokens"] = total_tokens
+    return usage_record
+
+
+def _read_env_str(name: str, fallback: str) -> str:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip()
+    if not normalized:
+        return fallback
+    return normalized
+
+
+def _read_env_bool(name: str, fallback: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be one of 1,true,yes,on,0,false,no,off")
+
+
+def _is_pro_model_name(model_name: str) -> bool:
+    return "pro" in model_name.strip().lower()
+
+
+def _resolve_label_primary_model_name() -> str:
+    explicit_primary = os.getenv("GEMINI_LABEL_PRIMARY_MODEL_NAME")
+    legacy_primary = os.getenv("GEMINI_LABEL_MODEL_NAME")
+    candidate = (explicit_primary or legacy_primary or LABEL_PRIMARY_MODEL_DEFAULT).strip()
+    if not candidate:
+        return LABEL_PRIMARY_MODEL_DEFAULT
+    if _is_pro_model_name(candidate) and not _read_env_bool("GEMINI_LABEL_ALLOW_PRO_PRIMARY", False):
+        logger.warning(
+            "[LabelModelPolicy] pro primary blocked",
+            extra={"requested_model": candidate, "selected_model": LABEL_PRIMARY_MODEL_DEFAULT},
+        )
+        return LABEL_PRIMARY_MODEL_DEFAULT
+    return candidate
+
+
+def _resolve_label_fallback_model_name(primary_model_name: str) -> str:
+    fallback_model_name = _read_env_str("GEMINI_LABEL_FALLBACK_MODEL_NAME", LABEL_PRO_FALLBACK_MODEL_DEFAULT)
+    if fallback_model_name == primary_model_name:
+        return ""
+    return fallback_model_name
 
 
 def _normalize_runtime_locale(locale: str | None) -> str:
@@ -118,13 +255,18 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
-        self.label_model_name = os.getenv("GEMINI_LABEL_MODEL_NAME") or "gemini-2.5-pro"
+        self.label_model_name = _resolve_label_primary_model_name()
+        self.label_fallback_model_name = _resolve_label_fallback_model_name(self.label_model_name)
+        self.label_pro_fallback_enabled = _read_env_bool("GEMINI_LABEL_PRO_FALLBACK_ENABLED", False)
         
         # [DEBUG] Log model initialization details
         print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
         print(f"[Model Debug] Using model: {self.model_name}")
         print(f"[Model Debug] GEMINI_LABEL_MODEL_NAME env: {os.getenv('GEMINI_LABEL_MODEL_NAME')}")
         print(f"[Model Debug] Using label model: {self.label_model_name}")
+        print(f"[Model Debug] GEMINI_LABEL_PRIMARY_MODEL_NAME env: {os.getenv('GEMINI_LABEL_PRIMARY_MODEL_NAME')}")
+        print(f"[Model Debug] GEMINI_LABEL_FALLBACK_MODEL_NAME env: {os.getenv('GEMINI_LABEL_FALLBACK_MODEL_NAME')}")
+        print(f"[Model Debug] Label Pro fallback enabled: {self.label_pro_fallback_enabled}")
         
         try:
             self.model = GenerativeModel(self.model_name)
@@ -353,6 +495,172 @@ class FoodAnalyst:
     ) -> str:
         return build_label_assess_prompt(normalized_allergens, ingredients, locale, iso_current_country)
 
+    def _run_label_analysis_with_model(
+        self,
+        label_image: Image.Image,
+        normalized_allergens: str,
+        normalized_locale: str,
+        iso_current_country: str,
+        assess_enabled: bool,
+        model_name: str,
+        fallback_model_used: bool,
+    ) -> dict[str, Any]:
+        prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
+        response_schema = build_label_response_schema()
+
+        generation_config = {
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+
+        assess_generation_config = {
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+            "response_schema": build_barcode_allergen_schema(),
+        }
+
+        safety_settings = build_default_safety_settings()
+        vertex_image = self._prepare_vertex_image(label_image)
+        model = GenerativeModel(model_name)
+        label_usage_records: list[ProviderUsageRecord] = []
+
+        extract_started_at = time.perf_counter()
+        response = generate_with_429_backoff(
+            model=model,
+            contents=[prompt, vertex_image],
+            generation_config=generation_config,
+            safety_settings=safety_settings,
+            semaphore=FoodAnalyst._request_semaphore,
+            max_attempts=3,
+        )
+        extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
+        extract_usage_record = extract_provider_usage_record(
+            response,
+            route="label_extract",
+            model_name=model_name,
+        )
+        if extract_usage_record is not None:
+            label_usage_records.append(extract_usage_record)
+
+        extract_result = self._parse_ai_response(response.text)
+        extract_result = self._sanitize_response(extract_result)
+
+        assess_elapsed_ms = 0
+        assess_failed = False
+        ingredients = extract_result.get("ingredients", [])
+        ingredient_names = [
+            str(item.get("name", "")).strip()
+            for item in ingredients
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        ]
+
+        if ingredient_names and assess_enabled:
+            assess_started_at = time.perf_counter()
+            try:
+                assess_prompt = self._build_label_assess_prompt(
+                    normalized_allergens,
+                    ingredient_names,
+                    normalized_locale,
+                    iso_current_country,
+                )
+                assess_response = generate_with_429_backoff(
+                    model=model,
+                    contents=[assess_prompt],
+                    generation_config=assess_generation_config,
+                    safety_settings=safety_settings,
+                    semaphore=FoodAnalyst._request_semaphore,
+                    max_attempts=3,
+                )
+                assess_usage_record = extract_provider_usage_record(
+                    assess_response,
+                    route="label_assess",
+                    model_name=model_name,
+                )
+                if assess_usage_record is not None:
+                    label_usage_records.append(assess_usage_record)
+                assess_result = self._parse_ai_response(assess_response.text)
+                assess_result = self._sanitize_response(assess_result)
+
+                assess_ingredients = assess_result.get("ingredients", [])
+                assess_map = {}
+                for assess_item in assess_ingredients:
+                    if not isinstance(assess_item, dict):
+                        continue
+                    key = str(assess_item.get("name", "")).strip().lower()
+                    if not key:
+                        continue
+                    assess_map[key] = assess_item
+
+                merged_ingredients = []
+                for ingredient in ingredients:
+                    if not isinstance(ingredient, dict):
+                        continue
+                    key = str(ingredient.get("name", "")).strip().lower()
+                    assess_item = assess_map.get(key)
+                    if assess_item:
+                        ingredient["isAllergen"] = bool(assess_item.get("isAllergen", False))
+                        ingredient["riskReason"] = assess_item.get("riskReason")
+                    else:
+                        ingredient["isAllergen"] = bool(ingredient.get("isAllergen", False))
+                    merged_ingredients.append(ingredient)
+
+                extract_result["ingredients"] = merged_ingredients
+                assess_status = assess_result.get("safetyStatus")
+                if assess_status in ("SAFE", "CAUTION", "DANGER"):
+                    extract_result["safetyStatus"] = assess_status
+                coach_message = assess_result.get("coachMessage")
+                if coach_message and not extract_result.get("raw_result"):
+                    extract_result["raw_result"] = str(coach_message)
+
+            except Exception as assess_error:
+                assess_failed = True
+                print(f"[Label Assess Error] {assess_error}")
+                extract_result["safetyStatus"] = "CAUTION"
+                extract_result["raw_result"] = (
+                    str(extract_result.get("raw_result", "")).strip()
+                    + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
+                ).strip()
+            finally:
+                assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
+        elif not ingredient_names:
+            extract_result["safetyStatus"] = "CAUTION"
+            extract_result["raw_result"] = (
+                str(extract_result.get("raw_result", "")).strip()
+                + " 성분 추출이 충분하지 않아 주의(CAUTION)로 처리했습니다."
+            ).strip()
+        else:
+            extract_result["safetyStatus"] = "CAUTION"
+            extract_result["raw_result"] = (
+                str(extract_result.get("raw_result", "")).strip()
+                + " 알러지 위험 판정을 생략하여 주의(CAUTION)로 처리했습니다."
+            ).strip()
+            extract_result["_label_degraded"] = True
+
+        extract_result["used_model"] = model_name
+        extract_result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+        extract_result["_label_timings"] = {
+            "extract_ms": extract_elapsed_ms,
+            "assess_ms": assess_elapsed_ms,
+        }
+        if label_usage_records:
+            extract_result["_label_usage"] = label_usage_records
+        extract_result["_label_chargeable"] = True
+        if fallback_model_used:
+            extract_result["_label_pro_fallback_used"] = _is_pro_model_name(model_name)
+        if assess_failed:
+            extract_result["_label_partial"] = True
+        return extract_result
+
+    def _should_try_label_pro_fallback(self, error: Exception) -> bool:
+        if isinstance(error, ResourceExhausted):
+            return False
+        if not self.label_pro_fallback_enabled:
+            return False
+        if not self.label_fallback_model_name:
+            return False
+        return _is_pro_model_name(self.label_fallback_model_name)
+
     def analyze_label_json(
         self,
         label_image: Image.Image,
@@ -366,137 +674,17 @@ class FoodAnalyst:
         """
         normalized_allergens = format_allergens_for_prompt(allergy_info)
         normalized_locale = _normalize_runtime_locale(locale)
-        prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
-        
-        # Schema for OCR (similar to food but focused on nutrition)
-        response_schema = build_label_response_schema()
-
-        generation_config = {
-            "temperature": 0.1, # Low temperature for OCR precision
-            "response_mime_type": "application/json",
-            "response_schema": response_schema,
-        }
-
-        assess_generation_config = {
-            "temperature": 0.1,
-            "response_mime_type": "application/json",
-            "response_schema": build_barcode_allergen_schema(),
-        }
-
-        safety_settings = build_default_safety_settings()
 
         try:
-            vertex_image = self._prepare_vertex_image(label_image)
-
-            # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
-            model = GenerativeModel(self.label_model_name)
-            extract_started_at = time.perf_counter()
-            response = generate_with_429_backoff(
-                model=model,
-                contents=[prompt, vertex_image],
-                generation_config=generation_config,
-                safety_settings=safety_settings,
-                semaphore=FoodAnalyst._request_semaphore,
-                max_attempts=3,
+            return self._run_label_analysis_with_model(
+                label_image,
+                normalized_allergens,
+                normalized_locale,
+                iso_current_country,
+                assess_enabled,
+                self.label_model_name,
+                False,
             )
-            extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
-            
-            extract_result = self._parse_ai_response(response.text)
-            extract_result = self._sanitize_response(extract_result)
-
-            assess_elapsed_ms = 0
-            assess_failed = False
-            ingredients = extract_result.get("ingredients", [])
-            ingredient_names = [
-                str(item.get("name", "")).strip()
-                for item in ingredients
-                if isinstance(item, dict) and str(item.get("name", "")).strip()
-            ]
-
-            if ingredient_names and assess_enabled:
-                assess_started_at = time.perf_counter()
-                try:
-                    assess_prompt = self._build_label_assess_prompt(
-                        normalized_allergens,
-                        ingredient_names,
-                        normalized_locale,
-                        iso_current_country,
-                    )
-                    assess_response = generate_with_429_backoff(
-                        model=model,
-                        contents=[assess_prompt],
-                        generation_config=assess_generation_config,
-                        safety_settings=safety_settings,
-                        semaphore=FoodAnalyst._request_semaphore,
-                        max_attempts=3,
-                    )
-                    assess_result = self._parse_ai_response(assess_response.text)
-                    assess_result = self._sanitize_response(assess_result)
-
-                    assess_ingredients = assess_result.get("ingredients", [])
-                    assess_map = {}
-                    for assess_item in assess_ingredients:
-                        if not isinstance(assess_item, dict):
-                            continue
-                        key = str(assess_item.get("name", "")).strip().lower()
-                        if not key:
-                            continue
-                        assess_map[key] = assess_item
-
-                    merged_ingredients = []
-                    for ingredient in ingredients:
-                        if not isinstance(ingredient, dict):
-                            continue
-                        key = str(ingredient.get("name", "")).strip().lower()
-                        assess_item = assess_map.get(key)
-                        if assess_item:
-                            ingredient["isAllergen"] = bool(assess_item.get("isAllergen", False))
-                            ingredient["riskReason"] = assess_item.get("riskReason")
-                        else:
-                            ingredient["isAllergen"] = bool(ingredient.get("isAllergen", False))
-                        merged_ingredients.append(ingredient)
-
-                    extract_result["ingredients"] = merged_ingredients
-                    assess_status = assess_result.get("safetyStatus")
-                    if assess_status in ("SAFE", "CAUTION", "DANGER"):
-                        extract_result["safetyStatus"] = assess_status
-                    coach_message = assess_result.get("coachMessage")
-                    if coach_message and not extract_result.get("raw_result"):
-                        extract_result["raw_result"] = str(coach_message)
-
-                except Exception as assess_error:
-                    assess_failed = True
-                    print(f"[Label Assess Error] {assess_error}")
-                    extract_result["safetyStatus"] = "CAUTION"
-                    extract_result["raw_result"] = (
-                        str(extract_result.get("raw_result", "")).strip()
-                        + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
-                    ).strip()
-                    extract_result["_label_chargeable"] = False
-                finally:
-                    assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
-            elif not ingredient_names:
-                extract_result["safetyStatus"] = "CAUTION"
-                extract_result["raw_result"] = (
-                    str(extract_result.get("raw_result", "")).strip()
-                    + " 성분 추출이 충분하지 않아 주의(CAUTION)로 처리했습니다."
-                ).strip()
-            else:
-                extract_result["_label_degraded"] = True
-
-            result = extract_result
-            result["used_model"] = self.label_model_name
-            result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
-            result["_label_timings"] = {
-                "extract_ms": extract_elapsed_ms,
-                "assess_ms": assess_elapsed_ms,
-            }
-            result["_label_chargeable"] = bool(not assess_failed)
-            if assess_failed:
-                result["_label_partial"] = True
-            
-            return result
-            
         except ResourceExhausted as e:
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
@@ -511,6 +699,49 @@ class FoodAnalyst:
             fallback["_label_error_type"] = "quota_exhausted_429"
             return fallback
         except Exception as e:
+            if self._should_try_label_pro_fallback(e):
+                logger.warning(
+                    "[LabelModelPolicy] primary label model failed; trying pro fallback",
+                    extra={
+                        "primary_model": self.label_model_name,
+                        "fallback_model": self.label_fallback_model_name,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                try:
+                    return self._run_label_analysis_with_model(
+                        label_image,
+                        normalized_allergens,
+                        normalized_locale,
+                        iso_current_country,
+                        assess_enabled,
+                        self.label_fallback_model_name,
+                        True,
+                    )
+                except ResourceExhausted as fallback_resource_error:
+                    print(f"[Label OCR Error] {fallback_resource_error}")
+                    traceback.print_exc()
+                    fallback = self._get_safe_fallback_response(
+                        "요청이 많아 라벨 분석이 지연되고 있습니다. 잠시 후 다시 시도해주세요."
+                    )
+                    fallback["used_model"] = self.label_fallback_model_name
+                    fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+                    fallback["_label_timings"] = {
+                        "extract_ms": 0,
+                        "assess_ms": 0,
+                    }
+                    fallback["_label_chargeable"] = False
+                    fallback["_label_error_type"] = "quota_exhausted_429"
+                    return fallback
+                except Exception as fallback_error:
+                    logger.warning(
+                        "[LabelModelPolicy] pro fallback failed",
+                        extra={
+                            "primary_model": self.label_model_name,
+                            "fallback_model": self.label_fallback_model_name,
+                            "error_type": type(fallback_error).__name__,
+                        },
+                    )
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
             fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")

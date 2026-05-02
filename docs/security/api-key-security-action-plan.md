@@ -11,7 +11,7 @@
 | #   | 시크릿                                          | 파일                                                                                     | 위험도       |
 | --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------ |
 | 1   | **GCP Service Account Private Key** (전체 JSON) | [root .env](file:///Users/beatlefeed/Documents/FoodLens-project/.env) L9                 | 🔴 최고위험  |
-| 2   | **Gemini API Key** (`AIzaSyAZPV...`)            | [FoodLens/.env](file:///Users/beatlefeed/Documents/FoodLens-project/FoodLens/.env) L1,4  | 🔴 비용 폭증 |
+| 2   | **Gemini API Key** (`[REDACTED]`)               | [FoodLens/.env](file:///Users/beatlefeed/Documents/FoodLens-project/FoodLens/.env) L1,4  | 🔴 비용 폭증 |
 | 3   | **Firebase Config Keys**                        | [FoodLens/.env](file:///Users/beatlefeed/Documents/FoodLens-project/FoodLens/.env) L7-10 | 🟡 제한적    |
 | 4   | **USDA API Key**                                | [root .env](file:///Users/beatlefeed/Documents/FoodLens-project/.env) L2                 | 🟠           |
 | 5   | **Korean FDA API Key**                          | [root .env](file:///Users/beatlefeed/Documents/FoodLens-project/.env) L3                 | 🟠           |

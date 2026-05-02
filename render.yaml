@@ -82,6 +82,16 @@ services:
         value: "15"
       - key: GEMINI_RETRY_MAX_ATTEMPTS
         value: "3"
+      - key: GEMINI_MODEL_NAME
+        value: gemini-2.0-flash
+      - key: GEMINI_LABEL_PRIMARY_MODEL_NAME
+        value: gemini-2.5-flash
+      - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
+        value: gemini-2.5-pro
+      - key: GEMINI_LABEL_PRO_FALLBACK_ENABLED
+        value: "0"
+      - key: GEMINI_LABEL_ALLOW_PRO_PRIMARY
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: LABEL_MONTHLY_BUDGET_USD
@@ -94,6 +104,40 @@ services:
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: LABEL_COST_GUARDRAIL_TABLE
+        value: label_monthly_usage
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.05"
+      - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK
+        value: "2500"
+      - key: LABEL_PER_REQUEST_BUDGET_USD
+        value: "0.07"
+      - key: COST_GUARDRAIL_RESERVATION_TTL_SECONDS
+        value: "900"
+      - key: FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.02"
+      - key: FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST
+        value: "1500"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "256"
+      - key: AI_COST_PRICE_CATALOG_PATH
+        sync: false
+      - key: SMART_ROUTER_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: SMART_ROUTER_COST_GUARDRAIL_TABLE
+        value: smart_router_monthly_usage
+      - key: SMART_ROUTER_MONTHLY_BUDGET_USD
+        value: "2"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "128"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON
@@ -252,8 +296,6 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
-      - key: SENTRY_DSN
-        sync: false
       - key: SENTRY_ENVIRONMENT
         value: production
 
@@ -340,6 +382,16 @@ services:
         value: "15"
       - key: GEMINI_RETRY_MAX_ATTEMPTS
         value: "3"
+      - key: GEMINI_MODEL_NAME
+        value: gemini-2.0-flash
+      - key: GEMINI_LABEL_PRIMARY_MODEL_NAME
+        value: gemini-2.5-flash
+      - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
+        value: gemini-2.5-pro
+      - key: GEMINI_LABEL_PRO_FALLBACK_ENABLED
+        value: "0"
+      - key: GEMINI_LABEL_ALLOW_PRO_PRIMARY
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: LABEL_MONTHLY_BUDGET_USD
@@ -352,6 +404,40 @@ services:
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: LABEL_COST_GUARDRAIL_TABLE
+        value: label_monthly_usage
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.05"
+      - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK
+        value: "2500"
+      - key: LABEL_PER_REQUEST_BUDGET_USD
+        value: "0.07"
+      - key: COST_GUARDRAIL_RESERVATION_TTL_SECONDS
+        value: "900"
+      - key: FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.02"
+      - key: FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST
+        value: "1500"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "256"
+      - key: AI_COST_PRICE_CATALOG_PATH
+        sync: false
+      - key: SMART_ROUTER_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: SMART_ROUTER_COST_GUARDRAIL_TABLE
+        value: smart_router_monthly_usage
+      - key: SMART_ROUTER_MONTHLY_BUDGET_USD
+        value: "2"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "128"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON
@@ -510,8 +596,6 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
-      - key: SENTRY_DSN
-        sync: false
       - key: SENTRY_ENVIRONMENT
         value: production
 
@@ -598,6 +682,16 @@ services:
         value: "15"
       - key: GEMINI_RETRY_MAX_ATTEMPTS
         value: "3"
+      - key: GEMINI_MODEL_NAME
+        value: gemini-2.0-flash
+      - key: GEMINI_LABEL_PRIMARY_MODEL_NAME
+        value: gemini-2.5-flash
+      - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
+        value: gemini-2.5-pro
+      - key: GEMINI_LABEL_PRO_FALLBACK_ENABLED
+        value: "0"
+      - key: GEMINI_LABEL_ALLOW_PRO_PRIMARY
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: LABEL_MONTHLY_BUDGET_USD
@@ -610,6 +704,40 @@ services:
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: LABEL_COST_GUARDRAIL_TABLE
+        value: label_monthly_usage
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.05"
+      - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK
+        value: "2500"
+      - key: LABEL_PER_REQUEST_BUDGET_USD
+        value: "0.07"
+      - key: COST_GUARDRAIL_RESERVATION_TTL_SECONDS
+        value: "900"
+      - key: FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.02"
+      - key: FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST
+        value: "1500"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "256"
+      - key: AI_COST_PRICE_CATALOG_PATH
+        sync: false
+      - key: SMART_ROUTER_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: SMART_ROUTER_COST_GUARDRAIL_TABLE
+        value: smart_router_monthly_usage
+      - key: SMART_ROUTER_MONTHLY_BUDGET_USD
+        value: "2"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.003"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "128"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON
@@ -768,7 +896,5 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
-      - key: SENTRY_DSN
-        sync: false
       - key: SENTRY_ENVIRONMENT
         value: production

@@ -25,12 +25,24 @@ from backend.modules.server_bootstrap import (
     load_environment,
     log_environment_debug,
 )
-from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
+from backend.modules.analyst_core.prompts import (
+    ANALYSIS_PROMPT_VERSION,
+    BARCODE_INGREDIENTS_PROMPT_VERSION,
+    LABEL_2PASS_PROMPT_VERSION,
+)
 from backend.modules.analyst_core.response_utils import get_safe_fallback_response
 from backend.modules.ops.cost_guardrail import CostGuardrailAction
 from backend.modules.ops.cost_guardrail import (
+    CostGuardrailReservation,
     CostGuardrailService,
     InMemoryMonthlyUsageStorage,
+    MonthlyUsageStorage,
+    PostgresMonthlyUsageStorage,
+)
+from backend.modules.ops.price_catalog import (
+    PriceCatalog,
+    estimate_usage_cost_from_catalog,
+    load_price_catalog,
 )
 from backend.modules.ops.data_retention import (
     CallbackRetentionCleanupAdapter,
@@ -150,6 +162,32 @@ def _is_label_cost_guardrail_enabled() -> bool:
     return os.environ.get("LABEL_COST_GUARDRAIL_ENABLED", "0").strip() == "1"
 
 
+def _is_smart_router_cost_guardrail_enabled() -> bool:
+    return os.environ.get("SMART_ROUTER_COST_GUARDRAIL_ENABLED", "0").strip() == "1"
+
+
+def _is_ai_cost_guardrail_enabled() -> bool:
+    return _is_label_cost_guardrail_enabled()
+
+
+def _label_cost_guardrail_storage_backend_name() -> str:
+    configured_backend = (os.environ.get("LABEL_COST_GUARDRAIL_STORAGE_BACKEND") or "").strip().lower()
+    if configured_backend:
+        return configured_backend
+    if _is_openapi_export_mode():
+        return "memory"
+    return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+
+
+def _smart_router_cost_guardrail_storage_backend_name() -> str:
+    configured_backend = (os.environ.get("SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND") or "").strip().lower()
+    if configured_backend:
+        return configured_backend
+    if _is_openapi_export_mode():
+        return "memory"
+    return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+
+
 def _env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
     if raw is None:
@@ -175,6 +213,116 @@ def _env_str(name: str, default: str) -> str:
     if raw is None:
         return default
     return raw.strip() or default
+
+
+def _usage_record_int(record: dict[str, Any], field_name: str) -> int | None:
+    raw_value = record.get(field_name)
+    if raw_value is None or isinstance(raw_value, bool):
+        return None
+    try:
+        parsed_value = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if parsed_value < 0:
+        return None
+    return parsed_value
+
+
+def _normalize_provider_usage_records(raw_records: object) -> list[dict[str, Any]]:
+    if not isinstance(raw_records, list):
+        return []
+    normalized_records: list[dict[str, Any]] = []
+    for raw_record in raw_records:
+        if not isinstance(raw_record, dict):
+            continue
+        normalized_record: dict[str, Any] = {
+            "provider": str(raw_record.get("provider") or "").strip(),
+            "route": str(raw_record.get("route") or "").strip(),
+            "model": str(raw_record.get("model") or "").strip(),
+            "source": str(raw_record.get("source") or "").strip(),
+        }
+        for field_name in (
+            "prompt_tokens",
+            "completion_tokens",
+            "cached_tokens",
+            "thoughts_tokens",
+            "total_tokens",
+        ):
+            parsed_value = _usage_record_int(raw_record, field_name)
+            if parsed_value is not None:
+                normalized_record[field_name] = parsed_value
+        if any(isinstance(normalized_record.get(field_name), int) for field_name in ("prompt_tokens", "completion_tokens", "cached_tokens", "thoughts_tokens", "total_tokens")):
+            normalized_records.append(normalized_record)
+    return normalized_records
+
+
+def _provider_usage_total_tokens(raw_records: object) -> int | None:
+    total_tokens = 0
+    for record in _normalize_provider_usage_records(raw_records):
+        record_total_tokens = _usage_record_int(record, "total_tokens")
+        if record_total_tokens is None:
+            additive_tokens = [
+                _usage_record_int(record, field_name)
+                for field_name in ("prompt_tokens", "completion_tokens", "thoughts_tokens")
+            ]
+            record_total_tokens = sum(token_count for token_count in additive_tokens if token_count is not None)
+        total_tokens += max(0, record_total_tokens)
+    if total_tokens <= 0:
+        return None
+    return total_tokens
+
+
+def _load_ai_cost_price_catalog() -> PriceCatalog | None:
+    catalog_path = (os.environ.get("AI_COST_PRICE_CATALOG_PATH") or "").strip()
+    if not catalog_path:
+        return None
+    return load_price_catalog(catalog_path)
+
+
+def _build_usage_accounting_values(
+    *,
+    usage_records: object,
+    estimated_cost_usd: float,
+    estimated_tokens: int,
+    allow_provider_usage: bool,
+) -> tuple[float, int, str]:
+    catalog = _load_ai_cost_price_catalog() if allow_provider_usage else None
+    if catalog is not None:
+        catalog_estimate = estimate_usage_cost_from_catalog(
+            usage_records=usage_records,
+            catalog=catalog,
+        )
+        if catalog_estimate is not None:
+            return catalog_estimate.cost_usd, catalog_estimate.tokens, catalog_estimate.source
+
+    provider_tokens = _provider_usage_total_tokens(usage_records) if allow_provider_usage else None
+    if provider_tokens is None or estimated_tokens <= 0:
+        return max(0.0, estimated_cost_usd), max(0, estimated_tokens), "estimate"
+    cost_per_token = max(0.0, estimated_cost_usd) / float(estimated_tokens)
+    return cost_per_token * float(provider_tokens), provider_tokens, "provider_usage_metadata"
+
+
+def _log_provider_usage_records(
+    *,
+    request_id: str,
+    scope: str,
+    usage_records: object,
+) -> None:
+    for record in _normalize_provider_usage_records(usage_records):
+        logger.info(
+            "[Server] Gemini provider usage request_id=%s scope=%s provider=%s route=%s model=%s source=%s prompt_tokens=%s completion_tokens=%s cached_tokens=%s thoughts_tokens=%s total_tokens=%s",
+            request_id,
+            scope,
+            record.get("provider"),
+            record.get("route"),
+            record.get("model"),
+            record.get("source"),
+            record.get("prompt_tokens"),
+            record.get("completion_tokens"),
+            record.get("cached_tokens"),
+            record.get("thoughts_tokens"),
+            record.get("total_tokens"),
+        )
 
 
 def _is_label_rollout_auto_enabled() -> bool:
@@ -358,6 +506,7 @@ def _reset_runtime_state() -> None:
         "barcode_service": None,
         "smart_router": None,
         "label_cost_guardrail": None,
+        "smart_router_cost_guardrail": None,
         "label_rollout_controller": None,
         "label_rollout_auto_manager": None,
         "label_rollout_kpi_thresholds": None,
@@ -471,12 +620,73 @@ def _build_analysis_job_workers() -> list[AnalysisJobWorker]:
             get_smart_router=lambda: _service("smart_router"),
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
+            build_label_analysis_handler=_build_analysis_job_label_analysis_handler,
+            build_smart_analysis_handler=_build_analysis_job_smart_analysis_handler,
             lease_seconds=_analysis_job_lease_seconds(),
             poll_interval_seconds=_analysis_job_poll_interval_seconds(),
             worker_id=f"worker-{index + 1}",
         )
         for index in range(worker_count)
     ]
+
+
+def _build_analysis_job_label_analysis_handler(
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> Callable[[Image.Image, str, str, str | None], Awaitable[dict[str, Any]]]:
+    async def _handler(
+        image: Image.Image,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+    ) -> dict[str, Any]:
+        return await _run_label_analysis_pipeline(
+            request_id=request_id,
+            image=image,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            total_started_at=total_started_at,
+            preprocess_elapsed_ms=preprocess_elapsed_ms,
+        )
+
+    return _handler
+
+
+def _build_analysis_job_smart_analysis_handler(
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> Callable[
+    [
+        Image.Image,
+        str,
+        str,
+        str | None,
+        Callable[[Image.Image, str, str, str | None], Awaitable[dict[str, Any]]],
+    ],
+    Awaitable[dict[str, Any]],
+]:
+    async def _handler(
+        image: Image.Image,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        label_analysis_handler: Callable[[Image.Image, str, str, str | None], Awaitable[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        return await _run_smart_router_pipeline(
+            request_id=request_id,
+            image=image,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            total_started_at=total_started_at,
+            preprocess_elapsed_ms=preprocess_elapsed_ms,
+            label_analysis_handler=label_analysis_handler,
+        )
+
+    return _handler
 
 
 def _start_analysis_job_workers() -> None:
@@ -559,18 +769,59 @@ def _initialize_core_runtime_services() -> None:
     app.state.smart_router = smart_router
 
 
+def _build_label_cost_guardrail_storage() -> MonthlyUsageStorage:
+    storage_backend = _label_cost_guardrail_storage_backend_name()
+    if storage_backend == "memory":
+        return InMemoryMonthlyUsageStorage()
+    if storage_backend == "postgres":
+        return PostgresMonthlyUsageStorage(
+            database_url=_env_str("DATABASE_URL", ""),
+            table_name=_env_str("LABEL_COST_GUARDRAIL_TABLE", "label_monthly_usage"),
+        )
+    raise RuntimeError("LABEL_COST_GUARDRAIL_STORAGE_BACKEND must be one of: memory, postgres.")
+
+
+def _build_smart_router_cost_guardrail_storage() -> MonthlyUsageStorage:
+    storage_backend = _smart_router_cost_guardrail_storage_backend_name()
+    if storage_backend == "memory":
+        return InMemoryMonthlyUsageStorage()
+    if storage_backend == "postgres":
+        return PostgresMonthlyUsageStorage(
+            database_url=_env_str("DATABASE_URL", ""),
+            table_name=_env_str("SMART_ROUTER_COST_GUARDRAIL_TABLE", "smart_router_monthly_usage"),
+        )
+    raise RuntimeError("SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND must be one of: memory, postgres.")
+
+
 def _initialize_api_runtime_controls() -> None:
+    label_cost_guardrail_storage = _build_label_cost_guardrail_storage()
     app.state.label_cost_guardrail = CostGuardrailService(
-        InMemoryMonthlyUsageStorage(),
+        label_cost_guardrail_storage,
         monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+        reservation_ttl_seconds=_env_int("COST_GUARDRAIL_RESERVATION_TTL_SECONDS", 900),
+    )
+    smart_router_cost_guardrail_storage = _build_smart_router_cost_guardrail_storage()
+    app.state.smart_router_cost_guardrail = CostGuardrailService(
+        smart_router_cost_guardrail_storage,
+        monthly_budget_usd=_env_float("SMART_ROUTER_MONTHLY_BUDGET_USD", 0.0),
+        reservation_ttl_seconds=_env_int("COST_GUARDRAIL_RESERVATION_TTL_SECONDS", 900),
     )
     logger.info(
-        "[LabelCostGuardrail] enabled=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
+        "[LabelCostGuardrail] enabled=%s storage_backend=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
         _is_label_cost_guardrail_enabled(),
+        _label_cost_guardrail_storage_backend_name(),
         _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
         0.70,
         0.85,
         1.00,
+    )
+    logger.info(
+        "[SmartRouterCostGuardrail] enabled=%s storage_backend=%s monthly_budget_usd=%.2f estimated_cost_usd=%.6f estimated_tokens=%d",
+        _is_smart_router_cost_guardrail_enabled(),
+        _smart_router_cost_guardrail_storage_backend_name(),
+        _env_float("SMART_ROUTER_MONTHLY_BUDGET_USD", 0.0),
+        _env_float("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", 0.0),
+        _env_int("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", 0),
     )
     app.state.label_rollout_controller = LabelRolloutController(RolloutConfig.from_env())
     if _is_label_rollout_auto_enabled():
@@ -4297,6 +4548,195 @@ async def get_analysis_job_status(request: Request, job_id: str):
     return payload
 
 
+def _ai_cost_guardrail() -> CostGuardrailService | None:
+    guardrail = getattr(app.state, "label_cost_guardrail", None)
+    return guardrail if isinstance(guardrail, CostGuardrailService) else None
+
+
+def _label_cost_guardrail_or_raise() -> CostGuardrailService | None:
+    if not _is_label_cost_guardrail_enabled():
+        return None
+    cost_guardrail = _ai_cost_guardrail()
+    if cost_guardrail is None:
+        raise RuntimeError("LABEL_COST_GUARDRAIL_ENABLED=1 but label cost guardrail is not initialized.")
+    return cost_guardrail
+
+
+def _reserve_ai_cost_guardrail(
+    *,
+    request_id: str,
+    route: str,
+    estimated_cost_usd: float,
+    estimated_tokens: int,
+) -> CostGuardrailReservation | None:
+    if not _is_ai_cost_guardrail_enabled():
+        return None
+    cost_guardrail = _ai_cost_guardrail()
+    if cost_guardrail is None:
+        raise RuntimeError("LABEL_COST_GUARDRAIL_ENABLED=1 but AI cost guardrail is not initialized.")
+    reservation = cost_guardrail.reserve(
+        cost_usd=estimated_cost_usd,
+        tokens=estimated_tokens,
+    )
+    decision = reservation.decision
+    logger.info(
+        "[Server] AI cost guardrail request_id=%s route=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f reserved=%s",
+        request_id,
+        route,
+        decision.action,
+        decision.ratio,
+        decision.projected_total_cost_usd,
+        reservation.reserved,
+    )
+    if decision.action == CostGuardrailAction.WARN:
+        logger.warning(
+            "[Server] AI cost guardrail warn request_id=%s route=%s ratio=%.3f threshold=0.70",
+            request_id,
+            route,
+            decision.ratio,
+        )
+    elif decision.action == CostGuardrailAction.DEGRADE:
+        logger.warning(
+            "[Server] AI cost guardrail degrade unavailable request_id=%s route=%s ratio=%.3f threshold=0.85",
+            request_id,
+            route,
+            decision.ratio,
+        )
+    return reservation
+
+
+def _commit_ai_cost_guardrail(
+    reservation: CostGuardrailReservation | None,
+    *,
+    request_id: str,
+    route: str,
+    estimated_cost_usd: float,
+    estimated_tokens: int,
+) -> None:
+    if not _is_ai_cost_guardrail_enabled():
+        return
+    cost_guardrail = _ai_cost_guardrail()
+    if cost_guardrail is None:
+        raise RuntimeError("LABEL_COST_GUARDRAIL_ENABLED=1 but AI cost guardrail is not initialized.")
+    if reservation is not None and reservation.reserved:
+        usage = cost_guardrail.commit(
+            reservation,
+            cost_usd=estimated_cost_usd,
+            tokens=estimated_tokens,
+        )
+    else:
+        usage = cost_guardrail.record(cost_usd=estimated_cost_usd, tokens=estimated_tokens)
+    logger.info(
+        "[Server] AI cost usage updated request_id=%s route=%s month=%s source=estimate total_cost_usd=%.4f total_tokens=%d",
+        request_id,
+        route,
+        usage.period_key,
+        usage.total_cost_usd,
+        usage.total_tokens,
+    )
+
+
+def _release_ai_cost_guardrail(
+    reservation: CostGuardrailReservation | None,
+    *,
+    request_id: str,
+    route: str,
+) -> None:
+    if not _is_ai_cost_guardrail_enabled() or reservation is None or not reservation.reserved:
+        return
+    cost_guardrail = _ai_cost_guardrail()
+    if cost_guardrail is None:
+        raise RuntimeError("LABEL_COST_GUARDRAIL_ENABLED=1 but AI cost guardrail is not initialized.")
+    usage = cost_guardrail.release(reservation)
+    logger.warning(
+        "[Server] AI cost reservation released after failure request_id=%s route=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+        request_id,
+        route,
+        usage.period_key,
+        usage.total_cost_usd,
+        usage.total_tokens,
+    )
+
+
+def _build_food_budget_fallback_response(
+    *,
+    request_id: str,
+    analyst: Any,
+    started_at: float,
+) -> dict[str, Any]:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    fallback = get_safe_fallback_response(
+        "이번 달 음식 이미지 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+    )
+    fallback["request_id"] = request_id
+    fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+    fallback["used_model"] = getattr(analyst, "model_name", None)
+    fallback["latency_ms"] = _build_latency_ms_payload(
+        total_ms=elapsed_ms,
+        preprocess_ms=None,
+        extract_ms=0,
+        assess_ms=0,
+        source_lookup_ms=None,
+        allergen_analysis_ms=None,
+    )
+    logger.warning(
+        "[Server] Food analysis budget-fallback request_id=%s elapsed_ms=%d",
+        request_id,
+        elapsed_ms,
+    )
+    return fallback
+
+
+async def _run_food_analysis_pipeline(
+    *,
+    request_id: str,
+    image: Image.Image,
+    allergy_info: str,
+    iso_country_code: str,
+    locale: str | None,
+    started_at: float,
+    route: str,
+) -> dict[str, Any]:
+    analyst = _service("analyst")
+    prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+    estimated_cost = _env_float("FOOD_ANALYSIS_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    estimated_tokens = _env_int("FOOD_ANALYSIS_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+    cost_reservation = _reserve_ai_cost_guardrail(
+        request_id=request_id,
+        route=route,
+        estimated_cost_usd=estimated_cost,
+        estimated_tokens=estimated_tokens,
+    )
+    if cost_reservation is not None and cost_reservation.decision.action == CostGuardrailAction.FALLBACK:
+        return _build_food_budget_fallback_response(
+            request_id=request_id,
+            analyst=analyst,
+            started_at=started_at,
+        )
+    try:
+        result = await run_in_threadpool(
+            analyst.analyze_food_json,
+            image,
+            allergy_info,
+            prompt_country_code,
+        )
+    except Exception:
+        _release_ai_cost_guardrail(
+            cost_reservation,
+            request_id=request_id,
+            route=route,
+        )
+        raise
+    _commit_ai_cost_guardrail(
+        cost_reservation,
+        request_id=request_id,
+        route=route,
+        estimated_cost_usd=estimated_cost,
+        estimated_tokens=estimated_tokens,
+    )
+    return result
+
+
 @app.post("/analyze", response_model=AnalysisResponseContract)
 async def analyze_food(
     request: Request,
@@ -4312,16 +4752,16 @@ async def analyze_food(
 
     try:
         async def _operation():
-            analyst = _service("analyst")
             contents = await file.read()
             image = await run_in_threadpool(decode_upload_to_image, contents)
-
-            prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-            return await run_in_threadpool(
-                analyst.analyze_food_json,
-                image,
-                allergy_info,
-                prompt_country_code,
+            return await _run_food_analysis_pipeline(
+                request_id=request_id,
+                image=image,
+                allergy_info=allergy_info,
+                iso_country_code=iso_country_code,
+                locale=locale,
+                started_at=started_at,
+                route="/analyze",
             )
 
         result = await run_with_error_policy(
@@ -4354,6 +4794,300 @@ async def analyze_food(
         if slot_acquired:
             _release_analysis_slot(endpoint="/analyze")
 
+async def _run_label_analysis_pipeline(
+    *,
+    request_id: str,
+    image: Image.Image,
+    allergy_info: str,
+    iso_country_code: str,
+    locale: str | None,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> dict[str, Any]:
+    analyst = _service("analyst")
+    cost_guardrail = _label_cost_guardrail_or_raise()
+    rollout_controller = getattr(app.state, "label_rollout_controller", None)
+    rollout_auto_manager = getattr(app.state, "label_rollout_auto_manager", None)
+    kpi_thresholds = getattr(app.state, "label_rollout_kpi_thresholds", None) or KpiThresholds()
+    logger.info(
+        "[Server] Label analysis request received request_id=%s locale=%s",
+        request_id,
+        locale,
+    )
+
+    quality = await run_in_threadpool(evaluate_label_image_quality, image)
+    logger.info(
+        "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
+        request_id,
+        quality.passed,
+        quality.failed_checks,
+        quality.metrics.blur_score,
+        quality.metrics.contrast_score,
+        quality.metrics.text_density_score,
+        quality.metrics.glare_ratio,
+    )
+
+    if not quality.passed:
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        fallback = get_safe_fallback_response(
+            "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
+        )
+        fallback["request_id"] = request_id
+        fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+        fallback["used_model"] = analyst.label_model_name
+        fallback["latency_ms"] = _build_latency_ms_payload(
+            total_ms=total_elapsed_ms,
+            preprocess_ms=preprocess_elapsed_ms,
+            extract_ms=0,
+            assess_ms=0,
+            source_lookup_ms=None,
+            allergen_analysis_ms=None,
+        )
+        logger.info(
+            "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            fallback.get("prompt_version"),
+            fallback.get("used_model"),
+            preprocess_elapsed_ms,
+            0,
+            0,
+            total_elapsed_ms,
+        )
+        return fallback
+
+    def _build_budget_fallback_response() -> dict[str, Any]:
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        fallback = get_safe_fallback_response(
+            "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+        )
+        fallback["request_id"] = request_id
+        fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+        fallback["used_model"] = analyst.label_model_name
+        fallback["latency_ms"] = _build_latency_ms_payload(
+            total_ms=total_elapsed_ms,
+            preprocess_ms=preprocess_elapsed_ms,
+            extract_ms=0,
+            assess_ms=0,
+            source_lookup_ms=None,
+            allergen_analysis_ms=None,
+        )
+        logger.warning(
+            "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            fallback.get("prompt_version"),
+            fallback.get("used_model"),
+            preprocess_elapsed_ms,
+            0,
+            0,
+            total_elapsed_ms,
+        )
+        return fallback
+
+    kpi_input = load_kpi_input_from_env()
+    kpi_gate_passed = evaluate_kpi_gate(kpi_input, kpi_thresholds)
+    if rollout_controller and rollout_auto_manager:
+        auto_config = rollout_auto_manager.reconcile(rollout_controller.config, kpi_gate_passed=kpi_gate_passed)
+        rollout_controller = LabelRolloutController(auto_config)
+        app.state.label_rollout_controller = rollout_controller
+    rollout_decision = (
+        rollout_controller.decide(request_id, kpi_gate_passed=kpi_gate_passed)
+        if rollout_controller
+        else None
+    )
+    assess_enabled = rollout_decision.route_to_new if rollout_decision else True
+    if rollout_decision:
+        logger.info(
+            "[Server] Label rollout decision request_id=%s stage=%s percentage=%d bucket=%d kpi_gate_passed=%s route_to_new=%s",
+            request_id,
+            rollout_decision.stage,
+            rollout_decision.percentage,
+            rollout_decision.bucket,
+            rollout_decision.kpi_gate_passed,
+            rollout_decision.route_to_new,
+        )
+
+    estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+    pro_fallback_budget_cost = 0.0
+    pro_fallback_budget_tokens = 0
+    if (
+        bool(getattr(analyst, "label_pro_fallback_enabled", False))
+        and "pro" in str(getattr(analyst, "label_fallback_model_name", "")).lower()
+    ):
+        pro_fallback_budget_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", estimated_cost)
+        pro_fallback_budget_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK", estimated_tokens)
+    projected_request_cost = estimated_cost + pro_fallback_budget_cost
+    projected_request_tokens = estimated_tokens + pro_fallback_budget_tokens
+    per_request_budget_usd = max(0.0, _env_float("LABEL_PER_REQUEST_BUDGET_USD", 0.0))
+    if per_request_budget_usd > 0.0 and projected_request_cost > per_request_budget_usd:
+        logger.warning(
+            "[Server] Label per-request budget fallback request_id=%s projected_request_cost_usd=%.4f per_request_budget_usd=%.4f",
+            request_id,
+            projected_request_cost,
+            per_request_budget_usd,
+        )
+        return _build_budget_fallback_response()
+    cost_reservation: CostGuardrailReservation | None = None
+    if _is_label_cost_guardrail_enabled() and cost_guardrail:
+        cost_reservation = cost_guardrail.reserve(cost_usd=projected_request_cost, tokens=projected_request_tokens)
+        decision = cost_reservation.decision
+        logger.info(
+            "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f reserved=%s",
+            request_id,
+            decision.action,
+            decision.ratio,
+            decision.projected_total_cost_usd,
+            cost_reservation.reserved,
+        )
+        if decision.action == CostGuardrailAction.WARN:
+            logger.warning(
+                "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
+                request_id,
+                decision.ratio,
+            )
+        elif decision.action == CostGuardrailAction.DEGRADE:
+            assess_enabled = False
+            estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
+            estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
+        elif decision.action == CostGuardrailAction.FALLBACK:
+            return _build_budget_fallback_response()
+
+    prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+    try:
+        result = await run_in_threadpool(
+            analyst.analyze_label_json,
+            image,
+            allergy_info,
+            prompt_country_code,
+            locale,
+            assess_enabled,
+        )
+    except Exception:
+        if _is_label_cost_guardrail_enabled() and cost_guardrail and cost_reservation and cost_reservation.reserved:
+            usage = cost_guardrail.release(cost_reservation)
+            logger.warning(
+                "[Server] Label cost reservation released after failure request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
+        raise
+    label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
+    label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
+    label_pro_fallback_used = bool(result.pop("_label_pro_fallback_used", False)) if isinstance(result, dict) else False
+    label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
+    label_usage_records = result.pop("_label_usage", []) if isinstance(result, dict) else []
+    _log_provider_usage_records(
+        request_id=request_id,
+        scope="label",
+        usage_records=label_usage_records,
+    )
+    extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
+    assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
+    total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+    if label_pro_fallback_used:
+        primary_estimated_cost = estimated_cost
+        primary_estimated_tokens = estimated_tokens
+        fallback_estimated_cost = pro_fallback_budget_cost or _env_float(
+            "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+            estimated_cost,
+        )
+        fallback_estimated_tokens = pro_fallback_budget_tokens or _env_int(
+            "LABEL_ESTIMATED_TOKENS_PER_REQUEST_PRO_FALLBACK",
+            estimated_tokens,
+        )
+        estimated_cost = primary_estimated_cost + fallback_estimated_cost
+        estimated_tokens = primary_estimated_tokens + fallback_estimated_tokens
+        logger.warning(
+            "[Server] Label pro fallback used request_id=%s used_model=%s estimated_cost_usd=%.4f estimated_tokens=%d",
+            request_id,
+            result.get("used_model"),
+            estimated_cost,
+            estimated_tokens,
+        )
+    result["request_id"] = request_id
+    result["latency_ms"] = _build_latency_ms_payload(
+        total_ms=total_elapsed_ms,
+        preprocess_ms=preprocess_elapsed_ms,
+        extract_ms=extract_elapsed_ms,
+        assess_ms=assess_elapsed_ms,
+        source_lookup_ms=None,
+        allergen_analysis_ms=None,
+    )
+
+    if label_error_type == "quota_exhausted_429":
+        if _is_label_cost_guardrail_enabled() and cost_guardrail and cost_reservation and cost_reservation.reserved:
+            usage = cost_guardrail.release(cost_reservation)
+            logger.warning(
+                "[Server] Label cost reservation released after quota response request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
+        retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
+        logger.warning(
+            "[Server] Label analysis quota-429 request_id=%s returning=429 retry_after_seconds=%d elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            retry_after_seconds,
+            preprocess_elapsed_ms,
+            extract_elapsed_ms,
+            assess_elapsed_ms,
+            total_elapsed_ms,
+        )
+        raise build_rate_limit_http_exception(
+            request_id=request_id,
+            retry_after_seconds=retry_after_seconds,
+            code="UPSTREAM_RATE_LIMITED",
+            message="Label analysis is temporarily rate-limited. Please retry shortly.",
+        )
+
+    logger.info(
+        "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+        request_id,
+        result.get("prompt_version"),
+        result.get("used_model"),
+        preprocess_elapsed_ms,
+        extract_elapsed_ms,
+        assess_elapsed_ms,
+        total_elapsed_ms,
+    )
+    usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
+        usage_records=label_usage_records,
+        estimated_cost_usd=estimated_cost,
+        estimated_tokens=estimated_tokens,
+        allow_provider_usage=not label_pro_fallback_used,
+    )
+    if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
+        if cost_reservation and cost_reservation.reserved:
+            usage = cost_guardrail.commit(cost_reservation, cost_usd=usage_cost, tokens=usage_tokens)
+        else:
+            usage = cost_guardrail.record(cost_usd=usage_cost, tokens=usage_tokens)
+        logger.info(
+            "[Server] Label cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.4f total_tokens=%d",
+            request_id,
+            usage.period_key,
+            usage_source,
+            usage.total_cost_usd,
+            usage.total_tokens,
+        )
+    elif _is_label_cost_guardrail_enabled() and cost_guardrail:
+        if cost_reservation and cost_reservation.reserved:
+            usage = cost_guardrail.release(cost_reservation)
+            logger.info(
+                "[Server] Label cost reservation released request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+                request_id,
+                usage.period_key,
+                usage.total_cost_usd,
+                usage.total_tokens,
+            )
+        logger.info(
+            "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
+            request_id,
+        )
+    return result
+
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
     request: Request,
@@ -4371,201 +5105,19 @@ async def analyze_label(
     total_started_at = time.perf_counter()
 
     async def _operation():
-        analyst = _service("analyst")
-        cost_guardrail = getattr(app.state, "label_cost_guardrail", None)
-        rollout_controller = getattr(app.state, "label_rollout_controller", None)
-        rollout_auto_manager = getattr(app.state, "label_rollout_auto_manager", None)
-        kpi_thresholds = getattr(app.state, "label_rollout_kpi_thresholds", KpiThresholds())
-        logger.info(
-            "[Server] Label analysis request received request_id=%s locale=%s",
-            request_id,
-            locale,
-        )
         preprocess_started_at = time.perf_counter()
         contents = await file.read()
         image = await run_in_threadpool(decode_upload_to_image, contents)
         preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
-
-        quality = await run_in_threadpool(evaluate_label_image_quality, image)
-        logger.info(
-            "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
-            request_id,
-            quality.passed,
-            quality.failed_checks,
-            quality.metrics.blur_score,
-            quality.metrics.contrast_score,
-            quality.metrics.text_density_score,
-            quality.metrics.glare_ratio,
+        return await _run_label_analysis_pipeline(
+            request_id=request_id,
+            image=image,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            total_started_at=total_started_at,
+            preprocess_elapsed_ms=preprocess_elapsed_ms,
         )
-
-        if not quality.passed:
-            total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-            fallback = get_safe_fallback_response(
-                "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
-            )
-            fallback["request_id"] = request_id
-            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
-            fallback["used_model"] = analyst.label_model_name
-            fallback["latency_ms"] = _build_latency_ms_payload(
-                total_ms=total_elapsed_ms,
-                preprocess_ms=preprocess_elapsed_ms,
-                extract_ms=0,
-                assess_ms=0,
-                source_lookup_ms=None,
-                allergen_analysis_ms=None,
-            )
-            logger.info(
-                "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                request_id,
-                fallback.get("prompt_version"),
-                fallback.get("used_model"),
-                preprocess_elapsed_ms,
-                0,
-                0,
-                total_elapsed_ms,
-            )
-            return fallback
-
-        kpi_input = load_kpi_input_from_env()
-        kpi_gate_passed = evaluate_kpi_gate(kpi_input, kpi_thresholds)
-        if rollout_controller and rollout_auto_manager:
-            auto_config = rollout_auto_manager.reconcile(rollout_controller.config, kpi_gate_passed=kpi_gate_passed)
-            rollout_controller = LabelRolloutController(auto_config)
-            app.state.label_rollout_controller = rollout_controller
-        rollout_decision = (
-            rollout_controller.decide(request_id, kpi_gate_passed=kpi_gate_passed)
-            if rollout_controller
-            else None
-        )
-        assess_enabled = rollout_decision.route_to_new if rollout_decision else True
-        if rollout_decision:
-            logger.info(
-                "[Server] Label rollout decision request_id=%s stage=%s percentage=%d bucket=%d kpi_gate_passed=%s route_to_new=%s",
-                request_id,
-                rollout_decision.stage,
-                rollout_decision.percentage,
-                rollout_decision.bucket,
-                rollout_decision.kpi_gate_passed,
-                rollout_decision.route_to_new,
-            )
-
-        estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
-        estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
-        if _is_label_cost_guardrail_enabled() and cost_guardrail:
-            decision = cost_guardrail.evaluate(projected_cost_usd=estimated_cost)
-            logger.info(
-                "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
-                request_id,
-                decision.action,
-                decision.ratio,
-                decision.projected_total_cost_usd,
-            )
-            if decision.action == CostGuardrailAction.WARN:
-                logger.warning(
-                    "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
-                    request_id,
-                    decision.ratio,
-                )
-            elif decision.action == CostGuardrailAction.DEGRADE:
-                assess_enabled = False
-                estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
-                estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
-            elif decision.action == CostGuardrailAction.FALLBACK:
-                total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-                fallback = get_safe_fallback_response(
-                    "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
-                )
-                fallback["request_id"] = request_id
-                fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
-                fallback["used_model"] = analyst.label_model_name
-                fallback["latency_ms"] = _build_latency_ms_payload(
-                    total_ms=total_elapsed_ms,
-                    preprocess_ms=preprocess_elapsed_ms,
-                    extract_ms=0,
-                    assess_ms=0,
-                    source_lookup_ms=None,
-                    allergen_analysis_ms=None,
-                )
-                logger.warning(
-                    "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                    request_id,
-                    fallback.get("prompt_version"),
-                    fallback.get("used_model"),
-                    preprocess_elapsed_ms,
-                    0,
-                    0,
-                    total_elapsed_ms,
-                )
-                return fallback
-
-        prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-        result = await run_in_threadpool(
-            analyst.analyze_label_json,
-            image,
-            allergy_info,
-            prompt_country_code,
-            locale,
-            assess_enabled,
-        )
-        label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
-        label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
-        label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
-        extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
-        assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
-        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-        result["request_id"] = request_id
-        result["latency_ms"] = _build_latency_ms_payload(
-            total_ms=total_elapsed_ms,
-            preprocess_ms=preprocess_elapsed_ms,
-            extract_ms=extract_elapsed_ms,
-            assess_ms=assess_elapsed_ms,
-            source_lookup_ms=None,
-            allergen_analysis_ms=None,
-        )
-
-        if label_error_type == "quota_exhausted_429":
-            retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
-            logger.warning(
-                "[Server] Label analysis quota-429 request_id=%s returning=429 retry_after_seconds=%d elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                request_id,
-                retry_after_seconds,
-                preprocess_elapsed_ms,
-                extract_elapsed_ms,
-                assess_elapsed_ms,
-                total_elapsed_ms,
-            )
-            raise build_rate_limit_http_exception(
-                request_id=request_id,
-                retry_after_seconds=retry_after_seconds,
-                code="UPSTREAM_RATE_LIMITED",
-                message="Label analysis is temporarily rate-limited. Please retry shortly.",
-            )
-
-        logger.info(
-            "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-            request_id,
-            result.get("prompt_version"),
-            result.get("used_model"),
-            preprocess_elapsed_ms,
-            extract_elapsed_ms,
-            assess_elapsed_ms,
-            total_elapsed_ms,
-        )
-        if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
-            usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
-            logger.info(
-                "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
-                request_id,
-                usage.period_key,
-                usage.total_cost_usd,
-                usage.total_tokens,
-            )
-        elif _is_label_cost_guardrail_enabled() and cost_guardrail:
-            logger.info(
-                "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
-                request_id,
-            )
-        return result
 
     try:
         return await run_with_error_policy(
@@ -4581,6 +5133,190 @@ async def analyze_label(
     finally:
         if slot_acquired:
             _release_analysis_slot(endpoint="/analyze/label")
+
+
+def _build_smart_router_budget_fallback_response(
+    *,
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> dict[str, Any]:
+    total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+    fallback = get_safe_fallback_response(
+        "이번 달 스마트 라우터 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+    )
+    fallback["request_id"] = request_id
+    fallback["router_category"] = "BUDGET_FALLBACK"
+    fallback["latency_ms"] = _build_latency_ms_payload(
+        total_ms=total_elapsed_ms,
+        preprocess_ms=preprocess_elapsed_ms,
+        extract_ms=0,
+        assess_ms=0,
+        source_lookup_ms=None,
+        allergen_analysis_ms=None,
+    )
+    logger.warning(
+        "[Server] Smart router budget-fallback request_id=%s elapsed_ms={preprocess:%d,total:%d}",
+        request_id,
+        preprocess_elapsed_ms,
+        total_elapsed_ms,
+    )
+    return fallback
+
+
+async def _run_smart_router_pipeline(
+    *,
+    request_id: str,
+    image: Image.Image,
+    allergy_info: str,
+    iso_country_code: str,
+    locale: str | None,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+    label_analysis_handler: Callable[[Image.Image, str, str, str | None], Awaitable[dict[str, Any]]],
+) -> dict[str, Any]:
+    smart_router = _service("smart_router")
+    smart_router_cost_guardrail = getattr(app.state, "smart_router_cost_guardrail", None)
+    smart_router_estimated_cost = _env_float("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", 0.0)
+    smart_router_estimated_tokens = _env_int("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", 0)
+    smart_router_reservation: CostGuardrailReservation | None = None
+    downstream_route_invoked = False
+    smart_router_classification_invoked = False
+    if _is_smart_router_cost_guardrail_enabled():
+        if smart_router_cost_guardrail is None:
+            raise RuntimeError("SMART_ROUTER_COST_GUARDRAIL_ENABLED=1 but smart router cost guardrail is not initialized.")
+        smart_router_reservation = smart_router_cost_guardrail.reserve(
+            cost_usd=smart_router_estimated_cost,
+            tokens=smart_router_estimated_tokens,
+        )
+        decision = smart_router_reservation.decision
+        logger.info(
+            "[Server] Smart router cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.6f reserved=%s",
+            request_id,
+            decision.action,
+            decision.ratio,
+            decision.projected_total_cost_usd,
+            smart_router_reservation.reserved,
+        )
+        if decision.action == CostGuardrailAction.FALLBACK:
+            return _build_smart_router_budget_fallback_response(
+                request_id=request_id,
+                total_started_at=total_started_at,
+                preprocess_elapsed_ms=preprocess_elapsed_ms,
+            )
+
+    async def _tracked_label_analysis_handler(
+        label_image: Image.Image,
+        label_allergy_info: str,
+        label_iso_country_code: str,
+        label_locale: str | None,
+    ) -> dict[str, Any]:
+        nonlocal downstream_route_invoked
+        downstream_route_invoked = True
+        return await label_analysis_handler(
+            label_image,
+            label_allergy_info,
+            label_iso_country_code,
+            label_locale,
+        )
+
+    async def _tracked_food_analysis_handler(
+        food_image: Image.Image,
+        food_allergy_info: str,
+        food_iso_country_code: str,
+        food_locale: str | None,
+    ) -> dict[str, Any]:
+        nonlocal downstream_route_invoked
+        downstream_route_invoked = True
+        return await _run_food_analysis_pipeline(
+            request_id=request_id,
+            image=food_image,
+            allergy_info=food_allergy_info,
+            iso_country_code=food_iso_country_code,
+            locale=food_locale,
+            started_at=total_started_at,
+            route="/analyze/smart:food",
+        )
+
+    def _record_smart_router_classification_usage() -> None:
+        nonlocal smart_router_classification_invoked
+        smart_router_classification_invoked = True
+
+    try:
+        route_result = await smart_router.route_analysis(
+            image=image,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            label_analysis_handler=_tracked_label_analysis_handler,
+            food_analysis_handler=_tracked_food_analysis_handler,
+            classification_usage_recorder=_record_smart_router_classification_usage,
+        )
+    except Exception:
+        if (
+            _is_smart_router_cost_guardrail_enabled()
+            and smart_router_cost_guardrail
+            and smart_router_reservation
+            and smart_router_reservation.reserved
+        ):
+            if smart_router_classification_invoked:
+                usage = smart_router_cost_guardrail.commit(
+                    smart_router_reservation,
+                    cost_usd=smart_router_estimated_cost,
+                    tokens=smart_router_estimated_tokens,
+                )
+                logger.warning(
+                    "[Server] Smart router cost reservation committed after failure request_id=%s month=%s total_cost_usd=%.6f total_tokens=%d downstream_route_invoked=%s",
+                    request_id,
+                    usage.period_key,
+                    usage.total_cost_usd,
+                    usage.total_tokens,
+                    downstream_route_invoked,
+                )
+            else:
+                usage = smart_router_cost_guardrail.release(smart_router_reservation)
+                logger.warning(
+                    "[Server] Smart router cost reservation released after failure request_id=%s month=%s total_cost_usd=%.6f total_tokens=%d",
+                    request_id,
+                    usage.period_key,
+                    usage.total_cost_usd,
+                    usage.total_tokens,
+                )
+        raise
+    router_usage_records = route_result.pop("_router_usage", []) if isinstance(route_result, dict) else []
+    _log_provider_usage_records(
+        request_id=request_id,
+        scope="smart_router",
+        usage_records=router_usage_records,
+    )
+    if _is_smart_router_cost_guardrail_enabled() and smart_router_cost_guardrail:
+        usage_cost, usage_tokens, usage_source = _build_usage_accounting_values(
+            usage_records=router_usage_records,
+            estimated_cost_usd=smart_router_estimated_cost,
+            estimated_tokens=smart_router_estimated_tokens,
+            allow_provider_usage=True,
+        )
+        if smart_router_reservation and smart_router_reservation.reserved:
+            usage = smart_router_cost_guardrail.commit(
+                smart_router_reservation,
+                cost_usd=usage_cost,
+                tokens=usage_tokens,
+            )
+        else:
+            usage = smart_router_cost_guardrail.record(
+                cost_usd=usage_cost,
+                tokens=usage_tokens,
+            )
+        logger.info(
+            "[Server] Smart router cost usage updated request_id=%s month=%s source=%s total_cost_usd=%.6f total_tokens=%d",
+            request_id,
+            usage.period_key,
+            usage_source,
+            usage.total_cost_usd,
+            usage.total_tokens,
+        )
+    return route_result
+
 
 @app.post("/analyze/smart", response_model=AnalysisResponseContract)
 async def analyze_smart(
@@ -4601,17 +5337,38 @@ async def analyze_smart(
 
     try:
         async def _operation():
-            smart_router = _service("smart_router")
             logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
+            preprocess_started_at = time.perf_counter()
             contents = await file.read()
             image = await run_in_threadpool(decode_upload_to_image, contents)
+            preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-            return await smart_router.route_analysis(
+            async def _label_analysis_handler(
+                label_image: Image.Image,
+                label_allergy_info: str,
+                label_iso_country_code: str,
+                label_locale: str | None,
+            ) -> dict[str, Any]:
+                return await _run_label_analysis_pipeline(
+                    request_id=request_id,
+                    image=label_image,
+                    allergy_info=label_allergy_info,
+                    iso_country_code=label_iso_country_code,
+                    locale=label_locale,
+                    total_started_at=started_at,
+                    preprocess_elapsed_ms=preprocess_elapsed_ms,
+                )
+
+            return await _run_smart_router_pipeline(
+                request_id=request_id,
                 image=image,
                 allergy_info=allergy_info,
                 iso_country_code=prompt_country_code,
                 locale=locale,
+                total_started_at=started_at,
+                preprocess_elapsed_ms=preprocess_elapsed_ms,
+                label_analysis_handler=_label_analysis_handler,
             )
 
         result = await run_with_error_policy(
@@ -4627,7 +5384,7 @@ async def analyze_smart(
         if isinstance(result, dict):
             result["request_id"] = request_id
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        if isinstance(result, dict):
+        if isinstance(result, dict) and "latency_ms" not in result:
             result["latency_ms"] = _build_latency_ms_payload(
                 total_ms=elapsed_ms,
                 preprocess_ms=None,
@@ -4740,16 +5497,76 @@ async def lookup_barcode(
                     len(result["ingredients"]),
                 )
                 analyst = _service("analyst")
-                analysis_started_at = time.perf_counter()
-                allergen_result = await run_in_threadpool(
-                    analyst.analyze_barcode_ingredients,
-                    result["ingredients"],
-                    allergy_info,
-                    locale,
+                estimated_cost = _env_float("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", 0.003)
+                estimated_tokens = _env_int("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", 256)
+                cost_reservation = _reserve_ai_cost_guardrail(
+                    request_id=request_id,
+                    route="/lookup/barcode",
+                    estimated_cost_usd=estimated_cost,
+                    estimated_tokens=estimated_tokens,
                 )
+                if cost_reservation is not None and cost_reservation.decision.action == CostGuardrailAction.FALLBACK:
+                    allergen_analysis_elapsed_ms = 0
+                    used_model = getattr(analyst, "model_name", None)
+                    prompt_version = BARCODE_INGREDIENTS_PROMPT_VERSION
+                    result["safetyStatus"] = "CAUTION"
+                    result["coachMessage"] = (
+                        "이번 달 바코드 알러지 분석 예산 한도에 도달했습니다. 성분표를 직접 확인해주세요."
+                    )
+                    logger.warning(
+                        "[Server] Barcode allergen budget-fallback request_id=%s used_model=%s prompt_version=%s",
+                        request_id,
+                        used_model,
+                        prompt_version,
+                    )
+                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                    logger.info(
+                        "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true used_model=%s prompt_version=%s",
+                        request_id,
+                        elapsed_ms,
+                        used_model,
+                        prompt_version,
+                    )
+                    return {
+                        "found": True,
+                        "data": result,
+                        "request_id": request_id,
+                        "used_model": used_model,
+                        "prompt_version": prompt_version,
+                        "latency_ms": _build_latency_ms_payload(
+                            total_ms=elapsed_ms,
+                            preprocess_ms=None,
+                            extract_ms=None,
+                            assess_ms=None,
+                            source_lookup_ms=source_lookup_elapsed_ms,
+                            allergen_analysis_ms=allergen_analysis_elapsed_ms,
+                        ),
+                    }
+                analysis_started_at = time.perf_counter()
+                try:
+                    allergen_result = await run_in_threadpool(
+                        analyst.analyze_barcode_ingredients,
+                        result["ingredients"],
+                        allergy_info,
+                        locale,
+                    )
+                except Exception:
+                    _release_ai_cost_guardrail(
+                        cost_reservation,
+                        request_id=request_id,
+                        route="/lookup/barcode",
+                    )
+                    raise
                 allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
                 used_model = allergen_result.get("used_model")
                 prompt_version = allergen_result.get("prompt_version")
+                _commit_ai_cost_guardrail(
+                    cost_reservation,
+                    request_id=request_id,
+                    route="/lookup/barcode",
+                    estimated_cost_usd=estimated_cost,
+                    estimated_tokens=estimated_tokens,
+                )
                 logger.info(
                     "[Server] Allergen analysis done request_id=%s elapsed_ms=%d used_model=%s prompt_version=%s",
                     request_id,

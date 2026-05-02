@@ -39,7 +39,9 @@ def log_environment_debug() -> None:
     print("--- [Server Debug Environment] ---")
     print(f"PORT: {os.getenv('PORT', '8000')}")
     print(f"GEMINI_MODEL_NAME: {os.getenv('GEMINI_MODEL_NAME', 'Not set')}")
-    print(f"GEMINI_LABEL_MODEL_NAME: {os.getenv('GEMINI_LABEL_MODEL_NAME', 'gemini-2.5-pro(default)')}")
+    print(f"GEMINI_LABEL_MODEL_NAME: {os.getenv('GEMINI_LABEL_MODEL_NAME', 'Not set')}")
+    print(f"GEMINI_LABEL_PRIMARY_MODEL_NAME: {os.getenv('GEMINI_LABEL_PRIMARY_MODEL_NAME', 'gemini-2.5-flash(default)')}")
+    print(f"GEMINI_LABEL_PRO_FALLBACK_ENABLED: {os.getenv('GEMINI_LABEL_PRO_FALLBACK_ENABLED', '0(default)')}")
     print(f"KOREAN_FDA_API_KEY: {'[SET]' if os.getenv('KOREAN_FDA_API_KEY') else '[MISSING]'}")
 
     sa_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON", "")

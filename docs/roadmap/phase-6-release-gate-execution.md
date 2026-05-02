@@ -153,6 +153,8 @@
   - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
   - [ ] backend media performance regression baseline 비교 통과
   - [ ] staging integration smoke PR 컨텍스트와 main/release push 증적 통과
+  - [ ] Render blueprint gate 통과: `bash backend/scripts/ci_render_blueprint_gate.sh`
+  - [ ] AI 비용 env 정책 확인: `GEMINI_MODEL_NAME=gemini-2.0-flash`, `GEMINI_LABEL_PRIMARY_MODEL_NAME=gemini-2.5-flash`, `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`, `GEMINI_LABEL_ALLOW_PRO_PRIMARY=0`, `LABEL_COST_GUARDRAIL_STORAGE_BACKEND=postgres`, `SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND=postgres`, `LABEL_PER_REQUEST_BUDGET_USD=0.07`, `COST_GUARDRAIL_RESERVATION_TTL_SECONDS=900`
   - [ ] `release/**` branch ruleset 적용 및 필수 체크 목록 확인
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
@@ -178,6 +180,22 @@
 ## 6) 운영값 기준
 
 - 정상 운영 기본값:
+  - `GEMINI_MODEL_NAME=gemini-2.0-flash`
+  - `GEMINI_LABEL_PRIMARY_MODEL_NAME=gemini-2.5-flash`
+  - `GEMINI_LABEL_FALLBACK_MODEL_NAME=gemini-2.5-pro`
+  - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`
+  - `GEMINI_LABEL_ALLOW_PRO_PRIMARY=0`
+  - `LABEL_COST_GUARDRAIL_ENABLED=1`
+  - `LABEL_COST_GUARDRAIL_STORAGE_BACKEND=postgres`
+  - `LABEL_COST_GUARDRAIL_TABLE=label_monthly_usage`
+  - `LABEL_PER_REQUEST_BUDGET_USD=0.07`
+  - `COST_GUARDRAIL_RESERVATION_TTL_SECONDS=900`
+  - `SMART_ROUTER_COST_GUARDRAIL_ENABLED=1`
+  - `SMART_ROUTER_COST_GUARDRAIL_STORAGE_BACKEND=postgres`
+  - `SMART_ROUTER_COST_GUARDRAIL_TABLE=smart_router_monthly_usage`
+  - `SMART_ROUTER_MONTHLY_BUDGET_USD=2`
+  - `SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST=0.003`
+  - `SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST=128`
   - `LABEL_ROLLOUT_ENABLED=1`
   - `LABEL_ROLLOUT_STAGE=general-100`
   - `LABEL_ROLLOUT_AUTO_ENABLED=0`
