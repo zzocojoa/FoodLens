@@ -44,6 +44,10 @@ def _positive_int_env(env: dict[str, str], name: str, fallback: int) -> int:
     return value
 
 
+def _truthy_env(env: dict[str, str], name: str) -> bool:
+    return (env.get(name) or "").strip().lower() in {"1", "true", "yes"}
+
+
 def _parse_timestamp(value: str) -> datetime:
     normalized = value.strip()
     if not normalized:
@@ -124,6 +128,13 @@ def _candidate_deploys(deploys: list[dict[str, object]], min_created_at: datetim
     ]
 
 
+def _latest_live_deploy(deploys: list[dict[str, object]]) -> dict[str, object] | None:
+    for deploy in deploys:
+        if str(deploy.get("status") or "unknown") == LIVE_STATUS:
+            return deploy
+    return None
+
+
 def _deploy_summary(deploy: dict[str, object] | None, status: str, passed: bool) -> dict[str, object]:
     selected = deploy or {}
     return {
@@ -156,6 +167,7 @@ def run_gate(
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
+    allow_existing_live = _truthy_env(env, "RENDER_DEPLOY_ALLOW_EXISTING_LIVE")
     deadline = clock() + timeout_seconds
 
     latest_candidate: dict[str, object] | None = None
@@ -176,6 +188,12 @@ def run_gate(
                 print(f"[RenderDeployReadyGate] Render deploy failed with status: {status}", file=sys.stderr)
                 return 1
         else:
+            if allow_existing_live:
+                latest_live = _latest_live_deploy(deploys)
+                if latest_live is not None:
+                    _write_json(summary_path, _deploy_summary(latest_live, LIVE_STATUS, True))
+                    print("[RenderDeployReadyGate] Reusing existing live Render deploy.")
+                    return 0
             print("[RenderDeployReadyGate] Waiting for a Render deploy created after the workflow commit timestamp.")
 
         if clock() >= deadline:

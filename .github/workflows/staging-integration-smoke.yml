@@ -71,6 +71,7 @@ jobs:
       RENDER_API_KEY: ${{ secrets.STAGING_RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.STAGING_RENDER_SERVICE_ID }}
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+      RENDER_DEPLOY_ALLOW_EXISTING_LIVE: ${{ startsWith(github.ref, 'refs/heads/release/') && '1' || '0' }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"
       RENDER_DEPLOY_POLL_SECONDS: "10"
       RENDER_DEPLOY_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json

@@ -427,6 +427,44 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_deploy"]["id"], "dep-test")
         self.assertEqual(summary["render_deploy"]["status"], "live")
 
+    def test_render_deploy_ready_gate_allows_existing_live_deploy_when_enabled(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            return {
+                "deploys": [
+                    {
+                        "id": "dep-existing",
+                        "createdAt": "2026-05-01T00:01:00Z",
+                        "finishedAt": "2026-05-01T00:02:00Z",
+                        "status": "live",
+                    }
+                ]
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-02T00:00:00Z",
+                "RENDER_DEPLOY_ALLOW_EXISTING_LIVE": "1",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-existing")
+        self.assertEqual(summary["render_deploy"]["status"], "live")
+
     def test_render_one_off_job_gate_reports_missing_env_without_values(self) -> None:
         gate = _load_render_job_gate_module()
         self.assertEqual(gate.REQUIRED_ENV_NAMES, EXPECTED_RENDER_JOB_ENV_NAMES)
