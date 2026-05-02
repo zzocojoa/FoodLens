@@ -87,3 +87,45 @@ catalog 오류가 모델 호출 후 발견되면 이미 예약된 요청 비용�
 6. 라벨, smart router 경로의 provider usage 로그에서 `source=price_catalog:<version>` 기록이 나오는지 확인한다. 이 확인은 기존 자연 트래픽 로그로만 수행하고, catalog 검증 목적으로 `/analyze`, `/analyze/label`, `/analyze/smart`, `/lookup/barcode`를 새로 호출하지 않는다.
 7. `/analyze`와 `/lookup/barcode`도 AI 비용 guardrail 대상이며, provider usage metadata가 노출될 때까지 route별 추정치를 사용한다.
 8. 월간 guardrail 총액을 Cloud Billing Reports의 Vertex AI 비용과 대조한다.
+
+## Private SKU Reconciliation Artifact
+
+계정별 계약 단가와 canonical Cloud Billing SKU ID는 저장소에 커밋하지 않는다. 운영자는 `docs/ops/ai-cost-sku-reconciliation-template.csv`를 복사해 `artifacts/private/ai-cost-sku-reconciliation.local.csv`에 채운다. `artifacts/private/`는 git ignore 대상이다.
+
+현재 catalog 기준으로 필요한 행은 14개다.
+
+| model | component |
+| --- | --- |
+| `gemini-2.0-flash` | `input`, `output` |
+| `gemini-2.5-flash` | `input`, `cached_input`, `output`, `thoughts` |
+| `gemini-2.5-flash-lite` | `input`, `cached_input`, `output`, `thoughts` |
+| `gemini-2.5-pro` | `input`, `cached_input`, `output`, `thoughts` |
+
+`gemini-2.5-flash-lite`는 checked-in catalog에는 포함되어 있지만 현재 Render 기본 모델은 아니다. 운영 env에서 `GEMINI_LABEL_PRIMARY_MODEL_NAME`, legacy `GEMINI_LABEL_MODEL_NAME`, 또는 다른 모델 override가 Flash-Lite로 바뀌는 경우를 대비해 private artifact에 같이 남겨 둔다.
+
+필수 확인 열:
+
+- `catalog_token_counter`: FoodLens가 어떤 provider token 필드를 해당 component 비용으로 매핑하는지 기록한다.
+- `cloud_billing_sku_id`: Pricing Table 또는 Pricing API의 canonical SKU ID다.
+- `cloud_billing_sku_description`: Cloud Billing에 표시되는 SKU 설명이다.
+- `cloud_billing_service_id`, `cloud_billing_service_description`: Vertex AI/Gemini가 어느 service 항목으로 청구되는지 기록한다.
+- `billing_region_or_location`, `pricing_unit`, `usage_unit`, `currency`: 같은 SKU라도 지역/단위가 달라지는지 확인한다.
+- `list_price_usd_per_1m_tokens`, `contract_price_usd_per_1m_tokens`, `price_basis`: list 가격인지 계약 가격인지 구분한다. 둘 다 알 수 있으면 둘 다 채우고, 실제 guardrail에는 계약 단가를 우선한다.
+- `context_tier_name`, `context_tier_min_tokens`, `context_tier_max_tokens`: Gemini 2.5 Pro처럼 `<=200K`, `>200K` tier가 나뉘는 경우를 명시한다.
+- `maps_to_catalog_rate`: private artifact의 단가가 `backend/config/ai-price-catalog.json`의 단가와 일치하면 `yes`, 보수 tier라 의도적으로 다르면 `conservative`, 불일치면 `no`로 기록한다.
+- `reconciliation_status`: 아직 확인 전이면 `pending`, Cloud Billing 기준으로 확인했으면 `verified`, 현재 catalog와 다르면 `needs_catalog_update`로 기록한다.
+
+비용을 쓰지 않는 확인 경로:
+
+1. Google Cloud Console의 Billing > Pricing table에서 필요한 billing account를 선택하고, `SKU ID`, `SKU description`, `Service ID`, `Service description`, `Price reason`, `Tiered usage start`, `List price`, `Contract price` 열을 켠다.
+2. Vertex AI 또는 Gemini 관련 SKU를 필터링하고 필요한 14개 component에 대응되는 행을 private CSV에 옮긴다.
+3. 계약 단가가 필요하면 Cloud Billing Pricing API의 billing-account-specific price endpoint 또는 Pricing Table의 contract price 열만 사용한다.
+4. 이미 발생한 과거 청구만 확인할 때는 Billing Reports, Pricing Table의 historical usage, 또는 BigQuery billing export를 사용한다. BigQuery export가 이미 켜져 있지 않다면 이 확인만을 위해 새 export/query를 만들지 않는다.
+5. 이 확인을 위해 `/analyze`, `/analyze/label`, `/analyze/smart`, `/lookup/barcode`, `/analyze/jobs`를 호출하지 않는다.
+
+공식 확인 출처:
+
+- Vertex AI / Gemini 가격표: https://cloud.google.com/vertex-ai/generative-ai/pricing
+- Cloud Billing Pricing Table: https://docs.cloud.google.com/billing/docs/how-to/pricing-table
+- Cloud Billing Pricing API: https://docs.cloud.google.com/billing/docs/reference/pricing-api/rest
+- BigQuery pricing export schema: https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/pricing-data
