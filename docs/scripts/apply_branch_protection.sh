@@ -26,6 +26,8 @@ REPO="FoodLens"
 BRANCH="main"
 MOBILE_E2E_CONTEXT="mobile-e2e"
 MOBILE_E2E_WORKFLOW_PATH=".github/workflows/mobile-e2e-release-gate.yml"
+STAGING_SMOKE_PR_CONTEXT="staging-integration-smoke-pr-check"
+STAGING_SMOKE_WORKFLOW_PATH=".github/workflows/staging-integration-smoke.yml"
 
 # workflow_dispatch는 기본 브랜치에 workflow 파일이 있어야 실행할 수 있다.
 echo "Checking default-branch workflow exists for required context: ${MOBILE_E2E_CONTEXT}"
@@ -37,6 +39,19 @@ if ! curl --fail-with-body -L \
   >/dev/null; then
   echo ""
   echo "Cannot require ${MOBILE_E2E_CONTEXT}: ${MOBILE_E2E_WORKFLOW_PATH} must exist on ${BRANCH} before applying branch protection."
+  exit 1
+fi
+
+# staging smoke는 PR에서는 설정/secret 누락을 검증하고, main/release push에서는 실제 Render one-off smoke를 실행한다.
+echo "Checking default-branch workflow exists for required context: ${STAGING_SMOKE_PR_CONTEXT}"
+if ! curl --fail-with-body -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/contents/${STAGING_SMOKE_WORKFLOW_PATH}?ref=${BRANCH}" \
+  >/dev/null; then
+  echo ""
+  echo "Cannot require ${STAGING_SMOKE_PR_CONTEXT}: ${STAGING_SMOKE_WORKFLOW_PATH} must exist on ${BRANCH} before applying branch protection."
   exit 1
 fi
 
@@ -61,6 +76,7 @@ curl --fail-with-body -L \
         "backend-media-performance-regression",
         "bundle-size",
         "mobile-e2e",
+        "staging-integration-smoke-pr-check",
         "pr-policy-check",
         "image-hydration-policy"
       ]

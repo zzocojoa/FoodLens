@@ -98,6 +98,13 @@
     - 선택 입력값:
       - `MOBILE_E2E_IOS_REAL_DEVICE_RUNNER`
       - `MOBILE_E2E_ANDROID_REAL_DEVICE_RUNNER`
+  - staging integration smoke를 보호 규칙에 연결:
+    - workflow: `.github/workflows/staging-integration-smoke.yml`
+    - PR 필수 컨텍스트: `staging-integration-smoke-pr-check`
+    - PR에서는 workflow 구조, staging environment, Render secret 참조, artifact secret scan 순서를 검증
+    - main/release push에서는 Render deploy readiness 대기 후 one-off staging smoke 실행
+    - one-off smoke summary는 `media_delete`, `retention_retry`, `postgres_queue_crash_rehearsal` 로그 증적이 없으면 실패
+    - 증적 아티팩트: `artifacts/phase6/staging-integration-smoke/`
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -139,6 +146,7 @@
   - [ ] mobile bundle/image/runtime performance gate 통과
   - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
   - [ ] backend media performance regression baseline 비교 통과
+  - [ ] staging integration smoke PR 컨텍스트와 main/release push 증적 통과
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
   - [ ] smoke summary에 analyze-jobs `job_id` 와 terminal status가 포함
