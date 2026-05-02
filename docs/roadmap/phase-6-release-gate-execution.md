@@ -105,6 +105,12 @@
     - main/release push에서는 Render deploy readiness 대기 후 one-off staging smoke 실행
     - one-off smoke summary는 `media_delete`, `retention_retry`, `postgres_queue_crash_rehearsal` 로그 증적이 없으면 실패
     - 증적 아티팩트: `artifacts/phase6/staging-integration-smoke/`
+  - `release/**` 브랜치 ruleset을 적용:
+    - 스크립트: `docs/scripts/apply_release_branch_ruleset.py`
+    - 대상 ref: `refs/heads/release/**`
+    - 요구 정책: PR 기반 업데이트, stale review dismiss, unresolved conversation 차단, non-fast-forward 차단
+    - 필수 체크: main 보호 규칙과 동일한 품질 게이트(`backend-media-performance-regression`, `bundle-size`, `mobile-e2e`, `staging-integration-smoke-pr-check` 포함)
+    - release 브랜치 최초 생성은 `do_not_enforce_on_create=true`로 허용하고, 이후 업데이트는 필수 체크 통과 상태로만 허용
   - 내부 테스트 트랙 배포 증적 고정:
     - Android AAB Internal Testing 1회 이상
     - iOS IPA(TestFlight Internal) 1회 이상
@@ -147,6 +153,7 @@
   - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
   - [ ] backend media performance regression baseline 비교 통과
   - [ ] staging integration smoke PR 컨텍스트와 main/release push 증적 통과
+  - [ ] `release/**` branch ruleset 적용 및 필수 체크 목록 확인
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
   - [ ] smoke summary에 analyze-jobs `job_id` 와 terminal status가 포함

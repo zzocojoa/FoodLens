@@ -17,6 +17,7 @@ RENDER_DEPLOY_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_deplo
 RENDER_JOB_GATE_PATH: Path = ROOT_DIR / ".github" / "scripts" / "render_one_off_job_gate.py"
 WORKFLOW_PATH: Path = ROOT_DIR / ".github" / "workflows" / "staging-integration-smoke.yml"
 BRANCH_PROTECTION_SCRIPT_PATH: Path = ROOT_DIR / "docs" / "scripts" / "apply_branch_protection.sh"
+RELEASE_RULESET_SCRIPT_PATH: Path = ROOT_DIR / "docs" / "scripts" / "apply_release_branch_ruleset.py"
 EXPECTED_REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "DATABASE_URL",
     "AUTH_STATE_KEY",
@@ -97,6 +98,16 @@ def _load_render_deploy_gate_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("render_deploy_ready_gate", RENDER_DEPLOY_GATE_PATH)
     if spec is None or spec.loader is None:
         raise RuntimeError("render deploy ready gate module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_release_ruleset_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("apply_release_branch_ruleset", RELEASE_RULESET_SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("release branch ruleset module is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -314,6 +325,31 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             script.index("Checking default-branch workflow exists for required context: ${STAGING_SMOKE_PR_CONTEXT}"),
             script.rindex('"staging-integration-smoke-pr-check"'),
         )
+
+    def test_release_branch_ruleset_requires_same_quality_gates(self) -> None:
+        ruleset = _load_release_ruleset_module()
+        payload = ruleset._release_ruleset_payload()
+        required_checks = [
+            check["context"]
+            for rule in payload["rules"]
+            if rule["type"] == "required_status_checks"
+            for check in rule["parameters"]["required_status_checks"]
+        ]
+
+        self.assertEqual(payload["target"], "branch")
+        self.assertEqual(payload["enforcement"], "active")
+        self.assertEqual(payload["conditions"]["ref_name"]["include"], ["refs/heads/release/**"])
+        self.assertIn("staging-integration-smoke-pr-check", required_checks)
+        self.assertIn("mobile-e2e", required_checks)
+        self.assertIn("bundle-size", required_checks)
+        self.assertIn("backend-media-performance-regression", required_checks)
+        self.assertTrue(
+            next(rule for rule in payload["rules"] if rule["type"] == "required_status_checks")["parameters"][
+                "do_not_enforce_on_create"
+            ]
+        )
+        self.assertIn("pull_request", {rule["type"] for rule in payload["rules"]})
+        self.assertIn("non_fast_forward", {rule["type"] for rule in payload["rules"]})
 
     def test_render_deploy_ready_gate_reports_missing_env_without_values(self) -> None:
         gate = _load_render_deploy_gate_module()
