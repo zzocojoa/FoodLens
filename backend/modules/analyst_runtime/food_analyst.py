@@ -48,6 +48,10 @@ import traceback
 
 logger = logging.getLogger("foodlens.analyst_runtime")
 
+GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT = 1536
+GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS_DEFAULT = 768
+GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT = 512
+
 
 def _normalize_runtime_locale(locale: str | None) -> str:
     if not locale:
@@ -71,6 +75,51 @@ def _normalize_runtime_locale(locale: str | None) -> str:
 
 def _is_korean_runtime_locale(locale: str | None) -> bool:
     return _normalize_runtime_locale(locale).lower().startswith("ko")
+
+
+def _read_env_positive_int(name: str, fallback: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip()
+    if not normalized:
+        return fallback
+    if not normalized.isdigit():
+        raise ValueError(f"{name} must be a positive integer")
+    parsed_value = int(normalized)
+    if parsed_value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return parsed_value
+
+
+def _build_barcode_caution_result(
+    ingredients: list[Any],
+    normalized_locale: str,
+    used_model: str,
+) -> dict[str, Any]:
+    unique_input: list[str] = []
+    seen_input_names: set[str] = set()
+    for ingredient in ingredients:
+        normalized = str(ingredient).strip().lower()
+        if normalized and normalized not in seen_input_names:
+            seen_input_names.add(normalized)
+            unique_input.append(str(ingredient).strip())
+
+    error_message = (
+        "알러지 분석이 불완전합니다. 성분표를 직접 확인해주세요."
+        if _is_korean_runtime_locale(normalized_locale)
+        else "The allergen analysis is incomplete. Please check the ingredient list directly."
+    )
+    return {
+        "safetyStatus": "CAUTION",
+        "coachMessage": error_message,
+        "used_model": used_model,
+        "prompt_version": BARCODE_INGREDIENTS_PROMPT_VERSION,
+        "ingredients": [
+            {"name": ingredient, "isAllergen": False, "riskReason": ""}
+            for ingredient in unique_input
+        ],
+    }
 
 
 class FoodAnalyst:
@@ -119,6 +168,18 @@ class FoodAnalyst:
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
         self.label_model_name = os.getenv("GEMINI_LABEL_MODEL_NAME") or "gemini-2.5-pro"
+        self.label_extract_max_output_tokens = _read_env_positive_int(
+            "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
+            GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
+        self.label_assess_max_output_tokens = _read_env_positive_int(
+            "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS",
+            GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
+        self.barcode_allergen_max_output_tokens = _read_env_positive_int(
+            "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
+            GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
         
         # [DEBUG] Log model initialization details
         print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
@@ -373,17 +434,24 @@ class FoodAnalyst:
 
         generation_config = {
             "temperature": 0.1, # Low temperature for OCR precision
+            "max_output_tokens": self.label_extract_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": response_schema,
         }
 
         assess_generation_config = {
             "temperature": 0.1,
+            "max_output_tokens": self.label_assess_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": build_barcode_allergen_schema(),
         }
 
         safety_settings = build_default_safety_settings()
+
+        extract_elapsed_ms = 0
+        assess_elapsed_ms = 0
+        extract_truncated = False
+        label_provider_chargeable: bool = False
 
         try:
             vertex_image = self._prepare_vertex_image(label_image)
@@ -399,12 +467,17 @@ class FoodAnalyst:
                 semaphore=FoodAnalyst._request_semaphore,
                 max_attempts=3,
             )
+            label_provider_chargeable = True
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
+            extract_truncated = self._extract_finish_reason(response) == self._MAX_TOKENS_FINISH_REASON
             
             extract_result = self._parse_ai_response(response.text)
             extract_result = self._sanitize_response(extract_result)
+            if extract_truncated:
+                extract_result["safetyStatus"] = "CAUTION"
+                extract_result["_label_partial"] = True
+                extract_result["_label_truncated"] = True
 
-            assess_elapsed_ms = 0
             assess_failed = False
             ingredients = extract_result.get("ingredients", [])
             ingredient_names = [
@@ -415,6 +488,7 @@ class FoodAnalyst:
 
             if ingredient_names and assess_enabled:
                 assess_started_at = time.perf_counter()
+                assess_truncated = False
                 try:
                     assess_prompt = self._build_label_assess_prompt(
                         normalized_allergens,
@@ -430,6 +504,8 @@ class FoodAnalyst:
                         semaphore=FoodAnalyst._request_semaphore,
                         max_attempts=3,
                     )
+                    assess_truncated = self._extract_finish_reason(assess_response) == self._MAX_TOKENS_FINISH_REASON
+                    label_provider_chargeable = True
                     assess_result = self._parse_ai_response(assess_response.text)
                     assess_result = self._sanitize_response(assess_result)
 
@@ -460,6 +536,12 @@ class FoodAnalyst:
                     assess_status = assess_result.get("safetyStatus")
                     if assess_status in ("SAFE", "CAUTION", "DANGER"):
                         extract_result["safetyStatus"] = assess_status
+                    if extract_truncated or assess_truncated:
+                        current_status = str(extract_result.get("safetyStatus", "")).strip().upper()
+                        if current_status != "DANGER":
+                            extract_result["safetyStatus"] = "CAUTION"
+                        extract_result["_label_partial"] = True
+                        extract_result["_label_truncated"] = True
                     coach_message = assess_result.get("coachMessage")
                     if coach_message and not extract_result.get("raw_result"):
                         extract_result["raw_result"] = str(coach_message)
@@ -472,7 +554,9 @@ class FoodAnalyst:
                         str(extract_result.get("raw_result", "")).strip()
                         + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
                     ).strip()
-                    extract_result["_label_chargeable"] = False
+                    if assess_truncated:
+                        extract_result["_label_partial"] = True
+                        extract_result["_label_truncated"] = True
                 finally:
                     assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
             elif not ingredient_names:
@@ -481,6 +565,7 @@ class FoodAnalyst:
                     str(extract_result.get("raw_result", "")).strip()
                     + " 성분 추출이 충분하지 않아 주의(CAUTION)로 처리했습니다."
                 ).strip()
+                extract_result["_label_partial"] = True
             else:
                 extract_result["_label_degraded"] = True
 
@@ -491,9 +576,13 @@ class FoodAnalyst:
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,
             }
-            result["_label_chargeable"] = bool(not assess_failed)
+            result["_label_chargeable"] = label_provider_chargeable
             if assess_failed:
                 result["_label_partial"] = True
+            if extract_truncated:
+                current_status = str(result.get("safetyStatus", "")).strip().upper()
+                if current_status != "DANGER":
+                    result["safetyStatus"] = "CAUTION"
             
             return result
             
@@ -513,14 +602,27 @@ class FoodAnalyst:
         except Exception as e:
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
+            if extract_truncated:
+                fallback = self._get_safe_fallback_response("라벨 분석 결과가 길어 일부만 처리되었습니다. 성분표를 직접 확인해주세요.")
+                fallback["safetyStatus"] = "CAUTION"
+                fallback["used_model"] = self.label_model_name
+                fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+                fallback["_label_timings"] = {
+                    "extract_ms": extract_elapsed_ms,
+                    "assess_ms": assess_elapsed_ms,
+                }
+                fallback["_label_chargeable"] = label_provider_chargeable
+                fallback["_label_partial"] = True
+                fallback["_label_truncated"] = True
+                return fallback
             fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
             fallback["used_model"] = self.label_model_name
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["_label_timings"] = {
-                "extract_ms": 0,
-                "assess_ms": 0,
+                "extract_ms": extract_elapsed_ms,
+                "assess_ms": assess_elapsed_ms,
             }
-            fallback["_label_chargeable"] = False
+            fallback["_label_chargeable"] = label_provider_chargeable
             return fallback
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):
@@ -625,6 +727,7 @@ class FoodAnalyst:
 
         generation_config = {
             "temperature": 0.1,  # Low temperature for precise allergen matching
+            "max_output_tokens": self.barcode_allergen_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": response_schema,
         }
@@ -641,6 +744,9 @@ class FoodAnalyst:
                 safety_settings=safety_settings,
                 semaphore=FoodAnalyst._request_semaphore,
             )
+            allergen_truncated = self._extract_finish_reason(response) == self._MAX_TOKENS_FINISH_REASON
+            if allergen_truncated:
+                return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
             
             result = self._parse_ai_response(response.text)
             
@@ -657,6 +763,8 @@ class FoodAnalyst:
                 if normalized not in seen_names:
                     seen_names.add(normalized)
                     unique_ingredients.append(ing)
+            if not unique_ingredients:
+                return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
             result["ingredients"] = unique_ingredients
 
             print(f"[Allergen Analysis] Result: safetyStatus={result.get('safetyStatus')}")
@@ -678,26 +786,4 @@ class FoodAnalyst:
             traceback.print_exc()
             # Fail-safe: return CAUTION if analysis fails (don't risk saying SAFE)
             # Apply deduplication to input ingredients as well
-            unique_input = []
-            seen_input_names = set()
-            for ing in ingredients:
-                normalized = ing.strip().lower()
-                if normalized and normalized not in seen_input_names:
-                    seen_input_names.add(normalized)
-                    unique_input.append(ing.strip())
-
-            error_message = (
-                "알러지 분석 중 오류가 발생했습니다. 성분표를 직접 확인해주세요."
-                if _is_korean_runtime_locale(normalized_locale)
-                else "An allergen analysis error occurred. Please check the ingredient list directly."
-            )
-            return {
-                "safetyStatus": "CAUTION",
-                "coachMessage": error_message,
-                "used_model": self.model_name,
-                "prompt_version": BARCODE_INGREDIENTS_PROMPT_VERSION,
-                "ingredients": [
-                    {"name": ing, "isAllergen": False, "riskReason": ""} 
-                    for ing in unique_input
-                ]
-            }
+            return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
