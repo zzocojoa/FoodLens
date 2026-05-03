@@ -33,16 +33,26 @@ REQUIRED_COLUMNS = (
     "official_source_url",
     "notes",
 )
-ALLOWED_SOURCE_URL_PREFIXES = (
-    "https://cloud.google.com/billing/docs/how-to/budgets",
-    "https://cloud.google.com/vertex-ai/docs/quotas",
-    "https://cloud.google.com/vertex-ai/generative-ai/docs/quotas",
-    "https://cloud.google.com/storage/docs/lifecycle",
-    "https://cloud.google.com/storage/docs/managing-lifecycles",
-    "https://developers.google.com/maps/api-security-best-practices",
-    "https://cloud.google.com/docs/authentication/api-keys",
-    "https://cloud.google.com/iam/docs",
-)
+CONTROL_SOURCE_URL_PREFIXES: dict[str, tuple[str, ...]] = {
+    "gcp_budget_alert": (
+        "https://cloud.google.com/billing/docs/how-to/budgets",
+    ),
+    "vertex_ai_quota": (
+        "https://cloud.google.com/vertex-ai/docs/quotas",
+        "https://cloud.google.com/vertex-ai/generative-ai/docs/quotas",
+    ),
+    "service_account_minimum_iam": (
+        "https://cloud.google.com/iam/docs",
+    ),
+    "gcs_lifecycle_policy": (
+        "https://cloud.google.com/storage/docs/lifecycle",
+        "https://cloud.google.com/storage/docs/managing-lifecycles",
+    ),
+    "google_maps_api_key_restriction": (
+        "https://developers.google.com/maps/api-security-best-practices",
+        "https://cloud.google.com/docs/authentication/api-keys",
+    ),
+}
 SECRET_PATTERNS = (
     re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),
     re.compile(r"postgres(?:ql)?://[^\s\"'<>]+", re.IGNORECASE),
@@ -125,10 +135,11 @@ def _contains_secret(value: str) -> bool:
     return any(pattern.search(value) is not None for pattern in SECRET_PATTERNS)
 
 
-def _source_url_allowed(value: str) -> bool:
+def _source_url_allowed(control_id: str, value: str) -> bool:
     if "?" in value or "#" in value:
         return False
-    return any(value.startswith(prefix) for prefix in ALLOWED_SOURCE_URL_PREFIXES)
+    allowed_prefixes = CONTROL_SOURCE_URL_PREFIXES.get(control_id, ())
+    return any(value == prefix or value.startswith(f"{prefix}/") for prefix in allowed_prefixes)
 
 
 def _validate_row(row: EvidenceRow) -> tuple[GateIssue, ...]:
@@ -149,16 +160,31 @@ def _validate_row(row: EvidenceRow) -> tuple[GateIssue, ...]:
             issues.append(GateIssue(control_id=row.control_id, message=f"{field_name} appears to contain a secret"))
     if not _is_iso_date(row.verified_at):
         issues.append(GateIssue(control_id=row.control_id, message="verified_at must use YYYY-MM-DD"))
-    if row.official_source_url and not _source_url_allowed(row.official_source_url):
-        issues.append(GateIssue(control_id=row.control_id, message="official_source_url must be approved official docs"))
+    if row.notes and _contains_secret(row.notes):
+        issues.append(GateIssue(control_id=row.control_id, message="notes appears to contain a secret"))
+    if row.official_source_url and not _source_url_allowed(row.control_id, row.official_source_url):
+        issues.append(
+            GateIssue(control_id=row.control_id, message="official_source_url must match this control's official docs")
+        )
     if row.evidence_ref.startswith("http://") or row.evidence_ref.startswith("https://"):
         issues.append(GateIssue(control_id=row.control_id, message="evidence_ref must not be a live console URL"))
     return tuple(issues)
 
 
 def evaluate_rows(rows: Sequence[EvidenceRow]) -> GateOutcome:
-    rows_by_control_id = {row.control_id: row for row in rows if row.control_id}
     issues: list[GateIssue] = []
+    rows_by_control_id: dict[str, EvidenceRow] = {}
+    for row in rows:
+        if not row.control_id:
+            issues.append(GateIssue(control_id="<blank>", message="control_id is required"))
+            continue
+        if row.control_id not in REQUIRED_CONTROL_IDS:
+            issues.append(GateIssue(control_id=row.control_id, message="control_id is not recognized"))
+            continue
+        if row.control_id in rows_by_control_id:
+            issues.append(GateIssue(control_id=row.control_id, message="control_id must not be duplicated"))
+            continue
+        rows_by_control_id[row.control_id] = row
     for control_id in REQUIRED_CONTROL_IDS:
         row = rows_by_control_id.get(control_id)
         if row is None:
