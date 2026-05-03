@@ -1,8 +1,9 @@
 import asyncio
 import time
 import traceback
-from typing import Dict, Any
+from typing import Awaitable, Callable, Dict, Any
 
+from starlette.exceptions import HTTPException
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
 import io
@@ -14,6 +15,12 @@ from backend.modules.analyst_runtime.router_utils import (
     build_router_error_response,
     parse_classification_response,
 )
+
+LabelAnalysisRunner = Callable[
+    [Image.Image, str, str, str | None, str, float, int],
+    Awaitable[Dict[str, Any]],
+]
+
 
 class SmartRouter:
     """
@@ -54,11 +61,16 @@ class SmartRouter:
         allergy_info: str = "None",
         iso_country_code: str = "US",
         locale: str | None = None,
+        request_id: str | None = None,
+        total_started_at: float | None = None,
+        preprocess_elapsed_ms: int | None = None,
+        label_analysis_runner: LabelAnalysisRunner | None = None,
     ) -> Dict[str, Any]:
         """
         Classifies the image and executes the corresponding analysis method.
         """
         print(f"[SmartRouter] Identifying image type...")
+        route_started_at = time.perf_counter()
         start_time = time.time()
         
         try:
@@ -89,10 +101,24 @@ class SmartRouter:
 
             elif category == "NUTRITION_LABEL":
                 print("[SmartRouter] Routing to -> Label Analysis")
-                result = await asyncio.to_thread(
-                    self.analyst.analyze_label_json,
-                    image, allergy_info, iso_country_code, locale
-                )
+                if label_analysis_runner is not None:
+                    result = await label_analysis_runner(
+                        image,
+                        allergy_info,
+                        iso_country_code,
+                        locale,
+                        request_id or "smart-label",
+                        total_started_at if total_started_at is not None else route_started_at,
+                        preprocess_elapsed_ms if preprocess_elapsed_ms is not None else 0,
+                    )
+                else:
+                    result = await asyncio.to_thread(
+                        self.analyst.analyze_label_json,
+                        image,
+                        allergy_info,
+                        iso_country_code,
+                        locale,
+                    )
                 result["router_category"] = category
                 return result
 
@@ -102,6 +128,8 @@ class SmartRouter:
             else: # NOT_FOOD or Unknown
                 return build_not_food_response(category, locale=locale)
 
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[SmartRouter] Error: {e}")
             traceback.print_exc()

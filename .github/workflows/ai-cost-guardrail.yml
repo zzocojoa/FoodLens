@@ -1,0 +1,51 @@
+name: AI Cost Guardrail
+
+on:
+  pull_request:
+    paths:
+      - backend/modules/analysis_jobs.py
+      - backend/modules/analyst_runtime/**
+      - backend/modules/ops/**
+      - backend/server.py
+      - backend/scripts/ci_ai_cost_guardrail_gate.sh
+      - backend/tests/runtime/test_analysis_jobs.py
+      - backend/tests/runtime/test_cost_guardrail.py
+      - backend/tests/runtime/test_label_429_policy.py
+      - render.yaml
+      - .github/workflows/ai-cost-guardrail.yml
+  push:
+    branches:
+      - main
+    paths:
+      - backend/modules/analysis_jobs.py
+      - backend/modules/analyst_runtime/**
+      - backend/modules/ops/**
+      - backend/server.py
+      - backend/scripts/ci_ai_cost_guardrail_gate.sh
+      - backend/tests/runtime/test_analysis_jobs.py
+      - backend/tests/runtime/test_cost_guardrail.py
+      - backend/tests/runtime/test_label_429_policy.py
+      - render.yaml
+      - .github/workflows/ai-cost-guardrail.yml
+  workflow_dispatch:
+
+jobs:
+  ai-cost-guardrail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run AI cost guardrail tests
+        run: bash backend/scripts/ci_ai_cost_guardrail_gate.sh

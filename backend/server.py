@@ -478,6 +478,7 @@ def _build_analysis_job_workers() -> list[AnalysisJobWorker]:
             nutrition_service=app.state.analysis_nutrition_service,
             get_analyst=lambda: _service("analyst"),
             get_smart_router=lambda: _service("smart_router"),
+            analyze_label_with_policy=_analyze_label_image_with_policy,
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
             lease_seconds=_analysis_job_lease_seconds(),
@@ -568,7 +569,7 @@ def _initialize_core_runtime_services() -> None:
     app.state.smart_router = smart_router
 
 
-def _initialize_api_runtime_controls() -> None:
+def _initialize_label_policy_controls() -> None:
     app.state.label_cost_guardrail = CostGuardrailService(
         InMemoryMonthlyUsageStorage(),
         monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
@@ -598,6 +599,10 @@ def _initialize_api_runtime_controls() -> None:
     else:
         app.state.label_rollout_auto_manager = None
     app.state.label_rollout_kpi_thresholds = KpiThresholds()
+
+
+def _initialize_api_runtime_controls() -> None:
+    _initialize_label_policy_controls()
     rate_limit_settings = build_rate_limit_settings_from_env()
     if rate_limit_settings.enabled:
         app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
@@ -658,6 +663,7 @@ async def _startup_runtime(process_role: str) -> None:
         _initialize_api_runtime_controls()
 
     if normalized_role == PROCESS_ROLE_WORKER:
+        _initialize_label_policy_controls()
         _start_analysis_job_workers()
         app.state.analysis_job_worker_heartbeat_store = _build_analysis_job_worker_heartbeat_store()
         app.state.analysis_job_worker_started_at = datetime.now(timezone.utc).isoformat()
@@ -4363,6 +4369,234 @@ async def analyze_food(
         if slot_acquired:
             _release_analysis_slot(endpoint="/analyze")
 
+
+async def _analyze_label_image_with_policy(
+    image: Image.Image,
+    allergy_info: str,
+    prompt_country_code: str,
+    locale: str | None,
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+    *,
+    raise_on_quota_429: bool = False,
+) -> dict[str, Any]:
+    analyst = _service("analyst")
+    cost_guardrail = getattr(app.state, "label_cost_guardrail", None)
+    rollout_controller = getattr(app.state, "label_rollout_controller", None)
+    rollout_auto_manager = getattr(app.state, "label_rollout_auto_manager", None)
+    kpi_thresholds = getattr(app.state, "label_rollout_kpi_thresholds", None) or KpiThresholds()
+
+    quality = await run_in_threadpool(evaluate_label_image_quality, image)
+    logger.info(
+        "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
+        request_id,
+        quality.passed,
+        quality.failed_checks,
+        quality.metrics.blur_score,
+        quality.metrics.contrast_score,
+        quality.metrics.text_density_score,
+        quality.metrics.glare_ratio,
+    )
+
+    if not quality.passed:
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        fallback = get_safe_fallback_response(
+            "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
+        )
+        fallback["request_id"] = request_id
+        fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+        fallback["used_model"] = analyst.label_model_name
+        fallback["_label_fallback_reason"] = "quality_rejected"
+        fallback["latency_ms"] = _build_latency_ms_payload(
+            total_ms=total_elapsed_ms,
+            preprocess_ms=preprocess_elapsed_ms,
+            extract_ms=0,
+            assess_ms=0,
+            source_lookup_ms=None,
+            allergen_analysis_ms=None,
+        )
+        logger.info(
+            "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            fallback.get("prompt_version"),
+            fallback.get("used_model"),
+            preprocess_elapsed_ms,
+            0,
+            0,
+            total_elapsed_ms,
+        )
+        return fallback
+
+    kpi_input = load_kpi_input_from_env()
+    kpi_gate_passed = evaluate_kpi_gate(kpi_input, kpi_thresholds)
+    if rollout_controller and rollout_auto_manager:
+        auto_config = rollout_auto_manager.reconcile(rollout_controller.config, kpi_gate_passed=kpi_gate_passed)
+        rollout_controller = LabelRolloutController(auto_config)
+        app.state.label_rollout_controller = rollout_controller
+    rollout_decision = (
+        rollout_controller.decide(request_id, kpi_gate_passed=kpi_gate_passed)
+        if rollout_controller
+        else None
+    )
+    assess_enabled = rollout_decision.route_to_new if rollout_decision else True
+    if rollout_decision:
+        logger.info(
+            "[Server] Label rollout decision request_id=%s stage=%s percentage=%d bucket=%d kpi_gate_passed=%s route_to_new=%s",
+            request_id,
+            rollout_decision.stage,
+            rollout_decision.percentage,
+            rollout_decision.bucket,
+            rollout_decision.kpi_gate_passed,
+            rollout_decision.route_to_new,
+        )
+
+    estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+    if _is_label_cost_guardrail_enabled() and cost_guardrail:
+        decision = cost_guardrail.evaluate(projected_cost_usd=estimated_cost)
+        logger.info(
+            "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+            request_id,
+            decision.action,
+            decision.ratio,
+            decision.projected_total_cost_usd,
+        )
+        if decision.action == CostGuardrailAction.WARN:
+            logger.warning(
+                "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
+                request_id,
+                decision.ratio,
+            )
+        elif decision.action == CostGuardrailAction.DEGRADE:
+            assess_enabled = False
+            estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
+            estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
+        elif decision.action == CostGuardrailAction.FALLBACK:
+            total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+            fallback = get_safe_fallback_response(
+                "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+            )
+            fallback["request_id"] = request_id
+            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            fallback["used_model"] = analyst.label_model_name
+            fallback["_label_fallback_reason"] = "budget_fallback"
+            fallback["latency_ms"] = _build_latency_ms_payload(
+                total_ms=total_elapsed_ms,
+                preprocess_ms=preprocess_elapsed_ms,
+                extract_ms=0,
+                assess_ms=0,
+                source_lookup_ms=None,
+                allergen_analysis_ms=None,
+            )
+            logger.warning(
+                "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+                request_id,
+                fallback.get("prompt_version"),
+                fallback.get("used_model"),
+                preprocess_elapsed_ms,
+                0,
+                0,
+                total_elapsed_ms,
+            )
+            return fallback
+
+    result = await run_in_threadpool(
+        analyst.analyze_label_json,
+        image,
+        allergy_info,
+        prompt_country_code,
+        locale,
+        assess_enabled,
+    )
+    label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
+    label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
+    label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
+    if isinstance(result, dict):
+        for key in list(result.keys()):
+            if key.startswith("_label_"):
+                result.pop(key, None)
+    extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
+    assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
+    total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+    result["request_id"] = request_id
+    result["latency_ms"] = _build_latency_ms_payload(
+        total_ms=total_elapsed_ms,
+        preprocess_ms=preprocess_elapsed_ms,
+        extract_ms=extract_elapsed_ms,
+        assess_ms=assess_elapsed_ms,
+        source_lookup_ms=None,
+        allergen_analysis_ms=None,
+    )
+
+    if label_error_type == "quota_exhausted_429":
+        retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
+        logger.warning(
+            "[Server] Label analysis quota-429 request_id=%s returning=429 retry_after_seconds=%d elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+            request_id,
+            retry_after_seconds,
+            preprocess_elapsed_ms,
+            extract_elapsed_ms,
+            assess_elapsed_ms,
+            total_elapsed_ms,
+        )
+        result["_label_fallback_reason"] = label_error_type
+        if raise_on_quota_429:
+            raise build_rate_limit_http_exception(
+                request_id=request_id,
+                retry_after_seconds=retry_after_seconds,
+                code="UPSTREAM_RATE_LIMITED",
+                message="Label analysis is temporarily rate-limited. Please retry shortly.",
+            )
+
+    logger.info(
+        "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
+        request_id,
+        result.get("prompt_version"),
+        result.get("used_model"),
+        preprocess_elapsed_ms,
+        extract_elapsed_ms,
+        assess_elapsed_ms,
+        total_elapsed_ms,
+    )
+    if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
+        usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
+        logger.info(
+            "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
+            request_id,
+            usage.period_key,
+            usage.total_cost_usd,
+            usage.total_tokens,
+        )
+    elif _is_label_cost_guardrail_enabled() and cost_guardrail:
+        logger.info(
+            "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
+            request_id,
+        )
+    return result
+
+
+async def _analyze_label_image_with_policy_for_http(
+    image: Image.Image,
+    allergy_info: str,
+    prompt_country_code: str,
+    locale: str | None,
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> dict[str, Any]:
+    return await _analyze_label_image_with_policy(
+        image,
+        allergy_info,
+        prompt_country_code,
+        locale,
+        request_id,
+        total_started_at,
+        preprocess_elapsed_ms,
+        raise_on_quota_429=True,
+    )
+
+
 @app.post("/analyze/label", response_model=AnalysisResponseContract)
 async def analyze_label(
     request: Request,
@@ -4380,11 +4614,6 @@ async def analyze_label(
     total_started_at = time.perf_counter()
 
     async def _operation():
-        analyst = _service("analyst")
-        cost_guardrail = getattr(app.state, "label_cost_guardrail", None)
-        rollout_controller = getattr(app.state, "label_rollout_controller", None)
-        rollout_auto_manager = getattr(app.state, "label_rollout_auto_manager", None)
-        kpi_thresholds = getattr(app.state, "label_rollout_kpi_thresholds", KpiThresholds())
         logger.info(
             "[Server] Label analysis request received request_id=%s locale=%s",
             request_id,
@@ -4394,187 +4623,17 @@ async def analyze_label(
         contents = await file.read()
         image = await run_in_threadpool(decode_upload_to_image, contents)
         preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
-
-        quality = await run_in_threadpool(evaluate_label_image_quality, image)
-        logger.info(
-            "[Server] Label quality gate request_id=%s passed=%s failed_checks=%s metrics={blur:%.2f,contrast:%.2f,text_density:%.4f,glare:%.4f}",
-            request_id,
-            quality.passed,
-            quality.failed_checks,
-            quality.metrics.blur_score,
-            quality.metrics.contrast_score,
-            quality.metrics.text_density_score,
-            quality.metrics.glare_ratio,
-        )
-
-        if not quality.passed:
-            total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-            fallback = get_safe_fallback_response(
-                "라벨 사진 품질이 낮아 분석할 수 없습니다. 초점을 맞추고 반사를 줄여 다시 촬영해주세요."
-            )
-            fallback["request_id"] = request_id
-            fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
-            fallback["used_model"] = analyst.label_model_name
-            fallback["latency_ms"] = _build_latency_ms_payload(
-                total_ms=total_elapsed_ms,
-                preprocess_ms=preprocess_elapsed_ms,
-                extract_ms=0,
-                assess_ms=0,
-                source_lookup_ms=None,
-                allergen_analysis_ms=None,
-            )
-            logger.info(
-                "[Server] Label analysis quality-rejected request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                request_id,
-                fallback.get("prompt_version"),
-                fallback.get("used_model"),
-                preprocess_elapsed_ms,
-                0,
-                0,
-                total_elapsed_ms,
-            )
-            return fallback
-
-        kpi_input = load_kpi_input_from_env()
-        kpi_gate_passed = evaluate_kpi_gate(kpi_input, kpi_thresholds)
-        if rollout_controller and rollout_auto_manager:
-            auto_config = rollout_auto_manager.reconcile(rollout_controller.config, kpi_gate_passed=kpi_gate_passed)
-            rollout_controller = LabelRolloutController(auto_config)
-            app.state.label_rollout_controller = rollout_controller
-        rollout_decision = (
-            rollout_controller.decide(request_id, kpi_gate_passed=kpi_gate_passed)
-            if rollout_controller
-            else None
-        )
-        assess_enabled = rollout_decision.route_to_new if rollout_decision else True
-        if rollout_decision:
-            logger.info(
-                "[Server] Label rollout decision request_id=%s stage=%s percentage=%d bucket=%d kpi_gate_passed=%s route_to_new=%s",
-                request_id,
-                rollout_decision.stage,
-                rollout_decision.percentage,
-                rollout_decision.bucket,
-                rollout_decision.kpi_gate_passed,
-                rollout_decision.route_to_new,
-            )
-
-        estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
-        estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
-        if _is_label_cost_guardrail_enabled() and cost_guardrail:
-            decision = cost_guardrail.evaluate(projected_cost_usd=estimated_cost)
-            logger.info(
-                "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
-                request_id,
-                decision.action,
-                decision.ratio,
-                decision.projected_total_cost_usd,
-            )
-            if decision.action == CostGuardrailAction.WARN:
-                logger.warning(
-                    "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
-                    request_id,
-                    decision.ratio,
-                )
-            elif decision.action == CostGuardrailAction.DEGRADE:
-                assess_enabled = False
-                estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
-                estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
-            elif decision.action == CostGuardrailAction.FALLBACK:
-                total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-                fallback = get_safe_fallback_response(
-                    "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
-                )
-                fallback["request_id"] = request_id
-                fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
-                fallback["used_model"] = analyst.label_model_name
-                fallback["latency_ms"] = _build_latency_ms_payload(
-                    total_ms=total_elapsed_ms,
-                    preprocess_ms=preprocess_elapsed_ms,
-                    extract_ms=0,
-                    assess_ms=0,
-                    source_lookup_ms=None,
-                    allergen_analysis_ms=None,
-                )
-                logger.warning(
-                    "[Server] Label analysis budget-fallback request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                    request_id,
-                    fallback.get("prompt_version"),
-                    fallback.get("used_model"),
-                    preprocess_elapsed_ms,
-                    0,
-                    0,
-                    total_elapsed_ms,
-                )
-                return fallback
-
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-        result = await run_in_threadpool(
-            analyst.analyze_label_json,
+        return await _analyze_label_image_with_policy(
             image,
             allergy_info,
             prompt_country_code,
             locale,
-            assess_enabled,
-        )
-        label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
-        label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
-        label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
-        extract_elapsed_ms = int(label_timings.get("extract_ms", 0))
-        assess_elapsed_ms = int(label_timings.get("assess_ms", 0))
-        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-        result["request_id"] = request_id
-        result["latency_ms"] = _build_latency_ms_payload(
-            total_ms=total_elapsed_ms,
-            preprocess_ms=preprocess_elapsed_ms,
-            extract_ms=extract_elapsed_ms,
-            assess_ms=assess_elapsed_ms,
-            source_lookup_ms=None,
-            allergen_analysis_ms=None,
-        )
-
-        if label_error_type == "quota_exhausted_429":
-            retry_after_seconds = _env_int("UPSTREAM_429_RETRY_AFTER_SECONDS", 15)
-            logger.warning(
-                "[Server] Label analysis quota-429 request_id=%s returning=429 retry_after_seconds=%d elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
-                request_id,
-                retry_after_seconds,
-                preprocess_elapsed_ms,
-                extract_elapsed_ms,
-                assess_elapsed_ms,
-                total_elapsed_ms,
-            )
-            raise build_rate_limit_http_exception(
-                request_id=request_id,
-                retry_after_seconds=retry_after_seconds,
-                code="UPSTREAM_RATE_LIMITED",
-                message="Label analysis is temporarily rate-limited. Please retry shortly.",
-            )
-
-        logger.info(
-            "[Server] Label analysis completed request_id=%s prompt_version=%s used_model=%s elapsed_ms={preprocess:%d,extract:%d,assess:%d,total:%d}",
             request_id,
-            result.get("prompt_version"),
-            result.get("used_model"),
+            total_started_at,
             preprocess_elapsed_ms,
-            extract_elapsed_ms,
-            assess_elapsed_ms,
-            total_elapsed_ms,
+            raise_on_quota_429=True,
         )
-        if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
-            usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
-            logger.info(
-                "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
-                request_id,
-                usage.period_key,
-                usage.total_cost_usd,
-                usage.total_tokens,
-            )
-        elif _is_label_cost_guardrail_enabled() and cost_guardrail:
-            logger.info(
-                "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
-                request_id,
-            )
-        return result
 
     try:
         return await run_with_error_policy(
@@ -4612,8 +4671,10 @@ async def analyze_smart(
         async def _operation():
             smart_router = _service("smart_router")
             logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
+            preprocess_started_at = time.perf_counter()
             contents = await file.read()
             image = await run_in_threadpool(decode_upload_to_image, contents)
+            preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
             return await smart_router.route_analysis(
@@ -4621,6 +4682,10 @@ async def analyze_smart(
                 allergy_info=allergy_info,
                 iso_country_code=prompt_country_code,
                 locale=locale,
+                request_id=request_id,
+                total_started_at=started_at,
+                preprocess_elapsed_ms=preprocess_elapsed_ms,
+                label_analysis_runner=_analyze_label_image_with_policy_for_http,
             )
 
         result = await run_with_error_policy(
@@ -4636,7 +4701,7 @@ async def analyze_smart(
         if isinstance(result, dict):
             result["request_id"] = request_id
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        if isinstance(result, dict):
+        if isinstance(result, dict) and "latency_ms" not in result:
             result["latency_ms"] = _build_latency_ms_payload(
                 total_ms=elapsed_ms,
                 preprocess_ms=None,

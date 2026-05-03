@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import Lock
-from typing import Any, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 from uuid import uuid4
 
 from backend.modules.analyst_core.prompts import ANALYSIS_PROMPT_VERSION
@@ -107,6 +107,7 @@ class AnalysisJobWorker:
     nutrition_service: "NutritionEnrichmentService"
     get_analyst: Callable[[], Any]
     get_smart_router: Callable[[], Any]
+    analyze_label_with_policy: Callable[[Any, str, str, str | None, str, float, int], Awaitable[dict[str, Any]]]
     decode_image: Callable[[bytes], Any]
     resolve_prompt_country_code: Callable[[str, str | None], str]
     lease_seconds: int
@@ -186,14 +187,14 @@ class AnalysisJobWorker:
                     prompt_country_code,
                 )
             elif job["mode"] == "label":
-                analyst = self.get_analyst()
-                result = await asyncio.to_thread(
-                    analyst.analyze_label_json,
+                result = await self.analyze_label_with_policy(
                     image,
                     str(job["allergy_info"]),
                     prompt_country_code,
                     job.get("locale"),
-                    True,
+                    request_id,
+                    started_at,
+                    int(stage_latencies.get("preprocessing", 0)),
                 )
             else:
                 smart_router = self.get_smart_router()
@@ -202,12 +203,22 @@ class AnalysisJobWorker:
                     allergy_info=str(job["allergy_info"]),
                     iso_country_code=prompt_country_code,
                     locale=job.get("locale"),
+                    request_id=request_id,
+                    total_started_at=started_at,
+                    preprocess_elapsed_ms=int(stage_latencies.get("preprocessing", 0)),
+                    label_analysis_runner=self.analyze_label_with_policy,
                 )
             stage_latencies["inference"] = int((time.perf_counter() - inference_started) * 1000)
+            if isinstance(result, dict):
+                result.pop("latency_ms", None)
 
             used_model = _string_or_none((result or {}).get("used_model"))
             prompt_version = _string_or_none((result or {}).get("prompt_version"))
             fallback_reason = _detect_analysis_fallback_reason(result=result, mode=str(job["mode"]))
+            if isinstance(result, dict):
+                for key in list(result.keys()):
+                    if key.startswith("_label_"):
+                        result.pop(key, None)
 
             if job["mode"] == "food":
                 nutrition_started = time.perf_counter()
@@ -1066,6 +1077,9 @@ def _finalize_analysis_result(
 
 
 def _detect_analysis_fallback_reason(*, result: dict[str, Any], mode: str) -> str | None:
+    label_fallback_reason = _string_or_none(result.get("_label_fallback_reason"))
+    if label_fallback_reason:
+        return label_fallback_reason
     food_name = _string_or_none(result.get("foodName"))
     if food_name and food_name in FALLBACK_ERROR_NAMES:
         return "analysis_fallback"

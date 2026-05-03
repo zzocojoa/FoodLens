@@ -1,12 +1,14 @@
 import io
 import os
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
+from backend.modules.analyst_runtime.router import SmartRouter
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 from backend.modules.ops.cost_guardrail import CostGuardrailAction, CostGuardrailService, InMemoryMonthlyUsageStorage
 from backend.modules.ops.rollout_control import KpiThresholds
@@ -90,6 +92,32 @@ class _BarcodeIngredientService:
 
     def get_last_upstream_failure(self) -> None:
         return None
+
+
+class _SmartLabelRouter:
+    async def route_analysis(
+        self,
+        *,
+        image: Any,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        request_id: str,
+        total_started_at: float,
+        preprocess_elapsed_ms: int,
+        label_analysis_runner: Any,
+    ) -> dict[str, Any]:
+        result = await label_analysis_runner(
+            image,
+            allergy_info,
+            iso_country_code,
+            locale,
+            request_id,
+            total_started_at,
+            preprocess_elapsed_ms,
+        )
+        result["router_category"] = "NUTRITION_LABEL"
+        return result
 
 
 class CostGuardrailTests(unittest.TestCase):
@@ -218,6 +246,121 @@ class CostGuardrailTests(unittest.TestCase):
         usage = storage.get(service._period_key())
         self.assertEqual(usage.total_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 0)
+
+    def test_smart_label_route_records_chargeable_usage_once(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(spy.called)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertEqual(usage.total_tokens, 1500)
+
+    def test_smart_label_route_budget_fallback_skips_model_call(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(spy.called)
+        self.assertEqual(payload.get("safetyStatus"), "CAUTION")
+        self.assertIn("예산 한도", payload.get("raw_result", ""))
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
+
+    def test_real_smart_router_label_branch_uses_cost_gate(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+        smart_router = SmartRouter.__new__(SmartRouter)
+        smart_router.analyst = spy
+        smart_router.router_model = SimpleNamespace(
+            generate_content=lambda *_args, **_kwargs: SimpleNamespace(
+                text='{"category":"NUTRITION_LABEL","confidence":0.99}'
+            )
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = smart_router
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(spy.called)
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
 
 
 if __name__ == "__main__":
