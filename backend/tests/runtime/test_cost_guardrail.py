@@ -1,16 +1,25 @@
 import io
 import os
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
+from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 from backend.modules.ops.cost_guardrail import CostGuardrailAction, CostGuardrailService, InMemoryMonthlyUsageStorage
+from backend.modules.ops.rollout_control import KpiThresholds
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
 from backend.server import app  # noqa: E402
+
+
+_TEST_RUNTIME_ENV: dict[str, str] = {
+    "AUTH_STATE_BACKEND": "memory",
+    "MEDIA_STORAGE_BACKEND": "local",
+}
 
 
 def _build_high_quality_bytes() -> bytes:
@@ -47,6 +56,42 @@ class _SpyAnalyst:
         }
 
 
+class _BarcodeAllergenEmptyAnalyst:
+    def __init__(self) -> None:
+        self.label_model_name = "gemini-2.5-pro"
+        self.called_with_ingredients: list[str] | None = None
+
+    def analyze_barcode_ingredients(
+        self,
+        ingredients: list[str],
+        allergy_info: str,
+        locale: str | None,
+    ) -> dict[str, Any]:
+        self.called_with_ingredients = list(ingredients)
+        return {
+            "safetyStatus": "CAUTION",
+            "coachMessage": f"contains {allergy_info}",
+            "ingredients": [],
+            "used_model": "gemini-2.0-flash",
+            "prompt_version": "barcode-v1.0-allergen-analysis",
+            "locale": locale,
+        }
+
+
+class _BarcodeIngredientService:
+    def __init__(self, ingredients: list[str]) -> None:
+        self.ingredients = list(ingredients)
+
+    async def get_product_info(self, barcode: str) -> dict[str, Any]:
+        return {
+            "food_name": f"Product-{barcode}",
+            "ingredients": list(self.ingredients),
+        }
+
+    def get_last_upstream_failure(self) -> None:
+        return None
+
+
 class CostGuardrailTests(unittest.TestCase):
     def test_threshold_actions_70_85_100(self):
         service = CostGuardrailService(InMemoryMonthlyUsageStorage(), monthly_budget_usd=1.0)
@@ -73,6 +118,7 @@ class CostGuardrailTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
+                    **_TEST_RUNTIME_ENV,
                     "LABEL_COST_GUARDRAIL_ENABLED": "1",
                     "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
                 },
@@ -84,6 +130,7 @@ class CostGuardrailTests(unittest.TestCase):
             app.state.barcode_service = object()
             app.state.smart_router = object()
             app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
             response = client.post(
                 "/analyze/label",
                 files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
@@ -104,6 +151,7 @@ class CostGuardrailTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
+                    **_TEST_RUNTIME_ENV,
                     "LABEL_COST_GUARDRAIL_ENABLED": "1",
                     "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
                 },
@@ -115,6 +163,7 @@ class CostGuardrailTests(unittest.TestCase):
             app.state.barcode_service = object()
             app.state.smart_router = object()
             app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
             response = client.post(
                 "/analyze/label",
                 files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
@@ -127,6 +176,48 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
+
+    def test_barcode_allergen_empty_ingredients_preserves_source_ingredients_without_label_cost(self):
+        analyst = _BarcodeAllergenEmptyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
+            app.state.smart_router = object()
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/lookup/barcode",
+                data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                headers={"X-Request-Id": "req-barcode-empty-ingredients"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        BarcodeLookupResponseContract.model_validate(payload)
+        self.assertTrue(payload["found"])
+        self.assertEqual(payload["request_id"], "req-barcode-empty-ingredients")
+        self.assertEqual(payload["used_model"], "gemini-2.0-flash")
+        self.assertEqual(payload["prompt_version"], "barcode-v1.0-allergen-analysis")
+        self.assertEqual(payload["data"]["safetyStatus"], "CAUTION")
+        self.assertEqual(payload["data"]["coachMessage"], "contains milk")
+        self.assertEqual(payload["data"]["ingredients"], ["milk", "sugar"])
+        self.assertEqual(analyst.called_with_ingredients, ["milk", "sugar"])
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 0)
 
 
 if __name__ == "__main__":

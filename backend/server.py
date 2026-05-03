@@ -177,6 +177,15 @@ def _env_str(name: str, default: str) -> str:
     return raw.strip() or default
 
 
+def _select_barcode_ingredients_after_allergen_analysis(
+    original_ingredients: list[Any],
+    analyzed_ingredients: Any,
+) -> list[Any]:
+    if isinstance(analyzed_ingredients, list) and len(analyzed_ingredients) > 0:
+        return analyzed_ingredients
+    return original_ingredients
+
+
 def _is_label_rollout_auto_enabled() -> bool:
     return os.environ.get("LABEL_ROLLOUT_AUTO_ENABLED", "0").strip() == "1"
 
@@ -4758,9 +4767,13 @@ async def lookup_barcode(
                     prompt_version,
                 )
 
+                original_ingredients = result["ingredients"]
                 result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
                 result["coachMessage"] = allergen_result.get("coachMessage", "")
-                result["ingredients"] = allergen_result.get("ingredients", result["ingredients"])
+                result["ingredients"] = _select_barcode_ingredients_after_allergen_analysis(
+                    original_ingredients=list(original_ingredients),
+                    analyzed_ingredients=allergen_result.get("ingredients"),
+                )
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             logger.info(
                 "[Server] Lookup complete request_id=%s elapsed_ms=%d found=true used_model=%s prompt_version=%s",

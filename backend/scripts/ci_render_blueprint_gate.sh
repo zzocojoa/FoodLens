@@ -166,6 +166,9 @@ def main() -> None:
         "UPSTREAM_429_RETRY_AFTER_SECONDS",
         "GEMINI_RETRY_TIMEOUT_SECONDS",
         "GEMINI_RETRY_MAX_ATTEMPTS",
+        "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
+        "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS",
+        "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
         "LABEL_COST_GUARDRAIL_ENABLED",
         "LABEL_MONTHLY_BUDGET_USD",
         "LABEL_ESTIMATED_COST_USD_PER_REQUEST",
@@ -263,12 +266,15 @@ def main() -> None:
     web = service_map["foodlens-api"]
     worker = service_map["foodlens-worker"]
     cron = service_map["foodlens-retention-cron"]
-    media_render_expected_values = {
+    fixed_env_expected_values = {
+        "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS": "1536",
+        "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS": "768",
+        "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "512",
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
     }
     for service in (web, worker, cron):
-        for key, value in media_render_expected_values.items():
+        for key, value in fixed_env_expected_values.items():
             require_env_value(service["env_vars"], key, value)
 
     require(web["type"] == "web", f"foodlens-api type must be web, got {web['type']}")
