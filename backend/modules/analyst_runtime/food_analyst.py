@@ -48,6 +48,8 @@ import traceback
 
 logger = logging.getLogger("foodlens.analyst_runtime")
 
+GEMINI_LABEL_MODEL_NAME_DEFAULT = "gemini-2.5-flash"
+GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT = "gemini-2.5-pro"
 GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT = 1536
 GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS_DEFAULT = 768
 GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT = 512
@@ -90,6 +92,42 @@ def _read_env_positive_int(name: str, fallback: int) -> int:
     if parsed_value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return parsed_value
+
+
+def _read_env_non_empty_string(name: str, fallback: str) -> str:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip()
+    if not normalized:
+        return fallback
+    return normalized
+
+
+def _read_env_bool(name: str, fallback: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip().lower()
+    if not normalized:
+        return fallback
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
+
+
+def _is_pro_model_name(model_name: str) -> bool:
+    return "-pro" in model_name.strip().lower()
+
+
+def _select_label_used_model(current_model_name: str, next_model_name: str, fallback_model_name: str) -> str:
+    if current_model_name == fallback_model_name:
+        return current_model_name
+    if next_model_name == fallback_model_name:
+        return next_model_name
+    return next_model_name
 
 
 def _build_barcode_caution_result(
@@ -167,7 +205,17 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
-        self.label_model_name = os.getenv("GEMINI_LABEL_MODEL_NAME") or "gemini-2.5-pro"
+        self.label_model_name = _read_env_non_empty_string(
+            "GEMINI_LABEL_MODEL_NAME",
+            GEMINI_LABEL_MODEL_NAME_DEFAULT,
+        )
+        self.label_fallback_model_name = _read_env_non_empty_string(
+            "GEMINI_LABEL_FALLBACK_MODEL_NAME",
+            GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT,
+        )
+        self.label_fallback_enabled = _read_env_bool("GEMINI_LABEL_FALLBACK_ENABLED", False)
+        if _is_pro_model_name(self.label_model_name):
+            raise ValueError("GEMINI_LABEL_MODEL_NAME must not be a Pro model; use GEMINI_LABEL_FALLBACK_MODEL_NAME for Pro fallback")
         self.label_extract_max_output_tokens = _read_env_positive_int(
             "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
             GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT,
@@ -186,6 +234,8 @@ class FoodAnalyst:
         print(f"[Model Debug] Using model: {self.model_name}")
         print(f"[Model Debug] GEMINI_LABEL_MODEL_NAME env: {os.getenv('GEMINI_LABEL_MODEL_NAME')}")
         print(f"[Model Debug] Using label model: {self.label_model_name}")
+        print(f"[Model Debug] GEMINI_LABEL_FALLBACK_MODEL_NAME env: {os.getenv('GEMINI_LABEL_FALLBACK_MODEL_NAME')}")
+        print(f"[Model Debug] Label fallback enabled: {self.label_fallback_enabled}")
         
         try:
             self.model = GenerativeModel(self.model_name)
@@ -414,6 +464,41 @@ class FoodAnalyst:
     ) -> str:
         return build_label_assess_prompt(normalized_allergens, ingredients, locale, iso_current_country)
 
+    def _generate_label_content(
+        self,
+        model: GenerativeModel,
+        contents: list[Any],
+        generation_config: dict[str, Any],
+        safety_settings: dict[str, Any],
+    ) -> tuple[Any, str]:
+        try:
+            response = generate_with_429_backoff(
+                model=model,
+                contents=contents,
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+                max_attempts=3,
+            )
+            return response, self.label_model_name
+        except ResourceExhausted:
+            raise
+        except Exception:
+            if not self.label_fallback_enabled:
+                raise
+            if self.label_fallback_model_name == self.label_model_name:
+                raise
+            fallback_model = GenerativeModel(self.label_fallback_model_name)
+            response = generate_with_429_backoff(
+                model=fallback_model,
+                contents=contents,
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+                max_attempts=1,
+            )
+            return response, self.label_fallback_model_name
+
     def analyze_label_json(
         self,
         label_image: Image.Image,
@@ -452,20 +537,24 @@ class FoodAnalyst:
         assess_elapsed_ms = 0
         extract_truncated = False
         label_provider_chargeable: bool = False
+        label_used_model = self.label_model_name
 
         try:
             vertex_image = self._prepare_vertex_image(label_image)
 
-            # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
+            # 라벨 분석 기본 모델은 Flash 계열이고, Pro는 명시 플래그가 켜진 fallback에서만 사용한다.
             model = GenerativeModel(self.label_model_name)
             extract_started_at = time.perf_counter()
-            response = generate_with_429_backoff(
+            response, extract_used_model = self._generate_label_content(
                 model=model,
                 contents=[prompt, vertex_image],
                 generation_config=generation_config,
                 safety_settings=safety_settings,
-                semaphore=FoodAnalyst._request_semaphore,
-                max_attempts=3,
+            )
+            label_used_model = _select_label_used_model(
+                label_used_model,
+                extract_used_model,
+                self.label_fallback_model_name,
             )
             label_provider_chargeable = True
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
@@ -496,13 +585,16 @@ class FoodAnalyst:
                         normalized_locale,
                         iso_current_country,
                     )
-                    assess_response = generate_with_429_backoff(
+                    assess_response, assess_used_model = self._generate_label_content(
                         model=model,
                         contents=[assess_prompt],
                         generation_config=assess_generation_config,
                         safety_settings=safety_settings,
-                        semaphore=FoodAnalyst._request_semaphore,
-                        max_attempts=3,
+                    )
+                    label_used_model = _select_label_used_model(
+                        label_used_model,
+                        assess_used_model,
+                        self.label_fallback_model_name,
                     )
                     assess_truncated = self._extract_finish_reason(assess_response) == self._MAX_TOKENS_FINISH_REASON
                     label_provider_chargeable = True
@@ -570,7 +662,7 @@ class FoodAnalyst:
                 extract_result["_label_degraded"] = True
 
             result = extract_result
-            result["used_model"] = self.label_model_name
+            result["used_model"] = label_used_model
             result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             result["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,
@@ -590,7 +682,7 @@ class FoodAnalyst:
             print(f"[Label OCR Error] {e}")
             traceback.print_exc()
             fallback = self._get_safe_fallback_response("요청이 많아 라벨 분석이 지연되고 있습니다. 잠시 후 다시 시도해주세요.")
-            fallback["used_model"] = self.label_model_name
+            fallback["used_model"] = label_used_model
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["_label_timings"] = {
                 "extract_ms": 0,
@@ -605,7 +697,7 @@ class FoodAnalyst:
             if extract_truncated:
                 fallback = self._get_safe_fallback_response("라벨 분석 결과가 길어 일부만 처리되었습니다. 성분표를 직접 확인해주세요.")
                 fallback["safetyStatus"] = "CAUTION"
-                fallback["used_model"] = self.label_model_name
+                fallback["used_model"] = label_used_model
                 fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
                 fallback["_label_timings"] = {
                     "extract_ms": extract_elapsed_ms,
@@ -616,7 +708,7 @@ class FoodAnalyst:
                 fallback["_label_truncated"] = True
                 return fallback
             fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
-            fallback["used_model"] = self.label_model_name
+            fallback["used_model"] = label_used_model
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,

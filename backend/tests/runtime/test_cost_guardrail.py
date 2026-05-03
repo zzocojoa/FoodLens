@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import unittest
@@ -39,7 +40,7 @@ def _build_high_quality_bytes() -> bytes:
 
 class _SpyAnalyst:
     def __init__(self):
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
         self.called = False
         self.last_assess_enabled = None
 
@@ -60,7 +61,7 @@ class _SpyAnalyst:
 
 class _BarcodeAllergenEmptyAnalyst:
     def __init__(self) -> None:
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
         self.called_with_ingredients: list[str] | None = None
 
     def analyze_barcode_ingredients(
@@ -361,6 +362,29 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertFalse(spy.called)
         self.assertEqual(usage.total_cost_usd, 1.0)
         self.assertEqual(usage.total_tokens, 1000)
+
+    def test_smart_router_requires_label_runner_for_label_route(self):
+        spy = _SpyAnalyst()
+        smart_router = SmartRouter.__new__(SmartRouter)
+        smart_router.analyst = spy
+        smart_router.router_model = SimpleNamespace(
+            generate_content=lambda *_args, **_kwargs: SimpleNamespace(
+                text='{"category":"NUTRITION_LABEL","confidence":0.99}'
+            )
+        )
+
+        result = asyncio.run(
+            smart_router.route_analysis(
+                Image.new("RGB", (4, 4)),
+                allergy_info="None",
+                iso_country_code="US",
+                locale="en-US",
+            )
+        )
+
+        self.assertFalse(spy.called)
+        self.assertEqual(result["safetyStatus"], "CAUTION")
+        self.assertIn("label_analysis_runner", result["error"])
 
 
 if __name__ == "__main__":

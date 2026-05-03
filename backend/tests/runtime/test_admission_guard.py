@@ -22,7 +22,7 @@ def _build_image_bytes() -> bytes:
 
 
 class _SlowAnalyst:
-    label_model_name = "gemini-2.5-pro"
+    label_model_name = "gemini-2.5-flash"
 
     def analyze_food_json(self, *_args, **_kwargs):
         time.sleep(0.35)

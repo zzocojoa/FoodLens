@@ -173,6 +173,9 @@ def main() -> None:
         "UPSTREAM_429_RETRY_AFTER_SECONDS",
         "GEMINI_RETRY_TIMEOUT_SECONDS",
         "GEMINI_RETRY_MAX_ATTEMPTS",
+        "GEMINI_LABEL_MODEL_NAME",
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME",
+        "GEMINI_LABEL_FALLBACK_ENABLED",
         "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
         "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS",
         "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
@@ -299,6 +302,9 @@ def main() -> None:
     worker = service_map["foodlens-worker"]
     cron = service_map["foodlens-retention-cron"]
     fixed_env_expected_values = {
+        "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
+        "GEMINI_LABEL_FALLBACK_ENABLED": "1",
         "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS": "1536",
         "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS": "768",
         "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "512",
@@ -308,6 +314,10 @@ def main() -> None:
     for service in (web, worker, cron):
         for key, value in fixed_env_expected_values.items():
             require_env_value(service["env_vars"], key, value)
+        require(
+            service["env_vars"]["GEMINI_LABEL_MODEL_NAME"]["value"] != service["env_vars"]["GEMINI_LABEL_FALLBACK_MODEL_NAME"]["value"],
+            f"{service['name']} label primary and fallback models must differ",
+        )
 
     require(web["type"] == "web", f"foodlens-api type must be web, got {web['type']}")
     require(web["runtime"] == "docker", f"foodlens-api runtime must be docker, got {web['runtime']}")

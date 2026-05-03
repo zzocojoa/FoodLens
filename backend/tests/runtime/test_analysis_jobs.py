@@ -135,7 +135,7 @@ class _RecordingConnect:
 
 class _AsyncJobAnalyst:
     model_name = "gemini-2.0-flash"
-    label_model_name = "gemini-2.5-pro"
+    label_model_name = "gemini-2.5-flash"
 
     def __init__(self) -> None:
         self.label_calls = 0

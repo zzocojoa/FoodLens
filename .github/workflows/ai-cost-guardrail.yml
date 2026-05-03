@@ -11,6 +11,7 @@ on:
       - backend/tests/runtime/test_analysis_jobs.py
       - backend/tests/runtime/test_cost_guardrail.py
       - backend/tests/runtime/test_label_429_policy.py
+      - backend/tests/runtime/test_label_model_policy.py
       - render.yaml
       - .github/workflows/ai-cost-guardrail.yml
   push:
@@ -25,6 +26,7 @@ on:
       - backend/tests/runtime/test_analysis_jobs.py
       - backend/tests/runtime/test_cost_guardrail.py
       - backend/tests/runtime/test_label_429_policy.py
+      - backend/tests/runtime/test_label_model_policy.py
       - render.yaml
       - .github/workflows/ai-cost-guardrail.yml
   workflow_dispatch:

@@ -15,6 +15,7 @@ MEDIA_STORAGE_BACKEND=local \
 "$PYTHON_BIN" -m unittest -v \
   backend.tests.runtime.test_cost_guardrail \
   backend.tests.runtime.test_label_429_policy \
+  backend.tests.runtime.test_label_model_policy \
   backend.tests.runtime.test_analysis_jobs
 
 echo "[CI Gate] AI cost guardrail runtime tests passed."

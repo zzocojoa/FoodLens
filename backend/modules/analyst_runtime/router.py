@@ -112,13 +112,7 @@ class SmartRouter:
                         preprocess_elapsed_ms if preprocess_elapsed_ms is not None else 0,
                     )
                 else:
-                    result = await asyncio.to_thread(
-                        self.analyst.analyze_label_json,
-                        image,
-                        allergy_info,
-                        iso_country_code,
-                        locale,
-                    )
+                    raise RuntimeError("NUTRITION_LABEL route requires label_analysis_runner")
                 result["router_category"] = category
                 return result
 

@@ -13,7 +13,7 @@ from backend.server import app  # noqa: E402
 
 class _SpyAnalyst:
     def __init__(self):
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
         self.called = False
 
     def analyze_label_json(self, *_args, **_kwargs):
@@ -69,7 +69,7 @@ class LabelQualityGateTests(unittest.TestCase):
         self.assertFalse(spy.called)
         self.assertIsNotNone(payload.get("request_id"))
         self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
-        self.assertEqual(payload.get("used_model"), "gemini-2.5-pro")
+        self.assertEqual(payload.get("used_model"), "gemini-2.5-flash")
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
 
 
