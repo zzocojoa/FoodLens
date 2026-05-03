@@ -86,6 +86,7 @@ class LabelModelPolicyTests(unittest.TestCase):
             self.assertEqual(result["used_model"], "gemini-2.5-pro")
             self.assertEqual(result["prompt_version"], "label-v1.2-2pass-locale-country")
             self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertTrue(result.get("_label_chargeable"))
             self.assertTrue(result.get("_label_partial"))
             self.assertIn("불완전", result.get("raw_result", ""))
 
@@ -201,7 +202,43 @@ class LabelModelPolicyTests(unittest.TestCase):
 
             self.assertEqual(result["safetyStatus"], "CAUTION")
             self.assertEqual(result["used_model"], "gemini-2.5-flash")
-            self.assertFalse(result.get("_label_chargeable"))
+            self.assertTrue(result.get("_label_chargeable"))
+            self.assertTrue(result.get("_label_partial"))
+            self.assertTrue(result.get("_label_truncated"))
+
+    def test_label_extract_truncated_without_ingredients_counts_provider_usage(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(os.environ, {"GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash"}, clear=False),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse(
+                '{"foodName":"Cereal","safetyStatus":"SAFE","ingredients":[],"nutrition":{"calories":100},"raw_result":"ok"}',
+                2,
+            )
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={
+                        "foodName": "Cereal",
+                        "safetyStatus": "SAFE",
+                        "ingredients": [],
+                        "nutrition": {"calories": 100},
+                        "raw_result": "ok",
+                    },
+                ),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "Wheat/Gluten", "KR", "ko-KR")
+
+            self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertTrue(result.get("_label_chargeable"))
             self.assertTrue(result.get("_label_partial"))
             self.assertTrue(result.get("_label_truncated"))
 

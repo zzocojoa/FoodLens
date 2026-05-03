@@ -451,6 +451,7 @@ class FoodAnalyst:
         extract_elapsed_ms = 0
         assess_elapsed_ms = 0
         extract_truncated = False
+        label_provider_chargeable: bool = False
 
         try:
             vertex_image = self._prepare_vertex_image(label_image)
@@ -466,6 +467,7 @@ class FoodAnalyst:
                 semaphore=FoodAnalyst._request_semaphore,
                 max_attempts=3,
             )
+            label_provider_chargeable = True
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             extract_truncated = self._extract_finish_reason(response) == self._MAX_TOKENS_FINISH_REASON
             
@@ -503,6 +505,7 @@ class FoodAnalyst:
                         max_attempts=3,
                     )
                     assess_truncated = self._extract_finish_reason(assess_response) == self._MAX_TOKENS_FINISH_REASON
+                    label_provider_chargeable = True
                     assess_result = self._parse_ai_response(assess_response.text)
                     assess_result = self._sanitize_response(assess_result)
 
@@ -551,7 +554,6 @@ class FoodAnalyst:
                         str(extract_result.get("raw_result", "")).strip()
                         + " 알러지 위험 판정이 불완전하여 주의(CAUTION)로 처리했습니다."
                     ).strip()
-                    extract_result["_label_chargeable"] = False
                     if assess_truncated:
                         extract_result["_label_partial"] = True
                         extract_result["_label_truncated"] = True
@@ -574,7 +576,7 @@ class FoodAnalyst:
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,
             }
-            result["_label_chargeable"] = bool(not assess_failed and not (extract_truncated and not ingredient_names))
+            result["_label_chargeable"] = label_provider_chargeable
             if assess_failed:
                 result["_label_partial"] = True
             if extract_truncated:
@@ -609,7 +611,7 @@ class FoodAnalyst:
                     "extract_ms": extract_elapsed_ms,
                     "assess_ms": assess_elapsed_ms,
                 }
-                fallback["_label_chargeable"] = False
+                fallback["_label_chargeable"] = label_provider_chargeable
                 fallback["_label_partial"] = True
                 fallback["_label_truncated"] = True
                 return fallback
@@ -617,10 +619,10 @@ class FoodAnalyst:
             fallback["used_model"] = self.label_model_name
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
             fallback["_label_timings"] = {
-                "extract_ms": 0,
-                "assess_ms": 0,
+                "extract_ms": extract_elapsed_ms,
+                "assess_ms": assess_elapsed_ms,
             }
-            fallback["_label_chargeable"] = False
+            fallback["_label_chargeable"] = label_provider_chargeable
             return fallback
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):

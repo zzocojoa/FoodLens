@@ -80,6 +80,13 @@ def require_env_value(env_vars: dict[str, dict[str, str | None]], key: str, expe
     require(actual == expected, f"unexpected env value for {key}: expected {expected}, got {actual}")
 
 
+def require_env_sync_false(env_vars: dict[str, dict[str, str | None]], key: str) -> None:
+    require_env_key(env_vars, key)
+    entry = env_vars[key]
+    require(entry["sync"] == "false", f"env key {key} must use sync:false, got sync={entry['sync']}")
+    require(entry["value"] is None, f"env key {key} must not define a literal value")
+
+
 def require_env_int_at_least(env_vars: dict[str, dict[str, str | None]], key: str, minimum: int) -> None:
     require_env_key(env_vars, key)
     raw_value = env_vars[key]["value"]
@@ -257,11 +264,36 @@ def main() -> None:
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT",
     ]
+    render_managed_env_keys = [
+        "DATABASE_URL",
+        "ANALYSIS_CORS_ALLOWED_ORIGINS",
+        "GCP_PROJECT_ID",
+        "GCP_SERVICE_ACCOUNT_JSON",
+        "AUTH_PUBLIC_BASE_URL",
+        "MEDIA_PUBLIC_BASE_URL",
+        "MEDIA_GCS_BUCKET",
+        "MEDIA_RENDER_SIGNING_SECRET",
+        "AUTH_APP_ALLOWED_REDIRECT_URIS",
+        "AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS",
+        "AUTH_GOOGLE_CLIENT_ID",
+        "AUTH_GOOGLE_CLIENT_SECRET",
+        "AUTH_KAKAO_CLIENT_ID",
+        "AUTH_KAKAO_CLIENT_SECRET",
+        "AUTH_EMAIL_SMTP_USERNAME",
+        "AUTH_EMAIL_SMTP_PASSWORD",
+        "AUTH_EMAIL_SENDER_FROM",
+        "DATAGO_API_KEY",
+        "DATAGO_I2790_API_KEY",
+        "KOREAN_FDA_API_KEY",
+        "SENTRY_DSN",
+    ]
 
     for service_name in expected_names:
         env_vars = service_map[service_name]["env_vars"]
         for required_key in required_env_keys:
             require_env_key(env_vars, required_key)
+        for managed_key in render_managed_env_keys:
+            require_env_sync_false(env_vars, managed_key)
 
     web = service_map["foodlens-api"]
     worker = service_map["foodlens-worker"]
