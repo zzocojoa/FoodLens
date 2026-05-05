@@ -65,3 +65,4 @@ class AnalysisJobStatusResponseContract(BaseModel):
     raw_result: Optional[str] = None
     raw_result_en: Optional[str] = None
     raw_result_ko: Optional[str] = None
+    label_diagnostics: Optional[dict] = None

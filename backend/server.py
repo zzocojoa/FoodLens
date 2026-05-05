@@ -253,6 +253,25 @@ def _extract_label_observability(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_public_label_diagnostics(
+    label_observability: dict[str, Any],
+    label_error_type: Any,
+    label_usage_source: str,
+) -> dict[str, Any]:
+    return {
+        "fallback_used": bool(label_observability["fallback_used"]),
+        "fallback_reason": label_observability["fallback_reason"],
+        "error_type": _safe_label_string(label_error_type),
+        "extract_finish_reason": label_observability["extract_finish_reason"],
+        "assess_finish_reason": label_observability["assess_finish_reason"],
+        "partial": bool(label_observability["partial"]),
+        "truncated": bool(label_observability["truncated"]),
+        "usage_source": label_usage_source,
+        "usage_total_tokens": label_observability["usage_total_tokens"],
+        "usage_thought_tokens": label_observability["usage_thought_tokens"],
+    }
+
+
 def _select_barcode_ingredients_after_allergen_analysis(
     original_ingredients: list[Any],
     analyzed_ingredients: Any,
@@ -4609,6 +4628,11 @@ async def _analyze_label_image_with_policy(
     label_usage_thought_tokens = label_observability["usage_thought_tokens"]
     label_recorded_tokens = label_usage_total_tokens if isinstance(label_usage_total_tokens, int) else estimated_tokens
     label_usage_source = "provider_usage_metadata" if isinstance(label_usage_total_tokens, int) else "estimated"
+    result["label_diagnostics"] = _build_public_label_diagnostics(
+        label_observability,
+        label_error_type,
+        label_usage_source,
+    )
     logger.info(
         "[Server] Label observability",
         extra={
@@ -4630,6 +4654,21 @@ async def _analyze_label_image_with_policy(
             "label_usage_total_tokens": label_usage_total_tokens,
             "label_chargeable": label_chargeable,
         },
+    )
+    logger.info(
+        "[Server] Label observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s error_type=%s extract_finish_reason=%s assess_finish_reason=%s partial=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
+        request_id,
+        label_observability["used_model"],
+        label_observability["fallback_used"],
+        label_observability["fallback_reason"],
+        label_error_type,
+        label_observability["extract_finish_reason"],
+        label_observability["assess_finish_reason"],
+        label_observability["partial"],
+        label_observability["truncated"],
+        label_usage_source,
+        label_usage_total_tokens,
+        label_usage_thought_tokens,
     )
 
     if label_error_type == "quota_exhausted_429":

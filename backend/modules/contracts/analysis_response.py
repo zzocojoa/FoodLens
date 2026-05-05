@@ -65,3 +65,4 @@ class AnalysisResponseContract(BaseModel):
     prompt_version: Optional[str] = None
     used_model: Optional[str] = None
     latency_ms: Optional[LatencyMsContract] = None
+    label_diagnostics: Optional[dict] = None
