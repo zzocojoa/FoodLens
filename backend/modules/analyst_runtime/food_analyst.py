@@ -85,6 +85,10 @@ LABEL_FALLBACK_REASON_EXTRACT_PARSE = "extract_parse_error"
 LABEL_FALLBACK_REASON_ASSESS_PARSE = "assess_parse_error"
 LABEL_FALLBACK_REASON_EXTRACT_MAX_TOKENS = "extract_max_tokens"
 LABEL_FALLBACK_REASON_ASSESS_MAX_TOKENS = "assess_max_tokens"
+LABEL_PARSE_UNAVAILABLE_FOOD_NAME_EN = "Label analysis needs review"
+LABEL_PARSE_UNAVAILABLE_FOOD_NAME_KO = "라벨 분석 확인 필요"
+LABEL_PARSE_UNAVAILABLE_MESSAGE_EN = "The label text could not be parsed reliably. Please review the ingredient list manually."
+LABEL_PARSE_UNAVAILABLE_MESSAGE_KO = "라벨 문자를 안정적으로 해석하지 못했습니다. 성분표를 직접 확인해주세요."
 
 
 def _normalize_runtime_locale(locale: str | None) -> str:
@@ -185,6 +189,37 @@ def _is_label_parse_error(result: dict[str, Any]) -> bool:
     food_name = str(result.get("foodName", "")).strip()
     raw_result = str(result.get("raw_result", "")).strip()
     return food_name == LABEL_PARSE_ERROR_FOOD_NAME and raw_result == LABEL_PARSE_ERROR_RAW_RESULT
+
+
+def _label_parse_unavailable_response(locale: str, used_model_name: str) -> dict[str, Any]:
+    is_korean_locale = _is_korean_runtime_locale(locale)
+    raw_result = LABEL_PARSE_UNAVAILABLE_MESSAGE_KO if is_korean_locale else LABEL_PARSE_UNAVAILABLE_MESSAGE_EN
+    return {
+        "foodName": LABEL_PARSE_UNAVAILABLE_FOOD_NAME_KO if is_korean_locale else LABEL_PARSE_UNAVAILABLE_FOOD_NAME_EN,
+        "foodName_en": LABEL_PARSE_UNAVAILABLE_FOOD_NAME_EN,
+        "foodName_ko": LABEL_PARSE_UNAVAILABLE_FOOD_NAME_KO,
+        "raw_result_en": LABEL_PARSE_UNAVAILABLE_MESSAGE_EN,
+        "raw_result_ko": LABEL_PARSE_UNAVAILABLE_MESSAGE_KO,
+        "canonicalFoodId": "label_parse_unavailable",
+        "foodOrigin": "unknown",
+        "safetyStatus": "CAUTION",
+        "confidence": 0,
+        "ingredients": [],
+        "nutrition": {
+            "calories": None,
+            "carbs": None,
+            "protein": None,
+            "fat": None,
+            "sugar": None,
+            "sodium": None,
+            "fiber": None,
+            "servingSize": None,
+            "dataSource": "OCR_Label",
+        },
+        "translationCard": {"language": "Unknown", "text": None, "audio_query": None},
+        "raw_result": raw_result,
+        "used_model": used_model_name,
+    }
 
 
 def _select_label_used_model(current_model_name: str, next_model_name: str, fallback_model_name: str) -> str:
@@ -839,6 +874,9 @@ class FoodAnalyst:
                 extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
                 extract_result = self._parse_ai_response(response.text)
                 extract_result = self._sanitize_response(extract_result)
+            if _is_label_parse_error(extract_result):
+                label_fallback_reason = LABEL_FALLBACK_REASON_EXTRACT_PARSE
+                extract_result = _label_parse_unavailable_response(normalized_locale, label_used_model)
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             if extract_truncated:
                 extract_result["safetyStatus"] = "CAUTION"
