@@ -204,6 +204,18 @@
             "title": "Job Id",
             "type": "string"
           },
+          "label_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Diagnostics"
+          },
           "latency_ms_by_stage": {
             "additionalProperties": {
               "type": "integer"
@@ -549,6 +561,18 @@
             },
             "title": "Ingredients",
             "type": "array"
+          },
+          "label_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Diagnostics"
           },
           "latency_ms": {
             "anyOf": [
