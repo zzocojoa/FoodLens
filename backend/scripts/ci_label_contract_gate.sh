@@ -10,6 +10,7 @@ fi
 
 "$PYTHON_BIN" -m unittest -v \
   backend.tests.contracts.test_label_contract_gate \
-  backend.tests.contracts.test_label_regression_scaffold
+  backend.tests.contracts.test_label_regression_scaffold \
+  backend.tests.runtime.test_label_golden_model_eval_gate
 
 echo "[CI Gate] Label contract/regression gate passed."

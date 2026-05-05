@@ -5,10 +5,11 @@ import time
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import backend.modules.analysis_jobs as analysis_jobs
 from backend.modules.analysis_jobs import (
@@ -20,6 +21,8 @@ from backend.modules.analysis_jobs import (
     NutritionEnrichmentService,
     create_analysis_job_payload,
 )
+from backend.modules.ops.cost_guardrail import CostGuardrailService, InMemoryMonthlyUsageStorage
+from backend.modules.ops.rollout_control import KpiThresholds
 from backend.modules.server_bootstrap import decode_upload_to_image
 
 
@@ -28,10 +31,24 @@ os.environ["AUTH_STATE_BACKEND"] = "memory"
 os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
 os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
 from backend.server import app, resolve_prompt_country_code  # noqa: E402
+from backend.server import _analyze_label_image_with_policy  # noqa: E402
 
 
 def _build_image_bytes() -> bytes:
     image = Image.new("RGB", (320, 240), (220, 180, 120))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _build_high_quality_label_bytes() -> bytes:
+    image = Image.new("RGB", (600, 900), (230, 230, 230))
+    draw = ImageDraw.Draw(image)
+    for index in range(20):
+        y = 30 + index * 40
+        draw.text((30, y), f"INGREDIENTS LINE {index:02d}", fill=(20, 20, 20))
+    for x in range(0, 600, 24):
+        draw.line((x, 0, x, 899), fill=(40, 40, 40), width=1)
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG")
     return buffer.getvalue()
@@ -118,7 +135,11 @@ class _RecordingConnect:
 
 class _AsyncJobAnalyst:
     model_name = "gemini-2.0-flash"
-    label_model_name = "gemini-2.5-pro"
+    label_model_name = "gemini-2.5-flash"
+
+    def __init__(self) -> None:
+        self.label_calls = 0
+        self.last_assess_enabled = None
 
     def analyze_food_job_json(self, *_args, **_kwargs):
         return {
@@ -140,6 +161,8 @@ class _AsyncJobAnalyst:
         }
 
     def analyze_label_json(self, *_args, **_kwargs):
+        self.label_calls += 1
+        self.last_assess_enabled = _args[4] if len(_args) >= 5 else None
         return {
             "foodName": "Bibimbap Label",
             "safetyStatus": "SAFE",
@@ -148,6 +171,50 @@ class _AsyncJobAnalyst:
             "used_model": self.label_model_name,
             "prompt_version": "label-v1.2-2pass-locale-country",
         }
+
+
+class _AsyncJob429Analyst(_AsyncJobAnalyst):
+    def analyze_label_json(self, *_args, **_kwargs):
+        self.label_calls += 1
+        self.last_assess_enabled = _args[4] if len(_args) >= 5 else None
+        return {
+            "foodName": "Unknown",
+            "safetyStatus": "CAUTION",
+            "ingredients": [],
+            "raw_result": "rate limited",
+            "used_model": self.label_model_name,
+            "prompt_version": "label-v1.2-2pass-locale-country",
+            "_label_timings": {"extract_ms": 0, "assess_ms": 0},
+            "_label_chargeable": False,
+            "_label_error_type": "quota_exhausted_429",
+            "_label_partial": True,
+        }
+
+
+class _SmartLabelJobRouter:
+    async def route_analysis(
+        self,
+        *,
+        image: Any,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        request_id: str,
+        total_started_at: float,
+        preprocess_elapsed_ms: int,
+        label_analysis_runner: Any,
+    ) -> dict[str, Any]:
+        result = await label_analysis_runner(
+            image,
+            allergy_info,
+            iso_country_code,
+            locale,
+            request_id,
+            total_started_at,
+            preprocess_elapsed_ms,
+        )
+        result["router_category"] = "NUTRITION_LABEL"
+        return result
 
 
 class AnalysisJobRuntimeTests(unittest.TestCase):
@@ -172,6 +239,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
             ),
             get_analyst=lambda: app.state.analyst,
             get_smart_router=lambda: app.state.smart_router,
+            analyze_label_with_policy=_analyze_label_image_with_policy,
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
             lease_seconds=60,
@@ -233,6 +301,145 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
         self.assertIn("latency_ms_by_stage", terminal_payload)
         self.assertEqual(terminal_payload["nutrition"]["dataSource"], "TestCache")
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_label_job_degrades_through_shared_cost_gate(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.85, tokens=1000)
+        analyst = _AsyncJobAnalyst()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE": "0.012",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE": "900",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            submit = client.post(
+                "/analyze/jobs",
+                files={"file": ("label.jpg", _build_high_quality_label_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR", "mode": "label"},
+                headers={"X-Request-Id": "req-analysis-job-label-degrade"},
+            )
+            self.assertEqual(submit.status_code, 202)
+            self._process_next_job_with_worker()
+            polled = client.get(f"/analyze/jobs/{submit.json()['job_id']}")
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(polled.json()["status"], "completed")
+        self.assertEqual(analyst.label_calls, 1)
+        self.assertFalse(analyst.last_assess_enabled)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.862)
+        self.assertEqual(usage.total_tokens, 1900)
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_smart_label_job_uses_shared_cost_gate_fallback(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+        analyst = _AsyncJobAnalyst()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.smart_router = _SmartLabelJobRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            submit = client.post(
+                "/analyze/jobs",
+                files={"file": ("label.jpg", _build_high_quality_label_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR", "mode": "smart"},
+                headers={"X-Request-Id": "req-analysis-job-smart-label-fallback"},
+            )
+            self.assertEqual(submit.status_code, 202)
+            self._process_next_job_with_worker()
+            polled = client.get(f"/analyze/jobs/{submit.json()['job_id']}")
+
+        usage = storage.get(service._period_key())
+        payload = polled.json()
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(payload["status"], "fallback_completed")
+        self.assertFalse("latency_ms" in payload)
+        self.assertEqual(payload["fallback_reason"], "budget_fallback")
+        self.assertEqual(analyst.label_calls, 0)
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_label_job_quota_429_is_fallback_completed_and_non_chargeable(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=100.0)
+        analyst = _AsyncJob429Analyst()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            submit = client.post(
+                "/analyze/jobs",
+                files={"file": ("label.jpg", _build_high_quality_label_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR", "mode": "label"},
+                headers={"X-Request-Id": "req-analysis-job-label-429"},
+            )
+            self.assertEqual(submit.status_code, 202)
+            self._process_next_job_with_worker()
+            polled = client.get(f"/analyze/jobs/{submit.json()['job_id']}")
+
+        usage = storage.get(service._period_key())
+        payload = polled.json()
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(payload["status"], "fallback_completed")
+        self.assertEqual(payload["fallback_reason"], "quota_exhausted_429")
+        self.assertEqual(analyst.label_calls, 1)
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 0)
+        self.assertNotIn("_label_partial", payload)
+        self.assertNotIn("_label_error_type", payload)
 
     def test_submit_job_returns_503_when_store_create_job_fails(self) -> None:
         def raise_store_error(**_kwargs: object) -> None:

@@ -31,7 +31,7 @@ def _build_high_quality_bytes() -> bytes:
 
 class _429Analyst:
     def __init__(self):
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
 
     def analyze_label_json(self, *_args, **_kwargs):
         return {

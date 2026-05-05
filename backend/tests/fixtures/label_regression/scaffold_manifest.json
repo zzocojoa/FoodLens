@@ -1,30 +1,1021 @@
 {
-  "version": 2,
+  "version": 3,
   "description": "Label regression golden set (network-independent).",
   "flaky_tolerance": {
     "min_ingredients_count_rule": "actual >= min_ingredients_count",
-    "nutrition_required_keys": ["calories", "protein", "carbs", "fat", "fiber", "sodium", "sugar", "servingSize", "dataSource"]
+    "nutrition_required_keys": [
+      "calories",
+      "protein",
+      "carbs",
+      "fat",
+      "fiber",
+      "sodium",
+      "sugar",
+      "servingSize",
+      "dataSource"
+    ]
   },
   "samples": [
-    {"id":"label_sample_01","status":"active","golden_json_path":"golden/label_sample_01.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_02","status":"active","golden_json_path":"golden/label_sample_02.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_03","status":"active","golden_json_path":"golden/label_sample_03.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_04","status":"active","golden_json_path":"golden/label_sample_04.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_05","status":"active","golden_json_path":"golden/label_sample_05.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_06","status":"active","golden_json_path":"golden/label_sample_06.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_07","status":"active","golden_json_path":"golden/label_sample_07.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_08","status":"active","golden_json_path":"golden/label_sample_08.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_09","status":"active","golden_json_path":"golden/label_sample_09.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_10","status":"active","golden_json_path":"golden/label_sample_10.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_11","status":"active","golden_json_path":"golden/label_sample_11.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_12","status":"active","golden_json_path":"golden/label_sample_12.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_13","status":"active","golden_json_path":"golden/label_sample_13.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_14","status":"active","golden_json_path":"golden/label_sample_14.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_15","status":"active","golden_json_path":"golden/label_sample_15.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_16","status":"active","golden_json_path":"golden/label_sample_16.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_17","status":"active","golden_json_path":"golden/label_sample_17.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_18","status":"active","golden_json_path":"golden/label_sample_18.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_19","status":"active","golden_json_path":"golden/label_sample_19.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]},
-    {"id":"label_sample_20","status":"active","golden_json_path":"golden/label_sample_20.json","expected_safetyStatus":"CAUTION","min_ingredients_count":2,"required_nutrition_keys":["calories","protein","carbs","fat","fiber","sodium","sugar","servingSize","dataSource"]}
-  ]
+    {
+      "id": "label_sample_01",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_01.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_01.jpg",
+      "source_filename": "100207076.jpg",
+      "image_sha256": "21c4c0e7ae0646bd23988eaa30c968228cdc5de6c6ffa75d35e5b5b4be714c9a",
+      "image_bytes": 397904,
+      "image_width": 800,
+      "image_height": 1416,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "soy"
+        ],
+        "expected_risk_ingredients": [
+          "우유",
+          "대두"
+        ],
+        "review_notes": "AI-assisted visual review: facility advisory says products using 우유, 대두, 복숭아 are made in the same facility.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_02",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_02.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_02.jpg",
+      "source_filename": "105406120.jpg",
+      "image_sha256": "d6c9154b065636b563c5a0a60b0fcab715961c55e600d87f750de1fd2496debf",
+      "image_bytes": 320223,
+      "image_width": 840,
+      "image_height": 1224,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "shellfish"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "새우",
+          "조개류"
+        ],
+        "review_notes": "AI-assisted visual review: allergen statement visibly says 대두, 밀, 새우, 조개류 함유.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_03",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_03.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_03.jpg",
+      "source_filename": "11.jpg",
+      "image_sha256": "ba90b340f41b45b0436b3477a346601a68df3c9839b594cef5e90e8724a3d646",
+      "image_bytes": 136668,
+      "image_width": 654,
+      "image_height": 666,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "soy",
+          "wheat",
+          "egg",
+          "peanut",
+          "fish",
+          "shellfish"
+        ],
+        "expected_risk_ingredients": [
+          "우유",
+          "대두",
+          "밀",
+          "알류",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우",
+          "조개류"
+        ],
+        "review_notes": "AI-assisted visual review: direct line includes 밀, 대두, 우유; facility advisory visibly lists 알류/계란, 땅콩, 게, 새우, 조개류. Fish category is kept from the earlier visual pass but should be spot-checked by a human reviewer.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "low"
+        }
+      }
+    },
+    {
+      "id": "label_sample_04",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_04.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_04.jpg",
+      "source_filename": "138307326.jpg",
+      "image_sha256": "acdc481bc3511862d87dea6f92d4ff08695876463be0fa11b97730d91b9ec5da",
+      "image_bytes": 221871,
+      "image_width": 800,
+      "image_height": 800,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "wheat",
+          "milk",
+          "fish",
+          "sesame"
+        ],
+        "expected_risk_ingredients": [
+          "밀",
+          "우유",
+          "조기",
+          "참깨"
+        ],
+        "review_notes": "AI-assisted visual review: allergen line includes 밀, 우유 and a fish term 조기; ingredients also visibly include 참깨.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_05",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_05.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_05.png",
+      "source_filename": "1721-3.png",
+      "image_sha256": "1ce21e43d043ddcca277dd7c17e18379cde33cb68b0129bdf62f0555ca45355e",
+      "image_bytes": 217779,
+      "image_width": 960,
+      "image_height": 960,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "milk",
+          "shellfish",
+          "egg",
+          "peanut",
+          "fish"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "우유",
+          "조개류",
+          "난류",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우"
+        ],
+        "review_notes": "AI-assisted visual review: direct line says 쇠고기, 닭고기, 대두, 밀, 우유, 조개류 함유; facility advisory lists 난류, 땅콩, 고등어, 게, 새우.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_06",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_06.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_06.jpg",
+      "source_filename": "20210511161625863_9L3V199H.jpg",
+      "image_sha256": "ec8293e52094f83a2096309e9ab9bbc575ea63fd44e52cf01fb23088e24bca84",
+      "image_bytes": 550422,
+      "image_width": 747,
+      "image_height": 750,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "egg",
+          "milk",
+          "peanut",
+          "soy",
+          "wheat",
+          "tree nut"
+        ],
+        "expected_risk_ingredients": [
+          "알류",
+          "우유",
+          "땅콩",
+          "대두",
+          "밀",
+          "호두"
+        ],
+        "review_notes": "AI-assisted visual review: visible facility advisory lists 알류, 우유, 메밀, 땅콩, 대두, 밀, 복숭아, 토마토, 호두 and others.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_07",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_07.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_07.jpg",
+      "source_filename": "20220125114532465.jpg",
+      "image_sha256": "da9d603aeb2481b672eb2734a8b35031dd4a32a35e8df85470ca50ac516a616d",
+      "image_bytes": 314805,
+      "image_width": 1000,
+      "image_height": 1000,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [],
+        "expected_risk_ingredients": [],
+        "review_notes": "AI-assisted visual review: visible allergen callout is 아황산나트륨, which is outside this fixture allergy profile.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_08",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_08.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_08.jpg",
+      "source_filename": "2e3c2cce-5091-413a-b6cc-5ccbd078f0cd.jpg",
+      "image_sha256": "0664fb5a1d12ba0af7a4cfe0cf5b19308a3c4c9bd4bd05a15a68e76a9fb18162",
+      "image_bytes": 95418,
+      "image_width": 686,
+      "image_height": 495,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "soy",
+          "wheat",
+          "peanut",
+          "fish",
+          "shellfish",
+          "egg"
+        ],
+        "expected_risk_ingredients": [
+          "우유",
+          "대두",
+          "밀",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우",
+          "조개류",
+          "계란"
+        ],
+        "review_notes": "AI-assisted visual review: direct line includes 우유, 대두, 밀, 닭고기; facility advisory lists 계란, 땅콩, 고등어, 게, 새우, 조개류.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_09",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_09.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_09.jpg",
+      "source_filename": "32_3764165683_r.jpg",
+      "image_sha256": "9c4dbb8dfc81f31abc5b46e0e38e65cb1c2de81a93cf5239e61f3d7d7e38fca8",
+      "image_bytes": 320115,
+      "image_width": 850,
+      "image_height": 850,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "peanut"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "땅콩"
+        ],
+        "review_notes": "AI-assisted visual review: visible allergen statement says 대두, 밀, 땅콩 함유.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_10",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_10.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_10.jpg",
+      "source_filename": "425BAC79C9F24888A97B.jpg",
+      "image_sha256": "294a6c574ce9dad9d3f2372376bff3b5a16345cc3423fdaa6f0ec02953fd7153",
+      "image_bytes": 410360,
+      "image_width": 900,
+      "image_height": 887,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "peanut",
+          "soy",
+          "wheat",
+          "fish",
+          "shellfish",
+          "tree nut",
+          "egg"
+        ],
+        "expected_risk_ingredients": [
+          "우유",
+          "땅콩",
+          "대두",
+          "밀",
+          "고등어",
+          "게",
+          "새우",
+          "호두",
+          "잣",
+          "알류",
+          "조개류"
+        ],
+        "review_notes": "AI-assisted visual review: facility advisory lists 우유, 땅콩, 대두, 밀, 고등어, 게, 새우, 호두, 잣, 알류, 조개류 and others.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_11",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_11.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_11.jpeg",
+      "source_filename": "45819176.jpeg",
+      "image_sha256": "12dacab97125b68e3f56498869b80d40daee29b6898c2489199016fa941f14c4",
+      "image_bytes": 227156,
+      "image_width": 860,
+      "image_height": 958,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "soy",
+          "wheat",
+          "egg",
+          "peanut",
+          "fish",
+          "shellfish",
+          "tree nut"
+        ],
+        "expected_risk_ingredients": [
+          "우유",
+          "대두",
+          "밀",
+          "알류",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우",
+          "호두",
+          "조개류"
+        ],
+        "review_notes": "AI-assisted visual review: direct line says 우유, 대두, 밀 함유; facility advisory lists 알류, 땅콩, 고등어, 게, 새우, 호두, 조개류.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_12",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_12.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_12.jpg",
+      "source_filename": "800x800.jpg",
+      "image_sha256": "7e1673f0a5c6f367cbf3fa3262c0699e1b9eb8a8bec2f3e67d237f9eef0d0b5b",
+      "image_bytes": 129259,
+      "image_width": 800,
+      "image_height": 800,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "shellfish",
+          "milk",
+          "tree nut"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "게",
+          "새우",
+          "조개류",
+          "바지락",
+          "우유",
+          "호두"
+        ],
+        "review_notes": "AI-assisted visual review: direct line includes 대두, 밀, 게, 새우, 조개류(바지락); facility advisory includes 우유, 호두.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_13",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_13.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_13.jpg",
+      "source_filename": "949742084_2.jpg",
+      "image_sha256": "e46af992453cc85ad14d52990d2ee8e14fd1ef34d451d4ecdc2fa53f88ef5f7d",
+      "image_bytes": 116724,
+      "image_width": 550,
+      "image_height": 566,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "egg",
+          "soy",
+          "wheat"
+        ],
+        "expected_risk_ingredients": [
+          "알",
+          "대두",
+          "밀"
+        ],
+        "review_notes": "AI-assisted visual review: allergen statement visibly includes 알, 대두, 밀 along with non-profile meat/tomato terms; 알 is treated as egg for this fixture but should be spot-checked by a human reviewer.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "low"
+        }
+      }
+    },
+    {
+      "id": "label_sample_14",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_14.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_14.jpeg",
+      "source_filename": "DSC05429.jpeg",
+      "image_sha256": "64e6ec573dca5fc2c33dd3b5a13cb3478737132d8f7b9d5f35cb7f1400f33722",
+      "image_bytes": 101872,
+      "image_width": 800,
+      "image_height": 533,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "wheat",
+          "shellfish"
+        ],
+        "expected_risk_ingredients": [
+          "밀",
+          "새우"
+        ],
+        "review_notes": "AI-assisted visual review: facility advisory says products using 밀, 새우 are made in the same facility.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_15",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_15.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_15.png",
+      "source_filename": "art_16202752439639_1378f1.png",
+      "image_sha256": "a10f57f64cd57842e199f4ed19812b83ced6442320fbb0f6dd2f9089a8facd4a",
+      "image_bytes": 455317,
+      "image_width": 600,
+      "image_height": 399,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "milk",
+          "soy",
+          "wheat"
+        ],
+        "expected_risk_ingredients": [
+          "우유강화분말",
+          "대두",
+          "밀"
+        ],
+        "review_notes": "AI-assisted visual review: ingredients include 우유강화분말 and visible allergen line includes 대두, 밀.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_16",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_16.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_16.jpg",
+      "source_filename": "fe45043d-76d4-4299-b4f7-a209813ee5c8_1710454570447.jpg",
+      "image_sha256": "2a2958ac7b2a03864fc8c168cef2cf379da0afe8f2bbe2792dc794f8852189b7",
+      "image_bytes": 101805,
+      "image_width": 1024,
+      "image_height": 920,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "wheat",
+          "soy",
+          "milk"
+        ],
+        "expected_risk_ingredients": [
+          "밀",
+          "대두",
+          "우유"
+        ],
+        "review_notes": "AI-assisted visual review: visible allergen statement says 밀, 대두, 쇠고기, 우유 함유.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_17",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_17.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_17.jpeg",
+      "source_filename": "optimize.jpeg",
+      "image_sha256": "9a483dcb1754f91fea099ab3654092f026a3ea8c565dfcd273a112a0b63aa654",
+      "image_bytes": 262728,
+      "image_width": 860,
+      "image_height": 800,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "fish",
+          "soy",
+          "shellfish"
+        ],
+        "expected_risk_ingredients": [
+          "멸치",
+          "대두",
+          "새우"
+        ],
+        "review_notes": "AI-assisted visual review: direct ingredient is 멸치; facility advisory says products using 대두, 새우 are made in the same facility.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_18",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_18.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_18.jpg",
+      "source_filename": "s106674_2.jpg",
+      "image_sha256": "9d61bd27f58e961e48e43187148183ee552c5000da59d83ddcb70601f9daa39a",
+      "image_bytes": 356932,
+      "image_width": 1000,
+      "image_height": 1000,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "milk",
+          "egg",
+          "peanut",
+          "fish",
+          "shellfish",
+          "tree nut"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "우유",
+          "난류",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우",
+          "호두",
+          "조개류",
+          "전복"
+        ],
+        "review_notes": "AI-assisted visual review: direct line says 쇠고기, 대두, 밀, 우유 함유; facility advisory lists 난류, 땅콩, 고등어, 게, 새우, 호두, 조개류, 전복.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_19",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_19.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_19.png",
+      "source_filename": "비냉2.png",
+      "image_sha256": "3e524dc595f2bbce7ffcdd9806d632ec126511ceaf6236e0751469aa42bceba9",
+      "image_bytes": 528617,
+      "image_width": 399,
+      "image_height": 733,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀"
+        ],
+        "review_notes": "AI-assisted visual review: visible allergen statement says 대두, 밀, 메밀 함유; 메밀 is outside this fixture allergy profile.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "label_sample_20",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_20.json",
+      "expected_safetyStatus": "CAUTION",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_20.jpg",
+      "source_filename": "원재료-1.jpg",
+      "image_sha256": "709f184cc08ff5e19b2ba2a2285aa46795e09c3f251bb6265765bcb4eeab80d0",
+      "image_bytes": 151225,
+      "image_width": 800,
+      "image_height": 800,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "soy",
+          "wheat",
+          "milk",
+          "egg",
+          "peanut",
+          "fish",
+          "shellfish",
+          "tree nut"
+        ],
+        "expected_risk_ingredients": [
+          "대두",
+          "밀",
+          "우유",
+          "난류",
+          "땅콩",
+          "고등어",
+          "게",
+          "새우",
+          "호두",
+          "오징어",
+          "조개류",
+          "전복"
+        ],
+        "review_notes": "AI-assisted visual review: direct line includes 대두, 밀, 우유; facility advisory lists 난류, 땅콩, 고등어, 게, 새우, 호두, 오징어, 조개류, 전복.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "ai_visual_review",
+          "source": "visible_label_text",
+          "confidence": "medium"
+        }
+      }
+    }
+  ],
+  "human_label_schema": {
+    "version": 2,
+    "annotation_status_values": [
+      "needs_human_review",
+      "reviewed"
+    ],
+    "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+    "expected_allergens": "Canonical allergen categories expected to be detected for the allergy profile.",
+    "expected_risk_ingredients": "Ingredient names or label text snippets that justify the allergen risk decision.",
+    "review_rule": "Only samples with annotation_status=reviewed participate in allergen recall scoring; provenance.assistance must be checked before treating a label as human-only.",
+    "provenance": {
+      "reviewed_by": "Non-secret reviewer identifier.",
+      "assistance": "Allowed values: none, ai_visual_review.",
+      "source": "Evidence source used for the reviewed label.",
+      "confidence": "Allowed values: low, medium, high."
+    }
+  }
 }

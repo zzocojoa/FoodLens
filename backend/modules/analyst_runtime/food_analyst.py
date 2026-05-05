@@ -2,8 +2,8 @@ import os
 import atexit
 import time
 import logging
-from typing import Any
-from google.api_core.exceptions import ResourceExhausted
+from typing import Any, TypedDict
+from google.api_core.exceptions import DeadlineExceeded, InternalServerError, ResourceExhausted, ServiceUnavailable
 import vertexai
 from vertexai.generative_models import GenerativeModel, Image as VertexImage
 from PIL import Image
@@ -24,6 +24,7 @@ from backend.modules.analyst_core.prompts import (
     build_label_assess_prompt,
     build_label_prompt,
 )
+from backend.modules.analyst_core.label_merge import merge_label_extract_and_assessment
 from backend.modules.analyst_core.response_utils import (
     get_safe_fallback_response,
     parse_ai_response,
@@ -34,7 +35,8 @@ from backend.modules.analyst_core.schemas import (
     build_barcode_allergen_schema,
     build_food_job_response_schema,
     build_food_response_schema,
-    build_label_response_schema,
+    build_label_assess_risk_schema,
+    build_label_extract_response_schema,
 )
 from backend.modules.analyst_runtime.generation import (
     create_request_semaphore,
@@ -48,9 +50,41 @@ import traceback
 
 logger = logging.getLogger("foodlens.analyst_runtime")
 
+GEMINI_LABEL_MODEL_NAME_DEFAULT = "gemini-2.5-flash"
+GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT = "gemini-2.5-pro"
 GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT = 1536
 GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS_DEFAULT = 768
 GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT = 512
+GEMINI_LABEL_FLASH_THINKING_BUDGET_DEFAULT = 0
+GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET_DEFAULT = 0
+GEMINI_LABEL_PRO_THINKING_BUDGET_DEFAULT = 128
+LABEL_USAGE_METADATA_FIELDS = (
+    "prompt_token_count",
+    "candidates_token_count",
+    "total_token_count",
+    "cached_content_token_count",
+    "thoughts_token_count",
+)
+
+
+class LabelGenerationMetadata(TypedDict):
+    model_name: str
+    primary_model_name: str
+    fallback_used: bool
+    fallback_reason: str | None
+    finish_reason: int | None
+    thinking_budget: int
+    usage_metadata: dict[str, int]
+
+
+LABEL_PARSE_ERROR_FOOD_NAME = "Analysis Error"
+LABEL_PARSE_ERROR_RAW_RESULT = "AI 응답을 처리할 수 없습니다. 다시 시도해주세요."
+LABEL_FALLBACK_REASON_EXTRACT_TRANSIENT = "extract_primary_transient_error"
+LABEL_FALLBACK_REASON_ASSESS_TRANSIENT = "assess_primary_transient_error"
+LABEL_FALLBACK_REASON_EXTRACT_PARSE = "extract_parse_error"
+LABEL_FALLBACK_REASON_ASSESS_PARSE = "assess_parse_error"
+LABEL_FALLBACK_REASON_EXTRACT_MAX_TOKENS = "extract_max_tokens"
+LABEL_FALLBACK_REASON_ASSESS_MAX_TOKENS = "assess_max_tokens"
 
 
 def _normalize_runtime_locale(locale: str | None) -> str:
@@ -90,6 +124,129 @@ def _read_env_positive_int(name: str, fallback: int) -> int:
     if parsed_value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return parsed_value
+
+
+def _read_env_non_negative_int(name: str, fallback: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip()
+    if not normalized:
+        return fallback
+    if not normalized.isdigit():
+        raise ValueError(f"{name} must be a non-negative integer")
+    return int(normalized)
+
+
+def _read_env_non_empty_string(name: str, fallback: str) -> str:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip()
+    if not normalized:
+        return fallback
+    return normalized
+
+
+def _read_env_bool(name: str, fallback: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return fallback
+    normalized = raw_value.strip().lower()
+    if not normalized:
+        return fallback
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
+
+
+def _is_pro_model_name(model_name: str) -> bool:
+    return "-pro" in model_name.strip().lower()
+
+
+def _is_flash_lite_model_name(model_name: str) -> bool:
+    return "flash-lite" in model_name.strip().lower()
+
+
+def _is_flash_model_name(model_name: str) -> bool:
+    normalized_model_name = model_name.strip().lower()
+    return "flash" in normalized_model_name and not _is_flash_lite_model_name(normalized_model_name)
+
+
+def _is_label_transient_generation_error(error: Exception) -> bool:
+    if isinstance(error, (DeadlineExceeded, InternalServerError, ServiceUnavailable)):
+        return True
+    return False
+
+
+def _is_label_parse_error(result: dict[str, Any]) -> bool:
+    food_name = str(result.get("foodName", "")).strip()
+    raw_result = str(result.get("raw_result", "")).strip()
+    return food_name == LABEL_PARSE_ERROR_FOOD_NAME and raw_result == LABEL_PARSE_ERROR_RAW_RESULT
+
+
+def _select_label_used_model(current_model_name: str, next_model_name: str, fallback_model_name: str) -> str:
+    if current_model_name == fallback_model_name:
+        return current_model_name
+    if next_model_name == fallback_model_name:
+        return next_model_name
+    return next_model_name
+
+
+def _read_usage_metadata_value(metadata: object, field_name: str) -> int | None:
+    raw_value: Any
+    if isinstance(metadata, dict):
+        raw_value = metadata.get(field_name)
+    else:
+        raw_value = getattr(metadata, field_name, None)
+    if isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, int):
+        return raw_value
+    return None
+
+
+def _extract_usage_metadata(response: object) -> dict[str, int]:
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata is None:
+        return {}
+    extracted: dict[str, int] = {}
+    for field_name in LABEL_USAGE_METADATA_FIELDS:
+        value = _read_usage_metadata_value(metadata, field_name)
+        if value is not None:
+            extracted[field_name] = value
+    return extracted
+
+
+def _build_label_observability_metadata(
+    primary_model_name: str,
+    used_model_name: str,
+    fallback_used: bool,
+    fallback_reason: str | None,
+    finish_reasons: dict[str, int | None],
+    thinking_budgets: dict[str, int],
+    usage_metadata: dict[str, dict[str, int]],
+) -> dict[str, Any]:
+    return {
+        "_label_primary_model": primary_model_name,
+        "_label_used_model": used_model_name,
+        "_label_fallback_used": fallback_used,
+        "_label_fallback_reason": fallback_reason,
+        "_label_extract_finish_reason": finish_reasons.get("extract"),
+        "_label_assess_finish_reason": finish_reasons.get("assess"),
+        "_label_finish_reasons": dict(finish_reasons),
+        "_label_thinking_budget": dict(thinking_budgets),
+        "_label_usage": {
+            call_name: dict(call_usage)
+            for call_name, call_usage in usage_metadata.items()
+        },
+        "_label_usage_metadata": {
+            call_name: dict(call_usage)
+            for call_name, call_usage in usage_metadata.items()
+        },
+    }
 
 
 def _build_barcode_caution_result(
@@ -167,7 +324,19 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
-        self.label_model_name = os.getenv("GEMINI_LABEL_MODEL_NAME") or "gemini-2.5-pro"
+        self.label_model_name = _read_env_non_empty_string(
+            "GEMINI_LABEL_MODEL_NAME",
+            GEMINI_LABEL_MODEL_NAME_DEFAULT,
+        )
+        self.label_fallback_model_name = _read_env_non_empty_string(
+            "GEMINI_LABEL_FALLBACK_MODEL_NAME",
+            GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT,
+        )
+        self.label_fallback_enabled = _read_env_bool("GEMINI_LABEL_FALLBACK_ENABLED", False)
+        self.label_fallback_on_parse_error = _read_env_bool("GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR", False)
+        self.label_fallback_on_max_tokens = _read_env_bool("GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS", False)
+        if _is_pro_model_name(self.label_model_name):
+            raise ValueError("GEMINI_LABEL_MODEL_NAME must not be a Pro model; use GEMINI_LABEL_FALLBACK_MODEL_NAME for Pro fallback")
         self.label_extract_max_output_tokens = _read_env_positive_int(
             "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
             GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT,
@@ -180,12 +349,26 @@ class FoodAnalyst:
             "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
             GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT,
         )
+        self.label_flash_thinking_budget = _read_env_non_negative_int(
+            "GEMINI_LABEL_FLASH_THINKING_BUDGET",
+            GEMINI_LABEL_FLASH_THINKING_BUDGET_DEFAULT,
+        )
+        self.label_flash_lite_thinking_budget = _read_env_non_negative_int(
+            "GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET",
+            GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET_DEFAULT,
+        )
+        self.label_pro_thinking_budget = _read_env_positive_int(
+            "GEMINI_LABEL_PRO_THINKING_BUDGET",
+            GEMINI_LABEL_PRO_THINKING_BUDGET_DEFAULT,
+        )
         
         # [DEBUG] Log model initialization details
         print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
         print(f"[Model Debug] Using model: {self.model_name}")
         print(f"[Model Debug] GEMINI_LABEL_MODEL_NAME env: {os.getenv('GEMINI_LABEL_MODEL_NAME')}")
         print(f"[Model Debug] Using label model: {self.label_model_name}")
+        print(f"[Model Debug] GEMINI_LABEL_FALLBACK_MODEL_NAME env: {os.getenv('GEMINI_LABEL_FALLBACK_MODEL_NAME')}")
+        print(f"[Model Debug] Label fallback enabled: {self.label_fallback_enabled}")
         
         try:
             self.model = GenerativeModel(self.model_name)
@@ -303,6 +486,87 @@ class FoodAnalyst:
         except Exception:
             return None
 
+    def _build_label_generation_metadata(
+        self,
+        response: object,
+        primary_model_name: str,
+        used_model_name: str,
+        fallback_reason: str | None,
+    ) -> LabelGenerationMetadata:
+        return {
+            "model_name": used_model_name,
+            "primary_model_name": primary_model_name,
+            "fallback_used": used_model_name != primary_model_name,
+            "fallback_reason": fallback_reason,
+            "finish_reason": self._extract_finish_reason(response),
+            "thinking_budget": self._select_label_thinking_budget(used_model_name),
+            "usage_metadata": _extract_usage_metadata(response),
+        }
+
+    def _select_label_thinking_budget(self, model_name: str) -> int:
+        if _is_pro_model_name(model_name):
+            return self.label_pro_thinking_budget
+        if _is_flash_lite_model_name(model_name):
+            return self.label_flash_lite_thinking_budget
+        if _is_flash_model_name(model_name):
+            return self.label_flash_thinking_budget
+        return self.label_flash_thinking_budget
+
+    def _build_label_generation_config_for_model(
+        self,
+        generation_config: dict[str, Any],
+        model_name: str,
+    ) -> dict[str, Any]:
+        model_generation_config = dict(generation_config)
+        model_generation_config["thinking_config"] = {
+            "include_thoughts": False,
+            "thinking_budget": self._select_label_thinking_budget(model_name),
+        }
+        return model_generation_config
+
+    def _can_use_label_fallback(self, reason: str) -> bool:
+        if not self.label_fallback_enabled:
+            return False
+        if self.label_fallback_model_name == self.label_model_name:
+            return False
+        if reason in {LABEL_FALLBACK_REASON_EXTRACT_PARSE, LABEL_FALLBACK_REASON_ASSESS_PARSE}:
+            return self.label_fallback_on_parse_error
+        if reason in {LABEL_FALLBACK_REASON_EXTRACT_MAX_TOKENS, LABEL_FALLBACK_REASON_ASSESS_MAX_TOKENS}:
+            return self.label_fallback_on_max_tokens
+        return reason in {LABEL_FALLBACK_REASON_EXTRACT_TRANSIENT, LABEL_FALLBACK_REASON_ASSESS_TRANSIENT}
+
+    def _can_retry_label_response_with_fallback(self, metadata: LabelGenerationMetadata, reason: str) -> bool:
+        if metadata["model_name"] != self.label_model_name:
+            return False
+        return self._can_use_label_fallback(reason)
+
+    def _generate_label_fallback_content(
+        self,
+        contents: list[Any],
+        generation_config: dict[str, Any],
+        safety_settings: dict[str, Any],
+        fallback_reason: str,
+    ) -> tuple[Any, LabelGenerationMetadata]:
+        fallback_model = GenerativeModel(self.label_fallback_model_name)
+        fallback_generation_config = self._build_label_generation_config_for_model(
+            generation_config,
+            self.label_fallback_model_name,
+        )
+        response = generate_with_429_backoff(
+            model=fallback_model,
+            contents=contents,
+            generation_config=fallback_generation_config,
+            safety_settings=safety_settings,
+            semaphore=FoodAnalyst._request_semaphore,
+            max_attempts=1,
+        )
+        return response, self._build_label_generation_metadata(
+            response,
+            self.label_model_name,
+            self.label_fallback_model_name,
+            fallback_reason,
+        )
+
     def _generate_food_analysis_response(
         self,
         food_image: Image.Image,
@@ -414,6 +678,47 @@ class FoodAnalyst:
     ) -> str:
         return build_label_assess_prompt(normalized_allergens, ingredients, locale, iso_current_country)
 
+    def _generate_label_content(
+        self,
+        model: GenerativeModel,
+        contents: list[Any],
+        generation_config: dict[str, Any],
+        safety_settings: dict[str, Any],
+        transient_fallback_reason: str,
+    ) -> tuple[Any, LabelGenerationMetadata]:
+        primary_generation_config = self._build_label_generation_config_for_model(
+            generation_config,
+            self.label_model_name,
+        )
+        try:
+            response = generate_with_429_backoff(
+                model=model,
+                contents=contents,
+                generation_config=primary_generation_config,
+                safety_settings=safety_settings,
+                semaphore=FoodAnalyst._request_semaphore,
+                max_attempts=3,
+            )
+            return response, self._build_label_generation_metadata(
+                response,
+                self.label_model_name,
+                self.label_model_name,
+                None,
+            )
+        except ResourceExhausted:
+            raise
+        except Exception as error:
+            if not _is_label_transient_generation_error(error):
+                raise
+            if not self._can_use_label_fallback(transient_fallback_reason):
+                raise
+            return self._generate_label_fallback_content(
+                contents,
+                generation_config,
+                safety_settings,
+                transient_fallback_reason,
+            )
+
     def analyze_label_json(
         self,
         label_image: Image.Image,
@@ -429,11 +734,10 @@ class FoodAnalyst:
         normalized_locale = _normalize_runtime_locale(locale)
         prompt = self._build_label_prompt(normalized_allergens, normalized_locale, iso_current_country)
         
-        # Schema for OCR (similar to food but focused on nutrition)
-        response_schema = build_label_response_schema()
+        response_schema = build_label_extract_response_schema()
 
         generation_config = {
-            "temperature": 0.1, # Low temperature for OCR precision
+            "temperature": 0.1, # OCR 정밀도를 위해 낮은 temperature 사용
             "max_output_tokens": self.label_extract_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": response_schema,
@@ -443,7 +747,7 @@ class FoodAnalyst:
             "temperature": 0.1,
             "max_output_tokens": self.label_assess_max_output_tokens,
             "response_mime_type": "application/json",
-            "response_schema": build_barcode_allergen_schema(),
+            "response_schema": build_label_assess_risk_schema(),
         }
 
         safety_settings = build_default_safety_settings()
@@ -452,27 +756,90 @@ class FoodAnalyst:
         assess_elapsed_ms = 0
         extract_truncated = False
         label_provider_chargeable: bool = False
+        label_used_model = self.label_model_name
+        label_fallback_used = False
+        label_fallback_reason: str | None = None
+        label_finish_reasons: dict[str, int | None] = {}
+        label_thinking_budgets: dict[str, int] = {}
+        label_usage_metadata: dict[str, dict[str, int]] = {}
 
         try:
             vertex_image = self._prepare_vertex_image(label_image)
 
-            # Label analysis model is configurable via GEMINI_LABEL_MODEL_NAME.
+            # 라벨 분석 기본 모델은 Flash 계열이고, Pro는 명시 플래그가 켜진 fallback에서만 사용한다.
             model = GenerativeModel(self.label_model_name)
+            extract_contents = [prompt, vertex_image]
             extract_started_at = time.perf_counter()
-            response = generate_with_429_backoff(
+            response, extract_metadata = self._generate_label_content(
                 model=model,
-                contents=[prompt, vertex_image],
+                contents=extract_contents,
                 generation_config=generation_config,
                 safety_settings=safety_settings,
-                semaphore=FoodAnalyst._request_semaphore,
-                max_attempts=3,
+                transient_fallback_reason=LABEL_FALLBACK_REASON_EXTRACT_TRANSIENT,
             )
+            label_used_model = _select_label_used_model(
+                label_used_model,
+                extract_metadata["model_name"],
+                self.label_fallback_model_name,
+            )
+            label_fallback_used = label_fallback_used or extract_metadata["fallback_used"]
+            label_fallback_reason = extract_metadata["fallback_reason"] or label_fallback_reason
+            label_finish_reasons["extract"] = extract_metadata["finish_reason"]
+            label_thinking_budgets["extract"] = extract_metadata["thinking_budget"]
+            label_usage_metadata["extract"] = extract_metadata["usage_metadata"]
             label_provider_chargeable = True
-            extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
-            extract_truncated = self._extract_finish_reason(response) == self._MAX_TOKENS_FINISH_REASON
-            
+            extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+            if self._can_retry_label_response_with_fallback(
+                extract_metadata,
+                LABEL_FALLBACK_REASON_EXTRACT_MAX_TOKENS,
+            ):
+                response, extract_metadata = self._generate_label_fallback_content(
+                    extract_contents,
+                    generation_config,
+                    safety_settings,
+                    LABEL_FALLBACK_REASON_EXTRACT_MAX_TOKENS,
+                )
+                label_used_model = _select_label_used_model(
+                    label_used_model,
+                    extract_metadata["model_name"],
+                    self.label_fallback_model_name,
+                )
+                label_fallback_used = label_fallback_used or extract_metadata["fallback_used"]
+                label_fallback_reason = extract_metadata["fallback_reason"] or label_fallback_reason
+                label_finish_reasons["extract"] = extract_metadata["finish_reason"]
+                label_thinking_budgets["extract"] = extract_metadata["thinking_budget"]
+                label_usage_metadata["extract"] = extract_metadata["usage_metadata"]
+                extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+
             extract_result = self._parse_ai_response(response.text)
             extract_result = self._sanitize_response(extract_result)
+            if (
+                _is_label_parse_error(extract_result)
+                and self._can_retry_label_response_with_fallback(
+                    extract_metadata,
+                    LABEL_FALLBACK_REASON_EXTRACT_PARSE,
+                )
+            ):
+                response, extract_metadata = self._generate_label_fallback_content(
+                    extract_contents,
+                    generation_config,
+                    safety_settings,
+                    LABEL_FALLBACK_REASON_EXTRACT_PARSE,
+                )
+                label_used_model = _select_label_used_model(
+                    label_used_model,
+                    extract_metadata["model_name"],
+                    self.label_fallback_model_name,
+                )
+                label_fallback_used = label_fallback_used or extract_metadata["fallback_used"]
+                label_fallback_reason = extract_metadata["fallback_reason"] or label_fallback_reason
+                label_finish_reasons["extract"] = extract_metadata["finish_reason"]
+                label_thinking_budgets["extract"] = extract_metadata["thinking_budget"]
+                label_usage_metadata["extract"] = extract_metadata["usage_metadata"]
+                extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+                extract_result = self._parse_ai_response(response.text)
+                extract_result = self._sanitize_response(extract_result)
+            extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
             if extract_truncated:
                 extract_result["safetyStatus"] = "CAUTION"
                 extract_result["_label_partial"] = True
@@ -496,59 +863,101 @@ class FoodAnalyst:
                         normalized_locale,
                         iso_current_country,
                     )
-                    assess_response = generate_with_429_backoff(
+                    assess_contents = [assess_prompt]
+                    assess_response, assess_metadata = self._generate_label_content(
                         model=model,
-                        contents=[assess_prompt],
+                        contents=assess_contents,
                         generation_config=assess_generation_config,
                         safety_settings=safety_settings,
-                        semaphore=FoodAnalyst._request_semaphore,
-                        max_attempts=3,
+                        transient_fallback_reason=LABEL_FALLBACK_REASON_ASSESS_TRANSIENT,
                     )
-                    assess_truncated = self._extract_finish_reason(assess_response) == self._MAX_TOKENS_FINISH_REASON
+                    label_used_model = _select_label_used_model(
+                        label_used_model,
+                        assess_metadata["model_name"],
+                        self.label_fallback_model_name,
+                    )
+                    label_fallback_used = label_fallback_used or assess_metadata["fallback_used"]
+                    label_fallback_reason = assess_metadata["fallback_reason"] or label_fallback_reason
+                    label_finish_reasons["assess"] = assess_metadata["finish_reason"]
+                    label_thinking_budgets["assess"] = assess_metadata["thinking_budget"]
+                    label_usage_metadata["assess"] = assess_metadata["usage_metadata"]
+                    assess_truncated = assess_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+                    if self._can_retry_label_response_with_fallback(
+                        assess_metadata,
+                        LABEL_FALLBACK_REASON_ASSESS_MAX_TOKENS,
+                    ):
+                        assess_response, assess_metadata = self._generate_label_fallback_content(
+                            assess_contents,
+                            assess_generation_config,
+                            safety_settings,
+                            LABEL_FALLBACK_REASON_ASSESS_MAX_TOKENS,
+                        )
+                        label_used_model = _select_label_used_model(
+                            label_used_model,
+                            assess_metadata["model_name"],
+                            self.label_fallback_model_name,
+                        )
+                        label_fallback_used = label_fallback_used or assess_metadata["fallback_used"]
+                        label_fallback_reason = assess_metadata["fallback_reason"] or label_fallback_reason
+                        label_finish_reasons["assess"] = assess_metadata["finish_reason"]
+                        label_thinking_budgets["assess"] = assess_metadata["thinking_budget"]
+                        label_usage_metadata["assess"] = assess_metadata["usage_metadata"]
+                        assess_truncated = assess_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
                     label_provider_chargeable = True
                     assess_result = self._parse_ai_response(assess_response.text)
                     assess_result = self._sanitize_response(assess_result)
+                    if (
+                        _is_label_parse_error(assess_result)
+                        and self._can_retry_label_response_with_fallback(
+                            assess_metadata,
+                            LABEL_FALLBACK_REASON_ASSESS_PARSE,
+                        )
+                    ):
+                        assess_response, assess_metadata = self._generate_label_fallback_content(
+                            assess_contents,
+                            assess_generation_config,
+                            safety_settings,
+                            LABEL_FALLBACK_REASON_ASSESS_PARSE,
+                        )
+                        label_used_model = _select_label_used_model(
+                            label_used_model,
+                            assess_metadata["model_name"],
+                            self.label_fallback_model_name,
+                        )
+                        label_fallback_used = label_fallback_used or assess_metadata["fallback_used"]
+                        label_fallback_reason = assess_metadata["fallback_reason"] or label_fallback_reason
+                        label_finish_reasons["assess"] = assess_metadata["finish_reason"]
+                        label_thinking_budgets["assess"] = assess_metadata["thinking_budget"]
+                        label_usage_metadata["assess"] = assess_metadata["usage_metadata"]
+                        assess_truncated = assess_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+                        assess_result = self._parse_ai_response(assess_response.text)
+                        assess_result = self._sanitize_response(assess_result)
+                    if _is_label_parse_error(assess_result):
+                        raise ValueError("Label assess parse failed")
 
-                    assess_ingredients = assess_result.get("ingredients", [])
-                    assess_map = {}
-                    for assess_item in assess_ingredients:
-                        if not isinstance(assess_item, dict):
-                            continue
-                        key = str(assess_item.get("name", "")).strip().lower()
-                        if not key:
-                            continue
-                        assess_map[key] = assess_item
-
-                    merged_ingredients = []
-                    for ingredient in ingredients:
-                        if not isinstance(ingredient, dict):
-                            continue
-                        key = str(ingredient.get("name", "")).strip().lower()
-                        assess_item = assess_map.get(key)
-                        if assess_item:
-                            ingredient["isAllergen"] = bool(assess_item.get("isAllergen", False))
-                            ingredient["riskReason"] = assess_item.get("riskReason")
-                        else:
-                            ingredient["isAllergen"] = bool(ingredient.get("isAllergen", False))
-                        merged_ingredients.append(ingredient)
-
-                    extract_result["ingredients"] = merged_ingredients
-                    assess_status = assess_result.get("safetyStatus")
-                    if assess_status in ("SAFE", "CAUTION", "DANGER"):
-                        extract_result["safetyStatus"] = assess_status
+                    extract_result = merge_label_extract_and_assessment(
+                        extract_result,
+                        assess_result,
+                        normalized_locale,
+                    )
                     if extract_truncated or assess_truncated:
                         current_status = str(extract_result.get("safetyStatus", "")).strip().upper()
                         if current_status != "DANGER":
                             extract_result["safetyStatus"] = "CAUTION"
                         extract_result["_label_partial"] = True
                         extract_result["_label_truncated"] = True
-                    coach_message = assess_result.get("coachMessage")
-                    if coach_message and not extract_result.get("raw_result"):
-                        extract_result["raw_result"] = str(coach_message)
 
                 except Exception as assess_error:
                     assess_failed = True
-                    print(f"[Label Assess Error] {assess_error}")
+                    logger.warning(
+                        "[LabelAssess] failed",
+                        extra={"error_type": type(assess_error).__name__},
+                    )
+                    extract_result = merge_label_extract_and_assessment(
+                        extract_result,
+                        None,
+                        normalized_locale,
+                    )
                     extract_result["safetyStatus"] = "CAUTION"
                     extract_result["raw_result"] = (
                         str(extract_result.get("raw_result", "")).strip()
@@ -560,6 +969,11 @@ class FoodAnalyst:
                 finally:
                     assess_elapsed_ms = int((time.perf_counter() - assess_started_at) * 1000)
             elif not ingredient_names:
+                extract_result = merge_label_extract_and_assessment(
+                    extract_result,
+                    None,
+                    normalized_locale,
+                )
                 extract_result["safetyStatus"] = "CAUTION"
                 extract_result["raw_result"] = (
                     str(extract_result.get("raw_result", "")).strip()
@@ -567,11 +981,27 @@ class FoodAnalyst:
                 ).strip()
                 extract_result["_label_partial"] = True
             else:
+                extract_result = merge_label_extract_and_assessment(
+                    extract_result,
+                    None,
+                    normalized_locale,
+                )
                 extract_result["_label_degraded"] = True
 
             result = extract_result
-            result["used_model"] = self.label_model_name
+            result["used_model"] = label_used_model
             result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            result.update(
+                _build_label_observability_metadata(
+                    self.label_model_name,
+                    label_used_model,
+                    label_fallback_used,
+                    label_fallback_reason,
+                    label_finish_reasons,
+                    label_thinking_budgets,
+                    label_usage_metadata,
+                )
+            )
             result["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,
@@ -587,11 +1017,24 @@ class FoodAnalyst:
             return result
             
         except ResourceExhausted as e:
-            print(f"[Label OCR Error] {e}")
-            traceback.print_exc()
+            logger.warning(
+                "[LabelOCR] quota exhausted",
+                extra={"error_type": type(e).__name__},
+            )
             fallback = self._get_safe_fallback_response("요청이 많아 라벨 분석이 지연되고 있습니다. 잠시 후 다시 시도해주세요.")
-            fallback["used_model"] = self.label_model_name
+            fallback["used_model"] = label_used_model
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            fallback.update(
+                _build_label_observability_metadata(
+                    self.label_model_name,
+                    label_used_model,
+                    label_fallback_used,
+                    label_fallback_reason,
+                    label_finish_reasons,
+                    label_thinking_budgets,
+                    label_usage_metadata,
+                )
+            )
             fallback["_label_timings"] = {
                 "extract_ms": 0,
                 "assess_ms": 0,
@@ -600,13 +1043,26 @@ class FoodAnalyst:
             fallback["_label_error_type"] = "quota_exhausted_429"
             return fallback
         except Exception as e:
-            print(f"[Label OCR Error] {e}")
-            traceback.print_exc()
+            logger.warning(
+                "[LabelOCR] failed",
+                extra={"error_type": type(e).__name__},
+            )
             if extract_truncated:
                 fallback = self._get_safe_fallback_response("라벨 분석 결과가 길어 일부만 처리되었습니다. 성분표를 직접 확인해주세요.")
                 fallback["safetyStatus"] = "CAUTION"
-                fallback["used_model"] = self.label_model_name
+                fallback["used_model"] = label_used_model
                 fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+                fallback.update(
+                    _build_label_observability_metadata(
+                        self.label_model_name,
+                        label_used_model,
+                        label_fallback_used,
+                        label_fallback_reason,
+                        label_finish_reasons,
+                        label_thinking_budgets,
+                        label_usage_metadata,
+                    )
+                )
                 fallback["_label_timings"] = {
                     "extract_ms": extract_elapsed_ms,
                     "assess_ms": assess_elapsed_ms,
@@ -616,13 +1072,25 @@ class FoodAnalyst:
                 fallback["_label_truncated"] = True
                 return fallback
             fallback = self._get_safe_fallback_response("라벨 분석 중 오류가 발생했습니다.")
-            fallback["used_model"] = self.label_model_name
+            fallback["used_model"] = label_used_model
             fallback["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            fallback.update(
+                _build_label_observability_metadata(
+                    self.label_model_name,
+                    label_used_model,
+                    label_fallback_used,
+                    label_fallback_reason,
+                    label_finish_reasons,
+                    label_thinking_budgets,
+                    label_usage_metadata,
+                )
+            )
             fallback["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,
             }
             fallback["_label_chargeable"] = label_provider_chargeable
+            fallback["_label_error_type"] = f"analysis_exception:{type(e).__name__}"
             return fallback
 
     def analyze_food_json(self, food_image: Image.Image, allergy_info: str = "None", iso_current_country: str = "US"):

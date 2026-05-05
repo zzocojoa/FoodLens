@@ -217,7 +217,8 @@
 
 ### 14.2 반영 현황 (코드 동기화)
 1. 모델 정책 통일 완료
-- `GEMINI_LABEL_MODEL_NAME` 기반 라벨 모델 선택 (default: `gemini-2.5-pro`)
+- `GEMINI_LABEL_MODEL_NAME` 기반 라벨 primary 모델 선택 (default: `gemini-2.5-flash`)
+- `GEMINI_LABEL_FALLBACK_MODEL_NAME` 기반 fallback 모델 선택 (default: `gemini-2.5-pro`, `GEMINI_LABEL_FALLBACK_ENABLED=1`일 때만 사용)
 - 응답 `used_model`에 실제 사용 모델명 반영
 
 2. LABEL 프롬프트 컨텍스트 반영 완료
@@ -293,7 +294,9 @@
 ## 16. 환경 변수/운영 명령 (현재 기준)
 ### 16.1 환경 변수
 - `GEMINI_MODEL_NAME` (food 분석 기본 모델)
-- `GEMINI_LABEL_MODEL_NAME` (label 분석 모델, default: `gemini-2.5-pro`)
+- `GEMINI_LABEL_MODEL_NAME` (label primary 분석 모델, default: `gemini-2.5-flash`; Pro 모델은 primary로 사용할 수 없음)
+- `GEMINI_LABEL_FALLBACK_MODEL_NAME` (label fallback 분석 모델, default: `gemini-2.5-pro`)
+- `GEMINI_LABEL_FALLBACK_ENABLED` (`1`|`0`, default: `0`; Render 운영값은 `1`)
 - `RETENTION_ORIGINAL_TTL_DAYS` (default: `30`)
 - `RETENTION_DERIVED_TTL_DAYS` (default: `90`)
 - `RETENTION_LOG_TTL_DAYS` (default: `14`)

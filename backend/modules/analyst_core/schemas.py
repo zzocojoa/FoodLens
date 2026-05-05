@@ -35,6 +35,26 @@ def _build_allergen_ingredient_item_schema() -> SchemaDict:
     )
 
 
+def _build_label_extract_ingredient_item_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "name": {"type": "STRING"},
+        },
+        required=["name"],
+    )
+
+
+def _build_label_assess_risk_item_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "name": {"type": "STRING"},
+            "isAllergen": {"type": "BOOLEAN"},
+            "riskReason": {"type": "STRING"},
+        },
+        required=["name", "isAllergen"],
+    )
+
+
 def _build_food_ingredient_item_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
@@ -45,6 +65,46 @@ def _build_food_ingredient_item_schema() -> SchemaDict:
             "isAllergen": {"type": "BOOLEAN"},
         },
         required=["name", "bbox", "isAllergen"],
+    )
+
+
+def _build_label_nutrition_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "calories": {"type": "NUMBER", "nullable": True},
+            "carbs": {"type": "NUMBER", "nullable": True},
+            "protein": {"type": "NUMBER", "nullable": True},
+            "fat": {"type": "NUMBER", "nullable": True},
+            "sugar": {"type": "NUMBER", "nullable": True},
+            "sodium": {"type": "NUMBER", "nullable": True},
+            "fiber": {"type": "NUMBER", "nullable": True},
+            "servingSize": {"type": "STRING", "nullable": True},
+            "dataSource": {"type": "STRING"},
+        },
+    )
+
+
+def build_label_extract_response_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "foodName": {"type": "STRING"},
+            "confidence": {"type": "INTEGER"},
+            "nutrition": _build_label_nutrition_schema(),
+            "ingredients": _build_array_schema(_build_label_extract_ingredient_item_schema()),
+            "raw_result": {"type": "STRING"},
+        },
+        required=["foodName", "nutrition", "ingredients"],
+    )
+
+
+def build_label_assess_risk_schema() -> SchemaDict:
+    return _build_object_schema(
+        properties={
+            "safetyStatus": {"type": "STRING", "enum": SAFETY_STATUS_ENUM},
+            "coachMessage": {"type": "STRING"},
+            "ingredients": _build_array_schema(_build_label_assess_risk_item_schema()),
+        },
+        required=["safetyStatus", "ingredients"],
     )
 
 

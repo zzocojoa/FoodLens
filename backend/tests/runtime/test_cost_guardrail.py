@@ -1,18 +1,22 @@
+import asyncio
 import io
 import os
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
+from backend.modules.analyst_runtime.router import SmartRouter
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
 from backend.modules.ops.cost_guardrail import CostGuardrailAction, CostGuardrailService, InMemoryMonthlyUsageStorage
 from backend.modules.ops.rollout_control import KpiThresholds
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
+from backend import server as server_module  # noqa: E402
 from backend.server import app  # noqa: E402
 
 
@@ -35,9 +39,23 @@ def _build_high_quality_bytes() -> bytes:
     return buf.getvalue()
 
 
+def _collect_internal_label_keys(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        keys = [str(key) for key in value.keys() if str(key).startswith("_label_")]
+        for item in value.values():
+            keys.extend(_collect_internal_label_keys(item))
+        return keys
+    if isinstance(value, list):
+        keys: list[str] = []
+        for item in value:
+            keys.extend(_collect_internal_label_keys(item))
+        return keys
+    return []
+
+
 class _SpyAnalyst:
     def __init__(self):
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
         self.called = False
         self.last_assess_enabled = None
 
@@ -56,9 +74,49 @@ class _SpyAnalyst:
         }
 
 
+class _UsageSpyAnalyst:
+    def __init__(self) -> None:
+        self.label_model_name = "gemini-2.5-flash"
+        self.called = False
+
+    def analyze_label_json(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        self.called = True
+        return {
+            "foodName": "Cereal",
+            "safetyStatus": "CAUTION",
+            "ingredients": [{"name": "설탕", "isAllergen": False}],
+            "nutrition": {"calories": 100},
+            "raw_result": "ok",
+            "prompt_version": "label-v1.2-2pass-locale-country",
+            "used_model": "gemini-2.5-pro",
+            "_label_timings": {"extract_ms": 2, "assess_ms": 3},
+            "_label_primary_model": "gemini-2.5-flash",
+            "_label_used_model": "gemini-2.5-pro",
+            "_label_fallback_used": True,
+            "_label_fallback_reason": "extract_max_tokens",
+            "_label_extract_finish_reason": 2,
+            "_label_assess_finish_reason": 1,
+            "_label_truncated": True,
+            "_label_partial": True,
+            "_label_usage": {
+                "extract": {
+                    "prompt_token_count": 70,
+                    "candidates_token_count": 30,
+                    "thoughts_token_count": 11,
+                    "total_token_count": 111,
+                },
+                "assess": {
+                    "prompt_token_count": 10,
+                    "candidates_token_count": 12,
+                    "total_token_count": 22,
+                },
+            },
+        }
+
+
 class _BarcodeAllergenEmptyAnalyst:
     def __init__(self) -> None:
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
         self.called_with_ingredients: list[str] | None = None
 
     def analyze_barcode_ingredients(
@@ -90,6 +148,32 @@ class _BarcodeIngredientService:
 
     def get_last_upstream_failure(self) -> None:
         return None
+
+
+class _SmartLabelRouter:
+    async def route_analysis(
+        self,
+        *,
+        image: Any,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        request_id: str,
+        total_started_at: float,
+        preprocess_elapsed_ms: int,
+        label_analysis_runner: Any,
+    ) -> dict[str, Any]:
+        result = await label_analysis_runner(
+            image,
+            allergy_info,
+            iso_country_code,
+            locale,
+            request_id,
+            total_started_at,
+            preprocess_elapsed_ms,
+        )
+        result["router_category"] = "NUTRITION_LABEL"
+        return result
 
 
 class CostGuardrailTests(unittest.TestCase):
@@ -218,6 +302,199 @@ class CostGuardrailTests(unittest.TestCase):
         usage = storage.get(service._period_key())
         self.assertEqual(usage.total_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 0)
+
+    def test_smart_label_route_records_chargeable_usage_once(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(spy.called)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertEqual(usage.total_tokens, 1500)
+
+    def test_smart_label_route_records_provider_usage_without_public_label_fields(self):
+        spy = _UsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                },
+                clear=False,
+            ),
+            patch.object(server_module.logger, "info") as mock_logger_info,
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(spy.called)
+        self.assertEqual(_collect_internal_label_keys(payload), [])
+        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertEqual(usage.total_tokens, 133)
+        self.assertEqual(usage.provider_reported_tokens, 133)
+        self.assertEqual(usage.provider_reported_thought_tokens, 11)
+        self.assertEqual(usage.request_count, 1)
+        self.assertEqual(usage.fallback_count, 1)
+        self.assertEqual(usage.truncated_count, 1)
+
+        observability_calls = [
+            call
+            for call in mock_logger_info.call_args_list
+            if call.args and call.args[0] == "[Server] Label observability"
+        ]
+        self.assertEqual(len(observability_calls), 1)
+        observability_extra = observability_calls[0].kwargs["extra"]
+        self.assertEqual(observability_extra["label_usage_source"], "provider_usage_metadata")
+        self.assertEqual(observability_extra["label_usage_total_tokens"], 133)
+        self.assertEqual(observability_extra["label_usage_thought_tokens"], 11)
+        self.assertEqual(observability_extra["label_fallback_reason"], "extract_max_tokens")
+
+    def test_smart_label_route_budget_fallback_skips_model_call(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(spy.called)
+        self.assertEqual(payload.get("safetyStatus"), "CAUTION")
+        self.assertIn("예산 한도", payload.get("raw_result", ""))
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
+
+    def test_real_smart_router_label_branch_uses_cost_gate(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+        smart_router = SmartRouter.__new__(SmartRouter)
+        smart_router.analyst = spy
+        smart_router.router_model = SimpleNamespace(
+            generate_content=lambda *_args, **_kwargs: SimpleNamespace(
+                text='{"category":"NUTRITION_LABEL","confidence":0.99}'
+            )
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = smart_router
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(spy.called)
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
+
+    def test_smart_router_requires_label_runner_for_label_route(self):
+        spy = _SpyAnalyst()
+        smart_router = SmartRouter.__new__(SmartRouter)
+        smart_router.analyst = spy
+        smart_router.router_model = SimpleNamespace(
+            generate_content=lambda *_args, **_kwargs: SimpleNamespace(
+                text='{"category":"NUTRITION_LABEL","confidence":0.99}'
+            )
+        )
+
+        result = asyncio.run(
+            smart_router.route_analysis(
+                Image.new("RGB", (4, 4)),
+                allergy_info="None",
+                iso_country_code="US",
+                locale="en-US",
+            )
+        )
+
+        self.assertFalse(spy.called)
+        self.assertEqual(result["safetyStatus"], "CAUTION")
+        self.assertIn("label_analysis_runner", result["error"])
 
 
 if __name__ == "__main__":

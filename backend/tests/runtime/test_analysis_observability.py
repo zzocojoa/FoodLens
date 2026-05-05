@@ -20,7 +20,7 @@ def _build_image_bytes() -> bytes:
 class _ObservabilityAnalyst:
     def __init__(self, fail: bool = False):
         self.fail = fail
-        self.label_model_name = "gemini-2.5-pro"
+        self.label_model_name = "gemini-2.5-flash"
 
     def analyze_food_json(self, *_args, **_kwargs):
         if self.fail:

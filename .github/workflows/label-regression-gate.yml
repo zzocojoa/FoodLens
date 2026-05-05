@@ -1,0 +1,57 @@
+name: Label Regression Gate
+
+on:
+  pull_request:
+    paths:
+      - backend/modules/analyst_core/**
+      - backend/modules/analyst_runtime/**
+      - backend/modules/contracts/**
+      - backend/scripts/ci_label_contract_gate.sh
+      - backend/scripts/run_label_golden_model_eval.py
+      - backend/tests/contracts/test_label_*
+      - backend/tests/fixtures/label_regression/**
+      - backend/tests/runtime/test_label_golden_model_eval_gate.py
+      - .github/workflows/label-regression-gate.yml
+  push:
+    branches:
+      - main
+    paths:
+      - backend/modules/analyst_core/**
+      - backend/modules/analyst_runtime/**
+      - backend/modules/contracts/**
+      - backend/scripts/ci_label_contract_gate.sh
+      - backend/scripts/run_label_golden_model_eval.py
+      - backend/tests/contracts/test_label_*
+      - backend/tests/fixtures/label_regression/**
+      - backend/tests/runtime/test_label_golden_model_eval_gate.py
+      - .github/workflows/label-regression-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  label-regression-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run offline label contract and regression gate
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          OPENAPI_EXPORT_ONLY: "1"
+          AUTH_STATE_BACKEND: memory
+          MEDIA_STORAGE_BACKEND: local
+        run: bash backend/scripts/ci_label_contract_gate.sh
