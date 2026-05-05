@@ -92,6 +92,12 @@ services:
         value: "1536"
       - key: GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS
         value: "768"
+      - key: GEMINI_LABEL_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_PRO_THINKING_BUDGET
+        value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED
@@ -362,6 +368,12 @@ services:
         value: "1536"
       - key: GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS
         value: "768"
+      - key: GEMINI_LABEL_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_PRO_THINKING_BUDGET
+        value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED
@@ -632,6 +644,12 @@ services:
         value: "1536"
       - key: GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS
         value: "768"
+      - key: GEMINI_LABEL_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_LABEL_PRO_THINKING_BUDGET
+        value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED

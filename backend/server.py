@@ -177,6 +177,82 @@ def _env_str(name: str, default: str) -> str:
     return raw.strip() or default
 
 
+def _safe_label_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _safe_label_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _safe_label_stage_usage(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    safe_usage: dict[str, int] = {}
+    for field_name in (
+        "prompt_token_count",
+        "candidates_token_count",
+        "thoughts_token_count",
+        "total_token_count",
+        "cached_content_token_count",
+    ):
+        field_value = _safe_label_int(value.get(field_name))
+        if field_value is not None:
+            safe_usage[field_name] = field_value
+    return safe_usage
+
+
+def _safe_label_usage(value: Any) -> dict[str, dict[str, int]]:
+    if not isinstance(value, dict):
+        return {}
+    safe_usage: dict[str, dict[str, int]] = {}
+    for stage_name in ("extract", "assess"):
+        stage_usage = _safe_label_stage_usage(value.get(stage_name))
+        if stage_usage:
+            safe_usage[stage_name] = stage_usage
+    return safe_usage
+
+
+def _sum_label_usage_field(
+    usage: dict[str, dict[str, int]],
+    field_name: str,
+) -> int | None:
+    total = 0
+    found = False
+    for stage_name in ("extract", "assess"):
+        field_value = usage.get(stage_name, {}).get(field_name)
+        if isinstance(field_value, int):
+            total += field_value
+            found = True
+    return total if found else None
+
+
+def _extract_label_observability(result: dict[str, Any]) -> dict[str, Any]:
+    usage = _safe_label_usage(result.get("_label_usage") or result.get("_label_usage_metadata"))
+    return {
+        "primary_model": _safe_label_string(result.get("_label_primary_model")),
+        "used_model": _safe_label_string(result.get("_label_used_model")),
+        "fallback_used": result.get("_label_fallback_used") is True,
+        "fallback_reason": _safe_label_string(result.get("_label_fallback_reason")),
+        "extract_finish_reason": _safe_label_int(result.get("_label_extract_finish_reason")),
+        "assess_finish_reason": _safe_label_int(result.get("_label_assess_finish_reason")),
+        "truncated": result.get("_label_truncated") is True,
+        "partial": result.get("_label_partial") is True,
+        "usage": usage,
+        "usage_prompt_tokens": _sum_label_usage_field(usage, "prompt_token_count"),
+        "usage_candidate_tokens": _sum_label_usage_field(usage, "candidates_token_count"),
+        "usage_thought_tokens": _sum_label_usage_field(usage, "thoughts_token_count"),
+        "usage_total_tokens": _sum_label_usage_field(usage, "total_token_count"),
+    }
+
+
 def _select_barcode_ingredients_after_allergen_analysis(
     original_ingredients: list[Any],
     analyzed_ingredients: Any,
@@ -4512,6 +4588,7 @@ async def _analyze_label_image_with_policy(
     label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
     label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
     label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
+    label_observability = _extract_label_observability(result) if isinstance(result, dict) else _extract_label_observability({})
     if isinstance(result, dict):
         for key in list(result.keys()):
             if key.startswith("_label_"):
@@ -4527,6 +4604,32 @@ async def _analyze_label_image_with_policy(
         assess_ms=assess_elapsed_ms,
         source_lookup_ms=None,
         allergen_analysis_ms=None,
+    )
+    label_usage_total_tokens = label_observability["usage_total_tokens"]
+    label_usage_thought_tokens = label_observability["usage_thought_tokens"]
+    label_recorded_tokens = label_usage_total_tokens if isinstance(label_usage_total_tokens, int) else estimated_tokens
+    label_usage_source = "provider_usage_metadata" if isinstance(label_usage_total_tokens, int) else "estimated"
+    logger.info(
+        "[Server] Label observability",
+        extra={
+            "request_id": request_id,
+            "prompt_version": result.get("prompt_version"),
+            "used_model": result.get("used_model"),
+            "label_primary_model": label_observability["primary_model"],
+            "label_used_model": label_observability["used_model"],
+            "label_fallback_used": label_observability["fallback_used"],
+            "label_fallback_reason": label_observability["fallback_reason"],
+            "label_extract_finish_reason": label_observability["extract_finish_reason"],
+            "label_assess_finish_reason": label_observability["assess_finish_reason"],
+            "label_partial": label_observability["partial"],
+            "label_truncated": label_observability["truncated"],
+            "label_usage_source": label_usage_source,
+            "label_usage_prompt_tokens": label_observability["usage_prompt_tokens"],
+            "label_usage_candidate_tokens": label_observability["usage_candidate_tokens"],
+            "label_usage_thought_tokens": label_usage_thought_tokens,
+            "label_usage_total_tokens": label_usage_total_tokens,
+            "label_chargeable": label_chargeable,
+        },
     )
 
     if label_error_type == "quota_exhausted_429":
@@ -4560,13 +4663,30 @@ async def _analyze_label_image_with_policy(
         total_elapsed_ms,
     )
     if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
-        usage = cost_guardrail.record(cost_usd=estimated_cost, tokens=estimated_tokens)
+        usage = cost_guardrail.record(
+            cost_usd=estimated_cost,
+            tokens=label_recorded_tokens,
+            provider_total_tokens=label_usage_total_tokens,
+            provider_thought_tokens=label_usage_thought_tokens,
+            fallback_used=bool(label_observability["fallback_used"]),
+            truncated=bool(label_observability["truncated"]),
+        )
         logger.info(
-            "[Server] Label cost usage updated request_id=%s month=%s total_cost_usd=%.4f total_tokens=%d",
-            request_id,
-            usage.period_key,
-            usage.total_cost_usd,
-            usage.total_tokens,
+            "[Server] Label cost usage updated",
+            extra={
+                "request_id": request_id,
+                "month": usage.period_key,
+                "request_cost_usd": estimated_cost,
+                "request_tokens": label_recorded_tokens,
+                "request_tokens_source": label_usage_source,
+                "total_cost_usd": usage.total_cost_usd,
+                "total_tokens": usage.total_tokens,
+                "request_count": usage.request_count,
+                "provider_reported_tokens": usage.provider_reported_tokens,
+                "provider_reported_thought_tokens": usage.provider_reported_thought_tokens,
+                "fallback_count": usage.fallback_count,
+                "truncated_count": usage.truncated_count,
+            },
         )
     elif _is_label_cost_guardrail_enabled() and cost_guardrail:
         logger.info(

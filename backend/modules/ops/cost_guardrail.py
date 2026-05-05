@@ -18,6 +18,11 @@ class MonthlyUsage:
     period_key: str
     total_cost_usd: float = 0.0
     total_tokens: int = 0
+    request_count: int = 0
+    provider_reported_tokens: int = 0
+    provider_reported_thought_tokens: int = 0
+    fallback_count: int = 0
+    truncated_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -93,10 +98,29 @@ class CostGuardrailService:
             period_key=period_key,
         )
 
-    def record(self, *, cost_usd: float, tokens: int, now: datetime | None = None) -> MonthlyUsage:
+    def record(
+        self,
+        *,
+        cost_usd: float,
+        tokens: int,
+        now: datetime | None = None,
+        provider_total_tokens: int | None = None,
+        provider_thought_tokens: int | None = None,
+        fallback_used: bool = False,
+        truncated: bool = False,
+    ) -> MonthlyUsage:
         period_key = self._period_key(now)
         usage = self.storage.get(period_key)
         usage.total_cost_usd += max(0.0, cost_usd)
         usage.total_tokens += max(0, tokens)
+        usage.request_count += 1
+        if provider_total_tokens is not None:
+            usage.provider_reported_tokens += max(0, provider_total_tokens)
+        if provider_thought_tokens is not None:
+            usage.provider_reported_thought_tokens += max(0, provider_thought_tokens)
+        if fallback_used:
+            usage.fallback_count += 1
+        if truncated:
+            usage.truncated_count += 1
         self.storage.put(usage)
         return usage
