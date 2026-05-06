@@ -87,13 +87,13 @@ def _build_label_nutrition_schema() -> SchemaDict:
 def build_label_extract_response_schema() -> SchemaDict:
     return _build_object_schema(
         properties={
-            "foodName": {"type": "STRING"},
+            "foodName": {"type": "STRING", "nullable": True},
             "confidence": {"type": "INTEGER"},
-            "nutrition": _build_label_nutrition_schema(),
+            "nutrition": {**_build_label_nutrition_schema(), "nullable": True},
             "ingredients": _build_array_schema(_build_label_extract_ingredient_item_schema()),
             "raw_result": {"type": "STRING"},
         },
-        required=["foodName", "nutrition", "ingredients"],
+        required=["ingredients"],
     )
 
 

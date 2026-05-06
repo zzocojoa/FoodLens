@@ -109,31 +109,10 @@ LABEL_PROMPT_TEMPLATE: Final[str] = """
         - Normalize nutrition numbers only when the unit is visible.
         - Set `dataSource` to `OCR_Label`.
         - For each ingredient, provide only `name`.
-        - Keep `raw_result` to one short sentence in `{locale}`.
-        - Return raw JSON only.
-
-        **OUTPUT FORMAT**
-        {{
-           "foodName": "Product Name from Label",
-           "confidence": 0-100,
-           "nutrition": {{
-              "calories": number | null,
-              "carbs": number | null,
-              "protein": number | null,
-              "fat": number | null,
-              "sugar": number | null,
-              "sodium": number | null,
-              "fiber": number | null,
-              "servingSize": "string or null",
-              "dataSource": "OCR_Label"
-           }},
-           "ingredients": [
-                {{
-                  "name": "Ingredient Name as visible"
-                }}
-            ],
-            "raw_result": "Brief summary of extracted label data"
-        }}
+        - Keep the response compact and match the provided response schema.
+        - Include `ingredients` whenever visible. Omit optional fields when they are not visible.
+        - Include `raw_result` only when a short `{locale}` summary is useful.
+        - Return one raw JSON object only. No markdown, prose, or schema explanation.
         """
 
 BARCODE_PROMPT_TEMPLATE: Final[str] = """
@@ -185,20 +164,8 @@ LABEL_ASSESS_PROMPT_TEMPLATE: Final[str] = """
         - Use SAFE only when no ingredient matches and no ingredient is ambiguous.
         - Keep `riskReason` concise.
         - `coachMessage` is optional; include it only when it adds a short safety summary.
-        - Return raw JSON only.
-
-        **OUTPUT FORMAT**
-        {{
-           "safetyStatus": "SAFE" | "CAUTION" | "DANGER",
-           "coachMessage": "Concise user-facing risk summary in {locale}",
-           "ingredients": [
-                {{
-                  "name": "Ingredient Name",
-                  "isAllergen": boolean,
-                  "riskReason": "Why this ingredient is risky, ambiguous, or safe"
-                }}
-            ]
-        }}
+        - Match the provided response schema.
+        - Return one raw JSON object only. No markdown, prose, or schema explanation.
         """
 
 

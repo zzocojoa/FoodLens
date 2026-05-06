@@ -1080,6 +1080,11 @@ def _detect_analysis_fallback_reason(*, result: dict[str, Any], mode: str) -> st
     label_fallback_reason = _string_or_none(result.get("_label_fallback_reason"))
     if label_fallback_reason:
         return label_fallback_reason
+    label_diagnostics = result.get("label_diagnostics")
+    if isinstance(label_diagnostics, dict):
+        diagnostic_fallback_reason = _string_or_none(label_diagnostics.get("fallback_reason"))
+        if diagnostic_fallback_reason:
+            return diagnostic_fallback_reason
     food_name = _string_or_none(result.get("foodName"))
     if food_name and food_name in FALLBACK_ERROR_NAMES:
         return "analysis_fallback"

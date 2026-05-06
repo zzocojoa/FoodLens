@@ -506,13 +506,6 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "_parse_ai_response",
                     side_effect=[
                         {
-                            "foodName": "Cereal",
-                            "safetyStatus": "SAFE",
-                            "ingredients": [{"name": "밀", "isAllergen": False}],
-                            "nutrition": {"calories": 100},
-                            "raw_result": "ok",
-                        },
-                        {
                             "safetyStatus": "DANGER",
                             "ingredients": [
                                 {"name": "밀", "isAllergen": True, "riskReason": "contains wheat"}
@@ -559,13 +552,6 @@ class LabelModelPolicyTests(unittest.TestCase):
                     analyst,
                     "_parse_ai_response",
                     side_effect=[
-                        {
-                            "foodName": "Cereal",
-                            "safetyStatus": "SAFE",
-                            "ingredients": [{"name": "밀", "isAllergen": False}],
-                            "nutrition": {"calories": 100},
-                            "raw_result": "ok",
-                        },
                         {
                             "safetyStatus": "DANGER",
                             "ingredients": [
@@ -690,13 +676,6 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "_parse_ai_response",
                     side_effect=[
                         {
-                            "foodName": "Cereal",
-                            "safetyStatus": "SAFE",
-                            "ingredients": [{"name": "밀", "isAllergen": False}],
-                            "nutrition": {"calories": 100},
-                            "raw_result": "ok",
-                        },
-                        {
                             "safetyStatus": "DANGER",
                             "ingredients": [
                                 {"name": "밀", "isAllergen": True, "riskReason": "contains wheat"}
@@ -748,13 +727,6 @@ class LabelModelPolicyTests(unittest.TestCase):
                     analyst,
                     "_parse_ai_response",
                     side_effect=[
-                        {
-                            "foodName": "Cereal",
-                            "safetyStatus": "SAFE",
-                            "ingredients": [{"name": "밀", "isAllergen": False}],
-                            "nutrition": {"calories": 100},
-                            "raw_result": "ok",
-                        },
                         {
                             "safetyStatus": "DANGER",
                             "ingredients": [
@@ -919,13 +891,6 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "_parse_ai_response",
                     side_effect=[
                         {
-                            "foodName": "Cereal",
-                            "safetyStatus": "SAFE",
-                            "ingredients": [{"name": "밀", "isAllergen": False}],
-                            "nutrition": {"calories": 100},
-                            "raw_result": "ok",
-                        },
-                        {
                             "safetyStatus": "DANGER",
                             "ingredients": [
                                 {"name": "밀", "isAllergen": True, "riskReason": "contains wheat"}
@@ -1038,7 +1003,7 @@ class LabelModelPolicyTests(unittest.TestCase):
         ):
             mock_model_cls.side_effect = ["food-model", "primary-model", "fallback-model"]
             mock_generate.side_effect = [
-                _MockResponse('{"foodName":"Cereal","ingredients":[', 1),
+                _MockResponse("not json", 1),
                 _MockResponse(
                     '{"foodName":"Cereal","safetyStatus":"SAFE","ingredients":[{"name":"oat","isAllergen":false}],"nutrition":{},"raw_result":"ok"}',
                     1,
@@ -1076,7 +1041,7 @@ class LabelModelPolicyTests(unittest.TestCase):
             ),
         ):
             mock_model_cls.side_effect = ["food-model", "primary-model"]
-            mock_generate.return_value = _MockResponse('{"foodName":"Cereal","ingredients":[', 1)
+            mock_generate.return_value = _MockResponse("not json", 1)
 
             analyst = FoodAnalyst()
             with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
@@ -1092,9 +1057,56 @@ class LabelModelPolicyTests(unittest.TestCase):
             self.assertEqual(result["foodName"], "라벨 분석 확인 필요")
             self.assertEqual(result["safetyStatus"], "CAUTION")
             self.assertEqual(result["used_model"], "gemini-2.5-flash")
-            self.assertEqual(result["_label_fallback_reason"], "extract_parse_error")
+            self.assertIsNone(result["_label_fallback_reason"])
+            self.assertEqual(result["_label_diagnostic_reason"], "extract_parse_error")
             self.assertTrue(result["_label_partial"])
             self.assertNotEqual(result["foodName"], "Analysis Error")
+
+    def test_label_extract_repair_normalizes_truncated_json_without_pro_fallback(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
+                    "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.side_effect = ["food-model", "primary-model"]
+            mock_generate.return_value = _MockResponse(
+                '{"foodName":"Cereal","ingredients":["milk","sugar"],"nutrition":{}',
+                2,
+            )
+
+            analyst = FoodAnalyst()
+            with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
+                result = analyst.analyze_label_json(
+                    Image.new("RGB", (4, 4)),
+                    "Milk",
+                    "US",
+                    "en-US",
+                    assess_enabled=False,
+                )
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(mock_model_cls.call_count, 2)
+            self.assertEqual(result["foodName"], "Cereal")
+            self.assertEqual([item["name"] for item in result["ingredients"]], ["milk", "sugar"])
+            self.assertEqual(result["nutrition"]["dataSource"], "OCR_Label")
+            self.assertTrue(result["_label_parse_repaired"])
+            self.assertEqual(result["_label_repair_strategy"], "close_unclosed_json")
+            self.assertTrue(result["_label_partial"])
+            self.assertTrue(result["_label_truncated"])
+            self.assertFalse(result["_label_fallback_used"])
+            self.assertIsNone(result["_label_fallback_reason"])
+            self.assertEqual(result["safetyStatus"], "CAUTION")
 
     def test_label_max_tokens_uses_pro_only_when_max_tokens_fallback_enabled(self):
         with (

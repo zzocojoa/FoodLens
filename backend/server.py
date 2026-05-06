@@ -192,6 +192,17 @@ def _safe_label_string(value: Any) -> str | None:
     return normalized or None
 
 
+def _safe_label_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    safe_values: list[str] = []
+    for item in value:
+        normalized = _safe_label_string(item)
+        if normalized is not None:
+            safe_values.append(normalized)
+    return safe_values
+
+
 def _safe_label_stage_usage(value: Any) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
@@ -241,8 +252,15 @@ def _extract_label_observability(result: dict[str, Any]) -> dict[str, Any]:
         "used_model": _safe_label_string(result.get("_label_used_model")),
         "fallback_used": result.get("_label_fallback_used") is True,
         "fallback_reason": _safe_label_string(result.get("_label_fallback_reason")),
+        "diagnostic_reason": _safe_label_string(result.get("_label_diagnostic_reason")),
         "extract_finish_reason": _safe_label_int(result.get("_label_extract_finish_reason")),
         "assess_finish_reason": _safe_label_int(result.get("_label_assess_finish_reason")),
+        "parse_status": _safe_label_string(result.get("_label_parse_status")),
+        "parse_repaired": result.get("_label_parse_repaired") is True,
+        "repair_strategy": _safe_label_string(result.get("_label_repair_strategy")),
+        "repair_strategies": _safe_label_string_list(result.get("_label_repair_strategies")),
+        "normalization_warnings": _safe_label_string_list(result.get("_label_normalization_warnings")),
+        "parse_raw_text_length": _safe_label_int(result.get("_label_parse_raw_text_length")),
         "truncated": result.get("_label_truncated") is True,
         "partial": result.get("_label_partial") is True,
         "usage": usage,
@@ -261,9 +279,16 @@ def _build_public_label_diagnostics(
     return {
         "fallback_used": bool(label_observability["fallback_used"]),
         "fallback_reason": label_observability["fallback_reason"],
+        "diagnostic_reason": label_observability["diagnostic_reason"],
         "error_type": _safe_label_string(label_error_type),
         "extract_finish_reason": label_observability["extract_finish_reason"],
         "assess_finish_reason": label_observability["assess_finish_reason"],
+        "parse_status": label_observability["parse_status"],
+        "parse_repaired": bool(label_observability["parse_repaired"]),
+        "repair_strategy": label_observability["repair_strategy"],
+        "repair_strategies": label_observability["repair_strategies"],
+        "normalization_warnings": label_observability["normalization_warnings"],
+        "parse_raw_text_length": label_observability["parse_raw_text_length"],
         "partial": bool(label_observability["partial"]),
         "truncated": bool(label_observability["truncated"]),
         "usage_source": label_usage_source,
@@ -4607,6 +4632,8 @@ async def _analyze_label_image_with_policy(
     label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
     label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
     label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}
+    if isinstance(result, dict) and label_error_type == "quota_exhausted_429":
+        result["_label_fallback_reason"] = label_error_type
     label_observability = _extract_label_observability(result) if isinstance(result, dict) else _extract_label_observability({})
     if isinstance(result, dict):
         for key in list(result.keys()):
@@ -4643,8 +4670,12 @@ async def _analyze_label_image_with_policy(
             "label_used_model": label_observability["used_model"],
             "label_fallback_used": label_observability["fallback_used"],
             "label_fallback_reason": label_observability["fallback_reason"],
+            "label_diagnostic_reason": label_observability["diagnostic_reason"],
             "label_extract_finish_reason": label_observability["extract_finish_reason"],
             "label_assess_finish_reason": label_observability["assess_finish_reason"],
+            "label_parse_status": label_observability["parse_status"],
+            "label_parse_repaired": label_observability["parse_repaired"],
+            "label_repair_strategy": label_observability["repair_strategy"],
             "label_partial": label_observability["partial"],
             "label_truncated": label_observability["truncated"],
             "label_usage_source": label_usage_source,
@@ -4656,14 +4687,18 @@ async def _analyze_label_image_with_policy(
         },
     )
     logger.info(
-        "[Server] Label observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s error_type=%s extract_finish_reason=%s assess_finish_reason=%s partial=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
+        "[Server] Label observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s diagnostic_reason=%s error_type=%s extract_finish_reason=%s assess_finish_reason=%s parse_status=%s parse_repaired=%s repair_strategy=%s partial=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
         request_id,
         label_observability["used_model"],
         label_observability["fallback_used"],
         label_observability["fallback_reason"],
+        label_observability["diagnostic_reason"],
         label_error_type,
         label_observability["extract_finish_reason"],
         label_observability["assess_finish_reason"],
+        label_observability["parse_status"],
+        label_observability["parse_repaired"],
+        label_observability["repair_strategy"],
         label_observability["partial"],
         label_observability["truncated"],
         label_usage_source,
@@ -4682,7 +4717,6 @@ async def _analyze_label_image_with_policy(
             assess_elapsed_ms,
             total_elapsed_ms,
         )
-        result["_label_fallback_reason"] = label_error_type
         if raise_on_quota_429:
             raise build_rate_limit_http_exception(
                 request_id=request_id,
