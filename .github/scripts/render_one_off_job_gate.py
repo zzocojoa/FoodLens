@@ -88,6 +88,8 @@ def _request_json(method: str, url: str, api_key: str, payload: dict[str, object
     except HTTPError as error:
         error_body = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Render API {method} failed with status {error.code}: {error_body[:300]}") from error
+    except TimeoutError as error:
+        raise RuntimeError(f"Render API {method} timed out.") from error
     except URLError as error:
         raise RuntimeError(f"Render API {method} failed: {error.reason}") from error
     decoded = json.loads(response_body)
@@ -202,11 +204,19 @@ def _collect_job_logs(
     owner_id = _extract_owner_id(service)
     deadline = clock() + wait_seconds
     latest_lines: list[str] = []
+    latest_error: str | None = None
     while True:
-        latest_lines = _log_lines(_list_job_logs(api_key, owner_id, job_id, request_json))
-        if _expected_checks_observed(_parse_smoke_checks(latest_lines)):
-            return latest_lines
+        try:
+            latest_lines = _log_lines(_list_job_logs(api_key, owner_id, job_id, request_json))
+            latest_error = None
+            if _expected_checks_observed(_parse_smoke_checks(latest_lines)):
+                return latest_lines
+        except RuntimeError as error:
+            latest_error = _sanitize_log_line(str(error))
+            print(f"[RenderOneOffJobGate] Render log collection retryable error: {latest_error}", file=sys.stderr)
         if clock() >= deadline:
+            if latest_error is not None and not latest_lines:
+                raise RuntimeError(f"Render log collection failed before smoke evidence was available: {latest_error}")
             return latest_lines
         sleeper(5)
 

@@ -503,6 +503,61 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertIn("[StagingSmoke] retention_retry: PASS", log_content)
         self.assertIn("[StagingSmoke] postgres_queue_crash_rehearsal: PASS", log_content)
 
+    def test_render_one_off_job_gate_retries_transient_log_timeout(self) -> None:
+        gate = _load_render_job_gate_module()
+        now = 0.0
+        log_attempts = 0
+
+        def sleeper(seconds: float) -> None:
+            nonlocal now
+            now += seconds
+
+        def clock() -> float:
+            return now
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            nonlocal log_attempts
+            if method == "POST":
+                return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
+            if "/services/srv-test" in url:
+                return {"ownerId": "owner-test"}
+            if "/logs?" in url:
+                log_attempts += 1
+                if log_attempts == 1:
+                    raise RuntimeError("Render API GET timed out.")
+                return {
+                    "logs": [
+                        {"message": "[StagingSmoke] media_delete: PASS"},
+                        {"message": "[StagingSmoke] retention_retry: PASS"},
+                        {"message": "[StagingSmoke] postgres_queue_crash_rehearsal: PASS"},
+                    ]
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            log_path = Path(temp_dir) / "render.log"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_LOG_PATH": str(log_path),
+                "RENDER_JOB_POLL_SECONDS": "1",
+                "RENDER_JOB_TIMEOUT_SECONDS": "30",
+                "RENDER_JOB_LOG_WAIT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, sleeper, clock)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(log_attempts, 2)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["smoke_checks"]["media_delete"], "pass")
+        self.assertEqual(summary["smoke_checks"]["retention_retry"], "pass")
+        self.assertEqual(summary["smoke_checks"]["postgres_queue_crash_rehearsal"], "pass")
+
     def test_render_one_off_job_gate_fails_when_success_logs_omit_checks(self) -> None:
         gate = _load_render_job_gate_module()
         now = 0.0
