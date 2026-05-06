@@ -1,23 +1,23 @@
 {
-  "foodName": "Plain Rice Crackers",
+  "foodName": "Sulfite Preserved Label Sample",
   "safetyStatus": "SAFE",
   "ingredients": [
     {
-      "name": "rice",
-      "name_en": "rice",
-      "name_ko": "쌀",
+      "name": "sugar",
+      "name_en": "sugar",
+      "name_ko": "설탕",
       "isAllergen": false
     },
     {
-      "name": "canola oil",
-      "name_en": "canola oil",
-      "name_ko": "카놀라유",
+      "name": "sodium metabisulfite",
+      "name_en": "sodium metabisulfite",
+      "name_ko": "아황산나트륨",
       "isAllergen": false
     },
     {
-      "name": "sea salt",
-      "name_en": "sea salt",
-      "name_ko": "천일염",
+      "name": "citric acid",
+      "name_en": "citric acid",
+      "name_ko": "구연산",
       "isAllergen": false
     }
   ],
@@ -32,5 +32,5 @@
     "servingSize": "30g",
     "dataSource": "Label OCR"
   },
-  "raw_result": "No configured profile allergens detected from label ingredients."
+  "raw_result": "No configured profile allergens detected; sulfite is outside the configured allergy profile."
 }

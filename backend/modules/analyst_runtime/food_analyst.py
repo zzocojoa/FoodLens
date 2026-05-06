@@ -46,13 +46,12 @@ from backend.modules.analyst_runtime.generation import (
     generate_with_semaphore,
 )
 from backend.modules.analyst_runtime.safety import build_default_safety_settings
-import traceback
 
 
 logger = logging.getLogger("foodlens.analyst_runtime")
 
 GEMINI_LABEL_MODEL_NAME_DEFAULT = "gemini-2.5-flash"
-GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT = "gemini-2.5-pro"
+GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT = "gemini-2.5-flash-lite"
 GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT = 1536
 GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS_DEFAULT = 768
 GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT = 512
@@ -410,10 +409,19 @@ class FoodAnalyst:
             GEMINI_LABEL_FALLBACK_MODEL_NAME_DEFAULT,
         )
         self.label_fallback_enabled = _read_env_bool("GEMINI_LABEL_FALLBACK_ENABLED", False)
+        self.label_pro_fallback_enabled = _read_env_bool("GEMINI_LABEL_PRO_FALLBACK_ENABLED", False)
         self.label_fallback_on_parse_error = _read_env_bool("GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR", False)
         self.label_fallback_on_max_tokens = _read_env_bool("GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS", False)
         if _is_pro_model_name(self.label_model_name):
             raise ValueError("GEMINI_LABEL_MODEL_NAME must not be a Pro model; use GEMINI_LABEL_FALLBACK_MODEL_NAME for Pro fallback")
+        if (
+            self.label_fallback_enabled
+            and _is_pro_model_name(self.label_fallback_model_name)
+            and not self.label_pro_fallback_enabled
+        ):
+            raise ValueError(
+                "GEMINI_LABEL_PRO_FALLBACK_ENABLED must be 1 before GEMINI_LABEL_FALLBACK_MODEL_NAME can use a Pro model"
+            )
         self.label_extract_max_output_tokens = _read_env_positive_int(
             "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
             GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS_DEFAULT,
@@ -448,18 +456,18 @@ class FoodAnalyst:
                 "gemini_label_fallback_model_name_present": os.getenv("GEMINI_LABEL_FALLBACK_MODEL_NAME") is not None,
                 "gemini_label_fallback_model_tier": _model_tier_name(self.label_fallback_model_name),
                 "gemini_label_fallback_enabled": self.label_fallback_enabled,
+                "gemini_label_pro_fallback_enabled": self.label_pro_fallback_enabled,
             },
         )
         
         try:
             self.model = GenerativeModel(self.model_name)
             logger.info("[ModelDebug] primary GenerativeModel created")
-        except Exception as e:
+        except Exception:
             logger.exception("[ModelDebug] primary GenerativeModel creation failed")
-            traceback.print_exc()
             raise
 
-    def _configure_vertex_ai(self):
+    def _configure_vertex_ai(self) -> None:
         """
         Configures Vertex AI credentials and initialization.
         
@@ -481,56 +489,58 @@ class FoodAnalyst:
         project_id = os.getenv("GCP_PROJECT_ID")
         location = os.getenv("GCP_LOCATION", "us-central1")
         service_account_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-        
-        # === DEBUG LOGGING ===
-        print(f"[Credential Debug] GCP_PROJECT_ID: {project_id}")
-        print(f"[Credential Debug] GCP_LOCATION: {location}")
-        print(f"[Credential Debug] GCP_SERVICE_ACCOUNT_JSON exists: {bool(service_account_json)}")
-        # === END DEBUG ===
+        logger.info(
+            "[Credential] Vertex AI configuration",
+            extra={
+                "gcp_project_id_present": bool(project_id),
+                "gcp_location_present": bool(location),
+                "gcp_service_account_json_present": bool(service_account_json),
+            },
+        )
 
         if service_account_json:
             try:
-                # Validate JSON format before writing
-                import json
                 json.loads(service_account_json)
-                print("[Credential Debug] ✓ Service account JSON parsing successful")
-                
-                # For Render/Cloud deployment where file upload is difficult
-                # Write JSON content to a temporary file
-                # NOTE: This file is deleted on process exit via atexit hook.
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
                     f.write(service_account_json)
                     FoodAnalyst._temp_cred_path = f.name
-                
+
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = FoodAnalyst._temp_cred_path
-                print(f"[Credential Debug] ✓ Temp file created: {FoodAnalyst._temp_cred_path}")
-                print(f"[Credential Debug] ✓ GOOGLE_APPLICATION_CREDENTIALS set")
-                
-                # Register cleanup handler
+                logger.info(
+                    "[Credential] service account credentials configured",
+                    extra={"google_application_credentials_set": True},
+                )
                 atexit.register(FoodAnalyst._cleanup_temp_credentials)
-                
-            except json.JSONDecodeError as e:
-                print(f"[Credential Debug] ✗ JSON parsing FAILED: {e}")
-            except Exception as e:
-                print(f"[Credential Debug] ✗ Credential setup FAILED: {e}")
+            except json.JSONDecodeError as error:
+                logger.exception("[Credential] service account JSON parsing failed")
+                raise ValueError("GCP_SERVICE_ACCOUNT_JSON must contain valid JSON") from error
+            except Exception:
+                logger.exception("[Credential] credential setup failed")
+                raise
         else:
-            print(f"[Credential Debug] ✗ GCP_SERVICE_ACCOUNT_JSON not found in environment!")
+            logger.warning("[Credential] GCP_SERVICE_ACCOUNT_JSON missing")
 
         if not project_id:
-            print("Warning: GCP_PROJECT_ID not found in environment variables. Vertex AI might fail.")
+            logger.warning("[Credential] GCP_PROJECT_ID missing")
         else:
             vertexai.init(project=project_id, location=location)
-            print(f"[Credential Debug] ✓ Vertex AI initialized (project={project_id}, location={location})")
+            logger.info(
+                "[Credential] Vertex AI initialized",
+                extra={
+                    "gcp_project_id_present": True,
+                    "gcp_location_present": bool(location),
+                },
+            )
 
     @staticmethod
-    def _cleanup_temp_credentials():
+    def _cleanup_temp_credentials() -> None:
         """Cleans up the temporary credentials file on process exit."""
         if FoodAnalyst._temp_cred_path and os.path.exists(FoodAnalyst._temp_cred_path):
             try:
                 os.remove(FoodAnalyst._temp_cred_path)
-                print(f"Vertex AI: Cleaned up temporary credentials file.")
-            except Exception as e:
-                print(f"Warning: Failed to clean up temp credentials: {e}")
+                logger.info("[Credential] temporary credentials file cleaned up")
+            except Exception:
+                logger.exception("[Credential] temporary credentials cleanup failed")
 
     def _build_analysis_prompt(self, allergy_info: str, iso_current_country: str) -> str:
         """Constructs the analysis prompt based on user context."""

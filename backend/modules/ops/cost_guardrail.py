@@ -591,6 +591,27 @@ class CostGuardrailService:
             projected_cost_usd=projected_cost_usd,
             monthly_budget_usd=self.monthly_budget_usd,
         )
+        if not reservation.accepted:
+            fallback_projected_total_cost_usd: float = self.monthly_budget_usd * max(self.fallback_ratio, 0.0)
+            rejected_projected_total_cost_usd: float = max(
+                reservation.decision.projected_total_cost_usd,
+                self.monthly_budget_usd,
+                fallback_projected_total_cost_usd,
+            )
+            rejected_decision = _decision_from_projected_total(
+                projected_total_cost_usd=rejected_projected_total_cost_usd,
+                monthly_budget_usd=self.monthly_budget_usd,
+                period_key=period_key,
+                warn_ratio=self.warn_ratio,
+                degrade_ratio=self.degrade_ratio,
+                fallback_ratio=self.fallback_ratio,
+            )
+            return CostReservation(
+                decision=rejected_decision,
+                reservation_key=reservation.reservation_key,
+                reserved_cost_usd=reservation.reserved_cost_usd,
+                accepted=False,
+            )
         decision = _decision_from_projected_total(
             projected_total_cost_usd=reservation.decision.projected_total_cost_usd,
             monthly_budget_usd=self.monthly_budget_usd,
@@ -709,7 +730,12 @@ def _non_negative_int(value: int) -> int:
 
 def _sanitize_table_name(raw: str, *, fallback: str) -> str:
     candidate = raw.strip() or fallback
-    if not candidate.replace("_", "").isalnum():
+    first_character = candidate[0]
+    if not ("A" <= first_character <= "Z" or "a" <= first_character <= "z" or first_character == "_"):
+        return fallback
+    for character in candidate:
+        if "A" <= character <= "Z" or "a" <= character <= "z" or "0" <= character <= "9" or character == "_":
+            continue
         return fallback
     return candidate
 

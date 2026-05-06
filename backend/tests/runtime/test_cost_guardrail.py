@@ -11,7 +11,12 @@ from PIL import Image, ImageDraw
 
 from backend.modules.analyst_runtime.router import SmartRouter
 from backend.modules.contracts.barcode_response import BarcodeLookupResponseContract
-from backend.modules.ops.cost_guardrail import CostGuardrailAction, CostGuardrailService, InMemoryMonthlyUsageStorage
+from backend.modules.ops.cost_guardrail import (
+    CostGuardrailAction,
+    CostGuardrailService,
+    InMemoryMonthlyUsageStorage,
+    PostgresMonthlyUsageStorage,
+)
 from backend.modules.ops.rollout_control import KpiThresholds
 
 
@@ -72,6 +77,16 @@ class _SpyAnalyst:
             "used_model": self.label_model_name,
             "_label_timings": {"extract_ms": 1, "assess_ms": 1},
         }
+
+
+class _RaisingLabelAnalyst:
+    def __init__(self) -> None:
+        self.label_model_name = "gemini-2.5-flash"
+        self.label_fallback_enabled = False
+        self.label_fallback_model_name = "gemini-2.5-flash-lite"
+
+    def analyze_label_json(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("label provider failed")
 
 
 class _UsageSpyAnalyst:
@@ -248,6 +263,36 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(usage.total_tokens, 0)
         self.assertEqual(usage.request_count, 0)
 
+    def test_duplicate_released_reservation_returns_fallback_decision(self):
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+        service.reconcile(
+            reservation_key="req-1",
+            cost_usd=0.0,
+            tokens=0,
+            chargeable=False,
+        )
+        duplicate = service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+
+        usage = storage.get(duplicate.decision.period_key)
+        self.assertFalse(duplicate.accepted)
+        self.assertEqual(duplicate.decision.action, CostGuardrailAction.FALLBACK)
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.request_count, 0)
+
+    def test_postgres_table_name_sanitizer_falls_back_for_invalid_identifiers(self):
+        storage = PostgresMonthlyUsageStorage(
+            database_url="postgresql://example",
+            usage_table_name="123monthly_usage",
+            reservation_table_name="monthly-usage-reservations",
+        )
+
+        self.assertEqual(storage.usage_table_name, "monthly_usage")
+        self.assertEqual(storage.reservation_table_name, "monthly_usage_reservations")
+
     def test_label_endpoint_degrades_on_85_percent(self):
         spy = _SpyAnalyst()
         storage = InMemoryMonthlyUsageStorage()
@@ -316,6 +361,41 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
+
+    def test_label_endpoint_releases_reservation_when_provider_raises(self):
+        analyst = _RaisingLabelAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                },
+                clear=False,
+            ),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/label",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+                headers={"X-Request-Id": "req-label-provider-raises"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.request_count, 0)
 
     def test_barcode_allergen_empty_ingredients_preserves_source_ingredients_without_label_cost(self):
         analyst = _BarcodeAllergenEmptyAnalyst()

@@ -4918,14 +4918,35 @@ async def _analyze_label_image_with_policy(
             )
             return fallback
 
-    result = await run_in_threadpool(
-        analyst.analyze_label_json,
-        image,
-        allergy_info,
-        prompt_country_code,
-        locale,
-        assess_enabled,
-    )
+    try:
+        result = await run_in_threadpool(
+            analyst.analyze_label_json,
+            image,
+            allergy_info,
+            prompt_country_code,
+            locale,
+            assess_enabled,
+        )
+    except Exception:
+        if _is_label_cost_guardrail_enabled() and cost_guardrail:
+            try:
+                _reconcile_label_cost(
+                    cost_guardrail,
+                    reservation=cost_reservation,
+                    chargeable=False,
+                    cost_usd=0.0,
+                    tokens=0,
+                    provider_total_tokens=None,
+                    provider_thought_tokens=None,
+                    fallback_used=False,
+                    truncated=False,
+                )
+            except Exception:
+                logger.exception(
+                    "[Server] Label cost reservation release failed",
+                    extra={"request_id": request_id},
+                )
+        raise
     label_error_type = result.pop("_label_error_type", None) if isinstance(result, dict) else None
     label_chargeable = bool(result.pop("_label_chargeable", True)) if isinstance(result, dict) else True
     label_timings = result.pop("_label_timings", {}) if isinstance(result, dict) else {}

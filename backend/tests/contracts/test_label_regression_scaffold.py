@@ -2,6 +2,7 @@ import json
 import unittest
 import hashlib
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -18,6 +19,19 @@ CANONICAL_ALLERGENS = {"milk", "egg", "peanut", "tree nut", "wheat", "soy", "fis
 PROVENANCE_ASSISTANCE_VALUES = {"none", "ai_visual_review"}
 PROVENANCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
 REQUIRED_EXPECTED_SAFETY_STATUSES: set[str] = {"SAFE", "CAUTION", "DANGER"}
+SCAFFOLD_PROVENANCE_SOURCES = {"scaffold_text_fixture"}
+
+
+def _payload_ingredient_dicts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_ingredients = payload.get("ingredients", [])
+    if not isinstance(raw_ingredients, list):
+        return []
+
+    ingredients: list[dict[str, Any]] = []
+    for raw_ingredient in raw_ingredients:
+        if isinstance(raw_ingredient, dict):
+            ingredients.append(raw_ingredient)
+    return ingredients
 
 
 class LabelRegressionScaffoldTests(unittest.TestCase):
@@ -48,6 +62,7 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
         manifest = self._load_manifest()
         samples = manifest.get("samples", [])
         ids = set()
+        active_image_paths: dict[str, str] = {}
 
         for idx, sample in enumerate(samples):
             self.assertIsInstance(sample, dict, f"samples[{idx}] must be object")
@@ -66,6 +81,19 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
                 REQUIRED_EXPECTED_SAFETY_STATUSES,
                 f"samples[{idx}].expected_safetyStatus invalid",
             )
+            if sample["status"] == "active":
+                image_path = str(sample["image_path"]).strip()
+                previous_sample_id = active_image_paths.get(image_path)
+                self.assertIsNone(
+                    previous_sample_id,
+                    f"Active samples must not reuse image_path: {previous_sample_id} and {sample_id}",
+                )
+                active_image_paths[image_path] = sample_id
+                source_filename = str(sample.get("source_filename", "")).strip()
+                self.assertFalse(
+                    source_filename.startswith("scaffold_"),
+                    f"samples[{idx}].source_filename must reference a real fixture source",
+                )
 
     def test_manifest_active_samples_have_human_label_shape(self):
         manifest = self._load_manifest()
@@ -126,6 +154,8 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
                 source = provenance.get("source")
                 if not isinstance(source, str) or not source.strip():
                     fields.append("provenance.source")
+                elif source in SCAFFOLD_PROVENANCE_SOURCES:
+                    fields.append("provenance.source:scaffold")
                 confidence = provenance.get("confidence")
                 if confidence not in PROVENANCE_CONFIDENCE_VALUES:
                     fields.append("provenance.confidence")
@@ -233,6 +263,25 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
             ingredients = normalized.get("ingredients", [])
             if len(ingredients) < int(sample["min_ingredients_count"]):
                 fields.append("ingredients_count")
+
+            human_label = sample.get("human_label")
+            expected_allergens = human_label.get("expected_allergens") if isinstance(human_label, dict) else None
+            payload_ingredients = _payload_ingredient_dicts(payload)
+            allergen_ingredients = [
+                ingredient for ingredient in payload_ingredients if ingredient.get("isAllergen") is True
+            ]
+            if expected_status == "SAFE":
+                if isinstance(expected_allergens, list) and expected_allergens:
+                    fields.append("safe_expected_allergens")
+                if allergen_ingredients:
+                    fields.append("safe_allergen_ingredients")
+            if expected_status == "DANGER":
+                if not isinstance(expected_allergens, list) or not expected_allergens:
+                    fields.append("danger_expected_allergens")
+                if not allergen_ingredients:
+                    fields.append("danger_allergen_ingredients")
+                if any(not str(ingredient.get("riskReason", "")).strip() for ingredient in allergen_ingredients):
+                    fields.append("danger_missing_riskReason")
 
             nutrition = normalized.get("nutrition")
             required_nutrition_keys = sample.get("required_nutrition_keys", [])

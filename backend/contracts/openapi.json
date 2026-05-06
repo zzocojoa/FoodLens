@@ -430,6 +430,10 @@
             "title": "Accepted At",
             "type": "string"
           },
+          "idempotency_reused": {
+            "title": "Idempotency Reused",
+            "type": "boolean"
+          },
           "job_id": {
             "title": "Job Id",
             "type": "string"
@@ -462,7 +466,8 @@
           "request_id",
           "status",
           "accepted_at",
-          "poll_after_ms"
+          "poll_after_ms",
+          "idempotency_reused"
         ],
         "title": "AnalysisJobSubmitResponseContract",
         "type": "object"
@@ -1187,6 +1192,17 @@
             "format": "binary",
             "title": "File",
             "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
           },
           "iso_country_code": {
             "default": "US",

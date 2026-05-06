@@ -1,31 +1,32 @@
 {
-  "foodName": "Peanut Butter Granola Bar",
+  "foodName": "Soy Wheat Shellfish Label Sample",
   "safetyStatus": "DANGER",
   "ingredients": [
     {
-      "name": "roasted peanuts",
-      "name_en": "roasted peanuts",
-      "name_ko": "볶은 땅콩",
+      "name": "soy sauce",
+      "name_en": "soy sauce",
+      "name_ko": "간장",
       "isAllergen": true,
-      "riskReason": "Contains peanut"
+      "riskReason": "Contains soy and wheat"
     },
     {
-      "name": "rolled oats",
-      "name_en": "rolled oats",
-      "name_ko": "압착 귀리",
-      "isAllergen": false
-    },
-    {
-      "name": "milk powder",
-      "name_en": "milk powder",
-      "name_ko": "분유",
+      "name": "shrimp extract",
+      "name_en": "shrimp extract",
+      "name_ko": "새우 추출물",
       "isAllergen": true,
-      "riskReason": "Contains milk"
+      "riskReason": "Contains shellfish"
     },
     {
-      "name": "brown sugar",
-      "name_en": "brown sugar",
-      "name_ko": "갈색 설탕",
+      "name": "clam extract",
+      "name_en": "clam extract",
+      "name_ko": "조개 추출물",
+      "isAllergen": true,
+      "riskReason": "Contains shellfish"
+    },
+    {
+      "name": "sugar",
+      "name_en": "sugar",
+      "name_ko": "설탕",
       "isAllergen": false
     }
   ],
@@ -40,5 +41,5 @@
     "servingSize": "45g",
     "dataSource": "Label OCR"
   },
-  "raw_result": "Confirmed peanut and milk allergens detected from label ingredients."
+  "raw_result": "Confirmed soy, wheat, and shellfish allergens detected from visible label ingredients."
 }
