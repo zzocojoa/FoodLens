@@ -25,6 +25,7 @@ from backend.modules.analyst_core.prompts import (
     build_label_prompt,
 )
 from backend.modules.analyst_core.label_merge import merge_label_extract_and_assessment
+from backend.modules.analyst_core.label_parse import parse_label_extract_response
 from backend.modules.analyst_core.response_utils import (
     get_safe_fallback_response,
     parse_ai_response,
@@ -263,6 +264,7 @@ def _build_label_observability_metadata(
     finish_reasons: dict[str, int | None],
     thinking_budgets: dict[str, int],
     usage_metadata: dict[str, dict[str, int]],
+    parse_metadata: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "_label_primary_model": primary_model_name,
@@ -281,6 +283,33 @@ def _build_label_observability_metadata(
             call_name: dict(call_usage)
             for call_name, call_usage in usage_metadata.items()
         },
+        "_label_parse_status": parse_metadata.get("status"),
+        "_label_parse_repaired": parse_metadata.get("repaired") is True,
+        "_label_repair_strategy": parse_metadata.get("repair_strategy"),
+        "_label_repair_strategies": list(parse_metadata.get("repair_strategies", [])),
+        "_label_parse_raw_text_length": parse_metadata.get("raw_text_length"),
+        "_label_normalization_warnings": list(parse_metadata.get("normalization_warnings", [])),
+        "_label_diagnostic_reason": parse_metadata.get("diagnostic_reason"),
+    }
+
+
+def _build_label_parse_metadata(
+    status: str | None,
+    repaired: bool,
+    repair_strategy: str | None,
+    repair_strategies: list[str],
+    raw_text_length: int | None,
+    normalization_warnings: list[str],
+    diagnostic_reason: str | None,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "repaired": repaired,
+        "repair_strategy": repair_strategy,
+        "repair_strategies": list(repair_strategies),
+        "raw_text_length": raw_text_length,
+        "normalization_warnings": list(normalization_warnings),
+        "diagnostic_reason": diagnostic_reason,
     }
 
 
@@ -797,6 +826,13 @@ class FoodAnalyst:
         label_finish_reasons: dict[str, int | None] = {}
         label_thinking_budgets: dict[str, int] = {}
         label_usage_metadata: dict[str, dict[str, int]] = {}
+        label_extract_parse_repaired = False
+        label_extract_repair_strategy: str | None = None
+        label_extract_parse_status: str | None = None
+        label_extract_repair_strategies: list[str] = []
+        label_extract_normalization_warnings: list[str] = []
+        label_extract_raw_text_length: int | None = None
+        label_diagnostic_reason: str | None = None
 
         try:
             vertex_image = self._prepare_vertex_image(label_image)
@@ -846,10 +882,17 @@ class FoodAnalyst:
                 label_usage_metadata["extract"] = extract_metadata["usage_metadata"]
                 extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
 
-            extract_result = self._parse_ai_response(response.text)
+            extract_parse_result = parse_label_extract_response(response.text, normalized_locale)
+            extract_result = extract_parse_result["result"]
+            label_extract_parse_status = extract_parse_result["status"]
+            label_extract_parse_repaired = extract_parse_result["status"] == "repaired"
+            label_extract_repair_strategy = extract_parse_result["repair_strategy"]
+            label_extract_repair_strategies = extract_parse_result["repair_strategies"]
+            label_extract_normalization_warnings = extract_parse_result["normalization_warnings"]
+            label_extract_raw_text_length = extract_parse_result["raw_text_length"]
             extract_result = self._sanitize_response(extract_result)
             if (
-                _is_label_parse_error(extract_result)
+                extract_parse_result["status"] == "failed"
                 and self._can_retry_label_response_with_fallback(
                     extract_metadata,
                     LABEL_FALLBACK_REASON_EXTRACT_PARSE,
@@ -872,12 +915,33 @@ class FoodAnalyst:
                 label_thinking_budgets["extract"] = extract_metadata["thinking_budget"]
                 label_usage_metadata["extract"] = extract_metadata["usage_metadata"]
                 extract_truncated = extract_metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
-                extract_result = self._parse_ai_response(response.text)
+                extract_parse_result = parse_label_extract_response(response.text, normalized_locale)
+                extract_result = extract_parse_result["result"]
+                label_extract_parse_status = extract_parse_result["status"]
+                label_extract_parse_repaired = extract_parse_result["status"] == "repaired"
+                label_extract_repair_strategy = extract_parse_result["repair_strategy"]
+                label_extract_repair_strategies = extract_parse_result["repair_strategies"]
+                label_extract_normalization_warnings = extract_parse_result["normalization_warnings"]
+                label_extract_raw_text_length = extract_parse_result["raw_text_length"]
                 extract_result = self._sanitize_response(extract_result)
-            if _is_label_parse_error(extract_result):
-                label_fallback_reason = LABEL_FALLBACK_REASON_EXTRACT_PARSE
+            if extract_parse_result["status"] == "failed":
+                label_diagnostic_reason = LABEL_FALLBACK_REASON_EXTRACT_PARSE
                 extract_result = _label_parse_unavailable_response(normalized_locale, label_used_model)
             extract_elapsed_ms = int((time.perf_counter() - extract_started_at) * 1000)
+            if label_extract_parse_repaired:
+                extract_result["_label_parse_repaired"] = True
+                extract_result["_label_repair_strategy"] = label_extract_repair_strategy
+                extract_result["_label_repair_strategies"] = list(label_extract_repair_strategies)
+                extract_result["_label_parse_status"] = label_extract_parse_status
+                extract_result["_label_parse_raw_text_length"] = label_extract_raw_text_length
+                extract_result["_label_normalization_warnings"] = list(label_extract_normalization_warnings)
+                extract_result["_label_partial"] = True
+            elif label_extract_parse_status:
+                extract_result["_label_parse_status"] = label_extract_parse_status
+                extract_result["_label_parse_raw_text_length"] = label_extract_raw_text_length
+                extract_result["_label_normalization_warnings"] = list(label_extract_normalization_warnings)
+            if label_diagnostic_reason:
+                extract_result["_label_diagnostic_reason"] = label_diagnostic_reason
             if extract_truncated:
                 extract_result["safetyStatus"] = "CAUTION"
                 extract_result["_label_partial"] = True
@@ -1029,6 +1093,25 @@ class FoodAnalyst:
             result = extract_result
             result["used_model"] = label_used_model
             result["prompt_version"] = LABEL_2PASS_PROMPT_VERSION
+            if label_extract_parse_repaired:
+                result["_label_parse_repaired"] = True
+                result["_label_repair_strategy"] = label_extract_repair_strategy
+                result["_label_repair_strategies"] = list(label_extract_repair_strategies)
+                result["_label_parse_status"] = label_extract_parse_status
+                result["_label_parse_raw_text_length"] = label_extract_raw_text_length
+                result["_label_normalization_warnings"] = list(label_extract_normalization_warnings)
+                result["_label_partial"] = True
+                current_status = str(result.get("safetyStatus", "")).strip().upper()
+                if current_status != "DANGER":
+                    result["safetyStatus"] = "CAUTION"
+                if extract_truncated:
+                    result["_label_truncated"] = True
+            elif label_extract_parse_status:
+                result["_label_parse_status"] = label_extract_parse_status
+                result["_label_parse_raw_text_length"] = label_extract_raw_text_length
+                result["_label_normalization_warnings"] = list(label_extract_normalization_warnings)
+            if label_diagnostic_reason:
+                result["_label_diagnostic_reason"] = label_diagnostic_reason
             result.update(
                 _build_label_observability_metadata(
                     self.label_model_name,
@@ -1038,6 +1121,15 @@ class FoodAnalyst:
                     label_finish_reasons,
                     label_thinking_budgets,
                     label_usage_metadata,
+                    _build_label_parse_metadata(
+                        label_extract_parse_status,
+                        label_extract_parse_repaired,
+                        label_extract_repair_strategy,
+                        label_extract_repair_strategies,
+                        label_extract_raw_text_length,
+                        label_extract_normalization_warnings,
+                        label_diagnostic_reason,
+                    ),
                 )
             )
             result["_label_timings"] = {
@@ -1071,6 +1163,15 @@ class FoodAnalyst:
                     label_finish_reasons,
                     label_thinking_budgets,
                     label_usage_metadata,
+                    _build_label_parse_metadata(
+                        label_extract_parse_status,
+                        label_extract_parse_repaired,
+                        label_extract_repair_strategy,
+                        label_extract_repair_strategies,
+                        label_extract_raw_text_length,
+                        label_extract_normalization_warnings,
+                        label_diagnostic_reason,
+                    ),
                 )
             )
             fallback["_label_timings"] = {
@@ -1099,6 +1200,15 @@ class FoodAnalyst:
                         label_finish_reasons,
                         label_thinking_budgets,
                         label_usage_metadata,
+                        _build_label_parse_metadata(
+                            label_extract_parse_status,
+                            label_extract_parse_repaired,
+                            label_extract_repair_strategy,
+                            label_extract_repair_strategies,
+                            label_extract_raw_text_length,
+                            label_extract_normalization_warnings,
+                            label_diagnostic_reason,
+                        ),
                     )
                 )
                 fallback["_label_timings"] = {
@@ -1121,6 +1231,15 @@ class FoodAnalyst:
                     label_finish_reasons,
                     label_thinking_budgets,
                     label_usage_metadata,
+                    _build_label_parse_metadata(
+                        label_extract_parse_status,
+                        label_extract_parse_repaired,
+                        label_extract_repair_strategy,
+                        label_extract_repair_strategies,
+                        label_extract_raw_text_length,
+                        label_extract_normalization_warnings,
+                        label_diagnostic_reason,
+                    ),
                 )
             )
             fallback["_label_timings"] = {

@@ -125,10 +125,6 @@ def get_safe_fallback_response(user_message: str) -> dict[str, Any]:
 def parse_ai_response(response_text: str) -> dict[str, Any]:
     _debug_log(f"\n{PARSE_DEBUG_DIVIDER}")
     _debug_log(f"[PARSE DEBUG] Raw response length: {len(response_text)} chars")
-    _debug_log(f"[PARSE DEBUG] First 200 chars: {repr(response_text[:200])}")
-    _debug_log(
-        f"[PARSE DEBUG] Last 100 chars: {repr(response_text[-100:] if len(response_text) > 100 else response_text)}"
-    )
     _debug_log(PARSE_DEBUG_DIVIDER)
 
     text = _strip_markdown_fence(response_text.strip())
@@ -142,7 +138,7 @@ def parse_ai_response(response_text: str) -> dict[str, Any]:
         return result
 
     _debug_log("[PARSE DEBUG] ✗✗ ALL PARSING ATTEMPTS FAILED")
-    _debug_log(f"[PARSE DEBUG] Full raw response:\n{response_text}")
+    _debug_log(f"[PARSE DEBUG] Raw response omitted; length={len(response_text)}")
     _debug_log(f"{PARSE_DEBUG_DIVIDER}\n")
     return get_safe_fallback_response(FALLBACK_PARSE_ERROR_MESSAGE)
 
