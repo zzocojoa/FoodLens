@@ -68,6 +68,60 @@ describe('uploadWithRetry', () => {
     expect(sleep).toHaveBeenCalledWith(2000);
   });
 
+  it('does not retry 429 upstream rate limits', async () => {
+    mockedCreateUploadTask.mockImplementation(
+      () =>
+        ({
+          uploadAsync: async () =>
+            ({
+              status: 429,
+              body: JSON.stringify({
+                detail: {
+                  message: 'Upstream rate limited',
+                  code: 'UPSTREAM_RATE_LIMITED',
+                  request_id: 'req-upstream-429',
+                  retry_after_seconds: 10,
+                },
+              }),
+              headers: { 'Retry-After': '10' },
+            }) as unknown as FileSystem.FileSystemUploadResult,
+        }) as UploadTaskLike as FileSystem.UploadTask
+    );
+
+    await expect(uploadWithRetry('https://example.com/analyze', 'file://test.jpg', {}, 3)).rejects.toThrow(
+      'Upstream rate limited'
+    );
+    expect(runWithAnalysisTimeout).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('does not retry when server marks response non-retryable by client', async () => {
+    mockedCreateUploadTask.mockImplementation(
+      () =>
+        ({
+          uploadAsync: async () =>
+            ({
+              status: 503,
+              body: JSON.stringify({
+                detail: {
+                  message: 'Temporary upstream failure',
+                  code: 'API_RATE_LIMITED',
+                  request_id: 'req-no-client-retry',
+                  retryable_by_client: false,
+                },
+              }),
+              headers: {},
+            }) as unknown as FileSystem.FileSystemUploadResult,
+        }) as UploadTaskLike as FileSystem.UploadTask
+    );
+
+    await expect(uploadWithRetry('https://example.com/analyze', 'file://test.jpg', {}, 3)).rejects.toThrow(
+      'Temporary upstream failure'
+    );
+    expect(runWithAnalysisTimeout).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it('fails immediately on non-retryable 4xx', async () => {
     mockedCreateUploadTask.mockImplementation(
       () =>

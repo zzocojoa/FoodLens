@@ -1,0 +1,36 @@
+{
+  "foodName": "Sulfite Preserved Label Sample",
+  "safetyStatus": "SAFE",
+  "ingredients": [
+    {
+      "name": "sugar",
+      "name_en": "sugar",
+      "name_ko": "설탕",
+      "isAllergen": false
+    },
+    {
+      "name": "sodium metabisulfite",
+      "name_en": "sodium metabisulfite",
+      "name_ko": "아황산나트륨",
+      "isAllergen": false
+    },
+    {
+      "name": "citric acid",
+      "name_en": "citric acid",
+      "name_ko": "구연산",
+      "isAllergen": false
+    }
+  ],
+  "nutrition": {
+    "calories": 110,
+    "protein": 2,
+    "carbs": 23,
+    "fat": 1,
+    "fiber": 1,
+    "sodium": 120,
+    "sugar": 0,
+    "servingSize": "30g",
+    "dataSource": "Label OCR"
+  },
+  "raw_result": "No configured profile allergens detected; sulfite is outside the configured allergy profile."
+}

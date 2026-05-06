@@ -32,6 +32,35 @@ PROGRESS_HINTS = {
     "failed": "failed",
 }
 FALLBACK_ERROR_NAMES = {"Error Analyzing Food", "Not Food", "분석 오류", "Analysis Error"}
+ANALYSIS_JOB_ROW_COLUMNS: tuple[str, ...] = (
+    "job_id",
+    "user_id",
+    "idempotency_key",
+    "request_id",
+    "mode",
+    "status",
+    "allergy_info",
+    "iso_country_code",
+    "locale",
+    "content_type",
+    "image_base64",
+    "image_sha256",
+    "accepted_at",
+    "started_at",
+    "updated_at",
+    "lease_expires_at",
+    "worker_id",
+    "attempt_count",
+    "poll_after_ms",
+    "stage_latencies_ms",
+    "used_model",
+    "prompt_version",
+    "fallback_reason",
+    "error_code",
+    "error_message",
+    "result_json",
+)
+ANALYSIS_JOB_ROW_COLUMNS_SQL: str = ",".join(ANALYSIS_JOB_ROW_COLUMNS)
 
 
 class AnalysisJobStoreError(Exception):
@@ -58,6 +87,25 @@ class AnalysisJobStore(Protocol):
         accepted_at: datetime,
         poll_after_ms: int,
     ) -> None:
+        ...
+
+    def submit_job(
+        self,
+        *,
+        job_id: str,
+        user_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        mode: str,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        content_type: str,
+        image_base64: str,
+        image_sha256: str,
+        accepted_at: datetime,
+        poll_after_ms: int,
+    ) -> dict[str, Any]:
         ...
 
     def get_job(self, *, job_id: str) -> dict[str, Any] | None:
@@ -491,33 +539,71 @@ class InMemoryAnalysisJobStore:
         accepted_at: datetime,
         poll_after_ms: int,
     ) -> None:
+        self.submit_job(
+            job_id=job_id,
+            user_id=None,
+            idempotency_key=None,
+            request_id=request_id,
+            mode=mode,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            content_type=content_type,
+            image_base64=image_base64,
+            image_sha256=image_sha256,
+            accepted_at=accepted_at,
+            poll_after_ms=poll_after_ms,
+        )
+
+    def submit_job(
+        self,
+        *,
+        job_id: str,
+        user_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        mode: str,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        content_type: str,
+        image_base64: str,
+        image_sha256: str,
+        accepted_at: datetime,
+        poll_after_ms: int,
+    ) -> dict[str, Any]:
+        normalized_user_id, normalized_idempotency_key = _normalize_submit_identity(
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+        )
         with self._lock:
-            self._jobs[job_id] = {
-                "job_id": job_id,
-                "request_id": request_id,
-                "mode": mode,
-                "status": "queued",
-                "allergy_info": allergy_info,
-                "iso_country_code": iso_country_code,
-                "locale": locale,
-                "content_type": content_type,
-                "image_base64": image_base64,
-                "image_sha256": image_sha256,
-                "accepted_at": accepted_at,
-                "started_at": None,
-                "updated_at": accepted_at,
-                "lease_expires_at": None,
-                "worker_id": None,
-                "attempt_count": 0,
-                "poll_after_ms": poll_after_ms,
-                "stage_latencies_ms": {},
-                "used_model": None,
-                "prompt_version": None,
-                "fallback_reason": None,
-                "error_code": None,
-                "error_message": None,
-                "result_json": None,
-            }
+            if normalized_user_id is not None and normalized_idempotency_key is not None:
+                for record in self._jobs.values():
+                    if (
+                        record.get("user_id") == normalized_user_id
+                        and record.get("idempotency_key") == normalized_idempotency_key
+                    ):
+                        reused_record = _copy_job_record(record)
+                        reused_record["idempotency_reused"] = True
+                        return reused_record
+
+            record = _build_analysis_job_record(
+                job_id=job_id,
+                user_id=normalized_user_id,
+                idempotency_key=normalized_idempotency_key,
+                request_id=request_id,
+                mode=mode,
+                allergy_info=allergy_info,
+                iso_country_code=iso_country_code,
+                locale=locale,
+                content_type=content_type,
+                image_base64=image_base64,
+                image_sha256=image_sha256,
+                accepted_at=accepted_at,
+                poll_after_ms=poll_after_ms,
+            )
+            self._jobs[job_id] = record
+            return _copy_job_record(record)
 
     def get_job(self, *, job_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -612,21 +698,63 @@ class PostgresAnalysisJobStore:
         accepted_at: datetime,
         poll_after_ms: int,
     ) -> None:
+        self.submit_job(
+            job_id=job_id,
+            user_id=None,
+            idempotency_key=None,
+            request_id=request_id,
+            mode=mode,
+            allergy_info=allergy_info,
+            iso_country_code=iso_country_code,
+            locale=locale,
+            content_type=content_type,
+            image_base64=image_base64,
+            image_sha256=image_sha256,
+            accepted_at=accepted_at,
+            poll_after_ms=poll_after_ms,
+        )
+
+    def submit_job(
+        self,
+        *,
+        job_id: str,
+        user_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        mode: str,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        content_type: str,
+        image_base64: str,
+        image_sha256: str,
+        accepted_at: datetime,
+        poll_after_ms: int,
+    ) -> dict[str, Any]:
         self.initialize_schema()
         connect = _load_connect()
+        normalized_user_id, normalized_idempotency_key = _normalize_submit_identity(
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+        )
         try:
             with connect(self.database_url, autocommit=True) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
                             f"INSERT INTO {self.table_name} "
-                            "(job_id,request_id,mode,status,allergy_info,iso_country_code,locale,content_type,image_base64,image_sha256,"
+                            "(job_id,user_id,idempotency_key,request_id,mode,status,allergy_info,iso_country_code,locale,content_type,image_base64,image_sha256,"
                             "accepted_at,started_at,updated_at,lease_expires_at,worker_id,attempt_count,poll_after_ms,stage_latencies_ms,"
                             "used_model,prompt_version,fallback_reason,error_code,error_message,result_json) "
-                            "VALUES (%s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s::timestamptz,NULL,%s::timestamptz,NULL,NULL,0,%s,%s::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
+                            "VALUES (%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s::timestamptz,NULL,%s::timestamptz,NULL,NULL,0,%s,%s::jsonb,NULL,NULL,NULL,NULL,NULL,NULL) "
+                            "ON CONFLICT (user_id,idempotency_key) "
+                            "WHERE idempotency_key IS NOT NULL AND idempotency_key <> '' "
+                            f"DO NOTHING RETURNING {ANALYSIS_JOB_ROW_COLUMNS_SQL}"
                         ),
                         (
                             job_id,
+                            normalized_user_id,
+                            normalized_idempotency_key,
                             request_id,
                             mode,
                             allergy_info,
@@ -641,6 +769,24 @@ class PostgresAnalysisJobStore:
                             json.dumps({}, ensure_ascii=False),
                         ),
                     )
+                    row = cursor.fetchone()
+                    if row is not None:
+                        return _record_from_row(row)
+                    if normalized_user_id is None or normalized_idempotency_key is None:
+                        raise AnalysisJobStoreError("Failed to create analysis job: insert returned no record.")
+                    cursor.execute(
+                        (
+                            f"SELECT {ANALYSIS_JOB_ROW_COLUMNS_SQL} FROM {self.table_name} "
+                            "WHERE user_id = %s AND idempotency_key = %s"
+                        ),
+                        (normalized_user_id, normalized_idempotency_key),
+                    )
+                    existing_row = cursor.fetchone()
+                    if existing_row is None:
+                        raise AnalysisJobStoreError("Failed to load reused analysis job after idempotency conflict.")
+                    record = _record_from_row(existing_row)
+                    record["idempotency_reused"] = True
+                    return record
         except Exception as error:
             raise AnalysisJobStoreError(f"Failed to create analysis job: {error}") from error
 
@@ -652,9 +798,7 @@ class PostgresAnalysisJobStore:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
-                            f"SELECT job_id,request_id,mode,status,allergy_info,iso_country_code,locale,content_type,image_base64,image_sha256,"
-                            "accepted_at,started_at,updated_at,lease_expires_at,worker_id,attempt_count,poll_after_ms,stage_latencies_ms,"
-                            "used_model,prompt_version,fallback_reason,error_code,error_message,result_json "
+                            f"SELECT {ANALYSIS_JOB_ROW_COLUMNS_SQL} "
                             f"FROM {self.table_name} WHERE job_id = %s"
                         ),
                         (job_id,),
@@ -690,10 +834,7 @@ class PostgresAnalysisJobStore:
                             "attempt_count = jobs.attempt_count + 1 "
                             "FROM candidate "
                             "WHERE jobs.job_id = candidate.job_id "
-                            "RETURNING jobs.job_id,jobs.request_id,jobs.mode,jobs.status,jobs.allergy_info,jobs.iso_country_code,jobs.locale,"
-                            "jobs.content_type,jobs.image_base64,jobs.image_sha256,jobs.accepted_at,jobs.started_at,jobs.updated_at,"
-                            "jobs.lease_expires_at,jobs.worker_id,jobs.attempt_count,jobs.poll_after_ms,jobs.stage_latencies_ms,"
-                            "jobs.used_model,jobs.prompt_version,jobs.fallback_reason,jobs.error_code,jobs.error_message,jobs.result_json"
+                            f"RETURNING {_prefix_analysis_job_row_columns(table_alias='jobs')}"
                         ),
                         (
                             _to_iso(now),
@@ -740,9 +881,7 @@ class PostgresAnalysisJobStore:
                         (
                             f"UPDATE {self.table_name} SET {', '.join(fields)} "
                             "WHERE job_id = %s "
-                            "RETURNING job_id,request_id,mode,status,allergy_info,iso_country_code,locale,content_type,image_base64,image_sha256,"
-                            "accepted_at,started_at,updated_at,lease_expires_at,worker_id,attempt_count,poll_after_ms,stage_latencies_ms,"
-                            "used_model,prompt_version,fallback_reason,error_code,error_message,result_json"
+                            f"RETURNING {ANALYSIS_JOB_ROW_COLUMNS_SQL}"
                         ),
                         tuple(values),
                     )
@@ -759,6 +898,8 @@ class PostgresAnalysisJobStore:
                 (
                     f"CREATE TABLE IF NOT EXISTS {self.table_name} ("
                     "job_id TEXT PRIMARY KEY,"
+                    "user_id TEXT NULL,"
+                    "idempotency_key TEXT NULL,"
                     "request_id TEXT NOT NULL,"
                     "mode TEXT NOT NULL,"
                     "status TEXT NOT NULL,"
@@ -785,11 +926,20 @@ class PostgresAnalysisJobStore:
                     ")"
                 )
             )
+            cursor.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS user_id TEXT NULL")
+            cursor.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS idempotency_key TEXT NULL")
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.table_name}_claim_idx ON {self.table_name} (status, accepted_at)"
             )
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.table_name}_lease_idx ON {self.table_name} (lease_expires_at)"
+            )
+            cursor.execute(
+                (
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {self.table_name}_user_idempotency_key_idx "
+                    f"ON {self.table_name} (user_id, idempotency_key) "
+                    "WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''"
+                )
             )
 
 
@@ -923,6 +1073,30 @@ def create_analysis_job_payload(
     )
 
 
+def submit_analysis_job(
+    *,
+    store: AnalysisJobStore,
+    payload: AnalysisJobCreatePayload,
+    user_id: str | None,
+    idempotency_key: str | None,
+) -> dict[str, Any]:
+    return store.submit_job(
+        job_id=payload.job_id,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        request_id=payload.request_id,
+        mode=payload.mode,
+        allergy_info=payload.allergy_info,
+        iso_country_code=payload.iso_country_code,
+        locale=payload.locale,
+        content_type=payload.content_type,
+        image_base64=payload.image_base64,
+        image_sha256=payload.image_sha256,
+        accepted_at=payload.accepted_at,
+        poll_after_ms=payload.poll_after_ms,
+    )
+
+
 def serialize_job_submit_response(*, record: dict[str, Any]) -> dict[str, Any]:
     return {
         "job_id": str(record["job_id"]),
@@ -930,6 +1104,7 @@ def serialize_job_submit_response(*, record: dict[str, Any]) -> dict[str, Any]:
         "status": str(record["status"]),
         "accepted_at": _to_iso(record["accepted_at"]),
         "poll_after_ms": int(record.get("poll_after_ms") or 1000),
+        "idempotency_reused": bool(record.get("idempotency_reused") or False),
     }
 
 
@@ -1093,6 +1268,72 @@ def _detect_analysis_fallback_reason(*, result: dict[str, Any], mode: str) -> st
     return None
 
 
+def _prefix_analysis_job_row_columns(*, table_alias: str) -> str:
+    return ",".join(f"{table_alias}.{column}" for column in ANALYSIS_JOB_ROW_COLUMNS)
+
+
+def _normalize_optional_text(*, value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _normalize_submit_identity(*, user_id: str | None, idempotency_key: str | None) -> tuple[str | None, str | None]:
+    normalized_user_id = _normalize_optional_text(value=user_id)
+    normalized_idempotency_key = _normalize_optional_text(value=idempotency_key)
+    if normalized_idempotency_key is not None and normalized_user_id is None:
+        raise AnalysisJobStoreError("user_id is required when idempotency_key is provided.")
+    return normalized_user_id, normalized_idempotency_key
+
+
+def _build_analysis_job_record(
+    *,
+    job_id: str,
+    user_id: str | None,
+    idempotency_key: str | None,
+    request_id: str,
+    mode: str,
+    allergy_info: str,
+    iso_country_code: str,
+    locale: str | None,
+    content_type: str,
+    image_base64: str,
+    image_sha256: str,
+    accepted_at: datetime,
+    poll_after_ms: int,
+) -> dict[str, Any]:
+    return {
+        "job_id": job_id,
+        "user_id": user_id,
+        "idempotency_key": idempotency_key,
+        "request_id": request_id,
+        "mode": mode,
+        "status": "queued",
+        "allergy_info": allergy_info,
+        "iso_country_code": iso_country_code,
+        "locale": locale,
+        "content_type": content_type,
+        "image_base64": image_base64,
+        "image_sha256": image_sha256,
+        "accepted_at": accepted_at,
+        "started_at": None,
+        "updated_at": accepted_at,
+        "lease_expires_at": None,
+        "worker_id": None,
+        "attempt_count": 0,
+        "poll_after_ms": poll_after_ms,
+        "stage_latencies_ms": {},
+        "used_model": None,
+        "prompt_version": None,
+        "fallback_reason": None,
+        "error_code": None,
+        "error_message": None,
+        "result_json": None,
+        "idempotency_reused": False,
+    }
+
+
 def _copy_job_record(record: dict[str, Any]) -> dict[str, Any]:
     copied: dict[str, Any] = {}
     for key, value in record.items():
@@ -1121,6 +1362,8 @@ def _sanitize_table_name(raw: str, fallback: str) -> str:
 def _record_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     (
         job_id,
+        user_id,
+        idempotency_key,
         request_id,
         mode,
         status,
@@ -1147,6 +1390,8 @@ def _record_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     ) = row
     return {
         "job_id": job_id,
+        "user_id": user_id,
+        "idempotency_key": idempotency_key,
         "request_id": request_id,
         "mode": mode,
         "status": status,
@@ -1170,6 +1415,7 @@ def _record_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "error_code": error_code,
         "error_message": error_message,
         "result_json": result_json,
+        "idempotency_reused": False,
     }
 
 

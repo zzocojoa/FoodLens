@@ -1,0 +1,45 @@
+{
+  "foodName": "Soy Wheat Shellfish Label Sample",
+  "safetyStatus": "DANGER",
+  "ingredients": [
+    {
+      "name": "soy sauce",
+      "name_en": "soy sauce",
+      "name_ko": "간장",
+      "isAllergen": true,
+      "riskReason": "Contains soy and wheat"
+    },
+    {
+      "name": "shrimp extract",
+      "name_en": "shrimp extract",
+      "name_ko": "새우 추출물",
+      "isAllergen": true,
+      "riskReason": "Contains shellfish"
+    },
+    {
+      "name": "clam extract",
+      "name_en": "clam extract",
+      "name_ko": "조개 추출물",
+      "isAllergen": true,
+      "riskReason": "Contains shellfish"
+    },
+    {
+      "name": "sugar",
+      "name_en": "sugar",
+      "name_ko": "설탕",
+      "isAllergen": false
+    }
+  ],
+  "nutrition": {
+    "calories": 210,
+    "protein": 7,
+    "carbs": 24,
+    "fat": 10,
+    "fiber": 3,
+    "sodium": 95,
+    "sugar": 11,
+    "servingSize": "45g",
+    "dataSource": "Label OCR"
+  },
+  "raw_result": "Confirmed soy, wheat, and shellfish allergens detected from visible label ingredients."
+}
