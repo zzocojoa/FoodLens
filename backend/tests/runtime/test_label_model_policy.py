@@ -87,8 +87,28 @@ class LabelModelPolicyTests(unittest.TestCase):
             mock_model_cls.return_value = object()
             analyst = FoodAnalyst()
             self.assertEqual(analyst.label_model_name, "gemini-2.5-flash")
-            self.assertEqual(analyst.label_fallback_model_name, "gemini-2.5-pro")
+            self.assertEqual(analyst.label_fallback_model_name, "gemini-2.5-flash-lite")
             self.assertFalse(analyst.label_fallback_enabled)
+            self.assertFalse(analyst.label_pro_fallback_enabled)
+
+    def test_label_pro_fallback_requires_explicit_opt_in(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            with self.assertRaisesRegex(ValueError, "GEMINI_LABEL_PRO_FALLBACK_ENABLED"):
+                FoodAnalyst()
 
     def test_label_model_rejects_pro_primary(self):
         with (
@@ -132,6 +152,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -165,6 +186,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_PRO_THINKING_BUDGET": "64",
                 },
                 clear=False,
@@ -245,6 +267,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_PRO_THINKING_BUDGET": "64",
                 },
                 clear=False,
@@ -288,6 +311,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -315,6 +339,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "1",
                 },
                 clear=False,
@@ -361,6 +386,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "1",
                 },
                 clear=False,
@@ -413,6 +439,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_PRO_THINKING_BUDGET": "",
                 },
                 clear=False,
@@ -625,6 +652,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FLASH_THINKING_BUDGET": "0",
                     "GEMINI_LABEL_PRO_THINKING_BUDGET": "128",
                 },
@@ -662,6 +690,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "true",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -714,6 +743,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -928,6 +958,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -955,6 +986,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -982,6 +1014,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                 },
                 clear=False,
             ),
@@ -1007,6 +1040,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "1",
                 },
                 clear=False,
@@ -1046,6 +1080,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
                 },
                 clear=False,
@@ -1084,6 +1119,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
                     "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "0",
                 },
@@ -1130,6 +1166,7 @@ class LabelModelPolicyTests(unittest.TestCase):
                     "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
                     "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
                     "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "1",
                     "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "1",
                 },
                 clear=False,

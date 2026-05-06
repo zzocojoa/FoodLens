@@ -1193,17 +1193,6 @@
             "title": "File",
             "type": "string"
           },
-          "idempotency_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idempotency Key"
-          },
           "iso_country_code": {
             "default": "US",
             "title": "Iso Country Code",
@@ -1367,6 +1356,17 @@
             "format": "binary",
             "title": "File",
             "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
           },
           "iso_country_code": {
             "default": "US",
