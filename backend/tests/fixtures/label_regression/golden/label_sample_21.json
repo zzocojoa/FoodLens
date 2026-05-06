@@ -1,0 +1,36 @@
+{
+  "foodName": "Plain Rice Crackers",
+  "safetyStatus": "SAFE",
+  "ingredients": [
+    {
+      "name": "rice",
+      "name_en": "rice",
+      "name_ko": "쌀",
+      "isAllergen": false
+    },
+    {
+      "name": "canola oil",
+      "name_en": "canola oil",
+      "name_ko": "카놀라유",
+      "isAllergen": false
+    },
+    {
+      "name": "sea salt",
+      "name_en": "sea salt",
+      "name_ko": "천일염",
+      "isAllergen": false
+    }
+  ],
+  "nutrition": {
+    "calories": 110,
+    "protein": 2,
+    "carbs": 23,
+    "fat": 1,
+    "fiber": 1,
+    "sodium": 120,
+    "sugar": 0,
+    "servingSize": "30g",
+    "dataSource": "Label OCR"
+  },
+  "raw_result": "No configured profile allergens detected from label ingredients."
+}

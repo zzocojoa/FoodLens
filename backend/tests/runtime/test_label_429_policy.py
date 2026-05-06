@@ -96,6 +96,8 @@ class Label429PolicyTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Retry-After"), "15")
         detail = response.json()["detail"]
         self.assertEqual(detail["code"], "UPSTREAM_RATE_LIMITED")
+        self.assertEqual(detail["retry_scope"], "provider:label")
+        self.assertFalse(detail["retryable_by_client"])
         self.assertIn("request_id", detail)
 
     def test_non_chargeable_result_skips_cost_record(self):

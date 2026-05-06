@@ -7,6 +7,7 @@ type UploadErrorDetail = {
     code?: string;
     request_id?: string;
     retry_after_seconds?: number;
+    retryable_by_client?: boolean;
 };
 
 type RetryableUploadError = Error & {
@@ -14,6 +15,36 @@ type RetryableUploadError = Error & {
     requestId?: string;
     code?: string;
     nonRetryable?: boolean;
+};
+
+type UploadRetryDecisionParams = {
+    status: number;
+    code: string | null;
+    retryableByClient: boolean | null;
+};
+
+type UploadRetryDecision = {
+    shouldRetry: boolean;
+};
+
+const decideUploadRetry = ({
+    status,
+    code,
+    retryableByClient,
+}: UploadRetryDecisionParams): UploadRetryDecision => {
+    if (retryableByClient === false) {
+        return { shouldRetry: false };
+    }
+
+    if (status === 429 && code === 'UPSTREAM_RATE_LIMITED') {
+        return { shouldRetry: false };
+    }
+
+    if (status >= 400 && status < 500 && status !== 429) {
+        return { shouldRetry: false };
+    }
+
+    return { shouldRetry: true };
 };
 
 const parseUploadErrorDetail = (rawBody: string): UploadErrorDetail | null => {
@@ -50,7 +81,7 @@ export const uploadWithRetry = async (
     url: string,
     imageUri: string,
     options: any,
-    maxRetries = 3,
+    maxRetries: number,
     timeoutMs?: number,
     onProgress?: (progress: number) => void
 ): Promise<FileSystem.FileSystemUploadResult> => {
@@ -70,7 +101,7 @@ export const uploadWithRetryForAcceptedStatuses = async (
     imageUri: string,
     options: any,
     acceptedStatuses: number[],
-    maxRetries = 3,
+    maxRetries: number,
     timeoutMs?: number,
     onProgress?: (progress: number) => void
 ): Promise<FileSystem.FileSystemUploadResult> => {
@@ -108,7 +139,14 @@ export const uploadWithRetryForAcceptedStatuses = async (
                     : null;
             const retryAfterSeconds = retryAfterFromHeader ?? retryAfterFromBody;
 
-            if (result.status >= 400 && result.status < 500 && result.status !== 429) {
+            const retryDecision = decideUploadRetry({
+                status: result.status,
+                code: detail?.code ?? null,
+                retryableByClient:
+                    typeof detail?.retryable_by_client === 'boolean' ? detail.retryable_by_client : null,
+            });
+
+            if (!retryDecision.shouldRetry) {
                 const nonRetryableError: RetryableUploadError = new Error(
                     buildServerErrorMessage(result.status, detail)
                 ) as RetryableUploadError;

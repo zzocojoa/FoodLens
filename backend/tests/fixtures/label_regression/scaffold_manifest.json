@@ -999,6 +999,86 @@
           "confidence": "medium"
         }
       }
+    },
+    {
+      "id": "label_sample_21",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_21.json",
+      "expected_safetyStatus": "SAFE",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_01.jpg",
+      "source_filename": "scaffold_safe_label.jpg",
+      "image_sha256": "21c4c0e7ae0646bd23988eaa30c968228cdc5de6c6ffa75d35e5b5b4be714c9a",
+      "image_bytes": 397904,
+      "image_width": 800,
+      "image_height": 1416,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [],
+        "expected_risk_ingredients": [],
+        "review_notes": "Scaffold text fixture: ingredients list contains rice, canola oil, and sea salt, with no milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, or sesame terms.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "none",
+          "source": "scaffold_text_fixture",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "id": "label_sample_22",
+      "status": "active",
+      "golden_json_path": "golden/label_sample_22.json",
+      "expected_safetyStatus": "DANGER",
+      "min_ingredients_count": 2,
+      "required_nutrition_keys": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat",
+        "fiber",
+        "sodium",
+        "sugar",
+        "servingSize",
+        "dataSource"
+      ],
+      "image_path": "images/label_sample_02.jpg",
+      "source_filename": "scaffold_danger_label.jpg",
+      "image_sha256": "d6c9154b065636b563c5a0a60b0fcab715961c55e600d87f750de1fd2496debf",
+      "image_bytes": 320223,
+      "image_width": 840,
+      "image_height": 1224,
+      "human_label": {
+        "annotation_status": "reviewed",
+        "allergy_profile": "milk, egg, peanut, tree nut, wheat, soy, fish, shellfish, sesame",
+        "expected_allergens": [
+          "peanut",
+          "milk"
+        ],
+        "expected_risk_ingredients": [
+          "peanuts",
+          "milk powder"
+        ],
+        "review_notes": "Scaffold text fixture: ingredients list directly includes roasted peanuts and milk powder for the configured allergy profile.",
+        "provenance": {
+          "reviewed_by": "codex",
+          "assistance": "none",
+          "source": "scaffold_text_fixture",
+          "confidence": "high"
+        }
+      }
     }
   ],
   "human_label_schema": {

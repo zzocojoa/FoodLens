@@ -59,6 +59,8 @@ def _analysis_job_row(job_id: str) -> tuple[object, ...]:
     updated_at = datetime(2026, 3, 1, 0, 0, 5, tzinfo=timezone.utc)
     return (
         job_id,
+        None,
+        None,
         "req-analysis-job-postgres",
         "food",
         "queued",
@@ -217,6 +219,62 @@ class _SmartLabelJobRouter:
         return result
 
 
+class _IdempotencyRecordingJobStore:
+    def __init__(self) -> None:
+        self.records_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        self.records_by_job_id: dict[str, dict[str, Any]] = {}
+        self.create_attempt_count = 0
+        self.created_job_count = 0
+
+    def submit_job(
+        self,
+        *,
+        job_id: str,
+        user_id: str | None,
+        idempotency_key: str | None,
+        request_id: str,
+        mode: str,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        content_type: str,
+        image_base64: str,
+        image_sha256: str,
+        accepted_at: datetime,
+        poll_after_ms: int,
+    ) -> dict[str, Any]:
+        self.create_attempt_count += 1
+        if user_id is not None and idempotency_key is not None:
+            existing_record = self.records_by_key.get((user_id, idempotency_key))
+            if existing_record is not None:
+                reused_record = dict(existing_record)
+                reused_record["idempotency_reused"] = True
+                return reused_record
+
+        record: dict[str, Any] = {
+            "job_id": job_id,
+            "request_id": request_id,
+            "mode": mode,
+            "allergy_info": allergy_info,
+            "iso_country_code": iso_country_code,
+            "locale": locale,
+            "content_type": content_type,
+            "image_base64": image_base64,
+            "image_sha256": image_sha256,
+            "status": "queued",
+            "accepted_at": accepted_at,
+            "poll_after_ms": poll_after_ms,
+            "user_id": user_id,
+            "idempotency_key": idempotency_key,
+            "idempotency_reused": False,
+        }
+        self.records_by_job_id[job_id] = record
+        if user_id is not None and idempotency_key is not None:
+            self.records_by_key[(user_id, idempotency_key)] = record
+        self.created_job_count += 1
+        return dict(record)
+
+
 class AnalysisJobRuntimeTests(unittest.TestCase):
     def _build_worker(self) -> AnalysisJobWorker:
         return AnalysisJobWorker(
@@ -301,6 +359,116 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
         self.assertIn("latency_ms_by_stage", terminal_payload)
         self.assertEqual(terminal_payload["nutrition"]["dataSource"], "TestCache")
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_submit_job_reuses_client_idempotency_key(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        store = _IdempotencyRecordingJobStore()
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = store
+            try:
+                first = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={
+                        "allergy_info": "None",
+                        "locale": "ko-KR",
+                        "mode": "food",
+                        "idempotency_key": " duplicate-analysis-key ",
+                    },
+                    headers={
+                        "X-Device-Id": "job-idempotency-device",
+                        "X-Request-Id": "req-analysis-job-idempotency-1",
+                    },
+                )
+                second = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={
+                        "allergy_info": "None",
+                        "locale": "ko-KR",
+                        "mode": "food",
+                        "idempotency_key": "ignored-form-key",
+                    },
+                    headers={
+                        "Idempotency-Key": "duplicate-analysis-key",
+                        "X-Device-Id": "job-idempotency-device",
+                        "X-Request-Id": "req-analysis-job-idempotency-2",
+                    },
+                )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        first_payload = first.json()
+        second_payload = second.json()
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 202)
+        self.assertEqual(first_payload["job_id"], second_payload["job_id"])
+        self.assertFalse(first_payload["idempotency_reused"])
+        self.assertTrue(second_payload["idempotency_reused"])
+        self.assertEqual(store.create_attempt_count, 2)
+        self.assertEqual(store.created_job_count, 1)
+        self.assertEqual(len(store.records_by_key), 1)
+        self.assertEqual(next(iter(store.records_by_key))[1], "duplicate-analysis-key")
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_submit_job_empty_idempotency_key_preserves_new_job_behavior(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        store = _IdempotencyRecordingJobStore()
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = store
+            try:
+                first = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={
+                        "allergy_info": "None",
+                        "locale": "ko-KR",
+                        "mode": "food",
+                        "idempotency_key": " ",
+                    },
+                    headers={
+                        "Idempotency-Key": " ",
+                        "X-Request-Id": "req-analysis-job-empty-idempotency-1",
+                    },
+                )
+                second = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={
+                        "allergy_info": "None",
+                        "locale": "ko-KR",
+                        "mode": "food",
+                        "idempotency_key": "",
+                    },
+                    headers={
+                        "Idempotency-Key": "",
+                        "X-Request-Id": "req-analysis-job-empty-idempotency-2",
+                    },
+                )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        first_payload = first.json()
+        second_payload = second.json()
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 202)
+        self.assertNotEqual(first_payload["job_id"], second_payload["job_id"])
+        self.assertFalse(first_payload["idempotency_reused"])
+        self.assertFalse(second_payload["idempotency_reused"])
+        self.assertEqual(store.create_attempt_count, 2)
+        self.assertEqual(store.created_job_count, 2)
+        self.assertEqual(store.records_by_key, {})
 
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
@@ -441,13 +609,13 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertNotIn("_label_partial", payload)
         self.assertNotIn("_label_error_type", payload)
 
-    def test_submit_job_returns_503_when_store_create_job_fails(self) -> None:
+    def test_submit_job_returns_503_when_store_submit_job_fails(self) -> None:
         def raise_store_error(**_kwargs: object) -> None:
             raise AnalysisJobStoreError("db unavailable")
 
         with TestClient(app) as client:
             original_store = app.state.analysis_job_store
-            app.state.analysis_job_store = SimpleNamespace(create_job=raise_store_error)
+            app.state.analysis_job_store = SimpleNamespace(submit_job=raise_store_error)
             try:
                 with self.assertLogs("foodlens.api", level="ERROR") as captured:
                     response = client.post(

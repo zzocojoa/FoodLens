@@ -100,6 +100,17 @@ class LabelModelPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "GEMINI_LABEL_MODEL_NAME"):
                 FoodAnalyst()
 
+    def test_food_model_rejects_pro_primary(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch.dict(os.environ, {"GEMINI_MODEL_NAME": "gemini-2.5-pro"}, clear=False),
+        ):
+            mock_model_cls.return_value = object()
+            with self.assertRaisesRegex(ValueError, "GEMINI_MODEL_NAME"):
+                FoodAnalyst()
+            mock_model_cls.assert_not_called()
+
     def test_label_model_rejects_invalid_fallback_enabled_env(self):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),

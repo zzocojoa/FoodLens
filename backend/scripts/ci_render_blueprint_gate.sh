@@ -173,9 +173,12 @@ def main() -> None:
         "UPSTREAM_429_RETRY_AFTER_SECONDS",
         "GEMINI_RETRY_TIMEOUT_SECONDS",
         "GEMINI_RETRY_MAX_ATTEMPTS",
+        "GEMINI_MODEL_NAME",
         "GEMINI_LABEL_MODEL_NAME",
         "GEMINI_LABEL_FALLBACK_MODEL_NAME",
         "GEMINI_LABEL_FALLBACK_ENABLED",
+        "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR",
+        "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS",
         "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS",
         "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS",
         "GEMINI_LABEL_FLASH_THINKING_BUDGET",
@@ -183,8 +186,12 @@ def main() -> None:
         "GEMINI_LABEL_PRO_THINKING_BUDGET",
         "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
         "LABEL_COST_GUARDRAIL_ENABLED",
+        "LABEL_COST_GUARDRAIL_STORAGE_BACKEND",
+        "LABEL_COST_GUARDRAIL_USAGE_TABLE",
+        "LABEL_COST_GUARDRAIL_RESERVATION_TABLE",
         "LABEL_MONTHLY_BUDGET_USD",
         "LABEL_ESTIMATED_COST_USD_PER_REQUEST",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK",
         "LABEL_ESTIMATED_TOKENS_PER_REQUEST",
         "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE",
         "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE",
@@ -233,6 +240,7 @@ def main() -> None:
         "AUTH_EMAIL_SENDER_FROM",
         "AUTH_EMAIL_SENDER_NAME",
         "LABEL_ROLLOUT_ENABLED",
+        "LABEL_ROLLOUT_PERCENTAGE",
         "LABEL_ROLLOUT_STAGE",
         "LABEL_ROLLOUT_KPI_PARSE_SUCCESS",
         "LABEL_ROLLOUT_KPI_P95_MS",
@@ -305,21 +313,32 @@ def main() -> None:
     worker = service_map["foodlens-worker"]
     cron = service_map["foodlens-retention-cron"]
     fixed_env_expected_values = {
+        "GEMINI_MODEL_NAME": "gemini-2.5-flash",
         "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
-        "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-pro",
-        "GEMINI_LABEL_FALLBACK_ENABLED": "1",
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-flash-lite",
+        "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+        "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
+        "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "0",
         "GEMINI_LABEL_EXTRACT_MAX_OUTPUT_TOKENS": "1536",
         "GEMINI_LABEL_ASSESS_MAX_OUTPUT_TOKENS": "768",
         "GEMINI_LABEL_FLASH_THINKING_BUDGET": "0",
         "GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET": "0",
         "GEMINI_LABEL_PRO_THINKING_BUDGET": "128",
         "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "512",
+        "LABEL_COST_GUARDRAIL_STORAGE_BACKEND": "postgres",
+        "LABEL_COST_GUARDRAIL_USAGE_TABLE": "label_monthly_usage",
+        "LABEL_COST_GUARDRAIL_RESERVATION_TABLE": "label_monthly_usage_reservations",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK": "0.02",
+        "LABEL_ROLLOUT_PERCENTAGE": "100",
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
     }
     for service in (web, worker, cron):
         for key, value in fixed_env_expected_values.items():
             require_env_value(service["env_vars"], key, value)
+        for key in ("GEMINI_MODEL_NAME", "GEMINI_LABEL_MODEL_NAME", "GEMINI_LABEL_FALLBACK_MODEL_NAME"):
+            model_value = service["env_vars"][key]["value"]
+            require(model_value is not None and "pro" not in model_value.lower(), f"{service['name']} {key} must not use a Pro model")
         require(
             service["env_vars"]["GEMINI_LABEL_MODEL_NAME"]["value"] != service["env_vars"]["GEMINI_LABEL_FALLBACK_MODEL_NAME"]["value"],
             f"{service['name']} label primary and fallback models must differ",

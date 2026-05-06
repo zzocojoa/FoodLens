@@ -14,6 +14,7 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
             "status": "queued",
             "accepted_at": "2026-03-17T00:00:00Z",
             "poll_after_ms": 1000,
+            "idempotency_reused": False,
         }
 
         normalized = AnalysisJobSubmitResponseContract.model_validate(payload).model_dump(exclude_none=True)

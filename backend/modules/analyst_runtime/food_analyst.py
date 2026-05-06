@@ -171,6 +171,17 @@ def _is_pro_model_name(model_name: str) -> bool:
     return "-pro" in model_name.strip().lower()
 
 
+def _model_tier_name(model_name: str) -> str:
+    normalized_model_name = model_name.strip().lower()
+    if "-pro" in normalized_model_name:
+        return "pro"
+    if "flash-lite" in normalized_model_name:
+        return "flash-lite"
+    if "flash" in normalized_model_name:
+        return "flash"
+    return "unknown"
+
+
 def _is_flash_lite_model_name(model_name: str) -> bool:
     return "flash-lite" in model_name.strip().lower()
 
@@ -388,6 +399,8 @@ class FoodAnalyst:
     def __init__(self):
         self._configure_vertex_ai()
         self.model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+        if _is_pro_model_name(self.model_name):
+            raise ValueError("GEMINI_MODEL_NAME must not be a Pro model; Pro is allowed only for label fallback")
         self.label_model_name = _read_env_non_empty_string(
             "GEMINI_LABEL_MODEL_NAME",
             GEMINI_LABEL_MODEL_NAME_DEFAULT,
@@ -425,20 +438,24 @@ class FoodAnalyst:
             "GEMINI_LABEL_PRO_THINKING_BUDGET",
             GEMINI_LABEL_PRO_THINKING_BUDGET_DEFAULT,
         )
-        
-        # [DEBUG] Log model initialization details
-        print(f"[Model Debug] GEMINI_MODEL_NAME env: {os.getenv('GEMINI_MODEL_NAME')}")
-        print(f"[Model Debug] Using model: {self.model_name}")
-        print(f"[Model Debug] GEMINI_LABEL_MODEL_NAME env: {os.getenv('GEMINI_LABEL_MODEL_NAME')}")
-        print(f"[Model Debug] Using label model: {self.label_model_name}")
-        print(f"[Model Debug] GEMINI_LABEL_FALLBACK_MODEL_NAME env: {os.getenv('GEMINI_LABEL_FALLBACK_MODEL_NAME')}")
-        print(f"[Model Debug] Label fallback enabled: {self.label_fallback_enabled}")
+        logger.info(
+            "[ModelDebug] model configuration",
+            extra={
+                "gemini_model_name_present": os.getenv("GEMINI_MODEL_NAME") is not None,
+                "gemini_model_tier": _model_tier_name(self.model_name),
+                "gemini_label_model_name_present": os.getenv("GEMINI_LABEL_MODEL_NAME") is not None,
+                "gemini_label_model_tier": _model_tier_name(self.label_model_name),
+                "gemini_label_fallback_model_name_present": os.getenv("GEMINI_LABEL_FALLBACK_MODEL_NAME") is not None,
+                "gemini_label_fallback_model_tier": _model_tier_name(self.label_fallback_model_name),
+                "gemini_label_fallback_enabled": self.label_fallback_enabled,
+            },
+        )
         
         try:
             self.model = GenerativeModel(self.model_name)
-            print(f"[Model Debug] ✓ GenerativeModel created successfully")
+            logger.info("[ModelDebug] primary GenerativeModel created")
         except Exception as e:
-            print(f"[Model Debug] ✗ GenerativeModel creation FAILED: {e}")
+            logger.exception("[ModelDebug] primary GenerativeModel creation failed")
             traceback.print_exc()
             raise
 

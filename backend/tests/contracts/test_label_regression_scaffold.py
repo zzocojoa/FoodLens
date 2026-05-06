@@ -17,6 +17,7 @@ MANIFEST_PATH = (
 CANONICAL_ALLERGENS = {"milk", "egg", "peanut", "tree nut", "wheat", "soy", "fish", "shellfish", "sesame"}
 PROVENANCE_ASSISTANCE_VALUES = {"none", "ai_visual_review"}
 PROVENANCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
+REQUIRED_EXPECTED_SAFETY_STATUSES: set[str] = {"SAFE", "CAUTION", "DANGER"}
 
 
 class LabelRegressionScaffoldTests(unittest.TestCase):
@@ -29,6 +30,19 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
         samples = manifest.get("samples", [])
         active = [sample for sample in samples if sample.get("status") == "active"]
         self.assertGreaterEqual(len(active), 20, "Label regression set must include at least 20 active samples.")
+
+    def test_manifest_active_samples_cover_required_safety_statuses(self) -> None:
+        manifest = self._load_manifest()
+        samples = manifest.get("samples", [])
+        active = [sample for sample in samples if sample.get("status") == "active"]
+        expected_statuses: set[str] = {str(sample.get("expected_safetyStatus", "")).strip() for sample in active}
+        missing_statuses: list[str] = sorted(REQUIRED_EXPECTED_SAFETY_STATUSES - expected_statuses)
+
+        self.assertEqual(
+            [],
+            missing_statuses,
+            "Active label regression manifest must include SAFE, CAUTION, and DANGER expected_safetyStatus values.",
+        )
 
     def test_manifest_sample_shape_and_uniqueness(self):
         manifest = self._load_manifest()
@@ -47,6 +61,11 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
             self.assertTrue(str(sample["golden_json_path"]).strip(), f"samples[{idx}].golden_json_path must be non-empty")
             self.assertTrue(str(sample["image_path"]).strip(), f"samples[{idx}].image_path must be non-empty")
             self.assertIn(sample["status"], {"scaffold", "active"}, f"samples[{idx}].status invalid")
+            self.assertIn(
+                sample["expected_safetyStatus"],
+                REQUIRED_EXPECTED_SAFETY_STATUSES,
+                f"samples[{idx}].expected_safetyStatus invalid",
+            )
 
     def test_manifest_active_samples_have_human_label_shape(self):
         manifest = self._load_manifest()
@@ -117,7 +136,7 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
         if failures:
             self.fail(f"Human label manifest shape mismatches: {json.dumps(failures, ensure_ascii=False)}")
 
-    def test_label_regression_20_source_images_are_decodable(self):
+    def test_label_regression_active_source_images_are_decodable(self):
         manifest = self._load_manifest()
         samples = [sample for sample in manifest.get("samples", []) if sample.get("status") == "active"]
         failures: list[dict] = []
@@ -175,7 +194,7 @@ class LabelRegressionScaffoldTests(unittest.TestCase):
         if failures:
             self.fail(f"Label image fixture privacy metadata found: {json.dumps(failures, ensure_ascii=False)}")
 
-    def test_label_regression_20_golden_samples(self):
+    def test_label_regression_active_golden_samples(self):
         """
         Flaky tolerance rules:
         - ingredient count is lower-bound only: actual >= min_ingredients_count

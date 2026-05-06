@@ -23,7 +23,6 @@ from backend.modules.server_bootstrap import (
     decode_upload_to_image,
     initialize_services,
     load_environment,
-    log_environment_debug,
 )
 from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
 from backend.modules.analyst_core.response_utils import get_safe_fallback_response
@@ -31,6 +30,7 @@ from backend.modules.ops.cost_guardrail import CostGuardrailAction
 from backend.modules.ops.cost_guardrail import (
     CostGuardrailService,
     InMemoryMonthlyUsageStorage,
+    PostgresMonthlyUsageStorage,
 )
 from backend.modules.ops.data_retention import (
     CallbackRetentionCleanupAdapter,
@@ -104,6 +104,7 @@ from backend.modules.analysis_jobs import (
     NutritionEnrichmentService,
     serialize_job_status_response,
     serialize_job_submit_response,
+    submit_analysis_job as submit_analysis_job_record,
 )
 from backend.modules.auth.service import AuthServiceError, InMemoryAuthSessionService
 from backend.modules.media.service import (
@@ -113,8 +114,45 @@ from backend.modules.media.service import (
 )
 from backend.modules.nutrition import lookup_nutrition
 
+
+def _startup_model_tier(model_name: str | None) -> str:
+    normalized_model_name = (model_name or "").strip().lower()
+    if "-pro" in normalized_model_name:
+        return "pro"
+    if "flash-lite" in normalized_model_name:
+        return "flash-lite"
+    if "flash" in normalized_model_name:
+        return "flash"
+    if normalized_model_name:
+        return "unknown"
+    return "unset"
+
+
+def _is_pro_model_tier(model_name: Any) -> bool:
+    if not isinstance(model_name, str):
+        return False
+    return _startup_model_tier(model_name) == "pro"
+
+
+def _log_safe_environment_debug() -> None:
+    print("--- [Server Debug Environment] ---")
+    print(f"PORT: {'[SET]' if os.getenv('PORT') else '[DEFAULT]'}")
+    print(
+        "GEMINI_MODEL_NAME: "
+        f"{'[SET]' if os.getenv('GEMINI_MODEL_NAME') else '[DEFAULT]'} "
+        f"tier={_startup_model_tier(os.getenv('GEMINI_MODEL_NAME', 'gemini-2.0-flash'))}"
+    )
+    print(
+        "GEMINI_LABEL_MODEL_NAME: "
+        f"{'[SET]' if os.getenv('GEMINI_LABEL_MODEL_NAME') else '[DEFAULT]'} "
+        f"tier={_startup_model_tier(os.getenv('GEMINI_LABEL_MODEL_NAME', 'gemini-2.5-flash'))}"
+    )
+    print(f"KOREAN_FDA_API_KEY: {'[SET]' if os.getenv('KOREAN_FDA_API_KEY') else '[MISSING]'}")
+    print(f"GCP_SERVICE_ACCOUNT_JSON: {'[SET]' if os.getenv('GCP_SERVICE_ACCOUNT_JSON') else '[MISSING]'}")
+
+
 load_environment()
-log_environment_debug()
+_log_safe_environment_debug()
 
 app = FastAPI()
 _cors_config = build_cors_config_from_env()
@@ -124,7 +162,7 @@ app.add_middleware(
     allow_origin_regex=_cors_config.allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-Id", "X-Device-Id"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-Id", "X-Device-Id"],
     expose_headers=[
         "Retry-After",
         "X-Request-Id",
@@ -148,6 +186,22 @@ def _is_openapi_export_mode() -> bool:
 
 def _is_label_cost_guardrail_enabled() -> bool:
     return os.environ.get("LABEL_COST_GUARDRAIL_ENABLED", "0").strip() == "1"
+
+
+def _build_label_cost_guardrail_storage() -> InMemoryMonthlyUsageStorage | PostgresMonthlyUsageStorage:
+    storage_backend = _env_str("LABEL_COST_GUARDRAIL_STORAGE_BACKEND", "memory").lower()
+    if storage_backend == "postgres":
+        return PostgresMonthlyUsageStorage(
+            database_url=_env_str("DATABASE_URL", ""),
+            usage_table_name=_env_str("LABEL_COST_GUARDRAIL_USAGE_TABLE", "label_monthly_usage"),
+            reservation_table_name=_env_str(
+                "LABEL_COST_GUARDRAIL_RESERVATION_TABLE",
+                "label_monthly_usage_reservations",
+            ),
+        )
+    if storage_backend == "memory":
+        return InMemoryMonthlyUsageStorage()
+    raise RuntimeError(f"Unsupported LABEL_COST_GUARDRAIL_STORAGE_BACKEND={storage_backend}")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -175,6 +229,212 @@ def _env_str(name: str, default: str) -> str:
     if raw is None:
         return default
     return raw.strip() or default
+
+
+def _call_with_supported_kwargs(callable_value: Callable[..., Any], kwargs: dict[str, Any]) -> Any:
+    parameters = inspect.signature(callable_value).parameters
+    supported_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key in parameters
+    }
+    missing_required = [
+        key
+        for key, parameter in parameters.items()
+        if parameter.default is inspect.Parameter.empty
+        and parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        and key not in supported_kwargs
+    ]
+    if missing_required:
+        raise RuntimeError(f"Unsupported callable signature missing parameters: {missing_required}")
+    return callable_value(**supported_kwargs)
+
+
+def _normalize_idempotency_key(header_value: str | None, form_value: str | None) -> str | None:
+    normalized_header_value = _normalize_optional_header_value(header_value)
+    if normalized_header_value is not None:
+        return normalized_header_value
+    return _normalize_optional_header_value(form_value)
+
+
+def _resolve_analysis_job_idempotency_user_id(request: Request, idempotency_key: str | None) -> str | None:
+    if idempotency_key is None:
+        return None
+    subject, user_id = _resolve_rate_limit_subject(request)
+    return user_id or subject
+
+
+def _normalize_optional_header_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized_value = value.strip()
+    if not normalized_value:
+        return None
+    return normalized_value
+
+
+def _extract_record_field(record: Any, field_name: str) -> Any:
+    if isinstance(record, dict):
+        return record.get(field_name)
+    return getattr(record, field_name, None)
+
+
+def _build_analysis_job_accepted_record(job_payload: Any, create_job_result: Any) -> dict[str, Any]:
+    accepted_record: dict[str, Any] = {
+        "job_id": job_payload.job_id,
+        "request_id": job_payload.request_id,
+        "status": "queued",
+        "accepted_at": job_payload.accepted_at,
+        "poll_after_ms": job_payload.poll_after_ms,
+    }
+    for field_name in ("job_id", "request_id", "status", "accepted_at", "poll_after_ms"):
+        field_value = _extract_record_field(create_job_result, field_name)
+        if field_value is not None:
+            accepted_record[field_name] = field_value
+    idempotency_reused = _extract_record_field(create_job_result, "idempotency_reused")
+    if idempotency_reused is not None:
+        accepted_record["idempotency_reused"] = bool(idempotency_reused)
+    return accepted_record
+
+
+def _serialize_analysis_job_submit_response(record: dict[str, Any]) -> dict[str, Any]:
+    payload = serialize_job_submit_response(record=record)
+    if "idempotency_reused" in record and "idempotency_reused" not in payload:
+        payload["idempotency_reused"] = bool(record["idempotency_reused"])
+    return payload
+
+
+def _label_cost_decision(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value.get("decision", value)
+    return getattr(value, "decision", value)
+
+
+def _label_cost_action(value: Any) -> Any:
+    value = _label_cost_decision(value)
+    if isinstance(value, dict):
+        return value.get("action")
+    return getattr(value, "action", None)
+
+
+def _label_cost_ratio(value: Any) -> float:
+    value = _label_cost_decision(value)
+    raw_ratio = value.get("ratio") if isinstance(value, dict) else getattr(value, "ratio", 0.0)
+    if isinstance(raw_ratio, int | float):
+        return float(raw_ratio)
+    return 0.0
+
+
+def _label_cost_projected_total(value: Any) -> float:
+    value = _label_cost_decision(value)
+    raw_total = (
+        value.get("projected_total_cost_usd")
+        if isinstance(value, dict)
+        else getattr(value, "projected_total_cost_usd", 0.0)
+    )
+    if isinstance(raw_total, int | float):
+        return float(raw_total)
+    return 0.0
+
+
+def _reserve_label_cost(
+    cost_guardrail: Any,
+    *,
+    reservation_key: str,
+    estimated_cost_usd: float,
+    estimated_tokens: int,
+) -> Any:
+    reserve = getattr(cost_guardrail, "reserve", None)
+    if callable(reserve):
+        return _call_with_supported_kwargs(
+            reserve,
+            {
+                "reservation_key": reservation_key,
+                "projected_cost_usd": estimated_cost_usd,
+                "estimated_cost_usd": estimated_cost_usd,
+                "cost_usd": estimated_cost_usd,
+                "projected_tokens": estimated_tokens,
+                "estimated_tokens": estimated_tokens,
+                "tokens": estimated_tokens,
+            },
+        )
+    evaluate = getattr(cost_guardrail, "evaluate", None)
+    if callable(evaluate):
+        return evaluate(projected_cost_usd=estimated_cost_usd)
+    raise RuntimeError("Label cost guardrail must provide reserve() or evaluate()")
+
+
+def _reconcile_label_cost(
+    cost_guardrail: Any,
+    *,
+    reservation: Any,
+    chargeable: bool,
+    cost_usd: float,
+    tokens: int,
+    provider_total_tokens: int | None,
+    provider_thought_tokens: int | None,
+    fallback_used: bool,
+    truncated: bool,
+) -> Any:
+    reconcile = getattr(cost_guardrail, "reconcile", None)
+    if callable(reconcile):
+        reservation_key = None
+        if isinstance(reservation, dict):
+            reservation_key = reservation.get("reservation_key")
+            accepted = reservation.get("accepted", True)
+        else:
+            reservation_key = getattr(reservation, "reservation_key", None)
+            accepted = getattr(reservation, "accepted", True)
+        if not reservation_key or accepted is False:
+            return None
+        return _call_with_supported_kwargs(
+            reconcile,
+            {
+                "reservation_key": reservation_key,
+                "reservation": reservation,
+                "chargeable": chargeable,
+                "release": not chargeable,
+                "cost_usd": cost_usd,
+                "actual_cost_usd": cost_usd,
+                "tokens": tokens,
+                "actual_tokens": tokens,
+                "provider_total_tokens": provider_total_tokens,
+                "provider_thought_tokens": provider_thought_tokens,
+                "fallback_used": fallback_used,
+                "truncated": truncated,
+            },
+        )
+    if chargeable:
+        return cost_guardrail.record(
+            cost_usd=cost_usd,
+            tokens=tokens,
+            provider_total_tokens=provider_total_tokens,
+            provider_thought_tokens=provider_thought_tokens,
+            fallback_used=fallback_used,
+            truncated=truncated,
+        )
+    return None
+
+
+def _build_scoped_rate_limit_http_exception(
+    *,
+    request_id: str,
+    retry_after_seconds: int,
+    code: str,
+    message: str,
+    retry_scope: str,
+    retryable_by_client: bool,
+) -> HTTPException:
+    error = build_rate_limit_http_exception(
+        request_id=request_id,
+        retry_after_seconds=retry_after_seconds,
+        code=code,
+        message=message,
+    )
+    if isinstance(error.detail, dict):
+        error.detail["retry_scope"] = retry_scope
+        error.detail["retryable_by_client"] = retryable_by_client
+    return error
 
 
 def _safe_label_int(value: Any) -> int | None:
@@ -690,13 +950,15 @@ def _initialize_core_runtime_services() -> None:
 
 
 def _initialize_label_policy_controls() -> None:
+    label_cost_guardrail_storage = _build_label_cost_guardrail_storage()
     app.state.label_cost_guardrail = CostGuardrailService(
-        InMemoryMonthlyUsageStorage(),
+        label_cost_guardrail_storage,
         monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
     )
     logger.info(
-        "[LabelCostGuardrail] enabled=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
+        "[LabelCostGuardrail] enabled=%s storage=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
         _is_label_cost_guardrail_enabled(),
+        type(label_cost_guardrail_storage).__name__,
         _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
         0.70,
         0.85,
@@ -3106,11 +3368,13 @@ def _apply_analysis_rate_limit(*, request: Request, endpoint: str, request_id: s
         user_id or "unknown",
         decision.retry_after_seconds,
     )
-    raise build_rate_limit_http_exception(
+    raise _build_scoped_rate_limit_http_exception(
         request_id=request_id,
         retry_after_seconds=decision.retry_after_seconds,
         code="API_RATE_LIMITED",
         message="Too many requests. Please retry shortly.",
+        retry_scope=endpoint,
+        retryable_by_client=True,
     )
 
 
@@ -3130,11 +3394,13 @@ def _try_acquire_analysis_slot(*, endpoint: str, request_id: str) -> bool:
         limiter.inflight_count(endpoint=endpoint),
         retry_after_seconds,
     )
-    raise build_rate_limit_http_exception(
+    raise _build_scoped_rate_limit_http_exception(
         request_id=request_id,
         retry_after_seconds=retry_after_seconds,
         code="API_RATE_LIMITED",
         message="Server is busy. Please retry shortly.",
+        retry_scope=endpoint,
+        retryable_by_client=True,
     )
 
 
@@ -4316,8 +4582,13 @@ async def submit_analysis_job(
     iso_country_code: str = Form("US"),
     locale: str | None = Form(None),
     mode: str = Form("food"),
+    idempotency_key: str | None = Form(None),
 ):
     request_id = _request_id(request)
+    normalized_idempotency_key = _normalize_idempotency_key(
+        header_value=request.headers.get("Idempotency-Key"),
+        form_value=idempotency_key,
+    )
     normalized_mode = (mode or "").strip().lower()
     if normalized_mode not in {"food", "label", "smart"}:
         raise HTTPException(
@@ -4336,32 +4607,32 @@ async def submit_analysis_job(
 
     try:
         contents, content_type = await _read_analysis_job_upload(file=file, request_id=request_id)
-        job_payload = create_analysis_job_payload(
-            request_id=request_id,
-            mode=normalized_mode,
-            allergy_info=allergy_info,
-            iso_country_code=iso_country_code,
-            locale=locale,
-            content_type=content_type,
-            image_bytes=contents,
-            image_sha256=hashlib.sha256(contents).hexdigest(),
-            poll_after_ms=_analysis_job_poll_after_ms(),
+        job_payload = _call_with_supported_kwargs(
+            create_analysis_job_payload,
+            {
+                "request_id": request_id,
+                "mode": normalized_mode,
+                "allergy_info": allergy_info,
+                "iso_country_code": iso_country_code,
+                "locale": locale,
+                "content_type": content_type,
+                "image_bytes": contents,
+                "image_sha256": hashlib.sha256(contents).hexdigest(),
+                "poll_after_ms": _analysis_job_poll_after_ms(),
+            },
         )
         store = _analysis_job_store()
+        idempotency_user_id = _resolve_analysis_job_idempotency_user_id(
+            request=request,
+            idempotency_key=normalized_idempotency_key,
+        )
         try:
-            await run_in_threadpool(
-                store.create_job,
-                job_id=job_payload.job_id,
-                request_id=job_payload.request_id,
-                mode=job_payload.mode,
-                allergy_info=job_payload.allergy_info,
-                iso_country_code=job_payload.iso_country_code,
-                locale=job_payload.locale,
-                content_type=job_payload.content_type,
-                image_base64=job_payload.image_base64,
-                image_sha256=job_payload.image_sha256,
-                accepted_at=job_payload.accepted_at,
-                poll_after_ms=job_payload.poll_after_ms,
+            create_job_result = await run_in_threadpool(
+                submit_analysis_job_record,
+                store=store,
+                payload=job_payload,
+                user_id=idempotency_user_id,
+                idempotency_key=normalized_idempotency_key,
             )
         except AnalysisJobStoreError as error:
             logger.exception(
@@ -4373,24 +4644,23 @@ async def submit_analysis_job(
                 str(error),
             )
             raise _analysis_job_store_http_exception(request_id=request_id, action="submit") from error
-        accepted_record = {
-            "job_id": job_payload.job_id,
-            "request_id": job_payload.request_id,
-            "status": "queued",
-            "accepted_at": job_payload.accepted_at,
-            "poll_after_ms": job_payload.poll_after_ms,
-        }
+        accepted_record = _build_analysis_job_accepted_record(
+            job_payload=job_payload,
+            create_job_result=create_job_result,
+        )
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         logger.info(
             "[AnalysisJob] accepted request_id=%s job_id=%s mode=%s bytes=%d latency_ms=%d",
             request_id,
-            job_payload.job_id,
+            accepted_record["job_id"],
             normalized_mode,
             len(contents),
             elapsed_ms,
         )
-        response.headers["Retry-After"] = str(max(1, job_payload.poll_after_ms // 1000))
-        return serialize_job_submit_response(record=accepted_record)
+        submit_payload = _serialize_analysis_job_submit_response(record=accepted_record)
+        retry_after = str(max(1, int(submit_payload["poll_after_ms"]) // 1000))
+        response.headers["Retry-After"] = retry_after
+        return JSONResponse(status_code=202, content=submit_payload, headers={"Retry-After": retry_after})
     finally:
         if slot_acquired:
             _release_analysis_slot(endpoint="/analyze/jobs")
@@ -4573,26 +4843,42 @@ async def _analyze_label_image_with_policy(
 
     estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
     estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+    cost_reservation: Any = None
     if _is_label_cost_guardrail_enabled() and cost_guardrail:
-        decision = cost_guardrail.evaluate(projected_cost_usd=estimated_cost)
+        reservation_estimated_cost = estimated_cost
+        if bool(getattr(analyst, "label_fallback_enabled", False)) and _is_pro_model_tier(
+            getattr(analyst, "label_fallback_model_name", None)
+        ):
+            reservation_estimated_cost = max(
+                reservation_estimated_cost,
+                _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK", estimated_cost * 6.0),
+            )
+        decision = _reserve_label_cost(
+            cost_guardrail,
+            reservation_key=f"{request_id}:label-analysis",
+            estimated_cost_usd=reservation_estimated_cost,
+            estimated_tokens=estimated_tokens,
+        )
+        cost_reservation = decision
+        decision_action = _label_cost_action(decision)
         logger.info(
             "[Server] Label cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
             request_id,
-            decision.action,
-            decision.ratio,
-            decision.projected_total_cost_usd,
+            decision_action,
+            _label_cost_ratio(decision),
+            _label_cost_projected_total(decision),
         )
-        if decision.action == CostGuardrailAction.WARN:
+        if decision_action == CostGuardrailAction.WARN:
             logger.warning(
                 "[Server] Label cost guardrail warn request_id=%s ratio=%.3f threshold=0.70",
                 request_id,
-                decision.ratio,
+                _label_cost_ratio(decision),
             )
-        elif decision.action == CostGuardrailAction.DEGRADE:
+        elif decision_action == CostGuardrailAction.DEGRADE:
             assess_enabled = False
             estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE", 0.012)
             estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE", 900)
-        elif decision.action == CostGuardrailAction.FALLBACK:
+        elif decision_action == CostGuardrailAction.FALLBACK:
             total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
             fallback = get_safe_fallback_response(
                 "이번 달 라벨 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
@@ -4618,6 +4904,17 @@ async def _analyze_label_image_with_policy(
                 0,
                 0,
                 total_elapsed_ms,
+            )
+            _reconcile_label_cost(
+                cost_guardrail,
+                reservation=cost_reservation,
+                chargeable=False,
+                cost_usd=0.0,
+                tokens=0,
+                provider_total_tokens=None,
+                provider_thought_tokens=None,
+                fallback_used=True,
+                truncated=False,
             )
             return fallback
 
@@ -4655,6 +4952,11 @@ async def _analyze_label_image_with_policy(
     label_usage_thought_tokens = label_observability["usage_thought_tokens"]
     label_recorded_tokens = label_usage_total_tokens if isinstance(label_usage_total_tokens, int) else estimated_tokens
     label_usage_source = "provider_usage_metadata" if isinstance(label_usage_total_tokens, int) else "estimated"
+    if bool(label_observability["fallback_used"]) and _is_pro_model_tier(label_observability["used_model"]):
+        estimated_cost = max(
+            estimated_cost,
+            _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK", estimated_cost * 6.0),
+        )
     result["label_diagnostics"] = _build_public_label_diagnostics(
         label_observability,
         label_error_type,
@@ -4718,11 +5020,25 @@ async def _analyze_label_image_with_policy(
             total_elapsed_ms,
         )
         if raise_on_quota_429:
-            raise build_rate_limit_http_exception(
+            if _is_label_cost_guardrail_enabled() and cost_guardrail:
+                _reconcile_label_cost(
+                    cost_guardrail,
+                    reservation=cost_reservation,
+                    chargeable=False,
+                    cost_usd=0.0,
+                    tokens=0,
+                    provider_total_tokens=label_usage_total_tokens,
+                    provider_thought_tokens=label_usage_thought_tokens,
+                    fallback_used=bool(label_observability["fallback_used"]),
+                    truncated=bool(label_observability["truncated"]),
+                )
+            raise _build_scoped_rate_limit_http_exception(
                 request_id=request_id,
                 retry_after_seconds=retry_after_seconds,
                 code="UPSTREAM_RATE_LIMITED",
                 message="Label analysis is temporarily rate-limited. Please retry shortly.",
+                retry_scope="provider:label",
+                retryable_by_client=False,
             )
 
     logger.info(
@@ -4736,7 +5052,10 @@ async def _analyze_label_image_with_policy(
         total_elapsed_ms,
     )
     if _is_label_cost_guardrail_enabled() and cost_guardrail and label_chargeable:
-        usage = cost_guardrail.record(
+        usage = _reconcile_label_cost(
+            cost_guardrail,
+            reservation=cost_reservation,
+            chargeable=True,
             cost_usd=estimated_cost,
             tokens=label_recorded_tokens,
             provider_total_tokens=label_usage_total_tokens,
@@ -4744,24 +5063,36 @@ async def _analyze_label_image_with_policy(
             fallback_used=bool(label_observability["fallback_used"]),
             truncated=bool(label_observability["truncated"]),
         )
-        logger.info(
-            "[Server] Label cost usage updated",
-            extra={
-                "request_id": request_id,
-                "month": usage.period_key,
-                "request_cost_usd": estimated_cost,
-                "request_tokens": label_recorded_tokens,
-                "request_tokens_source": label_usage_source,
-                "total_cost_usd": usage.total_cost_usd,
-                "total_tokens": usage.total_tokens,
-                "request_count": usage.request_count,
-                "provider_reported_tokens": usage.provider_reported_tokens,
-                "provider_reported_thought_tokens": usage.provider_reported_thought_tokens,
-                "fallback_count": usage.fallback_count,
-                "truncated_count": usage.truncated_count,
-            },
-        )
+        if usage is not None and hasattr(usage, "period_key"):
+            logger.info(
+                "[Server] Label cost usage updated",
+                extra={
+                    "request_id": request_id,
+                    "month": usage.period_key,
+                    "request_cost_usd": estimated_cost,
+                    "request_tokens": label_recorded_tokens,
+                    "request_tokens_source": label_usage_source,
+                    "total_cost_usd": usage.total_cost_usd,
+                    "total_tokens": usage.total_tokens,
+                    "request_count": usage.request_count,
+                    "provider_reported_tokens": usage.provider_reported_tokens,
+                    "provider_reported_thought_tokens": usage.provider_reported_thought_tokens,
+                    "fallback_count": usage.fallback_count,
+                    "truncated_count": usage.truncated_count,
+                },
+            )
     elif _is_label_cost_guardrail_enabled() and cost_guardrail:
+        _reconcile_label_cost(
+            cost_guardrail,
+            reservation=cost_reservation,
+            chargeable=False,
+            cost_usd=0.0,
+            tokens=0,
+            provider_total_tokens=label_usage_total_tokens,
+            provider_thought_tokens=label_usage_thought_tokens,
+            fallback_used=bool(label_observability["fallback_used"]),
+            truncated=bool(label_observability["truncated"]),
+        )
         logger.info(
             "[Server] Label cost usage skipped request_id=%s reason=non_chargeable_result",
             request_id,
@@ -4973,11 +5304,13 @@ async def lookup_barcode(
                         source_lookup_elapsed_ms,
                         elapsed_ms,
                     )
-                    raise build_rate_limit_http_exception(
+                    raise _build_scoped_rate_limit_http_exception(
                         request_id=request_id,
                         retry_after_seconds=retry_after_seconds,
                         code="UPSTREAM_RATE_LIMITED",
                         message="Barcode upstream is rate limited. Please retry shortly.",
+                        retry_scope="provider:barcode",
+                        retryable_by_client=False,
                     )
                 logger.info(
                     "[Server] Lookup complete request_id=%s elapsed_ms=%d found=false",

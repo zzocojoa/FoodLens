@@ -192,6 +192,62 @@ class CostGuardrailTests(unittest.TestCase):
         decision_fallback = service.evaluate(projected_cost_usd=0.02)
         self.assertEqual(decision_fallback.action, CostGuardrailAction.FALLBACK)
 
+    def test_reserve_is_idempotent_and_counts_active_reservations(self):
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        first = service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+        duplicate = service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+        blocked = service.reserve(reservation_key="req-2", projected_cost_usd=0.50)
+
+        self.assertTrue(first.accepted)
+        self.assertTrue(duplicate.accepted)
+        self.assertFalse(blocked.accepted)
+        usage = storage.get(first.decision.period_key)
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.60)
+
+    def test_reconcile_confirms_provider_usage_and_releases_reservation(self):
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        reservation = service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+        usage = service.reconcile(
+            reservation_key="req-1",
+            cost_usd=0.42,
+            tokens=123,
+            provider_total_tokens=140,
+            provider_thought_tokens=17,
+            fallback_used=True,
+            truncated=True,
+        )
+
+        self.assertTrue(reservation.accepted)
+        self.assertEqual(usage.total_cost_usd, 0.42)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 123)
+        self.assertEqual(usage.provider_reported_tokens, 140)
+        self.assertEqual(usage.provider_reported_thought_tokens, 17)
+        self.assertEqual(usage.fallback_count, 1)
+        self.assertEqual(usage.truncated_count, 1)
+
+    def test_reconcile_non_chargeable_releases_without_confirmed_cost(self):
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        service.reserve(reservation_key="req-1", projected_cost_usd=0.60)
+        usage = service.reconcile(
+            reservation_key="req-1",
+            cost_usd=0.60,
+            tokens=123,
+            chargeable=False,
+        )
+
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 0)
+        self.assertEqual(usage.request_count, 0)
+
     def test_label_endpoint_degrades_on_85_percent(self):
         spy = _SpyAnalyst()
         storage = InMemoryMonthlyUsageStorage()
@@ -350,6 +406,7 @@ class CostGuardrailTests(unittest.TestCase):
                     **_TEST_RUNTIME_ENV,
                     "LABEL_COST_GUARDRAIL_ENABLED": "1",
                     "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK": "0.12",
                     "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
                 },
                 clear=False,
@@ -377,7 +434,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertTrue(payload["label_diagnostics"]["fallback_used"])
         self.assertTrue(payload["label_diagnostics"]["truncated"])
         self.assertEqual(payload["label_diagnostics"]["usage_source"], "provider_usage_metadata")
-        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.12)
         self.assertEqual(usage.total_tokens, 133)
         self.assertEqual(usage.provider_reported_tokens, 133)
         self.assertEqual(usage.provider_reported_thought_tokens, 11)

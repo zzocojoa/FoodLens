@@ -29,6 +29,7 @@ class AnalysisJobSubmitResponseContract(BaseModel):
     status: AnalysisJobStatus
     accepted_at: str
     poll_after_ms: int
+    idempotency_reused: bool
 
 
 class AnalysisJobStatusResponseContract(BaseModel):
