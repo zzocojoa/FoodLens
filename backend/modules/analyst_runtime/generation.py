@@ -118,10 +118,18 @@ def _invoke_generation_with_retry(
     raise RuntimeError("Generation failed without explicit error")
 
 
-def _mark_generation_response_model(response: Any, model_name: str, provider_call_count: int) -> Any:
+def _mark_generation_response_model(
+    response: Any,
+    model_name: str,
+    provider_call_count: int,
+    fallback_used: bool,
+    fallback_reason: str | None,
+) -> Any:
     try:
         setattr(response, "_foodlens_used_model", model_name)
         setattr(response, "_foodlens_provider_call_count", provider_call_count)
+        setattr(response, "_foodlens_fallback_used", fallback_used)
+        setattr(response, "_foodlens_fallback_reason", fallback_reason)
     except Exception as error:
         print(f"[Generation Metadata] used_model annotation failed error_type={type(error).__name__}")
     return response
@@ -194,6 +202,7 @@ def generate_with_retry_and_fallback(
     retry_stats: dict[str, Any],
     max_attempts: int | None = None,
     fallback_enabled: bool = True,
+    fallback_generation_config: dict[str, Any] | None = None,
 ) -> Any:
     jitter_s = random.uniform(0, JITTER_MAX_MS) / JITTER_DIVISOR
     time.sleep(jitter_s)
@@ -213,6 +222,11 @@ def generate_with_retry_and_fallback(
     print(f"[API Debug] Model name: {primary_model_name}")
     print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
     print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
+    selected_fallback_generation_config = (
+        generation_config
+        if fallback_generation_config is None
+        else fallback_generation_config
+    )
     if cooldown_active:
         if not fallback_enabled:
             raise ResourceExhausted("Primary model is in 429 cooldown and fallback is disabled.")
@@ -224,7 +238,7 @@ def generate_with_retry_and_fallback(
         response = _invoke_generation_with_retry(
             backup_model,
             contents,
-            generation_config,
+            selected_fallback_generation_config,
             safety_settings,
             retry_stats,
             1,
@@ -232,7 +246,13 @@ def generate_with_retry_and_fallback(
         )
         retry_stats["last_used_model"] = fallback_model_name
         print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")
-        return _mark_generation_response_model(response, fallback_model_name, provider_attempt_counter["count"])
+        return _mark_generation_response_model(
+            response,
+            fallback_model_name,
+            provider_attempt_counter["count"],
+            True,
+            "primary_429_cooldown",
+        )
 
     with semaphore:
         try:
@@ -248,7 +268,13 @@ def generate_with_retry_and_fallback(
             retry_stats["last_used_model"] = primary_model_name
             retry_stats["consecutive_429"] = 0
             print("[API Debug] ✓ Primary model response received")
-            return _mark_generation_response_model(response, primary_model_name, provider_attempt_counter["count"])
+            return _mark_generation_response_model(
+                response,
+                primary_model_name,
+                provider_attempt_counter["count"],
+                False,
+                None,
+            )
         except Exception as primary_error:
             if not fallback_enabled:
                 raise
@@ -260,7 +286,7 @@ def generate_with_retry_and_fallback(
             response = _invoke_generation_with_retry(
                 backup_model,
                 contents,
-                generation_config,
+                selected_fallback_generation_config,
                 safety_settings,
                 retry_stats,
                 1,
@@ -268,4 +294,10 @@ def generate_with_retry_and_fallback(
             )
             retry_stats["last_used_model"] = fallback_model_name
             print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")
-            return _mark_generation_response_model(response, fallback_model_name, provider_attempt_counter["count"])
+            return _mark_generation_response_model(
+                response,
+                fallback_model_name,
+                provider_attempt_counter["count"],
+                True,
+                "primary_fallback",
+            )

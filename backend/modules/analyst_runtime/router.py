@@ -26,6 +26,18 @@ FoodAnalysisRunner = Callable[
 ]
 
 
+def _build_smart_route_food_result(result: Dict[str, Any], category: str) -> Dict[str, Any]:
+    routed_result = dict(result)
+    analysis_diagnostics = routed_result.get("analysis_diagnostics")
+    if isinstance(analysis_diagnostics, dict):
+        routed_result["analysis_diagnostics"] = {
+            **analysis_diagnostics,
+            "origin": "smart_route",
+        }
+    routed_result["router_category"] = category
+    return routed_result
+
+
 class SmartRouter:
     """
     Intelligent router that classifies an input image (mostly from Gallery)
@@ -106,8 +118,7 @@ class SmartRouter:
                     total_started_at if total_started_at is not None else route_started_at,
                     preprocess_elapsed_ms if preprocess_elapsed_ms is not None else 0,
                 )
-                result["router_category"] = category
-                return result
+                return _build_smart_route_food_result(result=result, category=category)
 
             elif category == "NUTRITION_LABEL":
                 print("[SmartRouter] Routing to -> Label Analysis")

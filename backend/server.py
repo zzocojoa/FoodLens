@@ -606,6 +606,18 @@ def _build_public_analysis_diagnostics(
     }
 
 
+def _build_smart_analysis_diagnostics_result(result: dict[str, Any]) -> dict[str, Any]:
+    analysis_diagnostics = result.get("analysis_diagnostics")
+    if not isinstance(analysis_diagnostics, dict):
+        return result
+    routed_result = dict(result)
+    routed_result["analysis_diagnostics"] = {
+        **analysis_diagnostics,
+        "origin": "smart_route",
+    }
+    return routed_result
+
+
 def _strip_internal_analysis_metadata(result: dict[str, Any]) -> None:
     for key in list(result.keys()):
         if key.startswith("_food_"):
@@ -4913,6 +4925,18 @@ async def _analyze_food_image_with_policy(
         raise
 
     if not isinstance(result, dict):
+        if _is_analysis_cost_guardrail_enabled() and cost_guardrail:
+            _reconcile_label_cost(
+                cost_guardrail,
+                reservation=cost_reservation,
+                chargeable=False,
+                cost_usd=0.0,
+                tokens=0,
+                provider_total_tokens=None,
+                provider_thought_tokens=None,
+                fallback_used=False,
+                truncated=False,
+            )
         return result
 
     food_chargeable = bool(result.pop("_food_chargeable", True))
@@ -5512,6 +5536,8 @@ async def analyze_smart(
                     label_analysis_runner=_analyze_label_image_with_policy_for_http,
                     food_analysis_runner=_analyze_food_image_with_policy,
                 )
+                if isinstance(result, dict):
+                    result = _build_smart_analysis_diagnostics_result(result)
             finally:
                 if _is_analysis_cost_guardrail_enabled() and smart_cost_guardrail and smart_reservation:
                     _reconcile_label_cost(

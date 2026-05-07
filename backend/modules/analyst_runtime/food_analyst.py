@@ -708,13 +708,24 @@ class FoodAnalyst:
         return model_generation_config
 
     def _build_food_generation_metadata(self, response: object) -> FoodGenerationMetadata:
-        used_model_name = getattr(response, "_foodlens_used_model", None) or FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
-        fallback_used = used_model_name != self.model_name
+        used_model_name = (
+            getattr(response, "_foodlens_used_model", None)
+            or FoodAnalyst._retry_stats.get("last_used_model")
+            or self.model_name
+        )
+        raw_fallback_used = getattr(response, "_foodlens_fallback_used", None)
+        fallback_used = (
+            raw_fallback_used
+            if isinstance(raw_fallback_used, bool)
+            else used_model_name != self.model_name
+        )
+        raw_fallback_reason = getattr(response, "_foodlens_fallback_reason", None)
+        fallback_reason = raw_fallback_reason if isinstance(raw_fallback_reason, str) else None
         return {
             "model_name": used_model_name,
             "primary_model_name": self.model_name,
             "fallback_used": fallback_used,
-            "fallback_reason": "primary_fallback" if fallback_used else None,
+            "fallback_reason": fallback_reason or ("primary_fallback" if fallback_used else None),
             "finish_reason": self._extract_finish_reason(response),
             "thinking_budget": self._select_food_thinking_budget(used_model_name),
             "usage_metadata": _extract_usage_metadata(response),
@@ -773,14 +784,19 @@ class FoodAnalyst:
         vertex_image = self._prepare_vertex_image(food_image)
         provider_call_budget = max(1, self.food_max_provider_calls_per_request)
         primary_max_attempts = max(1, provider_call_budget - 1) if provider_call_budget > 1 else 1
+        fallback_model_name = "gemini-2.0-flash"
         primary_generation_config = self._build_food_generation_config_for_model(
             generation_config,
             self.model_name,
         )
+        fallback_generation_config = self._build_food_generation_config_for_model(
+            generation_config,
+            fallback_model_name,
+        )
         response = generate_with_retry_and_fallback(
             primary_model=self.model,
             primary_model_name=self.model_name,
-            fallback_model_name="gemini-2.0-flash",
+            fallback_model_name=fallback_model_name,
             contents=[prompt, vertex_image],
             generation_config=primary_generation_config,
             safety_settings=safety_settings,
@@ -788,6 +804,7 @@ class FoodAnalyst:
             retry_stats=FoodAnalyst._retry_stats,
             max_attempts=primary_max_attempts,
             fallback_enabled=provider_call_budget > primary_max_attempts,
+            fallback_generation_config=fallback_generation_config,
         )
         metadata = self._build_food_generation_metadata(response)
         finish_reason = self._extract_finish_reason(response)
@@ -798,6 +815,9 @@ class FoodAnalyst:
             return response, metadata
 
         if provider_call_count >= provider_call_budget:
+            return response, metadata
+
+        if metadata["fallback_used"]:
             return response, metadata
 
         retry_generation_config = dict(generation_config)
@@ -824,7 +844,7 @@ class FoodAnalyst:
         retry_response = generate_with_retry_and_fallback(
             primary_model=self.model,
             primary_model_name=self.model_name,
-            fallback_model_name="gemini-2.0-flash",
+            fallback_model_name=fallback_model_name,
             contents=[prompt, vertex_image],
             generation_config=retry_generation_config,
             safety_settings=safety_settings,
@@ -832,6 +852,7 @@ class FoodAnalyst:
             retry_stats=FoodAnalyst._retry_stats,
             max_attempts=1,
             fallback_enabled=False,
+            fallback_generation_config=retry_generation_config,
         )
         retry_metadata = self._build_food_generation_metadata(retry_response)
         retry_metadata["usage_metadata"] = _merge_usage_metadata(

@@ -120,6 +120,74 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             self.assertEqual(mock_generate.call_count, 1)
             self.assertEqual(result["foodName"], "FallbackDish")
 
+    def test_analyze_food_does_not_retry_max_tokens_when_fallback_response_was_used(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_retry_and_fallback") as mock_generate,
+        ):
+            fallback_response = _MockResponse('{"foodName":"FallbackDish","ingredients":[]}', 2)
+            setattr(fallback_response, "_foodlens_provider_call_count", 1)
+            setattr(fallback_response, "_foodlens_fallback_used", True)
+            setattr(fallback_response, "_foodlens_fallback_reason", "primary_429_cooldown")
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = fallback_response
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={"foodName": "FallbackDish", "ingredients": [], "safetyStatus": "SAFE"},
+                ),
+                patch.object(analyst, "_enrich_with_nutrition", side_effect=lambda result: result),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                result = analyst.analyze_food_json(Image.new("RGB", (4, 4)), "None", "US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["foodName"], "FallbackDish")
+            self.assertEqual(result["_food_fallback_used"], True)
+            self.assertEqual(result["_food_fallback_reason"], "primary_429_cooldown")
+            self.assertEqual(result["_food_truncated"], True)
+
+    def test_analyze_food_uses_fallback_thinking_config_for_fallback_model(self):
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash-lite",
+                    "GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET": "0",
+                    "GEMINI_FOOD_FLASH_THINKING_BUDGET": "256",
+                },
+                clear=False,
+            ),
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_retry_and_fallback") as mock_generate,
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse('{"foodName":"OneShot","ingredients":[]}', 1)
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={"foodName": "OneShot", "ingredients": [], "safetyStatus": "SAFE"},
+                ),
+                patch.object(analyst, "_enrich_with_nutrition", side_effect=lambda result: result),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                analyst.analyze_food_json(Image.new("RGB", (4, 4)), "None", "US")
+
+            primary_config = mock_generate.call_args.kwargs["generation_config"]
+            fallback_config = mock_generate.call_args.kwargs["fallback_generation_config"]
+            self.assertEqual(primary_config["thinking_config"]["thinking_budget"], 0)
+            self.assertEqual(fallback_config["thinking_config"]["thinking_budget"], 256)
+
     def test_analyze_food_retry_max_tokens_reads_plan_alias_env(self):
         with (
             patch.dict("os.environ", {"GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY": "6144"}, clear=False),

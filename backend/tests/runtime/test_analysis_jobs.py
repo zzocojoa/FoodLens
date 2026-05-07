@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
 import backend.modules.analysis_jobs as analysis_jobs
+from backend.modules.analyst_runtime.router import SmartRouter
 from backend.modules.analysis_jobs import (
     AnalysisJobStoreError,
     AnalysisJobWorker,
@@ -221,6 +222,44 @@ class _SmartLabelJobRouter:
         return result
 
 
+class _SmartFoodPolicyRunner:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(
+        self,
+        image: Any,
+        allergy_info: str,
+        iso_country_code: str,
+        request_id: str,
+        total_started_at: float,
+        preprocess_elapsed_ms: int,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "image": image,
+                "allergy_info": allergy_info,
+                "iso_country_code": iso_country_code,
+                "request_id": request_id,
+                "total_started_at": total_started_at,
+                "preprocess_elapsed_ms": preprocess_elapsed_ms,
+            }
+        )
+        return {
+            "foodName": "Smart Bibimbap",
+            "safetyStatus": "SAFE",
+            "ingredients": [],
+            "analysis_diagnostics": {
+                "origin": "food_photo",
+                "fallback_used": False,
+                "fallback_reason": None,
+                "finish_reason": None,
+                "truncated": False,
+                "usage_source": "estimated",
+            },
+        }
+
+
 class _IdempotencyRecordingJobStore:
     def __init__(self) -> None:
         self.records_by_key: dict[tuple[str, str], dict[str, Any]] = {}
@@ -373,6 +412,40 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         )
         self.assertIn("latency_ms_by_stage", terminal_payload)
         self.assertEqual(terminal_payload["nutrition"]["dataSource"], "TestCache")
+
+    def test_smart_real_food_route_marks_food_diagnostics_as_smart_route(self) -> None:
+        smart_router = SmartRouter.__new__(SmartRouter)
+        smart_router.analyst = SimpleNamespace(
+            analyze_food_json=lambda *_args: self.fail("Smart food route bypassed policy runner")
+        )
+        smart_router.router_model = SimpleNamespace(
+            generate_content=lambda *_args, **_kwargs: SimpleNamespace(
+                text='{"category":"REAL_FOOD","confidence":0.99}'
+            )
+        )
+        food_runner = _SmartFoodPolicyRunner()
+
+        result = asyncio.run(
+            smart_router.route_analysis(
+                image=Image.new("RGB", (64, 64), (120, 80, 40)),
+                allergy_info="peanut",
+                iso_country_code="KR",
+                locale="ko-KR",
+                request_id="req-smart-food-policy",
+                total_started_at=time.perf_counter(),
+                preprocess_elapsed_ms=7,
+                label_analysis_runner=None,
+                food_analysis_runner=food_runner,
+            )
+        )
+
+        self.assertEqual(len(food_runner.calls), 1)
+        self.assertEqual(food_runner.calls[0]["allergy_info"], "peanut")
+        self.assertEqual(food_runner.calls[0]["iso_country_code"], "KR")
+        self.assertEqual(food_runner.calls[0]["request_id"], "req-smart-food-policy")
+        self.assertEqual(food_runner.calls[0]["preprocess_elapsed_ms"], 7)
+        self.assertEqual(result["router_category"], "REAL_FOOD")
+        self.assertEqual(result["analysis_diagnostics"]["origin"], "smart_route")
 
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
