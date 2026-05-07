@@ -58,6 +58,11 @@ GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT = 512
 GEMINI_LABEL_FLASH_THINKING_BUDGET_DEFAULT = 0
 GEMINI_LABEL_FLASH_LITE_THINKING_BUDGET_DEFAULT = 0
 GEMINI_LABEL_PRO_THINKING_BUDGET_DEFAULT = 128
+GEMINI_FOOD_MAX_OUTPUT_TOKENS_DEFAULT = 4096
+GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS_DEFAULT = 8192
+GEMINI_FOOD_FLASH_THINKING_BUDGET_DEFAULT = 0
+GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET_DEFAULT = 0
+GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST_DEFAULT = 3
 LABEL_USAGE_METADATA_FIELDS = (
     "prompt_token_count",
     "candidates_token_count",
@@ -68,6 +73,16 @@ LABEL_USAGE_METADATA_FIELDS = (
 
 
 class LabelGenerationMetadata(TypedDict):
+    model_name: str
+    primary_model_name: str
+    fallback_used: bool
+    fallback_reason: str | None
+    finish_reason: int | None
+    thinking_budget: int
+    usage_metadata: dict[str, int]
+
+
+class FoodGenerationMetadata(TypedDict):
     model_name: str
     primary_model_name: str
     fallback_used: bool
@@ -128,6 +143,14 @@ def _read_env_positive_int(name: str, fallback: int) -> int:
     if parsed_value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return parsed_value
+
+
+def _read_env_positive_int_from_names(names: tuple[str, ...], fallback: int) -> int:
+    for name in names:
+        raw_value = os.getenv(name)
+        if raw_value is not None and raw_value.strip():
+            return _read_env_positive_int(name, fallback)
+    return fallback
 
 
 def _read_env_non_negative_int(name: str, fallback: int) -> int:
@@ -264,6 +287,15 @@ def _extract_usage_metadata(response: object) -> dict[str, int]:
         if value is not None:
             extracted[field_name] = value
     return extracted
+
+
+def _extract_provider_call_count(response: object) -> int:
+    raw_value = getattr(response, "_foodlens_provider_call_count", None)
+    if isinstance(raw_value, bool):
+        return 1
+    if isinstance(raw_value, int) and raw_value > 0:
+        return raw_value
+    return 1
 
 
 def _build_label_observability_metadata(
@@ -434,6 +466,29 @@ class FoodAnalyst:
             "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
             GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT,
         )
+        self.food_max_output_tokens = _read_env_positive_int(
+            "GEMINI_FOOD_MAX_OUTPUT_TOKENS",
+            GEMINI_FOOD_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
+        self.food_retry_max_output_tokens = _read_env_positive_int_from_names(
+            (
+                "GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY",
+                "GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS",
+            ),
+            GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
+        self.food_flash_thinking_budget = _read_env_non_negative_int(
+            "GEMINI_FOOD_FLASH_THINKING_BUDGET",
+            GEMINI_FOOD_FLASH_THINKING_BUDGET_DEFAULT,
+        )
+        self.food_flash_lite_thinking_budget = _read_env_non_negative_int(
+            "GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET",
+            GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET_DEFAULT,
+        )
+        self.food_max_provider_calls_per_request = _read_env_positive_int(
+            "GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST",
+            GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST_DEFAULT,
+        )
         self.label_flash_thinking_budget = _read_env_non_negative_int(
             "GEMINI_LABEL_FLASH_THINKING_BUDGET",
             GEMINI_LABEL_FLASH_THINKING_BUDGET_DEFAULT,
@@ -457,6 +512,8 @@ class FoodAnalyst:
                 "gemini_label_fallback_model_tier": _model_tier_name(self.label_fallback_model_name),
                 "gemini_label_fallback_enabled": self.label_fallback_enabled,
                 "gemini_label_pro_fallback_enabled": self.label_pro_fallback_enabled,
+                "gemini_food_max_output_tokens": self.food_max_output_tokens,
+                "gemini_food_max_provider_calls_per_request": self.food_max_provider_calls_per_request,
             },
         )
         
@@ -615,6 +672,36 @@ class FoodAnalyst:
         }
         return model_generation_config
 
+    def _select_food_thinking_budget(self, model_name: str) -> int:
+        if _is_flash_lite_model_name(model_name):
+            return self.food_flash_lite_thinking_budget
+        return self.food_flash_thinking_budget
+
+    def _build_food_generation_config_for_model(
+        self,
+        generation_config: dict[str, Any],
+        model_name: str,
+    ) -> dict[str, Any]:
+        model_generation_config = dict(generation_config)
+        model_generation_config["thinking_config"] = {
+            "include_thoughts": False,
+            "thinking_budget": self._select_food_thinking_budget(model_name),
+        }
+        return model_generation_config
+
+    def _build_food_generation_metadata(self, response: object) -> FoodGenerationMetadata:
+        used_model_name = getattr(response, "_foodlens_used_model", None) or FoodAnalyst._retry_stats.get("last_used_model") or self.model_name
+        fallback_used = used_model_name != self.model_name
+        return {
+            "model_name": used_model_name,
+            "primary_model_name": self.model_name,
+            "fallback_used": fallback_used,
+            "fallback_reason": "primary_fallback" if fallback_used else None,
+            "finish_reason": self._extract_finish_reason(response),
+            "thinking_budget": self._select_food_thinking_budget(used_model_name),
+            "usage_metadata": _extract_usage_metadata(response),
+        }
+
     def _can_use_label_fallback(self, reason: str) -> bool:
         if not self.label_fallback_enabled:
             return False
@@ -664,35 +751,59 @@ class FoodAnalyst:
         prompt: str,
         generation_config: dict[str, Any],
         safety_settings: dict[str, Any],
-    ) -> Any:
+    ) -> tuple[Any, FoodGenerationMetadata]:
         vertex_image = self._prepare_vertex_image(food_image)
+        provider_call_budget = max(1, self.food_max_provider_calls_per_request)
+        primary_max_attempts = max(1, provider_call_budget - 1) if provider_call_budget > 1 else 1
+        primary_generation_config = self._build_food_generation_config_for_model(
+            generation_config,
+            self.model_name,
+        )
         response = generate_with_retry_and_fallback(
             primary_model=self.model,
             primary_model_name=self.model_name,
             fallback_model_name="gemini-2.0-flash",
             contents=[prompt, vertex_image],
-            generation_config=generation_config,
+            generation_config=primary_generation_config,
             safety_settings=safety_settings,
             semaphore=FoodAnalyst._request_semaphore,
             retry_stats=FoodAnalyst._retry_stats,
+            max_attempts=primary_max_attempts,
+            fallback_enabled=primary_max_attempts > 1,
         )
+        metadata = self._build_food_generation_metadata(response)
         finish_reason = self._extract_finish_reason(response)
+        provider_call_count = _extract_provider_call_count(response)
         logger.info("[FoodAnalysis] generation finished", extra={"finish_reason": finish_reason})
 
         if finish_reason != self._MAX_TOKENS_FINISH_REASON:
-            return response
+            return response, metadata
+
+        if provider_call_count >= provider_call_budget:
+            return response, metadata
 
         retry_generation_config = dict(generation_config)
-        current_max_tokens = int(generation_config.get("max_output_tokens", 4096))
+        current_max_tokens = int(generation_config.get("max_output_tokens", self.food_max_output_tokens))
+        retry_generation_config["max_output_tokens"] = max(
+            current_max_tokens,
+            min(
+                self.food_retry_max_output_tokens,
+                current_max_tokens * self._MAX_TOKENS_RETRY_MULTIPLIER,
+            ),
+        )
         retry_generation_config["max_output_tokens"] = min(
-            current_max_tokens * self._MAX_TOKENS_RETRY_MULTIPLIER,
+            retry_generation_config["max_output_tokens"],
             self._MAX_OUTPUT_TOKENS_UPPER_BOUND,
+        )
+        retry_generation_config = self._build_food_generation_config_for_model(
+            retry_generation_config,
+            self.model_name,
         )
         logger.warning(
             "[FoodAnalysis] retrying after max tokens",
             extra={"max_output_tokens": retry_generation_config["max_output_tokens"]},
         )
-        return generate_with_retry_and_fallback(
+        retry_response = generate_with_retry_and_fallback(
             primary_model=self.model,
             primary_model_name=self.model_name,
             fallback_model_name="gemini-2.0-flash",
@@ -701,14 +812,17 @@ class FoodAnalyst:
             safety_settings=safety_settings,
             semaphore=FoodAnalyst._request_semaphore,
             retry_stats=FoodAnalyst._retry_stats,
+            max_attempts=1,
+            fallback_enabled=False,
         )
+        return retry_response, self._build_food_generation_metadata(retry_response)
 
     def _build_food_generation_config(self, response_schema: dict[str, Any]) -> dict[str, Any]:
         return {
             "temperature": 0.2,
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 4096,
+            "max_output_tokens": self.food_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": response_schema,
         }
@@ -736,25 +850,49 @@ class FoodAnalyst:
         result["prompt_version"] = ANALYSIS_PROMPT_VERSION
         return result
 
+    def _attach_food_observability(
+        self,
+        result: dict[str, Any],
+        metadata: FoodGenerationMetadata,
+        *,
+        chargeable: bool,
+    ) -> dict[str, Any]:
+        result["_food_primary_model"] = metadata["primary_model_name"]
+        result["_food_used_model"] = metadata["model_name"]
+        result["_food_fallback_used"] = metadata["fallback_used"]
+        result["_food_fallback_reason"] = metadata["fallback_reason"]
+        result["_food_finish_reason"] = metadata["finish_reason"]
+        result["_food_thinking_budget"] = metadata["thinking_budget"]
+        result["_food_usage_metadata"] = dict(metadata["usage_metadata"])
+        result["_food_chargeable"] = chargeable
+        result["_food_truncated"] = metadata["finish_reason"] == self._MAX_TOKENS_FINISH_REASON
+        return result
+
     def _run_food_analysis(
         self,
         food_image: Image.Image,
         allergy_info: str,
         iso_current_country: str,
         response_schema: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], FoodGenerationMetadata]:
         prompt, generation_config, safety_settings = self._build_food_analysis_request(
             allergy_info,
             iso_current_country,
             response_schema,
         )
-        response = self._generate_food_analysis_response(
+        response, metadata = self._generate_food_analysis_response(
             food_image,
             prompt,
             generation_config,
             safety_settings,
         )
-        return self._parse_ai_response(response.text)
+        try:
+            return self._parse_ai_response(response.text), metadata
+        except Exception as parse_error:
+            fallback = self._build_food_fallback("이미지 분석 결과를 처리할 수 없습니다. 다시 시도해주세요.")
+            fallback["_food_fallback_reason"] = "parse_error"
+            fallback["_food_error_type"] = type(parse_error).__name__
+            return fallback, metadata
 
     def _build_label_prompt(self, allergy_info: str, locale: str, iso_current_country: str) -> str:
         """Constructs the nutrition label OCR prompt."""
@@ -1286,7 +1424,7 @@ class FoodAnalyst:
         response_schema = build_food_response_schema()
 
         try:
-            result = self._run_food_analysis(
+            result, metadata = self._run_food_analysis(
                 food_image,
                 allergy_info,
                 iso_current_country,
@@ -1295,9 +1433,21 @@ class FoodAnalyst:
             # result = self._strip_box2d(result)  # ENABLED: Keep bbox data from v3.0 prompt
             print(f"AI Response JSON: {json.dumps(result, indent=2)}")  # Debug log
             
-            result = self._enrich_with_nutrition(result)
+            nutrition_enrichment_error_type: str | None = None
+            try:
+                result = self._enrich_with_nutrition(result)
+            except Exception as nutrition_error:
+                nutrition_enrichment_error_type = type(nutrition_error).__name__
+                logger.warning(
+                    "[FoodAnalysis] nutrition enrichment failed",
+                    extra={"error_type": nutrition_enrichment_error_type},
+                )
             result = self._sanitize_response(result)  # P2: App-level content filter
-            return self._finalize_food_result(result)
+            result = self._finalize_food_result(result)
+            result = self._attach_food_observability(result, metadata, chargeable=True)
+            if nutrition_enrichment_error_type:
+                result["_food_enrichment_error_type"] = nutrition_enrichment_error_type
+            return result
             
         except Exception as e:
             # Log internal error (NOT exposed to user)
@@ -1314,24 +1464,33 @@ class FoodAnalyst:
             else:
                 user_msg = "이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요."
             
-            return self._build_food_fallback(user_msg)
+            fallback = self._build_food_fallback(user_msg)
+            fallback["_food_chargeable"] = False
+            fallback["_food_fallback_used"] = True
+            fallback["_food_fallback_reason"] = "analysis_exception"
+            return fallback
 
     def analyze_food_job_json(self, food_image: Image.Image, allergy_info: str, iso_current_country: str) -> dict:
         response_schema = build_food_job_response_schema()
 
         try:
-            result = self._run_food_analysis(
+            result, metadata = self._run_food_analysis(
                 food_image,
                 allergy_info,
                 iso_current_country,
                 response_schema,
             )
             result = self._sanitize_response(result)
-            return self._finalize_food_result(result)
+            result = self._finalize_food_result(result)
+            return self._attach_food_observability(result, metadata, chargeable=True)
         except Exception as error:
             error_msg = str(error)
             print(f"[Internal Log] Async analysis error: {error_msg}")
-            return self._build_food_fallback("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
+            fallback = self._build_food_fallback("이미지 분석 중 오류가 발생했습니다. 다시 시도해주세요.")
+            fallback["_food_chargeable"] = False
+            fallback["_food_fallback_used"] = True
+            fallback["_food_fallback_reason"] = "analysis_exception"
+            return fallback
 
     def analyze_barcode_ingredients(
         self,

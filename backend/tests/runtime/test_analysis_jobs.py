@@ -31,6 +31,7 @@ os.environ["AUTH_STATE_BACKEND"] = "memory"
 os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
 os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
 from backend.server import app, resolve_prompt_country_code  # noqa: E402
+from backend.server import _analyze_food_job_image_with_policy  # noqa: E402
 from backend.server import _analyze_label_image_with_policy  # noqa: E402
 
 
@@ -205,6 +206,7 @@ class _SmartLabelJobRouter:
         total_started_at: float,
         preprocess_elapsed_ms: int,
         label_analysis_runner: Any,
+        food_analysis_runner: Any | None = None,
     ) -> dict[str, Any]:
         result = await label_analysis_runner(
             image,
@@ -298,6 +300,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
             get_analyst=lambda: app.state.analyst,
             get_smart_router=lambda: app.state.smart_router,
             analyze_label_with_policy=_analyze_label_image_with_policy,
+            analyze_food_with_policy=_analyze_food_job_image_with_policy,
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
             lease_seconds=60,

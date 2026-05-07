@@ -76,6 +76,62 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             self.assertEqual(mock_generate.call_count, 1)
             self.assertEqual(result["foodName"], "OneShot")
 
+    def test_analyze_food_does_not_retry_max_tokens_when_provider_call_budget_is_exhausted(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_retry_and_fallback") as mock_generate,
+        ):
+            exhausted_response = _MockResponse('{"foodName":"FallbackDish","ingredients":[]}', 2)
+            setattr(exhausted_response, "_foodlens_provider_call_count", 3)
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = exhausted_response
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={"foodName": "FallbackDish", "ingredients": [], "safetyStatus": "SAFE"},
+                ),
+                patch.object(analyst, "_enrich_with_nutrition", side_effect=lambda result: result),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                result = analyst.analyze_food_json(Image.new("RGB", (4, 4)), "None", "US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["foodName"], "FallbackDish")
+
+    def test_analyze_food_retry_max_tokens_reads_plan_alias_env(self):
+        with (
+            patch.dict("os.environ", {"GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY": "6144"}, clear=False),
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_retry_and_fallback") as mock_generate,
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.side_effect = [
+                _MockResponse('{"foodName":"RetryDish","ingredients":[]}', 2),
+                _MockResponse('{"foodName":"RetryDish","ingredients":[]}', 1),
+            ]
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(
+                    analyst,
+                    "_parse_ai_response",
+                    return_value={"foodName": "RetryDish", "ingredients": [], "safetyStatus": "SAFE"},
+                ),
+                patch.object(analyst, "_enrich_with_nutrition", side_effect=lambda result: result),
+                patch.object(analyst, "_sanitize_response", side_effect=lambda result: result),
+            ):
+                analyst.analyze_food_json(Image.new("RGB", (4, 4)), "None", "US")
+
+            second_config = mock_generate.call_args_list[1].kwargs["generation_config"]
+            self.assertEqual(second_config["max_output_tokens"], 6144)
+
     def test_analyze_food_job_retries_once_when_finish_reason_is_max_tokens(self):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),

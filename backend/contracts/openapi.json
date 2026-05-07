@@ -60,6 +60,66 @@
         "title": "AllergiesUpdateRequest",
         "type": "object"
       },
+      "AnalysisDiagnosticsContract": {
+        "additionalProperties": false,
+        "properties": {
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "fallback_used": {
+            "title": "Fallback Used",
+            "type": "boolean"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Reason"
+          },
+          "origin": {
+            "enum": [
+              "food_photo",
+              "smart_route"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "usage_source": {
+            "enum": [
+              "provider_usage_metadata",
+              "estimated",
+              "not_chargeable"
+            ],
+            "title": "Usage Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "fallback_used",
+          "truncated",
+          "usage_source"
+        ],
+        "title": "AnalysisDiagnosticsContract",
+        "type": "object"
+      },
       "AnalysisJobStatusResponseContract": {
         "properties": {
           "accepted_at": {
@@ -474,6 +534,16 @@
       },
       "AnalysisResponseContract": {
         "properties": {
+          "analysis_diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisDiagnosticsContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "analysis_origin": {
             "anyOf": [
               {

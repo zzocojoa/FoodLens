@@ -156,6 +156,7 @@ class AnalysisJobWorker:
     get_analyst: Callable[[], Any]
     get_smart_router: Callable[[], Any]
     analyze_label_with_policy: Callable[[Any, str, str, str | None, str, float, int], Awaitable[dict[str, Any]]]
+    analyze_food_with_policy: Callable[[Any, str, str, str, float, int], Awaitable[dict[str, Any]]]
     decode_image: Callable[[bytes], Any]
     resolve_prompt_country_code: Callable[[str, str | None], str]
     lease_seconds: int
@@ -227,12 +228,13 @@ class AnalysisJobWorker:
             await self._stage(job_id=job_id, status="inference", request_id=request_id, stage_latencies=stage_latencies)
             prompt_country_code = self.resolve_prompt_country_code(str(job["iso_country_code"]), job.get("locale"))
             if job["mode"] == "food":
-                analyst = self.get_analyst()
-                result = await asyncio.to_thread(
-                    analyst.analyze_food_job_json,
+                result = await self.analyze_food_with_policy(
                     image,
                     str(job["allergy_info"]),
                     prompt_country_code,
+                    request_id,
+                    started_at,
+                    int(stage_latencies.get("preprocessing", 0)),
                 )
             elif job["mode"] == "label":
                 result = await self.analyze_label_with_policy(
@@ -255,6 +257,7 @@ class AnalysisJobWorker:
                     total_started_at=started_at,
                     preprocess_elapsed_ms=int(stage_latencies.get("preprocessing", 0)),
                     label_analysis_runner=self.analyze_label_with_policy,
+                    food_analysis_runner=self.analyze_food_with_policy,
                 )
             stage_latencies["inference"] = int((time.perf_counter() - inference_started) * 1000)
             if isinstance(result, dict):
@@ -265,7 +268,7 @@ class AnalysisJobWorker:
             fallback_reason = _detect_analysis_fallback_reason(result=result, mode=str(job["mode"]))
             if isinstance(result, dict):
                 for key in list(result.keys()):
-                    if key.startswith("_label_"):
+                    if key.startswith("_label_") or key.startswith("_food_"):
                         result.pop(key, None)
 
             if job["mode"] == "food":
@@ -1252,6 +1255,14 @@ def _finalize_analysis_result(
 
 
 def _detect_analysis_fallback_reason(*, result: dict[str, Any], mode: str) -> str | None:
+    food_fallback_reason = _string_or_none(result.get("_food_fallback_reason"))
+    if food_fallback_reason:
+        return food_fallback_reason
+    analysis_diagnostics = result.get("analysis_diagnostics")
+    if isinstance(analysis_diagnostics, dict):
+        diagnostic_food_reason = _string_or_none(analysis_diagnostics.get("fallback_reason"))
+        if diagnostic_food_reason:
+            return diagnostic_food_reason
     label_fallback_reason = _string_or_none(result.get("_label_fallback_reason"))
     if label_fallback_reason:
         return label_fallback_reason

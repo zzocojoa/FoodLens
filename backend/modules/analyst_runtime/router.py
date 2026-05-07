@@ -20,6 +20,10 @@ LabelAnalysisRunner = Callable[
     [Image.Image, str, str, str | None, str, float, int],
     Awaitable[Dict[str, Any]],
 ]
+FoodAnalysisRunner = Callable[
+    [Image.Image, str, str, str, float, int],
+    Awaitable[Dict[str, Any]],
+]
 
 
 class SmartRouter:
@@ -65,6 +69,7 @@ class SmartRouter:
         total_started_at: float | None = None,
         preprocess_elapsed_ms: int | None = None,
         label_analysis_runner: LabelAnalysisRunner | None = None,
+        food_analysis_runner: FoodAnalysisRunner | None = None,
     ) -> Dict[str, Any]:
         """
         Classifies the image and executes the corresponding analysis method.
@@ -91,10 +96,15 @@ class SmartRouter:
             # 2. Route
             if category == "REAL_FOOD" or category == "MENU":
                 print("[SmartRouter] Routing to -> Food Analysis")
-                # Add a flag to result indicating it was auto-routed
-                result = await asyncio.to_thread(
-                    self.analyst.analyze_food_json, 
-                    image, allergy_info, iso_country_code
+                if food_analysis_runner is None:
+                    raise RuntimeError("REAL_FOOD route requires food_analysis_runner")
+                result = await food_analysis_runner(
+                    image,
+                    allergy_info,
+                    iso_country_code,
+                    request_id or "smart-food",
+                    total_started_at if total_started_at is not None else route_started_at,
+                    preprocess_elapsed_ms if preprocess_elapsed_ms is not None else 0,
                 )
                 result["router_category"] = category
                 return result

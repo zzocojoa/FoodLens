@@ -15,6 +15,21 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "GEMINI_RETRY_TIMEOUT_SECONDS",
             "GEMINI_RETRY_MAX_ATTEMPTS",
             "GEMINI_MODEL_NAME",
+            "GEMINI_FOOD_MAX_OUTPUT_TOKENS",
+            "GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS",
+            "GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY",
+            "GEMINI_FOOD_FLASH_THINKING_BUDGET",
+            "GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET",
+            "GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST",
+            "AI_COST_GUARDRAIL_ENABLED",
+            "AI_COST_GUARDRAIL_STORAGE_BACKEND",
+            "AI_COST_GUARDRAIL_USAGE_TABLE",
+            "AI_COST_GUARDRAIL_RESERVATION_TABLE",
+            "AI_MONTHLY_BUDGET_USD",
+            "FOOD_ESTIMATED_COST_USD_PER_REQUEST",
+            "FOOD_ESTIMATED_TOKENS_PER_REQUEST",
+            "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST",
+            "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST",
             "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR",
             "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS",
             "LABEL_COST_GUARDRAIL_ENABLED",
@@ -35,6 +50,12 @@ class Phase4OperationalConfigTests(unittest.TestCase):
 
         for required_key in required_keys:
             self.assertIn(f"- key: {required_key}", render_blueprint)
+
+        self.assertIn("- key: AI_COST_GUARDRAIL_USAGE_TABLE\n        value: ai_monthly_usage", render_blueprint)
+        self.assertIn(
+            "- key: AI_COST_GUARDRAIL_RESERVATION_TABLE\n        value: ai_monthly_usage_reservations",
+            render_blueprint,
+        )
 
     def test_render_blueprint_aligns_barcode_upstream_policy_with_phase4_defaults(self):
         render_blueprint = RENDER_BLUEPRINT_PATH.read_text(encoding="utf-8")

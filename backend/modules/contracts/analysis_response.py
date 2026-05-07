@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.modules.contracts.observability import LatencyMsContract
 
@@ -11,6 +11,8 @@ DecisionStatus = Literal["OK", "ASK", "AVOID"]
 AnalysisOrigin = Literal["food_photo", "label_photo", "barcode_lookup", "barcode_to_label_fallback"]
 RecommendedAction = Literal["eat", "verify_label", "ask_staff", "avoid"]
 UncertaintyReason = Literal["image_ambiguity", "missing_label_text", "barcode_not_found", "low_confidence", "unknown"]
+AnalysisDiagnosticsOrigin = Literal["food_photo", "smart_route"]
+AnalysisDiagnosticsUsageSource = Literal["provider_usage_metadata", "estimated", "not_chargeable"]
 DecisionConfidence = Literal["high", "medium", "low"]
 
 
@@ -43,6 +45,17 @@ class IngredientContract(BaseModel):
     riskReason: Optional[str] = None
 
 
+class AnalysisDiagnosticsContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    origin: AnalysisDiagnosticsOrigin
+    fallback_used: bool
+    fallback_reason: Optional[str] = None
+    finish_reason: Optional[int] = None
+    truncated: bool
+    usage_source: AnalysisDiagnosticsUsageSource
+
+
 class AnalysisResponseContract(BaseModel):
     foodName: str
     safetyStatus: SafetyStatus
@@ -66,3 +79,4 @@ class AnalysisResponseContract(BaseModel):
     used_model: Optional[str] = None
     latency_ms: Optional[LatencyMsContract] = None
     label_diagnostics: Optional[dict] = None
+    analysis_diagnostics: Optional[AnalysisDiagnosticsContract] = None
