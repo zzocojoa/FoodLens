@@ -298,6 +298,24 @@ def _extract_provider_call_count(response: object) -> int:
     return 1
 
 
+def _merge_usage_metadata(first: dict[str, int], second: dict[str, int]) -> dict[str, int]:
+    merged: dict[str, int] = {}
+    for field_name in LABEL_USAGE_METADATA_FIELDS:
+        first_value = first.get(field_name)
+        second_value = second.get(field_name)
+        total = 0
+        found = False
+        if isinstance(first_value, int) and not isinstance(first_value, bool):
+            total += first_value
+            found = True
+        if isinstance(second_value, int) and not isinstance(second_value, bool):
+            total += second_value
+            found = True
+        if found:
+            merged[field_name] = total
+    return merged
+
+
 def _build_label_observability_metadata(
     primary_model_name: str,
     used_model_name: str,
@@ -769,7 +787,7 @@ class FoodAnalyst:
             semaphore=FoodAnalyst._request_semaphore,
             retry_stats=FoodAnalyst._retry_stats,
             max_attempts=primary_max_attempts,
-            fallback_enabled=primary_max_attempts > 1,
+            fallback_enabled=provider_call_budget > primary_max_attempts,
         )
         metadata = self._build_food_generation_metadata(response)
         finish_reason = self._extract_finish_reason(response)
@@ -815,7 +833,12 @@ class FoodAnalyst:
             max_attempts=1,
             fallback_enabled=False,
         )
-        return retry_response, self._build_food_generation_metadata(retry_response)
+        retry_metadata = self._build_food_generation_metadata(retry_response)
+        retry_metadata["usage_metadata"] = _merge_usage_metadata(
+            metadata["usage_metadata"],
+            retry_metadata["usage_metadata"],
+        )
+        return retry_response, retry_metadata
 
     def _build_food_generation_config(self, response_schema: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -859,8 +882,14 @@ class FoodAnalyst:
     ) -> dict[str, Any]:
         result["_food_primary_model"] = metadata["primary_model_name"]
         result["_food_used_model"] = metadata["model_name"]
-        result["_food_fallback_used"] = metadata["fallback_used"]
-        result["_food_fallback_reason"] = metadata["fallback_reason"]
+        existing_fallback_reason = result.get("_food_fallback_reason")
+        fallback_reason = (
+            existing_fallback_reason
+            if isinstance(existing_fallback_reason, str)
+            else metadata["fallback_reason"]
+        )
+        result["_food_fallback_used"] = metadata["fallback_used"] or fallback_reason is not None
+        result["_food_fallback_reason"] = fallback_reason
         result["_food_finish_reason"] = metadata["finish_reason"]
         result["_food_thinking_budget"] = metadata["thinking_budget"]
         result["_food_usage_metadata"] = dict(metadata["usage_metadata"])

@@ -360,6 +360,17 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["uncertainty_reason"], "unknown")
         self.assertEqual(terminal_payload["used_model"], "gemini-2.0-flash")
         self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
+        self.assertEqual(
+            terminal_payload["analysis_diagnostics"],
+            {
+                "origin": "food_photo",
+                "fallback_used": False,
+                "fallback_reason": None,
+                "finish_reason": None,
+                "truncated": False,
+                "usage_source": "estimated",
+            },
+        )
         self.assertIn("latency_ms_by_stage", terminal_payload)
         self.assertEqual(terminal_payload["nutrition"]["dataSource"], "TestCache")
 

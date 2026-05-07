@@ -50,11 +50,43 @@ class Phase4OperationalConfigTests(unittest.TestCase):
 
         for required_key in required_keys:
             self.assertIn(f"- key: {required_key}", render_blueprint)
+            self.assertEqual(render_blueprint.count(f"- key: {required_key}\n"), 3)
 
         self.assertIn("- key: AI_COST_GUARDRAIL_USAGE_TABLE\n        value: ai_monthly_usage", render_blueprint)
         self.assertIn(
             "- key: AI_COST_GUARDRAIL_RESERVATION_TABLE\n        value: ai_monthly_usage_reservations",
             render_blueprint,
+        )
+        fixed_values = (
+            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS", "4096"),
+            ("GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS", "8192"),
+            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY", "8192"),
+            ("GEMINI_FOOD_FLASH_THINKING_BUDGET", "0"),
+            ("GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET", "0"),
+            ("GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST", "3"),
+            ("AI_COST_GUARDRAIL_ENABLED", "1"),
+            ("AI_MONTHLY_BUDGET_USD", "10"),
+            ("FOOD_ESTIMATED_COST_USD_PER_REQUEST", "0.006"),
+            ("FOOD_ESTIMATED_TOKENS_PER_REQUEST", "2500"),
+            ("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
+            ("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", "300"),
+        )
+        for key, value in fixed_values:
+            self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
+
+        self.assertEqual(
+            render_blueprint.count("- key: AI_COST_GUARDRAIL_STORAGE_BACKEND\n        value: postgres"),
+            3,
+        )
+        self.assertEqual(
+            render_blueprint.count("- key: AI_COST_GUARDRAIL_USAGE_TABLE\n        value: ai_monthly_usage"),
+            3,
+        )
+        self.assertEqual(
+            render_blueprint.count(
+                "- key: AI_COST_GUARDRAIL_RESERVATION_TABLE\n        value: ai_monthly_usage_reservations"
+            ),
+            3,
         )
 
     def test_render_blueprint_aligns_barcode_upstream_policy_with_phase4_defaults(self):

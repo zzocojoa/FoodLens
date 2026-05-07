@@ -126,6 +126,16 @@
             "title": "Accepted At",
             "type": "string"
           },
+          "analysis_diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisDiagnosticsContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "analysis_origin": {
             "anyOf": [
               {

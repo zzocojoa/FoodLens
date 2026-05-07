@@ -5488,6 +5488,17 @@ async def analyze_smart(
                         "truncated": False,
                         "usage_source": "not_chargeable",
                     }
+                    _reconcile_label_cost(
+                        smart_cost_guardrail,
+                        reservation=smart_reservation,
+                        chargeable=False,
+                        cost_usd=0.0,
+                        tokens=0,
+                        provider_total_tokens=None,
+                        provider_thought_tokens=None,
+                        fallback_used=True,
+                        truncated=False,
+                    )
                     return fallback
             try:
                 result = await smart_router.route_analysis(

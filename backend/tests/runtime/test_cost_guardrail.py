@@ -692,6 +692,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 1000)
 
     def test_real_smart_router_label_branch_uses_cost_gate(self):

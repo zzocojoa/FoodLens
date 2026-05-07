@@ -13,9 +13,16 @@ class _MockCandidate:
 
 
 class _MockResponse:
-    def __init__(self, text: str, finish_reason: int):
+    def __init__(
+        self,
+        text: str,
+        finish_reason: int,
+        usage_metadata: dict[str, int] | None = None,
+    ):
         self.text = text
         self.candidates = [_MockCandidate(finish_reason)]
+        if usage_metadata is not None:
+            self.usage_metadata = dict(usage_metadata)
 
 
 class AnalyzeMaxTokensRetryTests(unittest.TestCase):
@@ -27,8 +34,16 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
         ):
             mock_model_cls.return_value = object()
             mock_generate.side_effect = [
-                _MockResponse('{"foodName":"RetryDish","ingredients":[]}', 2),
-                _MockResponse('{"foodName":"RetryDish","ingredients":[]}', 1),
+                _MockResponse(
+                    '{"foodName":"RetryDish","ingredients":[]}',
+                    2,
+                    {"prompt_token_count": 10, "total_token_count": 20},
+                ),
+                _MockResponse(
+                    '{"foodName":"RetryDish","ingredients":[]}',
+                    1,
+                    {"prompt_token_count": 3, "total_token_count": 7},
+                ),
             ]
 
             analyst = FoodAnalyst()
@@ -50,6 +65,8 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             self.assertEqual(first_config["max_output_tokens"], 4096)
             self.assertEqual(second_config["max_output_tokens"], 8192)
             self.assertEqual(result["foodName"], "RetryDish")
+            self.assertEqual(result["_food_usage_metadata"]["prompt_token_count"], 13)
+            self.assertEqual(result["_food_usage_metadata"]["total_token_count"], 27)
 
     def test_analyze_food_does_not_retry_when_finish_reason_is_not_max_tokens(self):
         with (
