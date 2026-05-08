@@ -24,7 +24,7 @@ from backend.modules.server_bootstrap import (
     initialize_services,
     load_environment,
 )
-from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
+from backend.modules.analyst_core.prompts import ANALYSIS_PROMPT_VERSION, LABEL_2PASS_PROMPT_VERSION
 from backend.modules.analyst_core.response_utils import get_safe_fallback_response
 from backend.modules.ops.cost_guardrail import CostGuardrailAction
 from backend.modules.ops.cost_guardrail import (
@@ -188,15 +188,28 @@ def _is_label_cost_guardrail_enabled() -> bool:
     return os.environ.get("LABEL_COST_GUARDRAIL_ENABLED", "0").strip() == "1"
 
 
+def _is_analysis_cost_guardrail_enabled() -> bool:
+    return os.environ.get(
+        "AI_COST_GUARDRAIL_ENABLED",
+        os.environ.get("LABEL_COST_GUARDRAIL_ENABLED", "0"),
+    ).strip() == "1"
+
+
 def _build_label_cost_guardrail_storage() -> InMemoryMonthlyUsageStorage | PostgresMonthlyUsageStorage:
-    storage_backend = _env_str("LABEL_COST_GUARDRAIL_STORAGE_BACKEND", "memory").lower()
+    storage_backend = _env_str(
+        "AI_COST_GUARDRAIL_STORAGE_BACKEND",
+        _env_str("LABEL_COST_GUARDRAIL_STORAGE_BACKEND", "memory"),
+    ).lower()
     if storage_backend == "postgres":
         return PostgresMonthlyUsageStorage(
             database_url=_env_str("DATABASE_URL", ""),
-            usage_table_name=_env_str("LABEL_COST_GUARDRAIL_USAGE_TABLE", "label_monthly_usage"),
+            usage_table_name=_env_str(
+                "AI_COST_GUARDRAIL_USAGE_TABLE",
+                _env_str("LABEL_COST_GUARDRAIL_USAGE_TABLE", "label_monthly_usage"),
+            ),
             reservation_table_name=_env_str(
-                "LABEL_COST_GUARDRAIL_RESERVATION_TABLE",
-                "label_monthly_usage_reservations",
+                "AI_COST_GUARDRAIL_RESERVATION_TABLE",
+                _env_str("LABEL_COST_GUARDRAIL_RESERVATION_TABLE", "label_monthly_usage_reservations"),
             ),
         )
     if storage_backend == "memory":
@@ -557,6 +570,60 @@ def _build_public_label_diagnostics(
     }
 
 
+def _safe_food_usage(value: Any) -> dict[str, int]:
+    return _safe_label_stage_usage(value)
+
+
+def _extract_food_observability(result: dict[str, Any]) -> dict[str, Any]:
+    usage = _safe_food_usage(result.get("_food_usage") or result.get("_food_usage_metadata"))
+    return {
+        "primary_model": _safe_label_string(result.get("_food_primary_model")),
+        "used_model": _safe_label_string(result.get("_food_used_model")) or _safe_label_string(result.get("used_model")),
+        "fallback_used": result.get("_food_fallback_used") is True,
+        "fallback_reason": _safe_label_string(result.get("_food_fallback_reason")),
+        "finish_reason": _safe_label_int(result.get("_food_finish_reason")),
+        "thinking_budget": _safe_label_int(result.get("_food_thinking_budget")),
+        "truncated": result.get("_food_truncated") is True,
+        "usage": usage,
+        "usage_prompt_tokens": usage.get("prompt_token_count"),
+        "usage_candidate_tokens": usage.get("candidates_token_count"),
+        "usage_thought_tokens": usage.get("thoughts_token_count"),
+        "usage_total_tokens": usage.get("total_token_count"),
+    }
+
+
+def _build_public_analysis_diagnostics(
+    food_observability: dict[str, Any],
+    usage_source: str,
+) -> dict[str, Any]:
+    return {
+        "origin": "food_photo",
+        "fallback_used": bool(food_observability["fallback_used"]),
+        "fallback_reason": food_observability["fallback_reason"],
+        "finish_reason": food_observability["finish_reason"],
+        "truncated": bool(food_observability["truncated"]),
+        "usage_source": usage_source,
+    }
+
+
+def _build_smart_analysis_diagnostics_result(result: dict[str, Any]) -> dict[str, Any]:
+    analysis_diagnostics = result.get("analysis_diagnostics")
+    if not isinstance(analysis_diagnostics, dict):
+        return result
+    routed_result = dict(result)
+    routed_result["analysis_diagnostics"] = {
+        **analysis_diagnostics,
+        "origin": "smart_route",
+    }
+    return routed_result
+
+
+def _strip_internal_analysis_metadata(result: dict[str, Any]) -> None:
+    for key in list(result.keys()):
+        if key.startswith("_food_"):
+            result.pop(key, None)
+
+
 def _select_barcode_ingredients_after_allergen_analysis(
     original_ingredients: list[Any],
     analyzed_ingredients: Any,
@@ -747,6 +814,7 @@ def _reset_runtime_state() -> None:
         "barcode_service": None,
         "smart_router": None,
         "label_cost_guardrail": None,
+        "analysis_cost_guardrail": None,
         "label_rollout_controller": None,
         "label_rollout_auto_manager": None,
         "label_rollout_kpi_thresholds": None,
@@ -859,6 +927,7 @@ def _build_analysis_job_workers() -> list[AnalysisJobWorker]:
             get_analyst=lambda: _service("analyst"),
             get_smart_router=lambda: _service("smart_router"),
             analyze_label_with_policy=_analyze_label_image_with_policy,
+            analyze_food_with_policy=_analyze_food_job_image_with_policy,
             decode_image=decode_upload_to_image,
             resolve_prompt_country_code=resolve_prompt_country_code,
             lease_seconds=_analysis_job_lease_seconds(),
@@ -951,15 +1020,16 @@ def _initialize_core_runtime_services() -> None:
 
 def _initialize_label_policy_controls() -> None:
     label_cost_guardrail_storage = _build_label_cost_guardrail_storage()
-    app.state.label_cost_guardrail = CostGuardrailService(
+    app.state.analysis_cost_guardrail = CostGuardrailService(
         label_cost_guardrail_storage,
-        monthly_budget_usd=_env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+        monthly_budget_usd=_env_float("AI_MONTHLY_BUDGET_USD", _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0)),
     )
+    app.state.label_cost_guardrail = app.state.analysis_cost_guardrail
     logger.info(
-        "[LabelCostGuardrail] enabled=%s storage=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
-        _is_label_cost_guardrail_enabled(),
+        "[AnalysisCostGuardrail] enabled=%s storage=%s monthly_budget_usd=%.2f warn_ratio=%.2f degrade_ratio=%.2f fallback_ratio=%.2f",
+        _is_analysis_cost_guardrail_enabled(),
         type(label_cost_guardrail_storage).__name__,
-        _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0),
+        _env_float("AI_MONTHLY_BUDGET_USD", _env_float("LABEL_MONTHLY_BUDGET_USD", 10.0)),
         0.70,
         0.85,
         1.00,
@@ -4717,16 +4787,19 @@ async def analyze_food(
 
     try:
         async def _operation():
-            analyst = _service("analyst")
+            preprocess_started_at = time.perf_counter()
             contents = await file.read()
             image = await run_in_threadpool(decode_upload_to_image, contents)
+            preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-            return await run_in_threadpool(
-                analyst.analyze_food_json,
+            return await _analyze_food_image_with_policy(
                 image,
                 allergy_info,
                 prompt_country_code,
+                request_id,
+                started_at,
+                preprocess_elapsed_ms,
             )
 
         result = await run_with_error_policy(
@@ -4736,9 +4809,9 @@ async def analyze_food(
             request_id=request_id,
         )
         if isinstance(result, dict):
-            result["request_id"] = request_id
+            result.setdefault("request_id", request_id)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        if isinstance(result, dict):
+        if isinstance(result, dict) and "latency_ms" not in result:
             result["latency_ms"] = _build_latency_ms_payload(
                 total_ms=elapsed_ms,
                 preprocess_ms=None,
@@ -4758,6 +4831,188 @@ async def analyze_food(
     finally:
         if slot_acquired:
             _release_analysis_slot(endpoint="/analyze")
+
+
+async def _analyze_food_image_with_policy(
+    image: Image.Image,
+    allergy_info: str,
+    prompt_country_code: str,
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+    *,
+    job_mode: bool = False,
+) -> dict[str, Any]:
+    analyst = _service("analyst")
+    cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
+    estimated_cost = _env_float("FOOD_ESTIMATED_COST_USD_PER_REQUEST", 0.006)
+    estimated_tokens = _env_int("FOOD_ESTIMATED_TOKENS_PER_REQUEST", 2500)
+    cost_reservation: Any = None
+
+    if _is_analysis_cost_guardrail_enabled() and cost_guardrail:
+        decision = _reserve_label_cost(
+            cost_guardrail,
+            reservation_key=f"{request_id}:food-analysis",
+            estimated_cost_usd=estimated_cost,
+            estimated_tokens=estimated_tokens,
+        )
+        cost_reservation = decision
+        decision_action = _label_cost_action(decision)
+        logger.info(
+            "[Server] Food cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+            request_id,
+            decision_action,
+            _label_cost_ratio(decision),
+            _label_cost_projected_total(decision),
+        )
+        if decision_action == CostGuardrailAction.FALLBACK:
+            total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+            fallback = get_safe_fallback_response(
+                "이번 달 AI 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+            )
+            fallback["request_id"] = request_id
+            fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+            fallback["used_model"] = getattr(analyst, "model_name", None)
+            fallback["analysis_diagnostics"] = {
+                "origin": "food_photo",
+                "fallback_used": True,
+                "fallback_reason": "budget_fallback",
+                "finish_reason": None,
+                "truncated": False,
+                "usage_source": "not_chargeable",
+            }
+            fallback["latency_ms"] = _build_latency_ms_payload(
+                total_ms=total_elapsed_ms,
+                preprocess_ms=preprocess_elapsed_ms,
+                extract_ms=None,
+                assess_ms=None,
+                source_lookup_ms=None,
+                allergen_analysis_ms=None,
+            )
+            _reconcile_label_cost(
+                cost_guardrail,
+                reservation=cost_reservation,
+                chargeable=False,
+                cost_usd=0.0,
+                tokens=0,
+                provider_total_tokens=None,
+                provider_thought_tokens=None,
+                fallback_used=True,
+                truncated=False,
+            )
+            return fallback
+
+    try:
+        result = await run_in_threadpool(
+            analyst.analyze_food_job_json if job_mode else analyst.analyze_food_json,
+            image,
+            allergy_info,
+            prompt_country_code,
+        )
+    except Exception:
+        if _is_analysis_cost_guardrail_enabled() and cost_guardrail:
+            _reconcile_label_cost(
+                cost_guardrail,
+                reservation=cost_reservation,
+                chargeable=False,
+                cost_usd=0.0,
+                tokens=0,
+                provider_total_tokens=None,
+                provider_thought_tokens=None,
+                fallback_used=False,
+                truncated=False,
+            )
+        raise
+
+    if not isinstance(result, dict):
+        if _is_analysis_cost_guardrail_enabled() and cost_guardrail:
+            _reconcile_label_cost(
+                cost_guardrail,
+                reservation=cost_reservation,
+                chargeable=False,
+                cost_usd=0.0,
+                tokens=0,
+                provider_total_tokens=None,
+                provider_thought_tokens=None,
+                fallback_used=False,
+                truncated=False,
+            )
+        return result
+
+    food_chargeable = bool(result.pop("_food_chargeable", True))
+    food_observability = _extract_food_observability(result)
+    _strip_internal_analysis_metadata(result)
+    total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+    result["request_id"] = request_id
+    result["latency_ms"] = _build_latency_ms_payload(
+        total_ms=total_elapsed_ms,
+        preprocess_ms=preprocess_elapsed_ms,
+        extract_ms=None,
+        assess_ms=None,
+        source_lookup_ms=None,
+        allergen_analysis_ms=None,
+    )
+    food_usage_total_tokens = food_observability["usage_total_tokens"]
+    food_usage_thought_tokens = food_observability["usage_thought_tokens"]
+    recorded_tokens = food_usage_total_tokens if isinstance(food_usage_total_tokens, int) else estimated_tokens
+    usage_source = "provider_usage_metadata" if isinstance(food_usage_total_tokens, int) else "estimated"
+    result["analysis_diagnostics"] = _build_public_analysis_diagnostics(food_observability, usage_source)
+    logger.info(
+        "[Server] Food observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s finish_reason=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
+        request_id,
+        food_observability["used_model"],
+        food_observability["fallback_used"],
+        food_observability["fallback_reason"],
+        food_observability["finish_reason"],
+        food_observability["truncated"],
+        usage_source,
+        food_usage_total_tokens,
+        food_usage_thought_tokens,
+    )
+    if _is_analysis_cost_guardrail_enabled() and cost_guardrail and food_chargeable:
+        _reconcile_label_cost(
+            cost_guardrail,
+            reservation=cost_reservation,
+            chargeable=True,
+            cost_usd=estimated_cost,
+            tokens=recorded_tokens,
+            provider_total_tokens=food_usage_total_tokens,
+            provider_thought_tokens=food_usage_thought_tokens,
+            fallback_used=bool(food_observability["fallback_used"]),
+            truncated=bool(food_observability["truncated"]),
+        )
+    elif _is_analysis_cost_guardrail_enabled() and cost_guardrail:
+        _reconcile_label_cost(
+            cost_guardrail,
+            reservation=cost_reservation,
+            chargeable=False,
+            cost_usd=0.0,
+            tokens=0,
+            provider_total_tokens=food_usage_total_tokens,
+            provider_thought_tokens=food_usage_thought_tokens,
+            fallback_used=bool(food_observability["fallback_used"]),
+            truncated=bool(food_observability["truncated"]),
+        )
+    return result
+
+
+async def _analyze_food_job_image_with_policy(
+    image: Image.Image,
+    allergy_info: str,
+    prompt_country_code: str,
+    request_id: str,
+    total_started_at: float,
+    preprocess_elapsed_ms: int,
+) -> dict[str, Any]:
+    return await _analyze_food_image_with_policy(
+        image,
+        allergy_info,
+        prompt_country_code,
+        request_id,
+        total_started_at,
+        preprocess_elapsed_ms,
+        job_mode=True,
+    )
 
 
 async def _analyze_label_image_with_policy(
@@ -5222,16 +5477,81 @@ async def analyze_smart(
             preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
-            return await smart_router.route_analysis(
-                image=image,
-                allergy_info=allergy_info,
-                iso_country_code=prompt_country_code,
-                locale=locale,
-                request_id=request_id,
-                total_started_at=started_at,
-                preprocess_elapsed_ms=preprocess_elapsed_ms,
-                label_analysis_runner=_analyze_label_image_with_policy_for_http,
-            )
+            smart_cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
+            smart_estimated_cost = _env_float("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", 0.001)
+            smart_estimated_tokens = _env_int("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", 300)
+            smart_reservation: Any = None
+            if _is_analysis_cost_guardrail_enabled() and smart_cost_guardrail:
+                smart_decision = _reserve_label_cost(
+                    smart_cost_guardrail,
+                    reservation_key=f"{request_id}:smart-router",
+                    estimated_cost_usd=smart_estimated_cost,
+                    estimated_tokens=smart_estimated_tokens,
+                )
+                smart_reservation = smart_decision
+                smart_decision_action = _label_cost_action(smart_decision)
+                logger.info(
+                    "[Server] Smart router cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+                    request_id,
+                    smart_decision_action,
+                    _label_cost_ratio(smart_decision),
+                    _label_cost_projected_total(smart_decision),
+                )
+                if smart_decision_action == CostGuardrailAction.FALLBACK:
+                    fallback = get_safe_fallback_response(
+                        "이번 달 AI 분석 예산 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+                    )
+                    fallback["request_id"] = request_id
+                    fallback["prompt_version"] = ANALYSIS_PROMPT_VERSION
+                    fallback["used_model"] = "gemini-2.0-flash"
+                    fallback["analysis_diagnostics"] = {
+                        "origin": "smart_route",
+                        "fallback_used": True,
+                        "fallback_reason": "budget_fallback",
+                        "finish_reason": None,
+                        "truncated": False,
+                        "usage_source": "not_chargeable",
+                    }
+                    _reconcile_label_cost(
+                        smart_cost_guardrail,
+                        reservation=smart_reservation,
+                        chargeable=False,
+                        cost_usd=0.0,
+                        tokens=0,
+                        provider_total_tokens=None,
+                        provider_thought_tokens=None,
+                        fallback_used=True,
+                        truncated=False,
+                    )
+                    return fallback
+            try:
+                result = await smart_router.route_analysis(
+                    image=image,
+                    allergy_info=allergy_info,
+                    iso_country_code=prompt_country_code,
+                    locale=locale,
+                    request_id=request_id,
+                    total_started_at=started_at,
+                    preprocess_elapsed_ms=preprocess_elapsed_ms,
+                    label_analysis_runner=_analyze_label_image_with_policy_for_http,
+                    food_analysis_runner=_analyze_food_image_with_policy,
+                )
+                if isinstance(result, dict):
+                    result = _build_smart_analysis_diagnostics_result(result)
+            finally:
+                if _is_analysis_cost_guardrail_enabled() and smart_cost_guardrail and smart_reservation:
+                    _reconcile_label_cost(
+                        smart_cost_guardrail,
+                        reservation=smart_reservation,
+                        chargeable=True,
+                        cost_usd=smart_estimated_cost,
+                        tokens=smart_estimated_tokens,
+                        provider_total_tokens=None,
+                        provider_thought_tokens=None,
+                        fallback_used=False,
+                        truncated=False,
+                    )
+            return result
 
         result = await run_with_error_policy(
             endpoint="/analyze/smart",

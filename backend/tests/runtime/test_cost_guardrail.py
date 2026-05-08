@@ -58,6 +58,58 @@ def _collect_internal_label_keys(value: Any) -> list[str]:
     return []
 
 
+def _collect_internal_food_keys(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        keys = [str(key) for key in value.keys() if str(key).startswith("_food_")]
+        for item in value.values():
+            keys.extend(_collect_internal_food_keys(item))
+        return keys
+    if isinstance(value, list):
+        keys: list[str] = []
+        for item in value:
+            keys.extend(_collect_internal_food_keys(item))
+        return keys
+    return []
+
+
+class _FoodUsageSpyAnalyst:
+    def __init__(self) -> None:
+        self.model_name = "gemini-2.5-flash"
+        self.called = False
+
+    def analyze_food_json(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        self.called = True
+        return {
+            "foodName": "Toast",
+            "safetyStatus": "SAFE",
+            "ingredients": [],
+            "prompt_version": "food-v3.2-context-engineered",
+            "used_model": self.model_name,
+            "_food_primary_model": self.model_name,
+            "_food_used_model": self.model_name,
+            "_food_fallback_used": False,
+            "_food_fallback_reason": None,
+            "_food_finish_reason": 1,
+            "_food_thinking_budget": 0,
+            "_food_truncated": False,
+            "_food_chargeable": True,
+            "_food_usage_metadata": {
+                "prompt_token_count": 120,
+                "candidates_token_count": 80,
+                "thoughts_token_count": 0,
+                "total_token_count": 200,
+            },
+        }
+
+
+class _NonDictFoodAnalyst:
+    def __init__(self) -> None:
+        self.model_name = "gemini-2.5-flash"
+
+    def analyze_food_json(self, *_args: Any, **_kwargs: Any) -> list[str]:
+        return ["unexpected"]
+
+
 class _SpyAnalyst:
     def __init__(self):
         self.label_model_name = "gemini-2.5-flash"
@@ -177,6 +229,7 @@ class _SmartLabelRouter:
         total_started_at: float,
         preprocess_elapsed_ms: int,
         label_analysis_runner: Any,
+        food_analysis_runner: Any | None = None,
     ) -> dict[str, Any]:
         result = await label_analysis_runner(
             image,
@@ -188,6 +241,32 @@ class _SmartLabelRouter:
             preprocess_elapsed_ms,
         )
         result["router_category"] = "NUTRITION_LABEL"
+        return result
+
+
+class _SmartFoodRouter:
+    async def route_analysis(
+        self,
+        *,
+        image: Any,
+        allergy_info: str,
+        iso_country_code: str,
+        locale: str | None,
+        request_id: str,
+        total_started_at: float,
+        preprocess_elapsed_ms: int,
+        label_analysis_runner: Any,
+        food_analysis_runner: Any,
+    ) -> dict[str, Any]:
+        result = await food_analysis_runner(
+            image,
+            allergy_info,
+            iso_country_code,
+            request_id,
+            total_started_at,
+            preprocess_elapsed_ms,
+        )
+        result["router_category"] = "REAL_FOOD"
         return result
 
 
@@ -362,6 +441,117 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
 
+    def test_analyze_food_records_provider_usage_without_internal_food_fields(self):
+        analyst = _FoodUsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/analyze",
+                files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(analyst.called)
+        self.assertEqual(_collect_internal_food_keys(payload), [])
+        self.assertEqual(payload["analysis_diagnostics"]["usage_source"], "provider_usage_metadata")
+        self.assertAlmostEqual(usage.total_cost_usd, 0.006)
+        self.assertEqual(usage.total_tokens, 200)
+        self.assertEqual(usage.provider_reported_tokens, 200)
+
+    def test_analyze_food_budget_fallback_skips_model_call(self):
+        analyst = _FoodUsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/analyze",
+                files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        payload = response.json()
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(analyst.called)
+        self.assertEqual(payload.get("safetyStatus"), "CAUTION")
+        self.assertEqual(payload["analysis_diagnostics"]["fallback_reason"], "budget_fallback")
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.total_tokens, 1000)
+
+    def test_analyze_food_releases_reservation_when_result_is_not_dict(self):
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                },
+                clear=False,
+            ),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            app.state.analyst = _NonDictFoodAnalyst()
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/analyze",
+                files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.request_count, 0)
+
     def test_label_endpoint_releases_reservation_when_provider_raises(self):
         analyst = _RaisingLabelAnalyst()
         storage = InMemoryMonthlyUsageStorage()
@@ -471,8 +661,8 @@ class CostGuardrailTests(unittest.TestCase):
         usage = storage.get(service._period_key())
         self.assertEqual(response.status_code, 200)
         self.assertTrue(spy.called)
-        self.assertAlmostEqual(usage.total_cost_usd, 0.02)
-        self.assertEqual(usage.total_tokens, 1500)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.021)
+        self.assertEqual(usage.total_tokens, 1800)
 
     def test_smart_label_route_records_provider_usage_without_public_label_fields(self):
         spy = _UsageSpyAnalyst()
@@ -514,11 +704,11 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertTrue(payload["label_diagnostics"]["fallback_used"])
         self.assertTrue(payload["label_diagnostics"]["truncated"])
         self.assertEqual(payload["label_diagnostics"]["usage_source"], "provider_usage_metadata")
-        self.assertAlmostEqual(usage.total_cost_usd, 0.12)
-        self.assertEqual(usage.total_tokens, 133)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.121)
+        self.assertEqual(usage.total_tokens, 433)
         self.assertEqual(usage.provider_reported_tokens, 133)
         self.assertEqual(usage.provider_reported_thought_tokens, 11)
-        self.assertEqual(usage.request_count, 1)
+        self.assertEqual(usage.request_count, 2)
         self.assertEqual(usage.fallback_count, 1)
         self.assertEqual(usage.truncated_count, 1)
 
@@ -533,6 +723,48 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(observability_extra["label_usage_total_tokens"], 133)
         self.assertEqual(observability_extra["label_usage_thought_tokens"], 11)
         self.assertEqual(observability_extra["label_fallback_reason"], "extract_max_tokens")
+
+    def test_smart_food_route_marks_public_diagnostics_as_smart_route(self):
+        analyst = _FoodUsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "300",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartFoodRouter()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(analyst.called)
+        self.assertEqual(payload["analysis_diagnostics"]["origin"], "smart_route")
+        self.assertEqual(payload["analysis_diagnostics"]["usage_source"], "provider_usage_metadata")
+        self.assertEqual(_collect_internal_food_keys(payload), [])
+        self.assertAlmostEqual(usage.total_cost_usd, 0.007)
+        self.assertEqual(usage.total_tokens, 500)
+        self.assertEqual(usage.provider_reported_tokens, 200)
 
     def test_smart_label_route_budget_fallback_skips_model_call(self):
         spy = _SpyAnalyst()
@@ -570,6 +802,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 1000)
 
     def test_real_smart_router_label_branch_uses_cost_gate(self):

@@ -78,14 +78,18 @@ def _invoke_generation_with_retry(
     generation_config: dict[str, Any],
     safety_settings: dict[str, Any],
     retry_stats: dict[str, Any],
+    max_attempts_override: int | None = None,
+    provider_attempt_counter: dict[str, int] | None = None,
 ) -> Any:
     last_error: Exception | None = None
     on_retry_error = _build_retry_error_handler(retry_stats)
     started_at = time.perf_counter()
-    max_attempts = max(1, RETRY_MAX_ATTEMPTS)
+    max_attempts = max(1, max_attempts_override or RETRY_MAX_ATTEMPTS)
 
     for attempt in range(1, max_attempts + 1):
         try:
+            if provider_attempt_counter is not None:
+                provider_attempt_counter["count"] = int(provider_attempt_counter.get("count", 0)) + 1
             return model.generate_content(
                 contents,
                 generation_config=generation_config,
@@ -112,6 +116,23 @@ def _invoke_generation_with_retry(
     if last_error is not None:
         raise last_error
     raise RuntimeError("Generation failed without explicit error")
+
+
+def _mark_generation_response_model(
+    response: Any,
+    model_name: str,
+    provider_call_count: int,
+    fallback_used: bool,
+    fallback_reason: str | None,
+) -> Any:
+    try:
+        setattr(response, "_foodlens_used_model", model_name)
+        setattr(response, "_foodlens_provider_call_count", provider_call_count)
+        setattr(response, "_foodlens_fallback_used", fallback_used)
+        setattr(response, "_foodlens_fallback_reason", fallback_reason)
+    except Exception as error:
+        print(f"[Generation Metadata] used_model annotation failed error_type={type(error).__name__}")
+    return response
 
 
 def generate_with_semaphore(
@@ -179,9 +200,13 @@ def generate_with_retry_and_fallback(
     safety_settings: dict[str, Any],
     semaphore: Any,
     retry_stats: dict[str, Any],
+    max_attempts: int | None = None,
+    fallback_enabled: bool = True,
+    fallback_generation_config: dict[str, Any] | None = None,
 ) -> Any:
     jitter_s = random.uniform(0, JITTER_MAX_MS) / JITTER_DIVISOR
     time.sleep(jitter_s)
+    provider_attempt_counter = {"count": 0}
 
     now = time.time()
     last_429_time = float(retry_stats.get("last_429_time") or 0.0)
@@ -197,7 +222,14 @@ def generate_with_retry_and_fallback(
     print(f"[API Debug] Model name: {primary_model_name}")
     print(f"[API Debug] Has response_schema: {'response_schema' in generation_config}")
     print(f"[API Debug] Generation config keys: {list(generation_config.keys())}")
+    selected_fallback_generation_config = (
+        generation_config
+        if fallback_generation_config is None
+        else fallback_generation_config
+    )
     if cooldown_active:
+        if not fallback_enabled:
+            raise ResourceExhausted("Primary model is in 429 cooldown and fallback is disabled.")
         print(
             "[429 Guard] primary temporarily bypassed "
             f"(cooldown_s={RETRY_429_COOLDOWN_SECONDS}, consecutive_429={consecutive_429})"
@@ -206,13 +238,21 @@ def generate_with_retry_and_fallback(
         response = _invoke_generation_with_retry(
             backup_model,
             contents,
-            generation_config,
+            selected_fallback_generation_config,
             safety_settings,
             retry_stats,
+            1,
+            provider_attempt_counter,
         )
         retry_stats["last_used_model"] = fallback_model_name
         print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")
-        return response
+        return _mark_generation_response_model(
+            response,
+            fallback_model_name,
+            provider_attempt_counter["count"],
+            True,
+            "primary_429_cooldown",
+        )
 
     with semaphore:
         try:
@@ -222,12 +262,22 @@ def generate_with_retry_and_fallback(
                 generation_config,
                 safety_settings,
                 retry_stats,
+                max_attempts,
+                provider_attempt_counter,
             )
             retry_stats["last_used_model"] = primary_model_name
             retry_stats["consecutive_429"] = 0
             print("[API Debug] ✓ Primary model response received")
-            return response
+            return _mark_generation_response_model(
+                response,
+                primary_model_name,
+                provider_attempt_counter["count"],
+                False,
+                None,
+            )
         except Exception as primary_error:
+            if not fallback_enabled:
+                raise
             print(f"[Model Fallback] Primary model ({primary_model_name}) failed: {primary_error}")
             print(f"[Model Fallback] Error type: {type(primary_error).__name__}")
             print(f"[Model Fallback] Switching to backup model: {FALLBACK_MODEL_DISPLAY}")
@@ -236,10 +286,18 @@ def generate_with_retry_and_fallback(
             response = _invoke_generation_with_retry(
                 backup_model,
                 contents,
-                generation_config,
+                selected_fallback_generation_config,
                 safety_settings,
                 retry_stats,
+                1,
+                provider_attempt_counter,
             )
             retry_stats["last_used_model"] = fallback_model_name
             print(f"[API Debug] ✓ Backup model response received ({fallback_model_name})")
-            return response
+            return _mark_generation_response_model(
+                response,
+                fallback_model_name,
+                provider_attempt_counter["count"],
+                True,
+                "primary_fallback",
+            )

@@ -84,6 +84,18 @@ services:
         value: "3"
       - key: GEMINI_MODEL_NAME
         value: gemini-2.5-flash
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
+        value: "4096"
+      - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
+        value: "8192"
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
+        value: "8192"
+      - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST
+        value: "3"
       - key: GEMINI_LABEL_MODEL_NAME
         value: gemini-2.5-flash
       - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
@@ -110,6 +122,14 @@ services:
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
+      - key: AI_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: AI_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: AI_COST_GUARDRAIL_USAGE_TABLE
+        value: ai_monthly_usage
+      - key: AI_COST_GUARDRAIL_RESERVATION_TABLE
+        value: ai_monthly_usage_reservations
       - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
         value: postgres
       - key: LABEL_COST_GUARDRAIL_USAGE_TABLE
@@ -118,6 +138,16 @@ services:
         value: label_monthly_usage_reservations
       - key: LABEL_MONTHLY_BUDGET_USD
         value: "10"
+      - key: AI_MONTHLY_BUDGET_USD
+        value: "10"
+      - key: FOOD_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.006"
+      - key: FOOD_ESTIMATED_TOKENS_PER_REQUEST
+        value: "2500"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "300"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
@@ -378,6 +408,18 @@ services:
         value: "3"
       - key: GEMINI_MODEL_NAME
         value: gemini-2.5-flash
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
+        value: "4096"
+      - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
+        value: "8192"
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
+        value: "8192"
+      - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST
+        value: "3"
       - key: GEMINI_LABEL_MODEL_NAME
         value: gemini-2.5-flash
       - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
@@ -404,6 +446,14 @@ services:
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
+      - key: AI_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: AI_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: AI_COST_GUARDRAIL_USAGE_TABLE
+        value: ai_monthly_usage
+      - key: AI_COST_GUARDRAIL_RESERVATION_TABLE
+        value: ai_monthly_usage_reservations
       - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
         value: postgres
       - key: LABEL_COST_GUARDRAIL_USAGE_TABLE
@@ -412,6 +462,16 @@ services:
         value: label_monthly_usage_reservations
       - key: LABEL_MONTHLY_BUDGET_USD
         value: "10"
+      - key: AI_MONTHLY_BUDGET_USD
+        value: "10"
+      - key: FOOD_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.006"
+      - key: FOOD_ESTIMATED_TOKENS_PER_REQUEST
+        value: "2500"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "300"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
@@ -672,6 +732,18 @@ services:
         value: "3"
       - key: GEMINI_MODEL_NAME
         value: gemini-2.5-flash
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
+        value: "4096"
+      - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
+        value: "8192"
+      - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
+        value: "8192"
+      - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
+        value: "0"
+      - key: GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST
+        value: "3"
       - key: GEMINI_LABEL_MODEL_NAME
         value: gemini-2.5-flash
       - key: GEMINI_LABEL_FALLBACK_MODEL_NAME
@@ -698,6 +770,14 @@ services:
         value: "512"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
+      - key: AI_COST_GUARDRAIL_ENABLED
+        value: "1"
+      - key: AI_COST_GUARDRAIL_STORAGE_BACKEND
+        value: postgres
+      - key: AI_COST_GUARDRAIL_USAGE_TABLE
+        value: ai_monthly_usage
+      - key: AI_COST_GUARDRAIL_RESERVATION_TABLE
+        value: ai_monthly_usage_reservations
       - key: LABEL_COST_GUARDRAIL_STORAGE_BACKEND
         value: postgres
       - key: LABEL_COST_GUARDRAIL_USAGE_TABLE
@@ -706,6 +786,16 @@ services:
         value: label_monthly_usage_reservations
       - key: LABEL_MONTHLY_BUDGET_USD
         value: "10"
+      - key: AI_MONTHLY_BUDGET_USD
+        value: "10"
+      - key: FOOD_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.006"
+      - key: FOOD_ESTIMATED_TOKENS_PER_REQUEST
+        value: "2500"
+      - key: SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST
+        value: "300"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
