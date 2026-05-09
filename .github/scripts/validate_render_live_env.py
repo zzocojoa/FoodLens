@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 RENDER_API_BASE_URL = "https://api.render.com/v1"
 RENDER_PAGE_LIMIT = 100
-REQUIRED_LIVE_ENV_KEYS: tuple[str, ...] = (
+DEFAULT_LIVE_ENV_KEYS: tuple[str, ...] = (
     "GEMINI_MODEL_NAME",
     "GEMINI_LABEL_MODEL_NAME",
     "GEMINI_LABEL_FALLBACK_MODEL_NAME",
@@ -52,6 +52,12 @@ class ServiceEnvCheck:
     key: str
     present: bool
     matches_blueprint: bool | None
+
+
+@dataclass(frozen=True)
+class PaginatedItems:
+    items: list[dict[str, Any]]
+    next_cursor: str | None
 
 
 def _unquote(value: str) -> str:
@@ -130,8 +136,7 @@ def _request_json(method: str, url: str, api_key: str) -> object:
         with urlopen(request, timeout=30) as response:
             response_body = response.read().decode("utf-8")
     except HTTPError as error:
-        error_body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Render API {method} failed with status {error.code}: {error_body[:300]}") from error
+        raise RuntimeError(f"Render API {method} failed with status {error.code}.") from error
     except TimeoutError as error:
         raise RuntimeError(f"Render API {method} timed out.") from error
     except URLError as error:
@@ -142,19 +147,31 @@ def _request_json(method: str, url: str, api_key: str) -> object:
         raise RuntimeError("Render API returned invalid JSON.") from error
 
 
-def _response_items(response: object) -> list[dict[str, Any]]:
+def _response_cursor(response: dict[str, Any]) -> str | None:
+    for cursor_key in ("nextCursor", "next_cursor", "cursor"):
+        cursor = response.get(cursor_key)
+        if isinstance(cursor, str) and cursor.strip():
+            return cursor
+    return None
+
+
+def _response_page(response: object) -> PaginatedItems:
     if isinstance(response, list):
-        return [item for item in response if isinstance(item, dict)]
+        items = [item for item in response if isinstance(item, dict)]
+        return PaginatedItems(items=items, next_cursor=_cursor_from_items(items))
     if isinstance(response, dict):
         results = response.get("results")
         if isinstance(results, list):
-            return [item for item in results if isinstance(item, dict)]
+            items = [item for item in results if isinstance(item, dict)]
+            return PaginatedItems(items=items, next_cursor=_response_cursor(response) or _cursor_from_items(items))
         env_vars = response.get("envVars")
         if isinstance(env_vars, list):
-            return [item for item in env_vars if isinstance(item, dict)]
+            items = [item for item in env_vars if isinstance(item, dict)]
+            return PaginatedItems(items=items, next_cursor=_response_cursor(response) or _cursor_from_items(items))
         services = response.get("services")
         if isinstance(services, list):
-            return [item for item in services if isinstance(item, dict)]
+            items = [item for item in services if isinstance(item, dict)]
+            return PaginatedItems(items=items, next_cursor=_response_cursor(response) or _cursor_from_items(items))
     raise RuntimeError("Render API list response did not include a supported item list.")
 
 
@@ -174,10 +191,11 @@ def _paginated_get(api_key: str, path: str, request_json: JsonRequester) -> list
         if cursor is not None:
             query["cursor"] = cursor
         url = f"{RENDER_API_BASE_URL}{path}?{urlencode(query)}"
-        page_items = _response_items(request_json("GET", url, api_key))
+        page = _response_page(request_json("GET", url, api_key))
+        page_items = page.items
         items.extend(page_items)
-        next_cursor = _cursor_from_items(page_items)
-        if next_cursor is None or len(page_items) < RENDER_PAGE_LIMIT or next_cursor in seen_cursors:
+        next_cursor = page.next_cursor
+        if next_cursor is None or next_cursor in seen_cursors:
             return items
         seen_cursors.add(next_cursor)
         cursor = next_cursor
@@ -255,18 +273,25 @@ def _live_env_vars(api_key: str, service_id: str, request_json: JsonRequester) -
     return live_env
 
 
-def _required_env_contract(services: list[BlueprintService]) -> dict[str, dict[str, BlueprintEnvVar]]:
+def _required_scoped_env_vars(service: BlueprintService) -> dict[str, BlueprintEnvVar]:
+    service_contract: dict[str, BlueprintEnvVar] = {}
+    for key in DEFAULT_LIVE_ENV_KEYS:
+        env_var = service.env_vars.get(key)
+        if env_var is None:
+            raise RuntimeError(f"render.yaml service {service.name} is missing required live env key {key}.")
+        if env_var.sync == "false":
+            raise RuntimeError(f"render.yaml service {service.name} key {key} must define a literal value.")
+        service_contract[key] = env_var
+    return service_contract
+
+
+def _required_env_contract(services: list[BlueprintService], all_blueprint_env: bool) -> dict[str, dict[str, BlueprintEnvVar]]:
     contract: dict[str, dict[str, BlueprintEnvVar]] = {}
     for service in services:
-        service_contract: dict[str, BlueprintEnvVar] = {}
-        for key in REQUIRED_LIVE_ENV_KEYS:
-            env_var = service.env_vars.get(key)
-            if env_var is None:
-                raise RuntimeError(f"render.yaml service {service.name} is missing required live env key {key}.")
-            if env_var.sync == "false":
-                raise RuntimeError(f"render.yaml service {service.name} key {key} must define a literal value.")
-            service_contract[key] = env_var
-        contract[service.name] = service_contract
+        if not service.env_vars:
+            raise RuntimeError(f"render.yaml service {service.name} has no env vars to validate.")
+        service_contract = service.env_vars if all_blueprint_env else _required_scoped_env_vars(service)
+        contract[service.name] = dict(sorted(service_contract.items()))
     return contract
 
 
@@ -280,7 +305,7 @@ def _check_service_env(
     for key, blueprint_var in blueprint_env.items():
         present = key in live_env
         matches_blueprint: bool | None = None
-        if check_values and present:
+        if check_values and present and blueprint_var.value is not None and blueprint_var.sync != "false":
             matches_blueprint = live_env[key] == blueprint_var.value
         checks.append(
             ServiceEnvCheck(
@@ -305,13 +330,19 @@ def _print_check(check: ServiceEnvCheck) -> None:
     )
 
 
-def run_gate(env: dict[str, str], blueprint_path: Path, check_values: bool, request_json: JsonRequester) -> int:
+def run_gate(
+    env: dict[str, str],
+    blueprint_path: Path,
+    check_values: bool,
+    all_blueprint_env: bool,
+    request_json: JsonRequester,
+) -> int:
     api_key = (env.get("RENDER_API_KEY") or "").strip()
     if not api_key:
         print("[RenderLiveEnvGate] Missing required env: RENDER_API_KEY", file=sys.stderr)
         return 2
 
-    contract = _required_env_contract(parse_blueprint_services(blueprint_path))
+    contract = _required_env_contract(parse_blueprint_services(blueprint_path), all_blueprint_env)
     service_names = tuple(contract.keys())
     service_ids = _service_ids_by_name(env, api_key, service_names, request_json)
     checks: list[ServiceEnvCheck] = []
@@ -320,7 +351,11 @@ def run_gate(env: dict[str, str], blueprint_path: Path, check_values: bool, requ
         service_id = service_ids.get(service_name)
         if service_id is None:
             missing_services.append(service_name)
-            print(f"[RenderLiveEnvGate] service={service_name} exists=false")
+            print(
+                "[RenderLiveEnvGate] "
+                f"service={service_name} exists=false action=set {_service_id_env_name(service_name)} "
+                "or ensure a Render service has the same name as render.yaml"
+            )
             continue
         checks.extend(_check_service_env(service_name, blueprint_env, _live_env_vars(api_key, service_id, request_json), check_values))
 
@@ -332,12 +367,14 @@ def run_gate(env: dict[str, str], blueprint_path: Path, check_values: bool, requ
     if missing_services or missing_count > 0 or mismatch_count > 0:
         print(
             "[RenderLiveEnvGate] live env contract failed: "
-            f"missing_services={len(missing_services)} missing_keys={missing_count} mismatched_values={mismatch_count}",
+            f"services_checked={len(contract) - len(missing_services)} "
+            f"missing_services={len(missing_services)} missing_keys={missing_count} "
+            f"mismatched_values={mismatch_count} action=update Render Dashboard env keys or render.yaml",
             file=sys.stderr,
         )
         return 1
 
-    print("[RenderLiveEnvGate] live env contract checks passed.")
+    print(f"[RenderLiveEnvGate] live env contract checks passed. services_checked={len(contract)}")
     return 0
 
 
@@ -345,6 +382,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Render live env key parity without printing env values.")
     parser.add_argument("--blueprint", required=True, help="Path to render.yaml")
     parser.add_argument("--presence-only", action="store_true", help="Check key presence without comparing values")
+    parser.add_argument(
+        "--all-blueprint-env",
+        action="store_true",
+        help="Audit every render.yaml env key instead of the default AI guardrail contract",
+    )
     parser.add_argument("--check-values", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -353,7 +395,7 @@ def main(argv: list[str]) -> int:
     args = _parse_args(argv)
     try:
         check_values = not bool(args.presence_only)
-        return run_gate(dict(os.environ), Path(args.blueprint), check_values, _request_json)
+        return run_gate(dict(os.environ), Path(args.blueprint), check_values, bool(args.all_blueprint_env), _request_json)
     except RuntimeError as error:
         print(f"[RenderLiveEnvGate] {error}", file=sys.stderr)
         return 2

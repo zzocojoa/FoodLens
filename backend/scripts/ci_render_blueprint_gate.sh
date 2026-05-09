@@ -3,15 +3,20 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BLUEPRINT_PATH="${ROOT_DIR}/render.yaml"
+ENV_EXAMPLE_PATH="${ROOT_DIR}/.env.example"
 
 if [[ ! -f "${BLUEPRINT_PATH}" ]]; then
   echo "[Render Blueprint Gate] missing file: ${BLUEPRINT_PATH}"
   exit 1
 fi
+if [[ ! -f "${ENV_EXAMPLE_PATH}" ]]; then
+  echo "[Render Blueprint Gate] missing file: ${ENV_EXAMPLE_PATH}"
+  exit 1
+fi
 
 echo "[Render Blueprint Gate] validating ${BLUEPRINT_PATH}"
 
-python3 - "${BLUEPRINT_PATH}" <<'PY'
+python3 - "${BLUEPRINT_PATH}" "${ENV_EXAMPLE_PATH}" <<'PY'
 from __future__ import annotations
 
 import re
@@ -65,6 +70,17 @@ def parse_env_vars(block: list[str]) -> dict[str, dict[str, str | None]]:
     return env_vars
 
 
+def parse_env_example(path: Path) -> dict[str, str]:
+    env_vars: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        env_vars[key.strip()] = value.strip()
+    return env_vars
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         fail(message)
@@ -85,6 +101,11 @@ def require_env_sync_false(env_vars: dict[str, dict[str, str | None]], key: str)
     entry = env_vars[key]
     require(entry["sync"] == "false", f"env key {key} must use sync:false, got sync={entry['sync']}")
     require(entry["value"] is None, f"env key {key} must not define a literal value")
+
+
+def require_example_env_value(env_vars: dict[str, str], key: str, expected: str) -> None:
+    actual = env_vars.get(key)
+    require(actual == expected, f"unexpected .env.example value for {key}: expected {expected}, got {actual}")
 
 
 def require_env_int_at_least(env_vars: dict[str, dict[str, str | None]], key: str, minimum: int) -> None:
@@ -128,8 +149,10 @@ def parse_services(lines: list[str]) -> list[dict[str, Any]]:
 
 def main() -> None:
     path = Path(sys.argv[1])
+    env_example_path = Path(sys.argv[2])
     lines = path.read_text(encoding="utf-8").splitlines()
     services = parse_services(lines)
+    env_example_vars = parse_env_example(env_example_path)
 
     require(len(services) == 3, f"expected 3 services, found {len(services)}")
     service_map = {service["name"]: service for service in services}
@@ -388,6 +411,30 @@ def main() -> None:
             service["env_vars"]["GEMINI_LABEL_MODEL_NAME"]["value"] != service["env_vars"]["GEMINI_LABEL_FALLBACK_MODEL_NAME"]["value"],
             f"{service['name']} label primary and fallback models must differ",
         )
+
+    env_example_expected_values = {
+        "GEMINI_LABEL_FALLBACK_MODEL_NAME": "gemini-2.5-flash-lite",
+        "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+        "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+        "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
+        "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "0",
+        "AI_COST_GUARDRAIL_ENABLED": "1",
+        "AI_COST_GUARDRAIL_STORAGE_BACKEND": "memory",
+        "AI_COST_GUARDRAIL_USAGE_TABLE": "ai_monthly_usage",
+        "AI_COST_GUARDRAIL_RESERVATION_TABLE": "ai_monthly_usage_reservations",
+        "AI_MONTHLY_BUDGET_USD": "10.0",
+        "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+        "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+        "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+        "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "300",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK": "0.02",
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK": "0.12",
+        "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER": "6",
+        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+    }
+    for key, value in env_example_expected_values.items():
+        require_example_env_value(env_example_vars, key, value)
 
     require(web["type"] == "web", f"foodlens-api type must be web, got {web['type']}")
     require(web["runtime"] == "docker", f"foodlens-api runtime must be docker, got {web['runtime']}")

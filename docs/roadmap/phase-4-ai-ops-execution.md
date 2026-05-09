@@ -146,8 +146,18 @@
   - LRU 200 entries
 - Cost guardrail
   - `LABEL_COST_GUARDRAIL_ENABLED=1`
+  - `AI_COST_GUARDRAIL_ENABLED=1`
+  - `AI_COST_GUARDRAIL_STORAGE_BACKEND=postgres`
+  - `AI_COST_GUARDRAIL_USAGE_TABLE=ai_monthly_usage`
+  - `AI_COST_GUARDRAIL_RESERVATION_TABLE=ai_monthly_usage_reservations`
+  - `AI_MONTHLY_BUDGET_USD=10`
   - `LABEL_MONTHLY_BUDGET_USD=10`
+  - `FOOD_ESTIMATED_COST_USD_PER_REQUEST=0.006`
+  - `FOOD_ESTIMATED_TOKENS_PER_REQUEST=2500`
+  - `SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST=0.001`
+  - `SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST=300`
   - `LABEL_ESTIMATED_COST_USD_PER_REQUEST=0.02`
+  - `LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK=0.02`
   - `LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK=0.12`
   - `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER=6`
   - `LABEL_ESTIMATED_TOKENS_PER_REQUEST=1500`
@@ -157,8 +167,11 @@
   - `BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST=500`
   - Render live env parity check:
     - `python .github/scripts/validate_render_live_env.py --blueprint render.yaml`
+    - 기본 검증 범위는 AI 모델명, label fallback, Pro fallback guardrail key로 제한한다.
+    - 전체 `render.yaml` env drift audit가 필요할 때만 `--all-blueprint-env`를 추가한다.
     - 값 자체는 출력하지 않고 서비스명, key 이름, 존재 여부, blueprint 일치 여부만 확인한다.
     - Pro fallback 운영 key는 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 있어야 한다.
+    - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`을 유지하고, Pro fallback 비용 예약 key(`LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK`, `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER`)가 세 서비스 live env에 모두 존재해야 한다.
 - Observability 메타
   - `/analyze`, `/analyze/label`, `/analyze/smart`: `request_id`, `used_model`, `prompt_version`, `latency_ms`
   - `/analyze/jobs/{job_id}`: `request_id`, `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
@@ -169,7 +182,7 @@
 - [ ] Render 로그에 request_id 기반 시작/완료/오류 추적 가능
 - [x] 429 유도 시 `Retry-After`와 표준 detail 응답 확인 (Render Live 기준)
 - [x] Render blueprint에 timeout/retry/cost guardrail/barcode upstream env가 선언됨
-- [ ] Render live env에 Pro fallback guardrail key 적용 확인
+- [ ] Render live env checker로 Pro fallback guardrail key와 `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0` 적용 확인
 - [x] `/analyze`, `/analyze/smart`, `/lookup/barcode` 응답의 `request_id` 확인
 - [x] `/analyze`, `/analyze/label`, `/lookup/barcode` 응답의 `latency_ms` 확인
 - [x] `/lookup/barcode` 알러지 분석 응답의 `used_model`, `prompt_version` 확인

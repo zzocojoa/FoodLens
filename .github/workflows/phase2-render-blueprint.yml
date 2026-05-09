@@ -31,3 +31,13 @@ jobs:
 
       - name: Validate Render live env checker contract
         run: python -m unittest backend.tests.runtime.test_phase4_operational_config
+
+      - name: Validate Render live env parity
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_SERVICE_ID_FOODLENS_API: ${{ secrets.RENDER_SERVICE_ID_FOODLENS_API }}
+          RENDER_SERVICE_ID_FOODLENS_WORKER: ${{ secrets.RENDER_SERVICE_ID_FOODLENS_WORKER }}
+          RENDER_SERVICE_ID_FOODLENS_RETENTION_CRON: ${{ secrets.RENDER_SERVICE_ID_FOODLENS_RETENTION_CRON }}
+        run: python .github/scripts/validate_render_live_env.py --blueprint render.yaml
