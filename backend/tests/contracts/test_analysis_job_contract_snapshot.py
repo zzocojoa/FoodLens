@@ -31,7 +31,7 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
             "poll_after_ms": 0,
             "progress_hint": "completed",
             "used_model": "gemini-2.0-flash",
-            "prompt_version": "food-v3.3.1-schema-compact",
+            "prompt_version": "food-v3.3.3-schema-safety",
             "latency_ms_by_stage": {
                 "preprocessing": 12,
                 "inference": 223,
@@ -41,6 +41,7 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
             "foodName": "Bibimbap",
             "foodName_en": "Bibimbap",
             "foodName_ko": "비빔밥",
+            "foodOrigin": "korean",
             "safetyStatus": "SAFE",
             "decision_status": "OK",
             "analysis_origin": "food_photo",
@@ -55,6 +56,20 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
 
         normalized = AnalysisJobStatusResponseContract.model_validate(payload).model_dump(exclude_none=True)
         self.assertDictEqual(normalized, payload)
+
+    def test_status_contract_rejects_invalid_food_origin(self) -> None:
+        payload = {
+            "job_id": "job_123",
+            "request_id": "req_123",
+            "status": "completed",
+            "accepted_at": "2026-03-17T00:00:00Z",
+            "updated_at": "2026-03-17T00:00:10Z",
+            "poll_after_ms": 0,
+            "foodOrigin": "bad_origin",
+        }
+
+        with self.assertRaises(ValueError):
+            AnalysisJobStatusResponseContract.model_validate(payload)
 
 
 if __name__ == "__main__":

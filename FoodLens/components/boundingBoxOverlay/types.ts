@@ -2,6 +2,7 @@ export interface BoundingBoxIngredient {
   name: string;
   isAllergen: boolean;
   box_2d?: number[];
+  bbox?: number[];
 }
 
 export interface BoundingBoxOverlayProps {

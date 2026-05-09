@@ -43,11 +43,13 @@ export type UncertaintyReason =
     | 'low_confidence'
     | 'unknown';
 export type DecisionConfidence = 'high' | 'medium' | 'low';
+export type FoodOrigin = 'korean' | 'western' | 'asian' | 'single_ingredient' | 'other' | 'unknown';
 
 export interface AnalyzedData {
     foodName: string;
     foodName_en?: string;
     foodName_ko?: string;
+    foodOrigin?: FoodOrigin;
     safetyStatus: SafetyStatus;
     decisionStatus?: DecisionStatus;
     analysisOrigin?: AnalysisOrigin;

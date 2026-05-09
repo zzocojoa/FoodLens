@@ -262,6 +262,25 @@
             ],
             "title": "Foodname Ko"
           },
+          "foodOrigin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "korean",
+                  "western",
+                  "asian",
+                  "single_ingredient",
+                  "other",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foodorigin"
+          },
           "ingredients": {
             "items": {
               "additionalProperties": true,
@@ -639,6 +658,25 @@
               }
             ],
             "title": "Foodname Ko"
+          },
+          "foodOrigin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "korean",
+                  "western",
+                  "asian",
+                  "single_ingredient",
+                  "other",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foodorigin"
           },
           "ingredients": {
             "items": {

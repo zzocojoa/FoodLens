@@ -3,6 +3,7 @@ import {
   BarcodeLookupResult,
   DecisionConfidence,
   DecisionStatus,
+  FoodOrigin,
   LatencyMsBreakdown,
   LatencyMsByStage,
   RecommendedAction,
@@ -12,6 +13,7 @@ import {
 
 export type AnalysisApiContract = {
   foodName: string;
+  foodOrigin?: FoodOrigin;
   safetyStatus: SafetyStatus;
   ingredients: unknown[];
   decision_status?: DecisionStatus;
@@ -52,6 +54,7 @@ export type AnalysisJobStatusContract = {
   prompt_version?: string;
   latency_ms_by_stage?: LatencyMsByStage;
   fallback_reason?: string;
+  foodOrigin?: FoodOrigin;
   decision_status?: DecisionStatus;
   analysis_origin?: AnalysisOrigin;
   recommended_action?: RecommendedAction;
@@ -89,6 +92,14 @@ const isUncertaintyReason = (value: unknown): value is AnalysisApiContract['unce
 
 const isDecisionConfidence = (value: unknown): value is AnalysisApiContract['decision_confidence'] =>
   value === 'high' || value === 'medium' || value === 'low';
+
+const isFoodOrigin = (value: unknown): value is FoodOrigin =>
+  value === 'korean' ||
+  value === 'western' ||
+  value === 'asian' ||
+  value === 'single_ingredient' ||
+  value === 'other' ||
+  value === 'unknown';
 
 const assertOptionalString = ({
   value,
@@ -259,6 +270,12 @@ export const assertAnalysisResponseContract = (
     endpoint,
     isValid: isDecisionConfidence,
   });
+  assertOptionalEnumValue({
+    value: value['foodOrigin'],
+    fieldName: 'foodOrigin',
+    endpoint,
+    isValid: isFoodOrigin,
+  });
 
   assertOptionalLatencyMs({
     value: value['latency_ms'],
@@ -412,6 +429,12 @@ export const assertAnalysisJobStatusContract = (value: unknown): AnalysisJobStat
     fieldName: 'decision_confidence',
     endpoint: '/analyze/jobs/{job_id}',
     isValid: isDecisionConfidence,
+  });
+  assertOptionalEnumValue({
+    value: value['foodOrigin'],
+    fieldName: 'foodOrigin',
+    endpoint: '/analyze/jobs/{job_id}',
+    isValid: isFoodOrigin,
   });
   assertOptionalLatencyMsByStage({
     value: value['latency_ms_by_stage'],

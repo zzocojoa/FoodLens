@@ -39,6 +39,7 @@ describe('aiCore mappers', () => {
     it('preserves observability metadata from analyze payloads', () => {
         const mapped = mapAnalyzedData({
             foodName: 'Soup',
+            foodOrigin: 'western',
             safetyStatus: 'SAFE',
             decision_status: 'OK',
             analysis_origin: 'food_photo',
@@ -47,15 +48,16 @@ describe('aiCore mappers', () => {
             decision_confidence: 'high',
             ingredients: [],
             request_id: 'req-1',
-            prompt_version: 'food-v3.3.1-schema-compact',
+            prompt_version: 'food-v3.3.3-schema-safety',
             used_model: 'gemini-2.5-pro',
             latency_ms: { total: 1234, preprocess: 100 },
             latency_ms_by_stage: { inference: 1200 },
         });
 
         expect(mapped.request_id).toBe('req-1');
-        expect(mapped.prompt_version).toBe('food-v3.3.1-schema-compact');
+        expect(mapped.prompt_version).toBe('food-v3.3.3-schema-safety');
         expect(mapped.used_model).toBe('gemini-2.5-pro');
+        expect(mapped.foodOrigin).toBe('western');
         expect(mapped.decisionStatus).toBe('OK');
         expect(mapped.analysisOrigin).toBe('food_photo');
         expect(mapped.recommendedAction).toBe('eat');
@@ -82,6 +84,16 @@ describe('aiCore mappers', () => {
             summary: 'Localized summary text',
         });
         expect(mapped.raw_result).toBe('Localized summary text');
+    });
+
+    it('drops invalid food origin values from analyze payloads', () => {
+        const mapped = mapAnalyzedData({
+            foodName: 'Soup',
+            foodOrigin: 'bad_origin',
+            safetyStatus: 'SAFE',
+        });
+
+        expect(mapped.foodOrigin).toBeUndefined();
     });
 
     it('falls back summary to translation text when summary is missing', () => {

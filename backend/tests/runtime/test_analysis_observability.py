@@ -30,7 +30,7 @@ class _ObservabilityAnalyst:
             "safetyStatus": "SAFE",
             "ingredients": [],
             "used_model": "gemini-2.5-pro",
-            "prompt_version": "food-v3.3.1-schema-compact",
+            "prompt_version": "food-v3.3.3-schema-safety",
             "_food_usage_metadata": {
                 "prompt_token_count": 31,
                 "candidates_token_count": 17,
@@ -88,7 +88,7 @@ class AnalysisObservabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["request_id"], "req-observe-analyze")
-        self.assertEqual(payload["prompt_version"], "food-v3.3.1-schema-compact")
+        self.assertEqual(payload["prompt_version"], "food-v3.3.3-schema-safety")
         self.assertGreaterEqual(payload["latency_ms"]["total"], 0)
 
     def test_analyze_logs_provider_token_breakdown(self):
