@@ -69,6 +69,16 @@ def _build_assessment_unavailable_message(locale: str) -> str:
     return EN_ASSESSMENT_UNAVAILABLE_MESSAGE
 
 
+def build_no_allergy_label_assessment(ingredient_names: list[str]) -> dict[str, Any]:
+    return {
+        "safetyStatus": "SAFE",
+        "ingredients": [
+            {"name": ingredient_name, "isAllergen": False, "riskReason": ""}
+            for ingredient_name in ingredient_names
+        ],
+    }
+
+
 def _read_coach_message(assess_result: dict[str, Any]) -> str | None:
     coach_message = assess_result.get("coachMessage")
     if not isinstance(coach_message, str):

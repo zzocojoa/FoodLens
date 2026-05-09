@@ -1,12 +1,20 @@
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from PIL import Image
 
 from backend.scripts.run_label_golden_model_eval import (
     LabelEvalCall,
+    LabelEvalConfig,
     LabelEvalGateThresholds,
     LabelEvalResult,
+    LabelEvalSample,
     _compute_set_metrics,
     _extract_actual_allergens,
     _extract_actual_risk_ingredients,
+    _evaluate_sample_model,
     _build_gate_failures,
 )
 
@@ -84,6 +92,76 @@ def _thresholds(
 
 
 class LabelGoldenModelEvalGateTests(unittest.TestCase):
+    def test_no_allergy_eval_skips_assess_call(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            image_path = Path(temporary_directory) / "label.jpg"
+            Image.new("RGB", (4, 4), (255, 255, 255)).save(image_path, format="JPEG")
+            config = LabelEvalConfig(
+                repo_root=Path(temporary_directory),
+                manifest_path=Path(temporary_directory) / "manifest.json",
+                output_root=Path(temporary_directory),
+                models=["gemini-2.5-flash"],
+                allergy_info="None",
+                iso_current_country="US",
+                locale="en-US",
+                extract_max_output_tokens=1536,
+                assess_max_output_tokens=768,
+                timeout_seconds=5,
+                sample_limit=1,
+                max_paid_calls=1,
+                fail_on_regression=True,
+                gate_thresholds=_thresholds(
+                    min_success_rate=1.0,
+                    min_expected_status_match_rate=1.0,
+                    min_ingredients_pass_rate=1.0,
+                    min_nutrition_keys_pass_rate=1.0,
+                    min_allergen_recall_rate=1.0,
+                    min_risk_ingredient_recall_rate=1.0,
+                    max_max_tokens_rate=0.0,
+                    max_p95_elapsed_ms=None,
+                ),
+                client=object(),
+            )
+            sample = LabelEvalSample(
+                sample_id="no-allergy",
+                image_path=image_path,
+                expected_safety_status="SAFE",
+                min_ingredients_count=1,
+                required_nutrition_keys=[],
+                human_label_status="needs_human_review",
+                human_label_provenance={
+                    "reviewed_by": "unit-test",
+                    "assistance": "none",
+                    "source": "fixture",
+                    "confidence": "high",
+                },
+                expected_allergens=[],
+                expected_risk_ingredients=[],
+            )
+            extract_result = {
+                "foodName": "Cereal",
+                "ingredients": [{"name": "oat"}, {"name": "sugar"}],
+                "nutrition": {"calories": 100},
+                "raw_result": "ok",
+            }
+
+            with patch(
+                "backend.scripts.run_label_golden_model_eval._generate_json",
+                return_value=(extract_result, _call("1", True)),
+            ) as mock_generate:
+                result = _evaluate_sample_model(config, sample, "gemini-2.5-flash")
+
+        self.assertEqual(mock_generate.call_count, 1)
+        self.assertEqual([call.phase for call in result.calls], ["extract"])
+        self.assertEqual(result.actual_safety_status, "SAFE")
+        self.assertEqual(
+            result.output["ingredients"] if isinstance(result.output, dict) else None,
+            [
+                {"name": "oat", "isAllergen": False, "riskReason": ""},
+                {"name": "sugar", "isAllergen": False, "riskReason": ""},
+            ],
+        )
+
     def test_gate_passes_when_metrics_meet_thresholds(self) -> None:
         results = [
             _result("gemini-2.5-flash", True, True, True, True, "STOP", False),

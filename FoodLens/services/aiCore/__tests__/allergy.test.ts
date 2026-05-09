@@ -57,4 +57,21 @@ describe('getAllergyString', () => {
     expect(allergyString).toBe('Peanut');
     expect(allergyString).not.toContain('custom:');
   });
+
+  it('returns None only after a profile loads with no allergies', async () => {
+    mockGetUserProfile.mockResolvedValue({
+      safetyProfile: {
+        allergies: [],
+        dietaryRestrictions: [],
+      },
+    });
+
+    await expect(getAllergyString()).resolves.toBe('None');
+  });
+
+  it('fails closed when the profile cannot be loaded', async () => {
+    mockGetUserProfile.mockRejectedValue(new Error('profile storage unavailable'));
+
+    await expect(getAllergyString()).rejects.toThrow('profile storage unavailable');
+  });
 });

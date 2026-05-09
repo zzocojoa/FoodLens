@@ -24,7 +24,10 @@ from backend.modules.analyst_core.prompts import (
     build_label_assess_prompt,
     build_label_prompt,
 )
-from backend.modules.analyst_core.label_merge import merge_label_extract_and_assessment
+from backend.modules.analyst_core.label_merge import (
+    build_no_allergy_label_assessment,
+    merge_label_extract_and_assessment,
+)
 from backend.modules.analyst_core.label_parse import parse_label_extract_response
 from backend.modules.analyst_core.response_utils import (
     get_safe_fallback_response,
@@ -1163,6 +1166,7 @@ class FoodAnalyst:
                 extract_result["_label_truncated"] = True
 
             assess_failed = False
+            assess_skip_reason: str | None = None
             ingredients = extract_result.get("ingredients", [])
             ingredient_names = [
                 str(item.get("name", "")).strip()
@@ -1170,7 +1174,21 @@ class FoodAnalyst:
                 if isinstance(item, dict) and str(item.get("name", "")).strip()
             ]
 
-            if ingredient_names and assess_enabled:
+            if ingredient_names and normalized_allergens == "None":
+                extract_result = merge_label_extract_and_assessment(
+                    extract_result,
+                    build_no_allergy_label_assessment(ingredient_names),
+                    normalized_locale,
+                )
+                assess_skip_reason = "allergy_profile_none"
+                if label_extract_parse_status == "failed" or label_extract_parse_repaired or extract_truncated:
+                    current_status = str(extract_result.get("safetyStatus", "")).strip().upper()
+                    if current_status != "DANGER":
+                        extract_result["safetyStatus"] = "CAUTION"
+                    extract_result["_label_partial"] = True
+                    if extract_truncated:
+                        extract_result["_label_truncated"] = True
+            elif ingredient_names and assess_enabled:
                 assess_started_at = time.perf_counter()
                 assess_truncated = False
                 try:
@@ -1297,6 +1315,7 @@ class FoodAnalyst:
                     + " 성분 추출이 충분하지 않아 주의(CAUTION)로 처리했습니다."
                 ).strip()
                 extract_result["_label_partial"] = True
+                assess_skip_reason = "no_ingredients"
             else:
                 extract_result = merge_label_extract_and_assessment(
                     extract_result,
@@ -1304,6 +1323,7 @@ class FoodAnalyst:
                     normalized_locale,
                 )
                 extract_result["_label_degraded"] = True
+                assess_skip_reason = "assess_disabled"
 
             result = extract_result
             result["used_model"] = label_used_model
@@ -1347,6 +1367,9 @@ class FoodAnalyst:
                     ),
                 )
             )
+            if assess_skip_reason:
+                result["_label_assess_skipped"] = True
+                result["_label_assess_skip_reason"] = assess_skip_reason
             result["_label_timings"] = {
                 "extract_ms": extract_elapsed_ms,
                 "assess_ms": assess_elapsed_ms,

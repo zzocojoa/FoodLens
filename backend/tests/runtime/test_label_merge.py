@@ -2,7 +2,10 @@ import copy
 import unittest
 from typing import Any
 
-from backend.modules.analyst_core.label_merge import merge_label_extract_and_assessment
+from backend.modules.analyst_core.label_merge import (
+    build_no_allergy_label_assessment,
+    merge_label_extract_and_assessment,
+)
 
 
 def _build_extract_result() -> dict[str, Any]:
@@ -19,6 +22,20 @@ def _build_extract_result() -> dict[str, Any]:
 
 
 class LabelMergeTests(unittest.TestCase):
+    def test_no_allergy_assessment_marks_all_ingredients_non_allergen(self) -> None:
+        assessment = build_no_allergy_label_assessment(["oat", "sugar"])
+
+        self.assertEqual(
+            assessment,
+            {
+                "safetyStatus": "SAFE",
+                "ingredients": [
+                    {"name": "oat", "isAllergen": False, "riskReason": ""},
+                    {"name": "sugar", "isAllergen": False, "riskReason": ""},
+                ],
+            },
+        )
+
     def test_merges_assessment_by_extract_ingredient_name(self) -> None:
         extract_result = _build_extract_result()
         assess_result: dict[str, Any] = {
