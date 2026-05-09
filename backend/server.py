@@ -193,6 +193,10 @@ def _barcode_allergen_budget_fallback(ingredients: list[Any], locale: str | None
         "ingredients": list(ingredients),
         "used_model": None,
         "prompt_version": None,
+        "_barcode_chargeable": False,
+        "_barcode_fallback_used": True,
+        "_barcode_fallback_reason": "budget_fallback",
+        "_barcode_truncated": False,
     }
 
 
@@ -240,6 +244,7 @@ MediaRenderValue = TypeVar("MediaRenderValue")
 logger = logging.getLogger("foodlens.api")
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def _is_openapi_export_mode() -> bool:
@@ -669,6 +674,23 @@ def _build_public_analysis_diagnostics(
         "finish_reason": food_observability["finish_reason"],
         "truncated": bool(food_observability["truncated"]),
         "usage_source": usage_source,
+    }
+
+
+def _extract_barcode_observability(result: dict[str, Any]) -> dict[str, Any]:
+    usage = _safe_label_stage_usage(result.get("_barcode_usage") or result.get("_barcode_usage_metadata"))
+    return {
+        "chargeable": result.get("_barcode_chargeable") is not False,
+        "fallback_used": result.get("_barcode_fallback_used") is True,
+        "fallback_reason": _safe_label_string(result.get("_barcode_fallback_reason")),
+        "error_type": _safe_label_string(result.get("_barcode_error_type")),
+        "finish_reason": _safe_label_int(result.get("_barcode_finish_reason")),
+        "truncated": result.get("_barcode_truncated") is True,
+        "usage": usage,
+        "usage_prompt_tokens": usage.get("prompt_token_count"),
+        "usage_candidate_tokens": usage.get("candidates_token_count"),
+        "usage_thought_tokens": usage.get("thoughts_token_count"),
+        "usage_total_tokens": usage.get("total_token_count"),
     }
 
 
@@ -5019,12 +5041,14 @@ async def _analyze_food_image_with_policy(
         allergen_analysis_ms=None,
     )
     food_usage_total_tokens = food_observability["usage_total_tokens"]
+    food_usage_prompt_tokens = food_observability["usage_prompt_tokens"]
+    food_usage_candidate_tokens = food_observability["usage_candidate_tokens"]
     food_usage_thought_tokens = food_observability["usage_thought_tokens"]
     recorded_tokens = food_usage_total_tokens if isinstance(food_usage_total_tokens, int) else estimated_tokens
     usage_source = "provider_usage_metadata" if isinstance(food_usage_total_tokens, int) else "estimated"
     result["analysis_diagnostics"] = _build_public_analysis_diagnostics(food_observability, usage_source)
     logger.info(
-        "[Server] Food observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s finish_reason=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
+        "[Server] Food observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s finish_reason=%s truncated=%s usage_source=%s usage_prompt_tokens=%s usage_candidate_tokens=%s usage_total_tokens=%s usage_thought_tokens=%s",
         request_id,
         food_observability["used_model"],
         food_observability["fallback_used"],
@@ -5032,6 +5056,8 @@ async def _analyze_food_image_with_policy(
         food_observability["finish_reason"],
         food_observability["truncated"],
         usage_source,
+        food_usage_prompt_tokens,
+        food_usage_candidate_tokens,
         food_usage_total_tokens,
         food_usage_thought_tokens,
     )
@@ -5324,7 +5350,7 @@ async def _analyze_label_image_with_policy(
         },
     )
     logger.info(
-        "[Server] Label observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s diagnostic_reason=%s error_type=%s extract_finish_reason=%s assess_finish_reason=%s assess_skipped=%s assess_skip_reason=%s parse_status=%s parse_repaired=%s repair_strategy=%s partial=%s truncated=%s usage_source=%s usage_total_tokens=%s usage_thought_tokens=%s",
+        "[Server] Label observability summary request_id=%s used_model=%s fallback_used=%s fallback_reason=%s diagnostic_reason=%s error_type=%s extract_finish_reason=%s assess_finish_reason=%s assess_skipped=%s assess_skip_reason=%s parse_status=%s parse_repaired=%s repair_strategy=%s partial=%s truncated=%s usage_source=%s usage_prompt_tokens=%s usage_candidate_tokens=%s usage_total_tokens=%s usage_thought_tokens=%s",
         request_id,
         label_observability["used_model"],
         label_observability["fallback_used"],
@@ -5341,6 +5367,8 @@ async def _analyze_label_image_with_policy(
         label_observability["partial"],
         label_observability["truncated"],
         label_usage_source,
+        label_observability["usage_prompt_tokens"],
+        label_observability["usage_candidate_tokens"],
         label_usage_total_tokens,
         label_usage_thought_tokens,
     )
@@ -5722,12 +5750,13 @@ async def lookup_barcode(
             barcode_service = _service("barcode_service")
             source_lookup_elapsed_ms = 0
             allergen_analysis_elapsed_ms: int | None = None
+            allergy_profile_present = bool(allergy_info and allergy_info.strip().lower() != "none")
             logger.info(
-                "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_info=%s locale=%s",
+                "[Server] Lookup request request_id=%s parent_request_id=%s barcode=%s allergy_profile_present=%s locale=%s",
                 request_id,
                 parent_request_id or "none",
                 barcode,
-                allergy_info,
+                allergy_profile_present,
                 locale,
             )
             lookup_started_at = time.perf_counter()
@@ -5787,7 +5816,7 @@ async def lookup_barcode(
 
             used_model = None
             prompt_version = None
-            if result.get("ingredients") and allergy_info and allergy_info.lower() != "none":
+            if result.get("ingredients") and allergy_profile_present:
                 logger.info(
                     "[Server] Running allergen analysis request_id=%s ingredient_count=%d",
                     request_id,
@@ -5796,6 +5825,7 @@ async def lookup_barcode(
                 analyst = _service("analyst")
                 original_ingredients = result["ingredients"]
                 allergen_result: dict[str, Any]
+                barcode_observability: dict[str, Any]
                 barcode_cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
                 barcode_estimated_cost = _env_float("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", 0.001)
                 barcode_estimated_tokens = _env_int("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", 500)
@@ -5818,6 +5848,7 @@ async def lookup_barcode(
                     )
                     if barcode_decision_action == CostGuardrailAction.FALLBACK:
                         allergen_result = _barcode_allergen_budget_fallback(list(original_ingredients), locale)
+                        barcode_observability = _extract_barcode_observability(allergen_result)
                         allergen_analysis_elapsed_ms = 0
                         _reconcile_label_cost(
                             barcode_cost_guardrail,
@@ -5839,7 +5870,6 @@ async def lookup_barcode(
                                 allergy_info,
                                 locale,
                             )
-                            barcode_chargeable = True
                         except Exception:
                             _reconcile_label_cost(
                                 barcode_cost_guardrail,
@@ -5855,16 +5885,25 @@ async def lookup_barcode(
                             raise
                         finally:
                             allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+                        barcode_observability = _extract_barcode_observability(allergen_result)
+                        barcode_chargeable = bool(barcode_observability["chargeable"])
+                        barcode_usage_total_tokens = barcode_observability["usage_total_tokens"]
+                        barcode_usage_thought_tokens = barcode_observability["usage_thought_tokens"]
+                        barcode_recorded_tokens = (
+                            barcode_usage_total_tokens
+                            if isinstance(barcode_usage_total_tokens, int)
+                            else barcode_estimated_tokens
+                        )
                         _reconcile_label_cost(
                             barcode_cost_guardrail,
                             reservation=barcode_reservation,
                             chargeable=barcode_chargeable,
                             cost_usd=barcode_estimated_cost if barcode_chargeable else 0.0,
-                            tokens=barcode_estimated_tokens if barcode_chargeable else 0,
-                            provider_total_tokens=None,
-                            provider_thought_tokens=None,
+                            tokens=barcode_recorded_tokens if barcode_chargeable else 0,
+                            provider_total_tokens=barcode_usage_total_tokens,
+                            provider_thought_tokens=barcode_usage_thought_tokens,
                             fallback_used=False,
-                            truncated=False,
+                            truncated=bool(barcode_observability["truncated"]),
                         )
                 else:
                     analysis_started_at = time.perf_counter()
@@ -5875,14 +5914,31 @@ async def lookup_barcode(
                         locale,
                     )
                     allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+                    barcode_observability = _extract_barcode_observability(allergen_result)
                 used_model = allergen_result.get("used_model")
                 prompt_version = allergen_result.get("prompt_version")
+                if barcode_observability["chargeable"] is False:
+                    barcode_usage_source = "not_chargeable"
+                elif isinstance(barcode_observability["usage_total_tokens"], int):
+                    barcode_usage_source = "provider_usage_metadata"
+                else:
+                    barcode_usage_source = "estimated"
                 logger.info(
-                    "[Server] Allergen analysis done request_id=%s elapsed_ms=%d used_model=%s prompt_version=%s",
+                    "[Server] Allergen analysis done request_id=%s elapsed_ms=%d used_model=%s prompt_version=%s fallback_used=%s fallback_reason=%s error_type=%s finish_reason=%s truncated=%s usage_source=%s usage_prompt_tokens=%s usage_candidate_tokens=%s usage_total_tokens=%s usage_thought_tokens=%s",
                     request_id,
                     allergen_analysis_elapsed_ms,
                     used_model,
                     prompt_version,
+                    barcode_observability["fallback_used"],
+                    barcode_observability["fallback_reason"],
+                    barcode_observability["error_type"],
+                    barcode_observability["finish_reason"],
+                    barcode_observability["truncated"],
+                    barcode_usage_source,
+                    barcode_observability["usage_prompt_tokens"],
+                    barcode_observability["usage_candidate_tokens"],
+                    barcode_observability["usage_total_tokens"],
+                    barcode_observability["usage_thought_tokens"],
                 )
 
                 result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")

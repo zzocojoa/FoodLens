@@ -120,6 +120,8 @@ services:
         value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
+      - key: GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: AI_COST_GUARDRAIL_ENABLED
@@ -452,6 +454,8 @@ services:
         value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
+      - key: GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: AI_COST_GUARDRAIL_ENABLED
@@ -784,6 +788,8 @@ services:
         value: "128"
       - key: GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS
         value: "512"
+      - key: GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET
+        value: "0"
       - key: LABEL_COST_GUARDRAIL_ENABLED
         value: "1"
       - key: AI_COST_GUARDRAIL_ENABLED

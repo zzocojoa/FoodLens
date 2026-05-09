@@ -47,12 +47,12 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
     def test_analyze_metadata_fields_are_backward_compatible(self):
         payload = _load_json("analyze_response.snapshot.json")
         payload["request_id"] = "req-test-analyze-001"
-        payload["prompt_version"] = "food-v3.2-context-engineered"
+        payload["prompt_version"] = "food-v3.3.1-schema-compact"
         payload["used_model"] = "gemini-2.5-pro"
 
         normalized = self._validate_and_normalize(payload)
         self.assertEqual(normalized["request_id"], "req-test-analyze-001")
-        self.assertEqual(normalized["prompt_version"], "food-v3.2-context-engineered")
+        self.assertEqual(normalized["prompt_version"], "food-v3.3.1-schema-compact")
         self.assertEqual(normalized["used_model"], "gemini-2.5-pro")
 
     def test_analysis_latency_metadata_is_backward_compatible(self):

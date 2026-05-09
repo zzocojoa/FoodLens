@@ -107,7 +107,7 @@ describe('lookupBarcodeWithAllergyContext request ids', () => {
         found: true,
         request_id: 'req-barcode-1',
         used_model: 'gemini-2.5-pro',
-        prompt_version: 'label-v1.2-2pass-locale-country',
+        prompt_version: 'barcode-v1.1-allergen-compact',
         latency_ms: {
           total: 320,
           source_lookup: 180,
@@ -128,7 +128,7 @@ describe('lookupBarcodeWithAllergyContext request ids', () => {
     expect(result.request_id).toBe('req-barcode-1');
     expect(result.data?.request_id).toBe('req-barcode-1');
     expect(result.data?.used_model).toBe('gemini-2.5-pro');
-    expect(result.data?.prompt_version).toBe('label-v1.2-2pass-locale-country');
+    expect(result.data?.prompt_version).toBe('barcode-v1.1-allergen-compact');
     expect(result.data?.latency_ms).toEqual({
       total: 320,
       source_lookup: 180,

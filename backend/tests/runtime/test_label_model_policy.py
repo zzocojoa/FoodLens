@@ -1444,7 +1444,7 @@ class LabelModelPolicyTests(unittest.TestCase):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
             patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
-            patch("backend.modules.analyst_runtime.food_analyst.generate_with_semaphore") as mock_generate,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
             patch.dict(os.environ, {"GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "321"}, clear=False),
         ):
             mock_model_cls.return_value = object()
@@ -1466,12 +1466,41 @@ class LabelModelPolicyTests(unittest.TestCase):
 
             generation_config = mock_generate.call_args.kwargs["generation_config"]
             self.assertEqual(generation_config["max_output_tokens"], 321)
+            self.assertEqual(generation_config["thinking_config"]["thinking_budget"], 0)
+            self.assertEqual(mock_generate.call_args.kwargs["max_attempts"], 3)
+
+    def test_barcode_allergen_generation_config_respects_thinking_budget_env(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(os.environ, {"GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET": "12"}, clear=False),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse(
+                '{"safetyStatus":"DANGER","ingredients":[{"name":"milk","isAllergen":true,"riskReason":"contains milk"}]}',
+                1,
+            )
+
+            analyst = FoodAnalyst()
+            with patch.object(
+                analyst,
+                "_parse_ai_response",
+                return_value={
+                    "safetyStatus": "DANGER",
+                    "ingredients": [{"name": "milk", "isAllergen": True, "riskReason": "contains milk"}],
+                },
+            ):
+                analyst.analyze_barcode_ingredients(["milk"], "Milk", "en-US")
+
+            generation_config = mock_generate.call_args.kwargs["generation_config"]
+            self.assertEqual(generation_config["thinking_config"]["thinking_budget"], 12)
 
     def test_barcode_allergen_max_token_finish_preserves_input_ingredients(self):
         with (
             patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
             patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
-            patch("backend.modules.analyst_runtime.food_analyst.generate_with_semaphore") as mock_generate,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
             patch.dict(os.environ, {"GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "64"}, clear=False),
         ):
             mock_model_cls.return_value = object()
@@ -1490,6 +1519,7 @@ class LabelModelPolicyTests(unittest.TestCase):
             )
             generation_config = mock_generate.call_args.kwargs["generation_config"]
             self.assertEqual(generation_config["max_output_tokens"], 64)
+            self.assertEqual(mock_generate.call_args.kwargs["max_attempts"], 3)
 
 
 if __name__ == "__main__":

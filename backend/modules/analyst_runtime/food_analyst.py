@@ -46,7 +46,6 @@ from backend.modules.analyst_runtime.generation import (
     create_request_semaphore,
     generate_with_429_backoff,
     generate_with_retry_and_fallback,
-    generate_with_semaphore,
 )
 from backend.modules.analyst_runtime.safety import build_default_safety_settings
 
@@ -65,6 +64,7 @@ GEMINI_FOOD_MAX_OUTPUT_TOKENS_DEFAULT = 4096
 GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS_DEFAULT = 6144
 GEMINI_FOOD_FLASH_THINKING_BUDGET_DEFAULT = 0
 GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET_DEFAULT = 0
+GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET_DEFAULT = 0
 GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST_DEFAULT = 3
 LABEL_USAGE_METADATA_FIELDS = (
     "prompt_token_count",
@@ -486,6 +486,10 @@ class FoodAnalyst:
         self.barcode_allergen_max_output_tokens = _read_env_positive_int(
             "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS",
             GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS_DEFAULT,
+        )
+        self.barcode_allergen_thinking_budget = _read_env_non_negative_int(
+            "GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET",
+            GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET_DEFAULT,
         )
         self.food_max_output_tokens = _read_env_positive_int(
             "GEMINI_FOOD_MAX_OUTPUT_TOKENS",
@@ -1587,7 +1591,7 @@ class FoodAnalyst:
         normalized_allergens = format_allergens_for_prompt(allergy_info)
         normalized_locale = _normalize_runtime_locale(locale)
         
-        # If no allergies or no ingredients, skip API call entirely
+        # 알러지 프로필이나 성분이 없으면 모델 호출을 생략한다.
         if normalized_allergens == "None" or not ingredients:
             safe_message = (
                 "등록된 알러지 성분이 감지되지 않았습니다. 안심하고 드세요."
@@ -1610,32 +1614,66 @@ class FoodAnalyst:
         response_schema = build_barcode_allergen_schema()
 
         generation_config = {
-            "temperature": 0.1,  # Low temperature for precise allergen matching
+            "temperature": 0.1,
             "max_output_tokens": self.barcode_allergen_max_output_tokens,
             "response_mime_type": "application/json",
             "response_schema": response_schema,
+            "thinking_config": {
+                "include_thoughts": False,
+                "thinking_budget": self.barcode_allergen_thinking_budget,
+            },
         }
 
         safety_settings = build_default_safety_settings()
 
         try:
-            print(f"\n[Allergen Analysis] Analyzing {len(ingredients)} ingredients against: {normalized_allergens}")
+            logger.info(
+                "[AllergenAnalysis] started",
+                extra={
+                    "ingredient_count": len(ingredients),
+                    "allergy_profile_present": normalized_allergens != "None",
+                },
+            )
             
-            response = generate_with_semaphore(
+            response = generate_with_429_backoff(
                 model=self.model,
-                contents=[prompt],  # Text-only, no image
+                contents=[prompt],
                 generation_config=generation_config,
                 safety_settings=safety_settings,
                 semaphore=FoodAnalyst._request_semaphore,
+                max_attempts=3,
             )
-            allergen_truncated = self._extract_finish_reason(response) == self._MAX_TOKENS_FINISH_REASON
+            allergen_finish_reason = self._extract_finish_reason(response)
+            allergen_usage_metadata = _extract_usage_metadata(response)
+            allergen_truncated = allergen_finish_reason == self._MAX_TOKENS_FINISH_REASON
             if allergen_truncated:
-                return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+                caution_result = _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+                caution_result["_barcode_finish_reason"] = allergen_finish_reason
+                caution_result["_barcode_truncated"] = True
+                caution_result["_barcode_usage_metadata"] = allergen_usage_metadata
+                caution_result["_barcode_chargeable"] = True
+                caution_result["_barcode_fallback_used"] = True
+                caution_result["_barcode_fallback_reason"] = "max_tokens"
+                return caution_result
             
-            result = self._parse_ai_response(response.text)
+            try:
+                result = self._parse_ai_response(response.text)
+            except Exception as parse_error:
+                logger.warning(
+                    "[AllergenAnalysis] parse failed",
+                    extra={"error_type": type(parse_error).__name__},
+                )
+                caution_result = _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+                caution_result["_barcode_finish_reason"] = allergen_finish_reason
+                caution_result["_barcode_truncated"] = False
+                caution_result["_barcode_usage_metadata"] = allergen_usage_metadata
+                caution_result["_barcode_chargeable"] = True
+                caution_result["_barcode_error_type"] = type(parse_error).__name__
+                caution_result["_barcode_fallback_used"] = True
+                caution_result["_barcode_fallback_reason"] = "parse_error"
+                return caution_result
             
-            # 8. Deduplication (Case-insensitive)
-            # Gemini might occasionally hallucinate or return redundant entries
+            # 모델이 중복 성분을 반환할 수 있어 이름 기준으로 정리한다.
             raw_ingredients = result.get("ingredients", [])
             unique_ingredients = []
             seen_names = set()
@@ -1648,26 +1686,56 @@ class FoodAnalyst:
                     seen_names.add(normalized)
                     unique_ingredients.append(ing)
             if not unique_ingredients:
-                return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+                caution_result = _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+                caution_result["_barcode_finish_reason"] = allergen_finish_reason
+                caution_result["_barcode_truncated"] = False
+                caution_result["_barcode_usage_metadata"] = allergen_usage_metadata
+                caution_result["_barcode_chargeable"] = True
+                caution_result["_barcode_fallback_used"] = True
+                caution_result["_barcode_fallback_reason"] = "empty_result"
+                return caution_result
             result["ingredients"] = unique_ingredients
 
-            print(f"[Allergen Analysis] Result: safetyStatus={result.get('safetyStatus')}")
-            
-            # Log flagged allergens
             flagged = [i for i in result.get("ingredients", []) if i.get("isAllergen")]
-            if flagged:
-                print(f"[Allergen Analysis] ⚠️  Flagged: {[f['name'] for f in flagged]}")
-            else:
-                print(f"[Allergen Analysis] ✓ No allergens detected.")
+            logger.info(
+                "[AllergenAnalysis] completed",
+                extra={
+                    "safety_status": result.get("safetyStatus"),
+                    "flagged_count": len(flagged),
+                },
+            )
 
             result["used_model"] = self.model_name
             result["prompt_version"] = BARCODE_INGREDIENTS_PROMPT_VERSION
+            result["_barcode_finish_reason"] = allergen_finish_reason
+            result["_barcode_truncated"] = False
+            result["_barcode_usage_metadata"] = allergen_usage_metadata
+            result["_barcode_chargeable"] = True
+            result["_barcode_fallback_used"] = False
+            result["_barcode_fallback_reason"] = None
             
             return result
-            
-        except Exception as e:
-            print(f"[Allergen Analysis] Error: {e}")
-            traceback.print_exc()
-            # Fail-safe: return CAUTION if analysis fails (don't risk saying SAFE)
-            # Apply deduplication to input ingredients as well
-            return _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+        except ResourceExhausted as error:
+            logger.warning(
+                "[AllergenAnalysis] quota exhausted",
+                extra={"error_type": type(error).__name__},
+            )
+            caution_result = _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+            caution_result["_barcode_error_type"] = "quota_exhausted_429"
+            caution_result["_barcode_chargeable"] = False
+            caution_result["_barcode_fallback_used"] = True
+            caution_result["_barcode_fallback_reason"] = "quota_exhausted_429"
+            caution_result["_barcode_truncated"] = False
+            return caution_result
+        except Exception as error:
+            logger.warning(
+                "[AllergenAnalysis] failed",
+                extra={"error_type": type(error).__name__},
+            )
+            caution_result = _build_barcode_caution_result(ingredients, normalized_locale, self.model_name)
+            caution_result["_barcode_error_type"] = type(error).__name__
+            caution_result["_barcode_chargeable"] = False
+            caution_result["_barcode_fallback_used"] = True
+            caution_result["_barcode_fallback_reason"] = "generation_error"
+            caution_result["_barcode_truncated"] = False
+            return caution_result
