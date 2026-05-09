@@ -5,7 +5,8 @@ import {
     FlashMode,
     useCameraPermissions,
 } from 'expo-camera';
-import { Href } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useAppNavigation } from '../../../hooks/use-app-navigation';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
@@ -53,6 +54,7 @@ const isTimeoutStyleAnalysisError = (error: unknown): boolean => {
 export const useScanCameraGateway = () => {
     const { t } = useI18n();
     const { replace, back } = useAppNavigation();
+    const searchParams = useLocalSearchParams<{ openGallery?: string }>();
     const isFocused = useIsFocused();
     const cameraRef = useRef<CameraView>(null);
 
@@ -72,6 +74,7 @@ export const useScanCameraGateway = () => {
     const isProcessingRef = useRef(false);
     const cachedLocation = useRef<LocationData | null | undefined>(undefined);
     const hasResumedPendingRef = useRef(false);
+    const hasOpenedInitialGalleryRef = useRef(false);
     const pendingResultAnalysisOriginRef = useRef<AnalysisOrigin | null>(null);
 
     const { isConnected } = useNetworkStatus();
@@ -374,6 +377,12 @@ export const useScanCameraGateway = () => {
         processSmart,
         t,
     });
+
+    useEffect(() => {
+        if (hasOpenedInitialGalleryRef.current || searchParams.openGallery !== '1') return;
+        hasOpenedInitialGalleryRef.current = true;
+        void handleGallery();
+    }, [handleGallery, searchParams.openGallery]);
 
     return {
         cameraRef,

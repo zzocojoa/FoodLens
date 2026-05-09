@@ -1,268 +1,120 @@
 import React from 'react';
-import { Platform, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { Camera, Images, MapPin, Video } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Camera, Images, ShieldCheck } from 'lucide-react-native';
+import type { PermissionStatusMap, Translate } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
-import type { Translate } from '../../types/onboarding.types';
 
 type Props = {
   theme: any;
   t: Translate;
-  cameraAllowed: boolean;
-  libraryAllowed: boolean;
-  locationAllowed: boolean;
-  onSetCamera: (value: boolean) => void;
-  onSetLibrary: (value: boolean) => void;
-  onSetLocation: (value: boolean) => void;
-  onAllow: (camera: boolean, library: boolean, location: boolean) => void;
+  permissionStatusMap: PermissionStatusMap;
+  onRequestCamera: () => void;
+  onRequestLibrary: () => void;
   onSkip: () => void;
+};
+
+const resolveStatusLabel = (status: PermissionStatusMap['camera'], t: Translate): string => {
+  if (status === 'granted') return t('onboarding.permissions.status.granted', 'Granted');
+  if (status === 'denied') return t('onboarding.permissions.status.denied', 'Denied');
+  if (status === 'unavailable') return t('onboarding.permissions.status.unavailable', 'Unavailable');
+  return t('onboarding.permissions.status.notRequested', 'Not requested');
 };
 
 export default function PermissionsStep({
   theme,
   t,
-  cameraAllowed,
-  libraryAllowed,
-  locationAllowed,
-  onSetCamera,
-  onSetLibrary,
-  onSetLocation,
-  onAllow,
+  permissionStatusMap,
+  onRequestCamera,
+  onRequestLibrary,
   onSkip,
 }: Props) {
-  const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
-  const usableHeight = Math.max(1, screenHeight - Math.max(0, insets.top) - Math.max(0, insets.bottom));
-  const platformScaleBias = Platform.OS === 'android' ? 0.96 : 1;
-  const fitScale = Math.max(0.76, Math.min(1, (usableHeight / 812) * platformScaleBias));
-  const heroBoxSize = Math.round(120 * fitScale);
-  const heroIconSize = Math.max(40, Math.round(60 * fitScale));
-  const heroBadgeSize = Math.max(28, Math.round(40 * fitScale));
-  const heroBadgeIconSize = Math.max(14, Math.round(20 * fitScale));
-  const heroMarginBottom = Math.max(14, Math.round(24 * fitScale));
-  const cardPadding = Math.max(14, Math.round(20 * fitScale));
-  const cardGap = Math.max(10, Math.round(16 * fitScale));
-  const cardBottom = Math.max(14, Math.round(24 * fitScale));
-  const sectionIconSize = Math.max(20, Math.round(28 * fitScale));
-  const sectionIconBoxSize = Math.max(42, Math.round(52 * fitScale));
-  const titleSize = Math.max(30, Math.round(34 * fitScale));
-  const subtitleSize = Math.max(14, Math.round(17 * fitScale));
-  const subtitleLineHeight = Math.max(20, Math.round(24 * fitScale));
-  const primaryVerticalPadding = Math.max(14, Math.round(18 * fitScale));
-  const bottomSafePadding = Math.max(
-    Platform.OS === 'android' ? 8 : 10,
-    insets.bottom + (Platform.OS === 'android' ? 4 : 8),
-  );
-
   return (
-    <View style={[styles.stepContainer, { justifyContent: 'flex-start', paddingBottom: bottomSafePadding }]}>
-      <View style={{ flex: 1 }}>
-        <View style={[styles.heroArea, { marginBottom: heroMarginBottom }]}>
-          <View style={{ marginBottom: heroMarginBottom, alignItems: 'center' }}>
-            <View
-              style={{
-                width: heroBoxSize,
-                height: heroBoxSize,
-                borderRadius: Math.round(heroBoxSize * 0.25),
-                backgroundColor: theme.surface,
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: theme.primary,
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 0.3,
-                shadowRadius: 20,
-                elevation: 10,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}
-            >
-              <Camera size={heroIconSize} color={theme.primary} />
-              <View
-                style={{
-                  position: 'absolute',
-                  top: Math.round(-10 * fitScale),
-                  right: Math.round(-10 * fitScale),
-                  width: heroBadgeSize,
-                  height: heroBadgeSize,
-                  borderRadius: Math.round(heroBadgeSize * 0.3),
-                  backgroundColor: theme.surface,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                }}
-              >
-                <Images size={heroBadgeIconSize} color={theme.textSecondary} />
-              </View>
-            </View>
-          </View>
+    <View style={[styles.stepContainer, { justifyContent: 'space-between', paddingBottom: 24 }]}>
+      <View>
+        <Text style={[styles.kickerText, { color: theme.primary }]}>
+          {t('onboarding.permissions.kicker', 'First scan')}
+        </Text>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>
+          {t('onboarding.permissions.title', 'Ready to check your first meal?')}
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          {t(
+            'onboarding.permissions.subtitle',
+            'Camera or photo access is requested only after you choose how to scan.',
+          )}
+        </Text>
 
-          <Text style={[styles.welcomeTitle, { color: theme.textPrimary, fontSize: titleSize }]}>
-            {t('onboarding.permissions.title', "Let's set up your lens")}
-          </Text>
-          <Text
-            style={[
-              styles.welcomeSubtitle,
-              {
-                color: theme.textSecondary,
-                fontSize: subtitleSize,
-                lineHeight: subtitleLineHeight,
-              },
-            ]}
-          >
+        <View style={[styles.permissionPreviewCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Image
+            source={require('@/assets/images/guide-good.jpg')}
+            style={styles.permissionPreviewImage}
+            resizeMode="cover"
+          />
+          <View style={[styles.scanCoachmark, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.scanCoachmarkTitle, { color: theme.textPrimary }]}>
+              {t('onboarding.permissions.coachmarkTitle', 'Start with the plate you worry about most.')}
+            </Text>
+            <Text style={[styles.scanCoachmarkText, { color: theme.textSecondary }]}>
+              {t(
+                'onboarding.permissions.coachmarkText',
+                'For your first scan, keep one dish centered so the allergy check is easier to read.',
+              )}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.privacyCard, { backgroundColor: `${theme.primary}08`, borderColor: `${theme.primary}18` }]}>
+          <ShieldCheck size={18} color={theme.primary} />
+          <Text style={[styles.privacyCardText, { color: theme.textSecondary }]}>
             {t(
-              'onboarding.permissions.subtitle',
-              'To protect you from allergens, our AI needs to see what you eat.',
+              'onboarding.permissions.privacy',
+              'FoodLens analyzes only the image and result you choose. Location is requested separately when needed.',
             )}
           </Text>
         </View>
-
-        <View
-          style={[
-            styles.permissionCard,
-            {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
-              borderWidth: 1,
-              padding: cardPadding,
-              gap: cardGap,
-              marginBottom: cardBottom,
-            },
-          ]}
-        >
-        {/* Camera Permission */}
-        <View style={styles.permissionRow}>
-          <View
-            style={[
-              styles.permissionIcon,
-              {
-                backgroundColor: `${theme.primary}20`,
-                width: sectionIconBoxSize,
-                height: sectionIconBoxSize,
-                borderRadius: Math.round(sectionIconBoxSize * 0.3),
-              },
-            ]}
-          >
-            <Video size={sectionIconSize} color={theme.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
-              {t('onboarding.permissions.camera', 'Camera Access')}
-            </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
-              {t('onboarding.permissions.cameraDesc', 'To scan real-time meals')}
-            </Text>
-          </View>
-          <Switch
-            value={cameraAllowed}
-            onValueChange={onSetCamera}
-            trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor={'white'}
-            accessibilityLabel={t('onboarding.permissions.camera', 'Camera Access')}
-            accessibilityHint={t('onboarding.permissions.cameraDesc', 'To scan real-time meals')}
-          />
-        </View>
-
-        {/* Library Permission */}
-        <View style={[styles.permissionRow, { marginTop: cardGap }]}>
-          <View
-            style={[
-              styles.permissionIcon,
-              {
-                backgroundColor: `${theme.textSecondary}20`,
-                width: sectionIconBoxSize,
-                height: sectionIconBoxSize,
-                borderRadius: Math.round(sectionIconBoxSize * 0.3),
-              },
-            ]}
-          >
-            <Images size={sectionIconSize} color={theme.textSecondary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
-              {t('onboarding.permissions.gallery', 'Photo Library')}
-            </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
-              {t('onboarding.permissions.galleryDesc', 'To analyze saved photos')}
-            </Text>
-          </View>
-          <Switch
-            value={libraryAllowed}
-            onValueChange={onSetLibrary}
-            trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor={'white'}
-            accessibilityLabel={t('onboarding.permissions.gallery', 'Photo Library')}
-            accessibilityHint={t('onboarding.permissions.galleryDesc', 'To analyze saved photos')}
-          />
-        </View>
-
-        {/* Location Permission */}
-        <View style={[styles.permissionRow, { marginTop: cardGap }]}>
-          <View
-            style={[
-              styles.permissionIcon,
-              {
-                backgroundColor: `${theme.primary}20`,
-                width: sectionIconBoxSize,
-                height: sectionIconBoxSize,
-                borderRadius: Math.round(sectionIconBoxSize * 0.3),
-              },
-            ]}
-          >
-            <MapPin size={sectionIconSize} color={theme.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.permissionTitle, { color: theme.textPrimary, fontSize: Math.max(15, Math.round(17 * fitScale)) }]}>
-              {t('onboarding.permissions.location', 'Location Access')}
-            </Text>
-            <Text style={[styles.permissionDesc, { color: theme.textSecondary, fontSize: Math.max(12, Math.round(14 * fitScale)) }]}>
-              {t('onboarding.permissions.locationDesc', 'To detect your current travel country')}
-            </Text>
-          </View>
-          <Switch
-            value={locationAllowed}
-            onValueChange={onSetLocation}
-            trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor={'white'}
-            accessibilityLabel={t('onboarding.permissions.location', 'Location Access')}
-            accessibilityHint={t('onboarding.permissions.locationDesc', 'To detect your current travel country')}
-          />
-          </View>
-        </View>
       </View>
 
-      <TouchableOpacity
-        style={[
-          styles.primaryButton,
-          {
-            backgroundColor: theme.primary,
-            paddingVertical: primaryVerticalPadding,
-          },
-        ]}
-        onPress={() => onAllow(cameraAllowed, libraryAllowed, locationAllowed)}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={t('onboarding.permissions.allow', 'Allow Access')}
-        accessibilityHint={t('onboarding.accessibility.permissionsAllowHint', 'Request selected permissions from iPhone')}
-      >
-        <Text style={styles.primaryButtonText}>{t('onboarding.permissions.allow', 'Allow Access')}</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        onPress={onSkip}
-        style={[styles.skipButton, { marginTop: Math.max(8, Math.round(14 * fitScale)) }]}
-        accessibilityRole="button"
-        accessibilityLabel={t('onboarding.skip', 'Maybe Later')}
-        accessibilityHint={t('onboarding.accessibility.skipHint', 'Skip this step and continue')}
-      >
-        <Text style={[styles.skipText, { color: theme.textSecondary }]}>
-          {t('onboarding.skip', 'Maybe Later')}
-        </Text>
-      </TouchableOpacity>
+      <View style={{ gap: 10 }}>
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+          onPress={onRequestCamera}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={t('onboarding.permissions.openCamera', 'Open camera')}
+        >
+          <Camera size={20} color="#FFFFFF" />
+          <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>
+            {t('onboarding.permissions.openCamera', 'Open camera')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.secondaryActionButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+          onPress={onRequestLibrary}
+          activeOpacity={0.78}
+          accessibilityRole="button"
+          accessibilityLabel={t('onboarding.permissions.pickPhoto', 'Choose from photos')}
+        >
+          <Images size={18} color={theme.primary} />
+          <Text style={[styles.secondaryActionText, { color: theme.textPrimary }]}>
+            {t('onboarding.permissions.pickPhoto', 'Choose from photos')}
+          </Text>
+          <Text style={[styles.secondaryActionMeta, { color: theme.textSecondary }]}>
+            {resolveStatusLabel(permissionStatusMap.library, t)}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onSkip}
+          style={styles.skipButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('onboarding.permissions.later', 'Scan later')}
+        >
+          <Text style={[styles.skipText, { color: theme.textSecondary }]}>
+            {t('onboarding.permissions.later', 'Scan later')}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

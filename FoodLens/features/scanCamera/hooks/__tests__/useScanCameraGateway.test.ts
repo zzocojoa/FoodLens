@@ -13,6 +13,12 @@ jest.mock('expo-camera', () => ({
   useCameraPermissions: jest.fn(() => [null, jest.fn()]),
 }));
 
+const mockUseLocalSearchParams = jest.fn(() => ({}));
+
+jest.mock('expo-router', () => ({
+  useLocalSearchParams: () => mockUseLocalSearchParams(),
+}));
+
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   selectionAsync: jest.fn(),
@@ -174,6 +180,7 @@ describe('useScanCameraGateway', () => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockUseLocalSearchParams.mockReturnValue({});
     mockedLoadPendingAnalysisJob.mockResolvedValue(null);
     mockedAnalyzeImage.mockResolvedValue({} as never);
     mockedAnalyzeLabel.mockResolvedValue({} as never);
@@ -310,5 +317,21 @@ describe('useScanCameraGateway', () => {
         analysisMode: 'label',
       })
     );
+  });
+
+  it('opens the gallery picker once when entered from onboarding photo action', async () => {
+    const handleGallery = jest.fn();
+    mockUseLocalSearchParams.mockReturnValue({ openGallery: '1' });
+    mockedUseScanGalleryFlow.mockReturnValue(handleGallery);
+
+    const { rerender } = renderHook(() => useScanCameraGateway());
+
+    await waitFor(() => {
+      expect(handleGallery).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(undefined);
+
+    expect(handleGallery).toHaveBeenCalledTimes(1);
   });
 });
