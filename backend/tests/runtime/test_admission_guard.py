@@ -31,7 +31,7 @@ class _SlowAnalyst:
             "safetyStatus": "SAFE",
             "ingredients": [],
             "used_model": "gemini-2.5-pro",
-            "prompt_version": "food-v3.3.1-schema-compact",
+            "prompt_version": "food-v3.3.3-schema-safety",
         }
 
 

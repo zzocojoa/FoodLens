@@ -42,6 +42,7 @@ describe('aiCore contracts', () => {
   it('accepts valid analysis response shape', () => {
     const payload = {
       foodName: 'Kimbap',
+      foodOrigin: 'korean',
       safetyStatus: 'SAFE',
       decision_status: 'OK',
       analysis_origin: 'food_photo',
@@ -50,7 +51,7 @@ describe('aiCore contracts', () => {
       decision_confidence: 'high',
       ingredients: [{ name: 'rice', isAllergen: false }],
       request_id: 'req-analyze-1',
-      prompt_version: 'food-v3.3.1-schema-compact',
+      prompt_version: 'food-v3.3.3-schema-safety',
       used_model: 'gemini-2.5-pro',
       latency_ms: { total: 1300 },
     };
@@ -143,8 +144,9 @@ describe('aiCore contracts', () => {
       updated_at: '2026-03-17T00:00:10Z',
       poll_after_ms: 0,
       used_model: 'gemini-2.5-pro',
-      prompt_version: 'food-v3.3.1-schema-compact',
+      prompt_version: 'food-v3.3.3-schema-safety',
       fallback_reason: 'analysis_fallback',
+      foodOrigin: 'korean',
       decision_status: 'ASK',
       analysis_origin: 'label_photo',
       recommended_action: 'verify_label',
@@ -211,4 +213,33 @@ describe('aiCore contracts', () => {
       ).toThrow(`[AI Contract] /analyze/jobs/{job_id}: ${expectedError}`);
     }
   );
+
+  it('rejects invalid analysis foodOrigin', () => {
+    const payload = {
+      foodName: 'Kimbap',
+      foodOrigin: 'bad_origin',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+    };
+
+    expect(() =>
+      assertAnalysisResponseContract(payload as unknown, '/analyze')
+    ).toThrow('[AI Contract] /analyze: missing/invalid "foodOrigin"');
+  });
+
+  it('rejects invalid analysis job foodOrigin', () => {
+    const payload = {
+      job_id: 'job_123',
+      request_id: 'req_123',
+      status: 'completed',
+      accepted_at: '2026-03-17T00:00:00Z',
+      updated_at: '2026-03-17T00:00:10Z',
+      poll_after_ms: 0,
+      foodOrigin: 'bad_origin',
+    };
+
+    expect(() =>
+      assertAnalysisJobStatusContract(payload as unknown)
+    ).toThrow('[AI Contract] /analyze/jobs/{job_id}: missing/invalid "foodOrigin"');
+  });
 });

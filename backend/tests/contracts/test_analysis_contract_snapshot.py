@@ -47,12 +47,12 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
     def test_analyze_metadata_fields_are_backward_compatible(self):
         payload = _load_json("analyze_response.snapshot.json")
         payload["request_id"] = "req-test-analyze-001"
-        payload["prompt_version"] = "food-v3.3.1-schema-compact"
+        payload["prompt_version"] = "food-v3.3.3-schema-safety"
         payload["used_model"] = "gemini-2.5-pro"
 
         normalized = self._validate_and_normalize(payload)
         self.assertEqual(normalized["request_id"], "req-test-analyze-001")
-        self.assertEqual(normalized["prompt_version"], "food-v3.3.1-schema-compact")
+        self.assertEqual(normalized["prompt_version"], "food-v3.3.3-schema-safety")
         self.assertEqual(normalized["used_model"], "gemini-2.5-pro")
 
     def test_analysis_latency_metadata_is_backward_compatible(self):
@@ -76,6 +76,17 @@ class AnalysisContractSnapshotTests(unittest.TestCase):
         self.assertEqual(normalized["recommended_action"], "verify_label")
         self.assertEqual(normalized["uncertainty_reason"], "image_ambiguity")
         self.assertEqual(normalized["decision_confidence"], "medium")
+
+    def test_analysis_food_origin_enum_is_contract_checked(self):
+        payload = _load_json("analyze_response.snapshot.json")
+        payload["foodOrigin"] = "korean"
+
+        normalized = self._validate_and_normalize(payload)
+        self.assertEqual(normalized["foodOrigin"], "korean")
+
+        payload["foodOrigin"] = "bad_origin"
+        with self.assertRaises(ValueError):
+            self._validate_and_normalize(payload)
 
 
 if __name__ == "__main__":

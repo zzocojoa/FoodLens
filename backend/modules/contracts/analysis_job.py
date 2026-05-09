@@ -4,7 +4,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from backend.modules.contracts.analysis_response import AnalysisDiagnosticsContract
+from backend.modules.contracts.analysis_response import AnalysisDiagnosticsContract, FoodOrigin
 
 
 AnalysisJobMode = Literal["food", "label", "smart"]
@@ -62,6 +62,7 @@ class AnalysisJobStatusResponseContract(BaseModel):
 
     foodName_en: Optional[str] = None
     foodName_ko: Optional[str] = None
+    foodOrigin: Optional[FoodOrigin] = None
     confidence: Optional[int] = None
     nutrition: Optional[dict] = None
     translationCard: Optional[dict] = None

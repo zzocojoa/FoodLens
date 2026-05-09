@@ -14,6 +14,7 @@ UncertaintyReason = Literal["image_ambiguity", "missing_label_text", "barcode_no
 AnalysisDiagnosticsOrigin = Literal["food_photo", "smart_route"]
 AnalysisDiagnosticsUsageSource = Literal["provider_usage_metadata", "estimated", "not_chargeable"]
 DecisionConfidence = Literal["high", "medium", "low"]
+FoodOrigin = Literal["korean", "western", "asian", "single_ingredient", "other", "unknown"]
 
 
 class TranslationCardContract(BaseModel):
@@ -69,6 +70,7 @@ class AnalysisResponseContract(BaseModel):
     foodName_en: Optional[str] = None
     foodName_ko: Optional[str] = None
     confidence: Optional[int] = None
+    foodOrigin: Optional[FoodOrigin] = None
     nutrition: Optional[NutritionContract] = None
     translationCard: Optional[TranslationCardContract] = None
     raw_result: Optional[str] = None

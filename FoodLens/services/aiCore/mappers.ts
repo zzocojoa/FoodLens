@@ -3,6 +3,7 @@ import {
     AnalyzedData,
     DecisionConfidence,
     DecisionStatus,
+    FoodOrigin,
     LatencyMsBreakdown,
     LatencyMsByStage,
     NutritionData,
@@ -76,6 +77,20 @@ const parseUncertaintyReason = (value: unknown): UncertaintyReason | undefined =
 
 const parseDecisionConfidence = (value: unknown): DecisionConfidence | undefined => {
     if (value === 'high' || value === 'medium' || value === 'low') {
+        return value;
+    }
+    return undefined;
+};
+
+const parseFoodOrigin = (value: unknown): FoodOrigin | undefined => {
+    if (
+        value === 'korean' ||
+        value === 'western' ||
+        value === 'asian' ||
+        value === 'single_ingredient' ||
+        value === 'other' ||
+        value === 'unknown'
+    ) {
         return value;
     }
     return undefined;
@@ -220,6 +235,7 @@ export const mapAnalyzedData = (input: unknown): AnalyzedData => {
         foodName: getString(data['foodName'], 'Analyzed Food'),
         foodName_en: getOptionalString(data['foodName_en']),
         foodName_ko: getOptionalString(data['foodName_ko']),
+        foodOrigin: parseFoodOrigin(data['foodOrigin']),
         safetyStatus,
         decisionStatus: parseDecisionStatus(data['decision_status']),
         analysisOrigin: parseAnalysisOrigin(data['analysis_origin']),

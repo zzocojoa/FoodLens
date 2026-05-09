@@ -97,7 +97,7 @@ class _FoodUsageSpyAnalyst:
             "foodName": "Toast",
             "safetyStatus": "SAFE",
             "ingredients": [],
-            "prompt_version": "food-v3.3.1-schema-compact",
+            "prompt_version": "food-v3.3.3-schema-safety",
             "used_model": self.model_name,
             "_food_primary_model": self.model_name,
             "_food_used_model": self.model_name,

@@ -3,6 +3,14 @@ from typing import Any, Final, TypeAlias
 
 SchemaDict: TypeAlias = dict[str, Any]
 SAFETY_STATUS_ENUM: Final[list[str]] = ["SAFE", "CAUTION", "DANGER"]
+FOOD_ORIGIN_ENUM: Final[list[str]] = [
+    "korean",
+    "western",
+    "asian",
+    "single_ingredient",
+    "other",
+    "unknown",
+]
 
 
 def _build_object_schema(properties: SchemaDict, required: list[str] | None = None) -> SchemaDict:
@@ -64,7 +72,7 @@ def _build_food_ingredient_item_schema() -> SchemaDict:
             "bbox": {"type": "ARRAY", "items": {"type": "INTEGER"}},
             "isAllergen": {"type": "BOOLEAN"},
         },
-        required=["name", "bbox", "isAllergen"],
+        required=["name", "name_en", "name_ko", "bbox", "isAllergen"],
     )
 
 
@@ -147,7 +155,7 @@ def build_food_response_schema() -> SchemaDict:
             "raw_result_en": {"type": "STRING"},
             "raw_result_ko": {"type": "STRING"},
             "canonicalFoodId": {"type": "STRING"},
-            "foodOrigin": {"type": "STRING"},
+            "foodOrigin": {"type": "STRING", "enum": FOOD_ORIGIN_ENUM},
             "safetyStatus": {"type": "STRING", "enum": SAFETY_STATUS_ENUM},
             "confidence": {"type": "INTEGER"},
             "ingredients": _build_array_schema(_build_food_ingredient_item_schema()),
@@ -160,7 +168,7 @@ def build_food_response_schema() -> SchemaDict:
             ),
             "raw_result": {"type": "STRING"},
         },
-        required=["foodName", "ingredients", "safetyStatus"],
+        required=["foodName", "foodOrigin", "ingredients", "safetyStatus"],
     )
 
 

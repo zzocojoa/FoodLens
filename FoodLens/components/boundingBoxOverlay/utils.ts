@@ -1,7 +1,27 @@
 import { BoundingBoxIngredient, BoundingBoxRenderItem } from './types';
 
+export const isRenderableBoundingBox = (box: unknown): box is number[] => {
+  if (!Array.isArray(box) || box.length !== 4) return false;
+  const hasValidCoordinates = box.every(
+    (coordinate) =>
+      typeof coordinate === 'number' &&
+      Number.isFinite(coordinate) &&
+      coordinate >= 0 &&
+      coordinate <= 1000
+  );
+  if (!hasValidCoordinates) return false;
+  const [ymin, xmin, ymax, xmax] = box;
+  return ymin < ymax && xmin < xmax;
+};
+
+export const getRenderableBoundingBox = (ingredient: BoundingBoxIngredient): number[] | null => {
+  if (isRenderableBoundingBox(ingredient.box_2d)) return ingredient.box_2d;
+  if (isRenderableBoundingBox(ingredient.bbox)) return ingredient.bbox;
+  return null;
+};
+
 export const hasRenderableBoundingBoxes = (ingredients: BoundingBoxIngredient[]): boolean =>
-  ingredients.some((ingredient) => ingredient.box_2d && ingredient.box_2d.length >= 4);
+  ingredients.some((ingredient) => getRenderableBoundingBox(ingredient) !== null);
 
 export const toBoundingBoxFrame = (
   box: number[],
@@ -34,12 +54,13 @@ export const toBoundingBoxRenderItems = (
 ): BoundingBoxRenderItem[] =>
   ingredients
     .map((ingredient, index) => {
-      if (!ingredient.box_2d || ingredient.box_2d.length < 4) return null;
+      const box = getRenderableBoundingBox(ingredient);
+      if (!box) return null;
       return {
         key: `box-${index}`,
         name: ingredient.name,
         isAllergen: ingredient.isAllergen,
-        frame: toBoundingBoxFrame(ingredient.box_2d, imageWidth, imageHeight),
+        frame: toBoundingBoxFrame(box, imageWidth, imageHeight),
       };
     })
     .filter((item): item is BoundingBoxRenderItem => item !== null);

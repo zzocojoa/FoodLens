@@ -13,4 +13,7 @@ FoodLens/artifacts/phase2/
 FoodLens/artifacts/phase6/
 artifacts/perf/
 artifacts/label-golden-eval/
+artifacts/food-golden-eval/
+backend/tests/fixtures/food_canary/images/*
+!backend/tests/fixtures/food_canary/images/README.md
 .gstack/
