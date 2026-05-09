@@ -26,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.modules.analyst_core.allergen_utils import format_allergens_for_prompt
+from backend.modules.analyst_core.label_merge import build_no_allergy_label_assessment
 from backend.modules.analyst_core.prompts import LABEL_2PASS_PROMPT_VERSION
 from backend.modules.analyst_core.prompts import build_label_assess_prompt, build_label_prompt
 from backend.modules.analyst_core.response_utils import parse_ai_response, sanitize_response
@@ -735,7 +736,9 @@ def _evaluate_sample_model(config: LabelEvalConfig, sample: LabelEvalSample, mod
             if isinstance(ingredient, dict) and str(ingredient.get("name", "")).strip()
         ]
         assess_result: dict[str, Any] | None = None
-        if ingredient_names:
+        if ingredient_names and normalized_allergens == "None":
+            assess_result = build_no_allergy_label_assessment(ingredient_names)
+        elif ingredient_names:
             assess_prompt = build_label_assess_prompt(
                 normalized_allergens,
                 ingredient_names,

@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 from typing import Any
@@ -640,6 +641,231 @@ class LabelModelPolicyTests(unittest.TestCase):
                     },
                 },
             )
+
+    def test_label_no_allergy_skips_assess_and_returns_safe_ingredients(self):
+        extract_usage = {"prompt_token_count": 11, "candidates_token_count": 7, "total_token_count": 18}
+        extract_payload = {
+            "foodName": "Cereal",
+            "confidence": 91,
+            "ingredients": [{"name": "oat"}, {"name": "sugar"}],
+            "nutrition": {
+                "calories": 100,
+                "carbs": 20,
+                "protein": 4,
+                "fat": 2,
+                "sugar": 5,
+                "sodium": 90,
+                "fiber": 3,
+                "servingSize": None,
+                "dataSource": "OCR_Label",
+            },
+            "raw_result": "ok",
+        }
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _mock_response_with_usage(
+                json.dumps(extract_payload),
+                1,
+                extract_usage,
+            )
+
+            analyst = FoodAnalyst()
+            with (
+                patch.object(analyst, "_prepare_vertex_image", return_value=object()),
+                patch.object(analyst, "_build_label_assess_prompt", side_effect=AssertionError("assess prompt called")),
+                patch.object(analyst, "_parse_ai_response", side_effect=AssertionError("assess response parsed")),
+            ):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "None", "US", "en-US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["safetyStatus"], "SAFE")
+            self.assertEqual(
+                result["ingredients"],
+                [
+                    {"name": "oat", "isAllergen": False, "riskReason": ""},
+                    {"name": "sugar", "isAllergen": False, "riskReason": ""},
+                ],
+            )
+            self.assertEqual(result["_label_extract_finish_reason"], 1)
+            self.assertIsNone(result["_label_assess_finish_reason"])
+            self.assertTrue(result["_label_assess_skipped"])
+            self.assertEqual(result["_label_assess_skip_reason"], "allergy_profile_none")
+            self.assertEqual(result["_label_finish_reasons"], {"extract": 1})
+            self.assertEqual(result["_label_thinking_budget"], {"extract": 0})
+            self.assertEqual(
+                result["_label_usage"],
+                {
+                    "extract": {
+                        "prompt_token_count": extract_usage["prompt_token_count"],
+                        "candidates_token_count": extract_usage["candidates_token_count"],
+                        "total_token_count": extract_usage["total_token_count"],
+                    },
+                },
+            )
+            self.assertEqual(result["_label_usage"], result["_label_usage_metadata"])
+            self.assertEqual(result["_label_parse_status"], "parsed")
+            self.assertFalse(result["_label_parse_repaired"])
+            self.assertEqual(set(result["_label_timings"]), {"extract_ms", "assess_ms"})
+            self.assertIsInstance(result["_label_timings"]["extract_ms"], int)
+            self.assertEqual(result["_label_timings"]["assess_ms"], 0)
+            self.assertTrue(result["_label_chargeable"])
+            self.assertFalse(result["_label_fallback_used"])
+            self.assertIsNone(result["_label_fallback_reason"])
+
+    def test_label_no_allergy_empty_extract_stays_caution_without_assess(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse(
+                '{"foodName":"Cereal","safetyStatus":"SAFE","ingredients":[],"nutrition":{"calories":100},"raw_result":"ok"}',
+                1,
+            )
+
+            analyst = FoodAnalyst()
+            with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "None", "US", "en-US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertEqual(result["ingredients"], [])
+            self.assertTrue(result["_label_partial"])
+            self.assertIsNone(result["_label_assess_finish_reason"])
+            self.assertTrue(result["_label_assess_skipped"])
+            self.assertEqual(result["_label_assess_skip_reason"], "no_ingredients")
+            self.assertEqual(result["_label_timings"]["assess_ms"], 0)
+
+    def test_label_no_allergy_failed_extract_stays_caution_without_assess(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse("not json", 1)
+
+            analyst = FoodAnalyst()
+            with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "None", "US", "en-US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertEqual(result["_label_diagnostic_reason"], "extract_parse_error")
+            self.assertTrue(result["_label_partial"])
+            self.assertIsNone(result["_label_assess_finish_reason"])
+            self.assertTrue(result["_label_assess_skipped"])
+            self.assertEqual(result["_label_assess_skip_reason"], "no_ingredients")
+            self.assertEqual(result["_label_timings"]["assess_ms"], 0)
+
+    def test_label_no_allergy_truncated_extract_stays_caution_without_assess(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse(
+                '{"foodName":"Cereal","safetyStatus":"SAFE","ingredients":[{"name":"oat","isAllergen":false}],"nutrition":{"calories":100},"raw_result":"ok"}',
+                2,
+            )
+
+            analyst = FoodAnalyst()
+            with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "None", "US", "en-US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertTrue(result["_label_partial"])
+            self.assertTrue(result["_label_truncated"])
+            self.assertIsNone(result["_label_assess_finish_reason"])
+            self.assertTrue(result["_label_assess_skipped"])
+            self.assertEqual(result["_label_assess_skip_reason"], "allergy_profile_none")
+            self.assertEqual(result["_label_timings"]["assess_ms"], 0)
+
+    def test_label_no_allergy_repaired_extract_stays_caution_without_assess(self):
+        with (
+            patch.object(FoodAnalyst, "_configure_vertex_ai", return_value=None),
+            patch("backend.modules.analyst_runtime.food_analyst.GenerativeModel") as mock_model_cls,
+            patch("backend.modules.analyst_runtime.food_analyst.generate_with_429_backoff") as mock_generate,
+            patch.dict(
+                os.environ,
+                {
+                    "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_MODEL_NAME": "gemini-2.5-flash",
+                    "GEMINI_LABEL_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_PRO_FALLBACK_ENABLED": "0",
+                    "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR": "0",
+                },
+                clear=False,
+            ),
+        ):
+            mock_model_cls.return_value = object()
+            mock_generate.return_value = _MockResponse(
+                '{"foodName":"Cereal","safetyStatus":"SAFE","ingredients":[{"name":"oat","isAllergen":false}],"nutrition":{},"raw_result":"ok"',
+                1,
+            )
+
+            analyst = FoodAnalyst()
+            with patch.object(analyst, "_prepare_vertex_image", return_value=object()):
+                result = analyst.analyze_label_json(Image.new("RGB", (4, 4)), "None", "US", "en-US")
+
+            self.assertEqual(mock_generate.call_count, 1)
+            self.assertEqual(result["safetyStatus"], "CAUTION")
+            self.assertTrue(result["_label_parse_repaired"])
+            self.assertEqual(result["_label_repair_strategy"], "close_unclosed_json")
+            self.assertTrue(result["_label_partial"])
+            self.assertIsNone(result["_label_assess_finish_reason"])
+            self.assertTrue(result["_label_assess_skipped"])
+            self.assertEqual(result["_label_assess_skip_reason"], "allergy_profile_none")
+            self.assertEqual(result["_label_timings"]["assess_ms"], 0)
 
     def test_label_fallback_call_applies_pro_thinking_budget_only_to_fallback(self):
         with (

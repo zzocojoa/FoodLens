@@ -7,19 +7,11 @@ const projectAllergyItemForAi = (value: string): string => {
 };
 
 export const getAllergyString = async (): Promise<string> => {
-    let allergyString = 'None';
-
-    try {
-        const user = await UserService.getUserProfile(getAiUserId());
-        if (user) {
-            const items = user.safetyProfile.allergies.map((item) => projectAllergyItemForAi(item));
-            if (items.length > 0) {
-                allergyString = items.join(', ');
-            }
-        }
-    } catch (error) {
-        console.warn('Could not load user profile for analysis:', error);
+    const user = await UserService.getUserProfile(getAiUserId());
+    const items = user.safetyProfile.allergies.map((item) => projectAllergyItemForAi(item));
+    if (items.length > 0) {
+        return items.join(', ');
     }
 
-    return allergyString;
+    return 'None';
 };

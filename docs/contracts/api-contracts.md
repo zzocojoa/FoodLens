@@ -42,6 +42,7 @@
   - `nutrition`
   - `raw_result`, `raw_result_en`, `raw_result_ko`
   - `request_id`, `prompt_version`, `used_model`, `latency_ms`
+  - `label_diagnostics`: 라벨 추출/평가 상태. 알레르기 프로필이 비어 있어 평가 호출을 생략한 정상 케이스는 `assess_skipped=true`, `assess_skip_reason=allergy_profile_none`, `assess_finish_reason=null`, `latency_ms.assess=0`으로 표현합니다.
 
 ### C. 음식 사진 분석
 

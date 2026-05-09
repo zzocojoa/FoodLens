@@ -131,6 +131,40 @@ class _SpyAnalyst:
         }
 
 
+class _NoAllergySkipAnalyst:
+    def __init__(self):
+        self.label_model_name = "gemini-2.5-flash"
+        self.called = False
+
+    def analyze_label_json(self, *_args, **_kwargs):
+        self.called = True
+        return {
+            "foodName": "Cereal",
+            "safetyStatus": "SAFE",
+            "ingredients": [{"name": "oat", "isAllergen": False, "riskReason": ""}],
+            "nutrition": {"calories": 100},
+            "raw_result": "ok",
+            "prompt_version": "label-v1.2-2pass-locale-country",
+            "used_model": self.label_model_name,
+            "_label_timings": {"extract_ms": 2, "assess_ms": 0},
+            "_label_primary_model": self.label_model_name,
+            "_label_used_model": self.label_model_name,
+            "_label_fallback_used": False,
+            "_label_fallback_reason": None,
+            "_label_extract_finish_reason": 1,
+            "_label_assess_finish_reason": None,
+            "_label_assess_skipped": True,
+            "_label_assess_skip_reason": "allergy_profile_none",
+            "_label_usage": {
+                "extract": {
+                    "prompt_token_count": 11,
+                    "candidates_token_count": 7,
+                    "total_token_count": 18,
+                },
+            },
+        }
+
+
 class _RaisingLabelAnalyst:
     def __init__(self) -> None:
         self.label_model_name = "gemini-2.5-flash"
@@ -442,6 +476,42 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(payload.get("safetyStatus"), "CAUTION")
         self.assertIn("예산 한도", payload.get("raw_result", ""))
         self.assertEqual(payload.get("prompt_version"), "label-v1.2-2pass-locale-country")
+
+    def test_label_endpoint_exposes_no_allergy_assess_skip_diagnostics(self):
+        analyst = _NoAllergySkipAnalyst()
+
+        with (
+            patch.dict(os.environ, _TEST_RUNTIME_ENV, clear=False),
+            patch.object(server_module.logger, "info") as mock_logger_info,
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            response = client.post(
+                "/analyze/label",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(analyst.called)
+        self.assertEqual(_collect_internal_label_keys(payload), [])
+        self.assertEqual(payload["latency_ms"]["assess"], 0)
+        self.assertTrue(payload["label_diagnostics"]["assess_skipped"])
+        self.assertEqual(payload["label_diagnostics"]["assess_skip_reason"], "allergy_profile_none")
+        self.assertIsNone(payload["label_diagnostics"]["assess_finish_reason"])
+
+        observability_calls = [
+            call
+            for call in mock_logger_info.call_args_list
+            if call.args and call.args[0] == "[Server] Label observability"
+        ]
+        self.assertEqual(len(observability_calls), 1)
+        observability_extra = observability_calls[0].kwargs["extra"]
+        self.assertTrue(observability_extra["label_assess_skipped"])
+        self.assertEqual(observability_extra["label_assess_skip_reason"], "allergy_profile_none")
 
     def test_analyze_food_records_provider_usage_without_internal_food_fields(self):
         analyst = _FoodUsageSpyAnalyst()
