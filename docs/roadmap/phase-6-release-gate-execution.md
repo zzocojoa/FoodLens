@@ -187,7 +187,8 @@
 - kill switch 절차:
   - 1차: `LABEL_ROLLOUT_ENABLED=0`
   - 2차: `LABEL_ROLLOUT_STAGE=rollback-0`
-  - 3차: 적용 후 `phase6-postdeploy-smoke` 재실행
+  - 3차: Pro fallback 차단값 `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0` 유지 확인
+  - 4차: 적용 후 `phase6-postdeploy-smoke` 재실행
 
 ## 7) 비개발자용 주간 점검 질문
 

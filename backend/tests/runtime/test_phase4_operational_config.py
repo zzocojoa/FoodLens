@@ -1,9 +1,15 @@
+import contextlib
+import importlib.util
+import io
+import sys
 import unittest
 from pathlib import Path
+from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RENDER_BLUEPRINT_PATH = PROJECT_ROOT / "render.yaml"
+RENDER_LIVE_ENV_SCRIPT_PATH = PROJECT_ROOT / ".github" / "scripts" / "validate_render_live_env.py"
 
 
 class Phase4OperationalConfigTests(unittest.TestCase):
@@ -105,6 +111,113 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         self.assertIn('- key: BARCODE_UPSTREAM_TIMEOUT_SECONDS\n        value: "15"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_COUNT\n        value: "3"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS\n        value: "1.0"', render_blueprint)
+
+
+def _load_render_live_env_module() -> Any:
+    spec = importlib.util.spec_from_file_location("validate_render_live_env", RENDER_LIVE_ENV_SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load script: {RENDER_LIVE_ENV_SCRIPT_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class _FakeRenderApi:
+    def __init__(self, live_env_by_service: dict[str, dict[str, str]]) -> None:
+        self.service_ids_by_name: dict[str, str] = {
+            service_name: f"service-{index}"
+            for index, service_name in enumerate(live_env_by_service, start=1)
+        }
+        self.live_env_by_service = live_env_by_service
+
+    def request_json(self, method: str, url: str, api_key: str) -> object:
+        if method != "GET":
+            raise RuntimeError(f"Unexpected method: {method}")
+        if "/services?" in url:
+            return [
+                {"service": {"id": service_id, "name": service_name}, "cursor": f"cursor-{service_name}"}
+                for service_name, service_id in self.service_ids_by_name.items()
+            ]
+        for service_name, service_id in self.service_ids_by_name.items():
+            if f"/services/{service_id}/env-vars?" not in url:
+                continue
+            return [
+                {"envVar": {"key": key, "value": value}, "cursor": f"cursor-{service_name}-{key}"}
+                for key, value in self.live_env_by_service[service_name].items()
+            ]
+        raise RuntimeError(f"Unexpected URL: {url}")
+
+
+class RenderLiveEnvValidationTests(unittest.TestCase):
+    def _live_env_from_blueprint(self, module: Any) -> dict[str, dict[str, str]]:
+        contract = module._required_env_contract(module.parse_blueprint_services(RENDER_BLUEPRINT_PATH))
+        live_env_by_service: dict[str, dict[str, str]] = {}
+        for service_name, service_contract in contract.items():
+            live_env_by_service[service_name] = {
+                key: str(env_var.value)
+                for key, env_var in service_contract.items()
+            }
+        return live_env_by_service
+
+    def _run_gate(
+        self,
+        module: Any,
+        live_env_by_service: dict[str, dict[str, str]],
+        check_values: bool,
+    ) -> tuple[int, str]:
+        buffer = io.StringIO()
+        fake_api = _FakeRenderApi(live_env_by_service)
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            exit_code = module.run_gate(
+                {"RENDER_API_KEY": "test-render-api-key"},
+                RENDER_BLUEPRINT_PATH,
+                check_values,
+                fake_api.request_json,
+            )
+        return exit_code, buffer.getvalue()
+
+    def test_render_live_env_check_reports_missing_pro_fallback_keys_without_values(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module)
+        missing_keys = (
+            "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
+            "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+            "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+        )
+        for service_env in live_env_by_service.values():
+            for missing_key in missing_keys:
+                del service_env[missing_key]
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("GEMINI_LABEL_PRO_FALLBACK_ENABLED", output)
+        self.assertIn("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", output)
+        self.assertIn("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", output)
+        self.assertIn("present=false", output)
+        self.assertNotIn("0.12", output)
+        self.assertNotIn("gemini-2.5-flash", output)
+        self.assertNotIn("gemini-2.5-flash-lite", output)
+
+    def test_render_live_env_check_passes_when_required_keys_exist(self) -> None:
+        module = _load_render_live_env_module()
+        exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module), False)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("live env contract checks passed", output)
+
+    def test_render_live_env_value_check_does_not_print_actual_values(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module)
+        service_env = live_env_by_service["foodlens-api"]
+        service_env["GEMINI_LABEL_PRO_FALLBACK_ENABLED"] = "sensitive-looking-wrong-value"
+
+        exit_code, output = self._run_gate(module, live_env_by_service, True)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("matches_blueprint=false", output)
+        self.assertNotIn("sensitive-looking-wrong-value", output)
 
 
 if __name__ == "__main__":

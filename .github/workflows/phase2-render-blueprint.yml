@@ -5,6 +5,8 @@ on:
     paths:
       - render.yaml
       - backend/scripts/ci_render_blueprint_gate.sh
+      - .github/scripts/validate_render_live_env.py
+      - backend/tests/runtime/test_phase4_operational_config.py
       - .github/workflows/phase2-render-blueprint.yml
   push:
     branches:
@@ -12,6 +14,8 @@ on:
     paths:
       - render.yaml
       - backend/scripts/ci_render_blueprint_gate.sh
+      - .github/scripts/validate_render_live_env.py
+      - backend/tests/runtime/test_phase4_operational_config.py
       - .github/workflows/phase2-render-blueprint.yml
   workflow_dispatch:
 
@@ -24,3 +28,6 @@ jobs:
 
       - name: Validate Render blueprint and env parity
         run: bash backend/scripts/ci_render_blueprint_gate.sh
+
+      - name: Validate Render live env checker contract
+        run: python -m unittest backend.tests.runtime.test_phase4_operational_config
