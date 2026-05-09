@@ -148,9 +148,13 @@
   - `LABEL_COST_GUARDRAIL_ENABLED=1`
   - `LABEL_MONTHLY_BUDGET_USD=10`
   - `LABEL_ESTIMATED_COST_USD_PER_REQUEST=0.02`
+  - `LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK=0.12`
+  - `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER=6`
   - `LABEL_ESTIMATED_TOKENS_PER_REQUEST=1500`
   - `LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE=0.012`
   - `LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE=900`
+  - `BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST=0.001`
+  - `BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST=500`
 - Observability 메타
   - `/analyze`, `/analyze/label`, `/analyze/smart`: `request_id`, `used_model`, `prompt_version`, `latency_ms`
   - `/analyze/jobs/{job_id}`: `request_id`, `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`

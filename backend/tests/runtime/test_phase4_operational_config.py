@@ -39,9 +39,13 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "LABEL_MONTHLY_BUDGET_USD",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK",
+            "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+            "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
             "LABEL_ESTIMATED_TOKENS_PER_REQUEST",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE",
             "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE",
+            "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST",
+            "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST",
             "LABEL_ROLLOUT_PERCENTAGE",
             "BARCODE_UPSTREAM_TIMEOUT_SECONDS",
             "BARCODE_UPSTREAM_RETRY_COUNT",
@@ -59,8 +63,8 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         )
         fixed_values = (
             ("GEMINI_FOOD_MAX_OUTPUT_TOKENS", "4096"),
-            ("GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS", "8192"),
-            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY", "8192"),
+            ("GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS", "6144"),
+            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY", "6144"),
             ("GEMINI_FOOD_FLASH_THINKING_BUDGET", "0"),
             ("GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET", "0"),
             ("GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST", "3"),
@@ -70,6 +74,10 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             ("FOOD_ESTIMATED_TOKENS_PER_REQUEST", "2500"),
             ("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
             ("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", "300"),
+            ("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", "0.12"),
+            ("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", "6"),
+            ("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
+            ("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", "500"),
         )
         for key, value in fixed_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)

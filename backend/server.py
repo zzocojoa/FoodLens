@@ -134,6 +134,68 @@ def _is_pro_model_tier(model_name: Any) -> bool:
     return _startup_model_tier(model_name) == "pro"
 
 
+def _positive_float(value: float, fallback: float) -> float:
+    if value > 0:
+        return value
+    return fallback
+
+
+def _label_pro_fallback_min_cost_multiplier() -> float:
+    return _positive_float(_env_float("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", 6.0), 6.0)
+
+
+def _label_pro_fallback_estimated_cost(primary_estimated_cost: float) -> float:
+    min_estimated_cost = primary_estimated_cost * _label_pro_fallback_min_cost_multiplier()
+    explicit_estimated_cost = _env_float(
+        "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+        _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK", min_estimated_cost),
+    )
+    return max(primary_estimated_cost, explicit_estimated_cost, min_estimated_cost)
+
+
+def _label_reservation_estimated_cost(analyst: Any, primary_estimated_cost: float) -> float:
+    fallback_model_name = getattr(analyst, "label_fallback_model_name", None)
+    fallback_enabled = bool(getattr(analyst, "label_fallback_enabled", False))
+    if fallback_enabled and _is_pro_model_tier(fallback_model_name):
+        return _label_pro_fallback_estimated_cost(primary_estimated_cost)
+    return primary_estimated_cost
+
+
+def _label_actual_estimated_cost(primary_estimated_cost: float, used_model_name: Any) -> float:
+    if _is_pro_model_tier(used_model_name):
+        return _label_pro_fallback_estimated_cost(primary_estimated_cost)
+    return primary_estimated_cost
+
+
+def _smart_downstream_reservation_estimated_cost(analyst: Any) -> float:
+    food_estimated_cost = _env_float("FOOD_ESTIMATED_COST_USD_PER_REQUEST", 0.006)
+    label_estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    label_reservation_cost = _label_reservation_estimated_cost(analyst, label_estimated_cost)
+    return max(food_estimated_cost, label_reservation_cost)
+
+
+def _smart_downstream_reservation_estimated_tokens() -> int:
+    food_estimated_tokens = _env_int("FOOD_ESTIMATED_TOKENS_PER_REQUEST", 2500)
+    label_estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
+    return max(food_estimated_tokens, label_estimated_tokens)
+
+
+def _barcode_allergen_budget_fallback(ingredients: list[Any], locale: str | None) -> dict[str, Any]:
+    normalized_locale = (locale or "").strip().lower()
+    coach_message = (
+        "이번 달 AI 분석 예산 한도에 도달했습니다. 성분표를 직접 확인해주세요."
+        if normalized_locale.startswith("ko")
+        else "The monthly AI analysis budget has been reached. Please verify the ingredient label directly."
+    )
+    return {
+        "safetyStatus": "CAUTION",
+        "coachMessage": coach_message,
+        "ingredients": list(ingredients),
+        "used_model": None,
+        "prompt_version": None,
+    }
+
+
 def _log_safe_environment_debug() -> None:
     print("--- [Server Debug Environment] ---")
     print(f"PORT: {'[SET]' if os.getenv('PORT') else '[DEFAULT]'}")
@@ -5096,18 +5158,12 @@ async def _analyze_label_image_with_policy(
             rollout_decision.route_to_new,
         )
 
-    estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    primary_estimated_cost = _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST", 0.02)
+    estimated_cost = primary_estimated_cost
     estimated_tokens = _env_int("LABEL_ESTIMATED_TOKENS_PER_REQUEST", 1500)
     cost_reservation: Any = None
     if _is_label_cost_guardrail_enabled() and cost_guardrail:
-        reservation_estimated_cost = estimated_cost
-        if bool(getattr(analyst, "label_fallback_enabled", False)) and _is_pro_model_tier(
-            getattr(analyst, "label_fallback_model_name", None)
-        ):
-            reservation_estimated_cost = max(
-                reservation_estimated_cost,
-                _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK", estimated_cost * 6.0),
-            )
+        reservation_estimated_cost = _label_reservation_estimated_cost(analyst, primary_estimated_cost)
         decision = _reserve_label_cost(
             cost_guardrail,
             reservation_key=f"{request_id}:label-analysis",
@@ -5229,10 +5285,7 @@ async def _analyze_label_image_with_policy(
     label_recorded_tokens = label_usage_total_tokens if isinstance(label_usage_total_tokens, int) else estimated_tokens
     label_usage_source = "provider_usage_metadata" if isinstance(label_usage_total_tokens, int) else "estimated"
     if bool(label_observability["fallback_used"]) and _is_pro_model_tier(label_observability["used_model"]):
-        estimated_cost = max(
-            estimated_cost,
-            _env_float("LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK", estimated_cost * 6.0),
-        )
+        estimated_cost = _label_actual_estimated_cost(primary_estimated_cost, label_observability["used_model"])
     result["label_diagnostics"] = _build_public_label_diagnostics(
         label_observability,
         label_error_type,
@@ -5477,25 +5530,88 @@ async def analyze_smart(
             preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
+            analyst = _service("analyst")
             smart_cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
-            smart_estimated_cost = _env_float("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", 0.001)
-            smart_estimated_tokens = _env_int("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", 300)
+            smart_router_estimated_cost = _env_float("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", 0.001)
+            smart_router_estimated_tokens = _env_int("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", 300)
+            smart_reservation_estimated_cost = smart_router_estimated_cost + _smart_downstream_reservation_estimated_cost(analyst)
+            smart_reservation_estimated_tokens = smart_router_estimated_tokens + _smart_downstream_reservation_estimated_tokens()
             smart_reservation: Any = None
+            smart_router_settled = False
+
+            def _settle_smart_router_reservation() -> None:
+                nonlocal smart_router_settled
+                if smart_router_settled:
+                    return
+                smart_router_settled = True
+                if not (_is_analysis_cost_guardrail_enabled() and smart_cost_guardrail and smart_reservation):
+                    return
+                _reconcile_label_cost(
+                    smart_cost_guardrail,
+                    reservation=smart_reservation,
+                    chargeable=True,
+                    cost_usd=smart_router_estimated_cost,
+                    tokens=smart_router_estimated_tokens,
+                    provider_total_tokens=None,
+                    provider_thought_tokens=None,
+                    fallback_used=False,
+                    truncated=False,
+                )
+
+            async def _run_label_after_smart_router(
+                label_image: Image.Image,
+                label_allergy_info: str,
+                label_prompt_country_code: str,
+                label_locale: str | None,
+                label_request_id: str,
+                label_total_started_at: float,
+                label_preprocess_elapsed_ms: int,
+            ) -> dict[str, Any]:
+                _settle_smart_router_reservation()
+                return await _analyze_label_image_with_policy_for_http(
+                    label_image,
+                    label_allergy_info,
+                    label_prompt_country_code,
+                    label_locale,
+                    label_request_id,
+                    label_total_started_at,
+                    label_preprocess_elapsed_ms,
+                )
+
+            async def _run_food_after_smart_router(
+                food_image: Image.Image,
+                food_allergy_info: str,
+                food_prompt_country_code: str,
+                food_request_id: str,
+                food_total_started_at: float,
+                food_preprocess_elapsed_ms: int,
+            ) -> dict[str, Any]:
+                _settle_smart_router_reservation()
+                return await _analyze_food_image_with_policy(
+                    food_image,
+                    food_allergy_info,
+                    food_prompt_country_code,
+                    food_request_id,
+                    food_total_started_at,
+                    food_preprocess_elapsed_ms,
+                )
+
             if _is_analysis_cost_guardrail_enabled() and smart_cost_guardrail:
                 smart_decision = _reserve_label_cost(
                     smart_cost_guardrail,
                     reservation_key=f"{request_id}:smart-router",
-                    estimated_cost_usd=smart_estimated_cost,
-                    estimated_tokens=smart_estimated_tokens,
+                    estimated_cost_usd=smart_reservation_estimated_cost,
+                    estimated_tokens=smart_reservation_estimated_tokens,
                 )
                 smart_reservation = smart_decision
                 smart_decision_action = _label_cost_action(smart_decision)
                 logger.info(
-                    "[Server] Smart router cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+                    "[Server] Smart router cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f reservation_estimated_cost_usd=%.4f",
                     request_id,
                     smart_decision_action,
                     _label_cost_ratio(smart_decision),
                     _label_cost_projected_total(smart_decision),
+                    smart_reservation_estimated_cost,
                 )
                 if smart_decision_action == CostGuardrailAction.FALLBACK:
                     fallback = get_safe_fallback_response(
@@ -5533,24 +5649,13 @@ async def analyze_smart(
                     request_id=request_id,
                     total_started_at=started_at,
                     preprocess_elapsed_ms=preprocess_elapsed_ms,
-                    label_analysis_runner=_analyze_label_image_with_policy_for_http,
-                    food_analysis_runner=_analyze_food_image_with_policy,
+                    label_analysis_runner=_run_label_after_smart_router,
+                    food_analysis_runner=_run_food_after_smart_router,
                 )
                 if isinstance(result, dict):
                     result = _build_smart_analysis_diagnostics_result(result)
             finally:
-                if _is_analysis_cost_guardrail_enabled() and smart_cost_guardrail and smart_reservation:
-                    _reconcile_label_cost(
-                        smart_cost_guardrail,
-                        reservation=smart_reservation,
-                        chargeable=True,
-                        cost_usd=smart_estimated_cost,
-                        tokens=smart_estimated_tokens,
-                        provider_total_tokens=None,
-                        provider_thought_tokens=None,
-                        fallback_used=False,
-                        truncated=False,
-                    )
+                _settle_smart_router_reservation()
             return result
 
         result = await run_with_error_policy(
@@ -5681,14 +5786,87 @@ async def lookup_barcode(
                     len(result["ingredients"]),
                 )
                 analyst = _service("analyst")
-                analysis_started_at = time.perf_counter()
-                allergen_result = await run_in_threadpool(
-                    analyst.analyze_barcode_ingredients,
-                    result["ingredients"],
-                    allergy_info,
-                    locale,
-                )
-                allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+                original_ingredients = result["ingredients"]
+                allergen_result: dict[str, Any]
+                barcode_cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
+                barcode_estimated_cost = _env_float("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", 0.001)
+                barcode_estimated_tokens = _env_int("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", 500)
+                barcode_reservation: Any = None
+                barcode_chargeable = False
+                if _is_analysis_cost_guardrail_enabled() and barcode_cost_guardrail:
+                    barcode_reservation = _reserve_label_cost(
+                        barcode_cost_guardrail,
+                        reservation_key=f"{request_id}:barcode-allergen-analysis",
+                        estimated_cost_usd=barcode_estimated_cost,
+                        estimated_tokens=barcode_estimated_tokens,
+                    )
+                    barcode_decision_action = _label_cost_action(barcode_reservation)
+                    logger.info(
+                        "[Server] Barcode allergen cost guardrail request_id=%s action=%s ratio=%.3f projected_total_cost_usd=%.4f",
+                        request_id,
+                        barcode_decision_action,
+                        _label_cost_ratio(barcode_reservation),
+                        _label_cost_projected_total(barcode_reservation),
+                    )
+                    if barcode_decision_action == CostGuardrailAction.FALLBACK:
+                        allergen_result = _barcode_allergen_budget_fallback(list(original_ingredients), locale)
+                        allergen_analysis_elapsed_ms = 0
+                        _reconcile_label_cost(
+                            barcode_cost_guardrail,
+                            reservation=barcode_reservation,
+                            chargeable=False,
+                            cost_usd=0.0,
+                            tokens=0,
+                            provider_total_tokens=None,
+                            provider_thought_tokens=None,
+                            fallback_used=True,
+                            truncated=False,
+                        )
+                    else:
+                        analysis_started_at = time.perf_counter()
+                        try:
+                            allergen_result = await run_in_threadpool(
+                                analyst.analyze_barcode_ingredients,
+                                original_ingredients,
+                                allergy_info,
+                                locale,
+                            )
+                            barcode_chargeable = True
+                        except Exception:
+                            _reconcile_label_cost(
+                                barcode_cost_guardrail,
+                                reservation=barcode_reservation,
+                                chargeable=False,
+                                cost_usd=0.0,
+                                tokens=0,
+                                provider_total_tokens=None,
+                                provider_thought_tokens=None,
+                                fallback_used=False,
+                                truncated=False,
+                            )
+                            raise
+                        finally:
+                            allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+                        _reconcile_label_cost(
+                            barcode_cost_guardrail,
+                            reservation=barcode_reservation,
+                            chargeable=barcode_chargeable,
+                            cost_usd=barcode_estimated_cost if barcode_chargeable else 0.0,
+                            tokens=barcode_estimated_tokens if barcode_chargeable else 0,
+                            provider_total_tokens=None,
+                            provider_thought_tokens=None,
+                            fallback_used=False,
+                            truncated=False,
+                        )
+                else:
+                    analysis_started_at = time.perf_counter()
+                    allergen_result = await run_in_threadpool(
+                        analyst.analyze_barcode_ingredients,
+                        original_ingredients,
+                        allergy_info,
+                        locale,
+                    )
+                    allergen_analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
                 used_model = allergen_result.get("used_model")
                 prompt_version = allergen_result.get("prompt_version")
                 logger.info(
@@ -5699,7 +5877,6 @@ async def lookup_barcode(
                     prompt_version,
                 )
 
-                original_ingredients = result["ingredients"]
                 result["safetyStatus"] = allergen_result.get("safetyStatus", "SAFE")
                 result["coachMessage"] = allergen_result.get("coachMessage", "")
                 result["ingredients"] = _select_barcode_ingredients_after_allergen_analysis(

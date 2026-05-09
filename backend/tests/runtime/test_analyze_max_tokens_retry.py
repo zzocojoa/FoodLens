@@ -63,7 +63,7 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             first_config = mock_generate.call_args_list[0].kwargs["generation_config"]
             second_config = mock_generate.call_args_list[1].kwargs["generation_config"]
             self.assertEqual(first_config["max_output_tokens"], 4096)
-            self.assertEqual(second_config["max_output_tokens"], 8192)
+            self.assertEqual(second_config["max_output_tokens"], 6144)
             self.assertEqual(result["foodName"], "RetryDish")
             self.assertEqual(result["_food_usage_metadata"]["prompt_token_count"], 13)
             self.assertEqual(result["_food_usage_metadata"]["total_token_count"], 27)
@@ -245,7 +245,7 @@ class AnalyzeMaxTokensRetryTests(unittest.TestCase):
             first_config = mock_generate.call_args_list[0].kwargs["generation_config"]
             second_config = mock_generate.call_args_list[1].kwargs["generation_config"]
             self.assertEqual(first_config["max_output_tokens"], 4096)
-            self.assertEqual(second_config["max_output_tokens"], 8192)
+            self.assertEqual(second_config["max_output_tokens"], 6144)
             self.assertEqual(result["foodName"], "RetryDish")
 
     def test_enrich_with_nutrition_skips_analysis_error_payload(self):

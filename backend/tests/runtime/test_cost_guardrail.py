@@ -144,6 +144,8 @@ class _RaisingLabelAnalyst:
 class _UsageSpyAnalyst:
     def __init__(self) -> None:
         self.label_model_name = "gemini-2.5-flash"
+        self.label_fallback_enabled = True
+        self.label_fallback_model_name = "gemini-2.5-pro"
         self.called = False
 
     def analyze_label_json(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -587,7 +589,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(usage.active_reserved_cost_usd, 0.0)
         self.assertEqual(usage.request_count, 0)
 
-    def test_barcode_allergen_empty_ingredients_preserves_source_ingredients_without_label_cost(self):
+    def test_barcode_allergen_empty_ingredients_preserves_source_ingredients_with_ai_cost(self):
         analyst = _BarcodeAllergenEmptyAnalyst()
         storage = InMemoryMonthlyUsageStorage()
         service = CostGuardrailService(storage, monthly_budget_usd=1.0)
@@ -597,7 +599,9 @@ class CostGuardrailTests(unittest.TestCase):
                 os.environ,
                 {
                     **_TEST_RUNTIME_ENV,
-                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
                 },
                 clear=False,
             ),
@@ -606,6 +610,7 @@ class CostGuardrailTests(unittest.TestCase):
             app.state.analyst = analyst
             app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
             app.state.smart_router = object()
+            app.state.analysis_cost_guardrail = service
             app.state.label_cost_guardrail = service
             response = client.post(
                 "/lookup/barcode",
@@ -626,8 +631,50 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(analyst.called_with_ingredients, ["milk", "sugar"])
 
         usage = storage.get(service._period_key())
-        self.assertEqual(usage.total_cost_usd, 0.0)
-        self.assertEqual(usage.total_tokens, 0)
+        self.assertEqual(usage.total_cost_usd, 0.001)
+        self.assertEqual(usage.total_tokens, 500)
+
+    def test_barcode_allergen_budget_fallback_skips_model_call(self):
+        analyst = _BarcodeAllergenEmptyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=1.0, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
+            app.state.smart_router = object()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/lookup/barcode",
+                data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                headers={"X-Request-Id": "req-barcode-budget"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["found"])
+        self.assertEqual(payload["data"]["safetyStatus"], "CAUTION")
+        self.assertIn("budget", payload["data"]["coachMessage"])
+        self.assertIsNone(payload["used_model"])
+        self.assertIsNone(analyst.called_with_ingredients)
+        self.assertEqual(usage.total_cost_usd, 1.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 1000)
 
     def test_smart_label_route_records_chargeable_usage_once(self):
         spy = _SpyAnalyst()
@@ -724,6 +771,86 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(observability_extra["label_usage_thought_tokens"], 11)
         self.assertEqual(observability_extra["label_fallback_reason"], "extract_max_tokens")
 
+    def test_label_pro_fallback_reservation_uses_pro_floor_when_generic_fallback_matches_primary(self):
+        spy = _UsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.90, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK": "0.02",
+                    "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER": "6",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/label",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(spy.called)
+        self.assertEqual(payload.get("safetyStatus"), "CAUTION")
+        self.assertIn("예산 한도", payload.get("raw_result", ""))
+        self.assertEqual(usage.total_cost_usd, 0.90)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+
+    def test_label_pro_fallback_actual_cost_uses_primary_floor_after_degrade(self):
+        spy = _UsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.75, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK": "0.02",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK": "0",
+                    "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER": "6",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE": "0.012",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE": "900",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = object()
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/label",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(spy.called)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.87)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+
     def test_smart_food_route_marks_public_diagnostics_as_smart_route(self):
         analyst = _FoodUsageSpyAnalyst()
         storage = InMemoryMonthlyUsageStorage()
@@ -765,6 +892,139 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertAlmostEqual(usage.total_cost_usd, 0.007)
         self.assertEqual(usage.total_tokens, 500)
         self.assertEqual(usage.provider_reported_tokens, 200)
+
+    def test_smart_route_reserves_router_and_downstream_budget_before_model_call(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.98, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "300",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(spy.called)
+        self.assertEqual(payload.get("safetyStatus"), "CAUTION")
+        self.assertIn("예산 한도", payload.get("raw_result", ""))
+        self.assertEqual(usage.total_cost_usd, 0.98)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+
+    def test_smart_label_route_does_not_double_reserve_downstream_budget(self):
+        spy = _SpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.97, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "LABEL_COST_GUARDRAIL_ENABLED": "1",
+                    "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "300",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = spy
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartLabelRouter()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            app.state.label_rollout_kpi_thresholds = KpiThresholds()
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("label.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(spy.called)
+        self.assertEqual(payload.get("safetyStatus"), "SAFE")
+        self.assertFalse(spy.last_assess_enabled)
+        self.assertAlmostEqual(usage.total_cost_usd, 0.983)
+        self.assertEqual(usage.total_tokens, 2200)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+
+    def test_smart_food_route_does_not_double_reserve_downstream_budget(self):
+        analyst = _FoodUsageSpyAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+        service.record(cost_usd=0.978, tokens=1000)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **_TEST_RUNTIME_ENV,
+                    "AI_COST_GUARDRAIL_ENABLED": "1",
+                    "SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                    "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST": "300",
+                    "LABEL_ESTIMATED_COST_USD_PER_REQUEST": "0.02",
+                    "LABEL_ESTIMATED_TOKENS_PER_REQUEST": "1500",
+                    "FOOD_ESTIMATED_COST_USD_PER_REQUEST": "0.006",
+                    "FOOD_ESTIMATED_TOKENS_PER_REQUEST": "2500",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            app.state.analyst = analyst
+            app.state.barcode_service = object()
+            app.state.smart_router = _SmartFoodRouter()
+            app.state.analysis_cost_guardrail = service
+            app.state.label_cost_guardrail = service
+            response = client.post(
+                "/analyze/smart",
+                files={"file": ("food.jpg", _build_high_quality_bytes(), "image/jpeg")},
+                data={"allergy_info": "None", "locale": "ko-KR"},
+            )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(analyst.called)
+        self.assertEqual(payload.get("safetyStatus"), "SAFE")
+        self.assertAlmostEqual(usage.total_cost_usd, 0.985)
+        self.assertEqual(usage.total_tokens, 1500)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
 
     def test_smart_label_route_budget_fallback_skips_model_call(self):
         spy = _SpyAnalyst()
