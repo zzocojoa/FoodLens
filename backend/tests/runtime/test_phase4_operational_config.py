@@ -1,9 +1,17 @@
+import contextlib
+import importlib.util
+import io
+import sys
 import unittest
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs
+from urllib.parse import urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RENDER_BLUEPRINT_PATH = PROJECT_ROOT / "render.yaml"
+RENDER_LIVE_ENV_SCRIPT_PATH = PROJECT_ROOT / ".github" / "scripts" / "validate_render_live_env.py"
 
 
 class Phase4OperationalConfigTests(unittest.TestCase):
@@ -32,6 +40,7 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST",
             "GEMINI_LABEL_FALLBACK_ON_PARSE_ERROR",
             "GEMINI_LABEL_FALLBACK_ON_MAX_TOKENS",
+            "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
             "LABEL_COST_GUARDRAIL_ENABLED",
             "LABEL_COST_GUARDRAIL_STORAGE_BACKEND",
             "LABEL_COST_GUARDRAIL_USAGE_TABLE",
@@ -39,9 +48,13 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "LABEL_MONTHLY_BUDGET_USD",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK",
+            "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+            "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
             "LABEL_ESTIMATED_TOKENS_PER_REQUEST",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE",
             "LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE",
+            "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST",
+            "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST",
             "LABEL_ROLLOUT_PERCENTAGE",
             "BARCODE_UPSTREAM_TIMEOUT_SECONDS",
             "BARCODE_UPSTREAM_RETRY_COUNT",
@@ -59,17 +72,22 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         )
         fixed_values = (
             ("GEMINI_FOOD_MAX_OUTPUT_TOKENS", "4096"),
-            ("GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS", "8192"),
-            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY", "8192"),
+            ("GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS", "6144"),
+            ("GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY", "6144"),
             ("GEMINI_FOOD_FLASH_THINKING_BUDGET", "0"),
             ("GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET", "0"),
             ("GEMINI_FOOD_MAX_PROVIDER_CALLS_PER_REQUEST", "3"),
+            ("GEMINI_LABEL_PRO_FALLBACK_ENABLED", "0"),
             ("AI_COST_GUARDRAIL_ENABLED", "1"),
             ("AI_MONTHLY_BUDGET_USD", "10"),
             ("FOOD_ESTIMATED_COST_USD_PER_REQUEST", "0.006"),
             ("FOOD_ESTIMATED_TOKENS_PER_REQUEST", "2500"),
             ("SMART_ROUTER_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
             ("SMART_ROUTER_ESTIMATED_TOKENS_PER_REQUEST", "300"),
+            ("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", "0.12"),
+            ("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", "6"),
+            ("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
+            ("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", "500"),
         )
         for key, value in fixed_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
@@ -95,6 +113,146 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         self.assertIn('- key: BARCODE_UPSTREAM_TIMEOUT_SECONDS\n        value: "15"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_COUNT\n        value: "3"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS\n        value: "1.0"', render_blueprint)
+
+
+def _load_render_live_env_module() -> Any:
+    spec = importlib.util.spec_from_file_location("validate_render_live_env", RENDER_LIVE_ENV_SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load script: {RENDER_LIVE_ENV_SCRIPT_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class _FakeRenderApi:
+    def __init__(self, live_env_by_service: dict[str, dict[str, str]], page_size: int) -> None:
+        self.service_ids_by_name: dict[str, str] = {
+            service_name: f"service-{index}"
+            for index, service_name in enumerate(live_env_by_service, start=1)
+        }
+        self.live_env_by_service = live_env_by_service
+        self.page_size = page_size
+
+    def _page(self, url: str, items: list[dict[str, object]]) -> list[dict[str, object]]:
+        query = parse_qs(urlparse(url).query)
+        raw_cursor = query.get("cursor", ["0"])[0]
+        start_index = int(raw_cursor)
+        end_index = start_index + self.page_size
+        page_items = [dict(item) for item in items[start_index:end_index]]
+        if end_index < len(items) and page_items:
+            page_items[-1]["cursor"] = str(end_index)
+        return page_items
+
+    def request_json(self, method: str, url: str, api_key: str) -> object:
+        if method != "GET":
+            raise RuntimeError(f"Unexpected method: {method}")
+        if "/services?" in url:
+            service_items: list[dict[str, object]] = [
+                {"service": {"id": service_id, "name": service_name}}
+                for service_name, service_id in self.service_ids_by_name.items()
+            ]
+            return self._page(url, service_items)
+        for service_name, service_id in self.service_ids_by_name.items():
+            if f"/services/{service_id}/env-vars?" not in url:
+                continue
+            env_items: list[dict[str, object]] = [
+                {"envVar": {"key": key, "value": value}}
+                for key, value in self.live_env_by_service[service_name].items()
+            ]
+            return self._page(url, env_items)
+        raise RuntimeError(f"Unexpected URL: {url}")
+
+
+class RenderLiveEnvValidationTests(unittest.TestCase):
+    def _live_env_from_blueprint(self, module: Any, all_blueprint_env: bool) -> dict[str, dict[str, str]]:
+        contract = module._required_env_contract(module.parse_blueprint_services(RENDER_BLUEPRINT_PATH), all_blueprint_env)
+        live_env_by_service: dict[str, dict[str, str]] = {}
+        for service_name, service_contract in contract.items():
+            live_env_by_service[service_name] = {
+                key: env_var.value if env_var.value is not None else "present-without-value"
+                for key, env_var in service_contract.items()
+            }
+        return live_env_by_service
+
+    def _run_gate(
+        self,
+        module: Any,
+        live_env_by_service: dict[str, dict[str, str]],
+        check_values: bool,
+        all_blueprint_env: bool,
+        page_size: int,
+    ) -> tuple[int, str]:
+        buffer = io.StringIO()
+        fake_api = _FakeRenderApi(live_env_by_service, page_size)
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            exit_code = module.run_gate(
+                {"RENDER_API_KEY": "test-render-api-key"},
+                RENDER_BLUEPRINT_PATH,
+                check_values,
+                all_blueprint_env,
+                fake_api.request_json,
+            )
+        return exit_code, buffer.getvalue()
+
+    def test_render_live_env_check_reports_missing_pro_fallback_keys_without_values(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        missing_keys = (
+            "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
+            "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
+            "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+        )
+        for service_env in live_env_by_service.values():
+            for missing_key in missing_keys:
+                del service_env[missing_key]
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("GEMINI_LABEL_PRO_FALLBACK_ENABLED", output)
+        self.assertIn("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", output)
+        self.assertIn("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", output)
+        self.assertIn("present=false", output)
+        self.assertIn("action=update Render Dashboard env keys or render.yaml", output)
+        self.assertNotIn("0.12", output)
+        self.assertNotIn("gemini-2.5-flash", output)
+        self.assertNotIn("gemini-2.5-flash-lite", output)
+
+    def test_render_live_env_check_passes_when_required_keys_exist(self) -> None:
+        module = _load_render_live_env_module()
+        exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module, False), False, False, 100)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("live env contract checks passed", output)
+        self.assertNotIn("PORT", output)
+
+    def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:
+        module = _load_render_live_env_module()
+        exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module, False), False, True, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key=PORT", output)
+        self.assertIn("present=false", output)
+
+    def test_render_live_env_check_handles_paginated_services_and_env_vars(self) -> None:
+        module = _load_render_live_env_module()
+        exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module, False), False, False, 1)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("services_checked=3", output)
+
+    def test_render_live_env_value_check_does_not_print_actual_values(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        service_env = live_env_by_service["foodlens-api"]
+        service_env["GEMINI_LABEL_PRO_FALLBACK_ENABLED"] = "sensitive-looking-wrong-value"
+
+        exit_code, output = self._run_gate(module, live_env_by_service, True, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("matches_blueprint=false", output)
+        self.assertNotIn("sensitive-looking-wrong-value", output)
 
 
 if __name__ == "__main__":

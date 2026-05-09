@@ -87,9 +87,9 @@ services:
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
         value: "4096"
       - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
         value: "0"
       - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
@@ -152,12 +152,20 @@ services:
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
         value: "0.02"
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.12"
+      - key: LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER
+        value: "6"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST
         value: "1500"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "500"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON
@@ -411,9 +419,9 @@ services:
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
         value: "4096"
       - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
         value: "0"
       - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
@@ -476,12 +484,20 @@ services:
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
         value: "0.02"
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.12"
+      - key: LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER
+        value: "6"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST
         value: "1500"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "500"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON
@@ -735,9 +751,9 @@ services:
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS
         value: "4096"
       - key: GEMINI_FOOD_RETRY_MAX_OUTPUT_TOKENS
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_MAX_OUTPUT_TOKENS_RETRY
-        value: "8192"
+        value: "6144"
       - key: GEMINI_FOOD_FLASH_THINKING_BUDGET
         value: "0"
       - key: GEMINI_FOOD_FLASH_LITE_THINKING_BUDGET
@@ -800,12 +816,20 @@ services:
         value: "0.02"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK
         value: "0.02"
+      - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK
+        value: "0.12"
+      - key: LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER
+        value: "6"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST
         value: "1500"
       - key: LABEL_ESTIMATED_COST_USD_PER_REQUEST_DEGRADE
         value: "0.012"
       - key: LABEL_ESTIMATED_TOKENS_PER_REQUEST_DEGRADE
         value: "900"
+      - key: BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST
+        value: "0.001"
+      - key: BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST
+        value: "500"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_SERVICE_ACCOUNT_JSON

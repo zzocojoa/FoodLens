@@ -143,6 +143,11 @@
     - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_EMAIL`
     - GitHub Actions secret `PHASE6_POSTDEPLOY_SMOKE_PASSWORD`
     - workflow가 실행 시점에 자동 로그인 후 access token / signed media render URL을 동적으로 확보
+  - Render live env checker 고정:
+    - `python .github/scripts/validate_render_live_env.py --blueprint render.yaml`
+    - 기본 검증 범위는 AI 모델명, label fallback, Pro fallback guardrail key로 제한하고, 전체 drift audit는 `--all-blueprint-env`로 별도 실행한다.
+    - 출력은 서비스명, key 이름, 존재 여부, blueprint 일치 여부만 포함하고 실제 env 값은 출력하지 않는다.
+    - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK`, `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER`가 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 반영되어야 rollout을 진행한다.
   - rollback rehearsal 증적 입력 필수:
     - 최근 리허설 참조값
     - readiness verdict
@@ -187,7 +192,8 @@
 - kill switch 절차:
   - 1차: `LABEL_ROLLOUT_ENABLED=0`
   - 2차: `LABEL_ROLLOUT_STAGE=rollback-0`
-  - 3차: 적용 후 `phase6-postdeploy-smoke` 재실행
+  - 3차: Render live env checker로 Pro fallback 차단값 `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0` 유지 확인
+  - 4차: 적용 후 `phase6-postdeploy-smoke` 재실행
 
 ## 7) 비개발자용 주간 점검 질문
 
