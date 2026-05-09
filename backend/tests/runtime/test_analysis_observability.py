@@ -30,7 +30,13 @@ class _ObservabilityAnalyst:
             "safetyStatus": "SAFE",
             "ingredients": [],
             "used_model": "gemini-2.5-pro",
-            "prompt_version": "food-v3.2-context-engineered",
+            "prompt_version": "food-v3.3.1-schema-compact",
+            "_food_usage_metadata": {
+                "prompt_token_count": 31,
+                "candidates_token_count": 17,
+                "thoughts_token_count": 5,
+                "total_token_count": 53,
+            },
         }
 
     def analyze_barcode_ingredients(self, *_args, **_kwargs):
@@ -39,7 +45,7 @@ class _ObservabilityAnalyst:
             "coachMessage": "contains milk",
             "ingredients": [{"name": "milk", "isAllergen": True, "riskReason": "Contains milk"}],
             "used_model": "gemini-2.0-flash",
-            "prompt_version": "barcode-v1.0-allergen-analysis",
+            "prompt_version": "barcode-v1.1-allergen-compact",
         }
 
 
@@ -82,8 +88,33 @@ class AnalysisObservabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["request_id"], "req-observe-analyze")
-        self.assertEqual(payload["prompt_version"], "food-v3.2-context-engineered")
+        self.assertEqual(payload["prompt_version"], "food-v3.3.1-schema-compact")
         self.assertGreaterEqual(payload["latency_ms"]["total"], 0)
+
+    def test_analyze_logs_provider_token_breakdown(self):
+        with self.assertLogs("foodlens.api", level="INFO") as captured:
+            with TestClient(app) as client:
+                app.state.analyst = _ObservabilityAnalyst()
+                app.state.barcode_service = _ObservabilityBarcodeService()
+                app.state.smart_router = object()
+                response = client.post(
+                    "/analyze",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR"},
+                    headers={"X-Request-Id": "req-observe-token-breakdown"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        summary_messages = [
+            record.getMessage()
+            for record in captured.records
+            if record.getMessage().startswith("[Server] Food observability summary")
+        ]
+        self.assertTrue(summary_messages)
+        self.assertIn("usage_prompt_tokens=31", summary_messages[-1])
+        self.assertIn("usage_candidate_tokens=17", summary_messages[-1])
+        self.assertIn("usage_total_tokens=53", summary_messages[-1])
+        self.assertIn("usage_thought_tokens=5", summary_messages[-1])
 
     def test_analyze_error_uses_supplied_request_id(self):
         with TestClient(app) as client:
@@ -133,7 +164,7 @@ class AnalysisObservabilityTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["request_id"], "req-observe-barcode-metadata")
         self.assertEqual(payload["used_model"], "gemini-2.0-flash")
-        self.assertEqual(payload["prompt_version"], "barcode-v1.0-allergen-analysis")
+        self.assertEqual(payload["prompt_version"], "barcode-v1.1-allergen-compact")
         self.assertGreaterEqual(payload["latency_ms"]["allergen_analysis"], 0)
 
     def test_lookup_barcode_returns_standard_429_when_upstream_is_rate_limited(self):

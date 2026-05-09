@@ -161,7 +161,7 @@ class _AsyncJobAnalyst:
             "raw_result_en": "Safe to eat.",
             "raw_result_ko": "안전하게 먹을 수 있습니다.",
             "used_model": self.model_name,
-            "prompt_version": "food-v3.2-context-engineered",
+            "prompt_version": "food-v3.3.1-schema-compact",
         }
 
     def analyze_label_json(self, *_args, **_kwargs):
@@ -398,7 +398,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(terminal_payload["recommended_action"], "eat")
         self.assertEqual(terminal_payload["uncertainty_reason"], "unknown")
         self.assertEqual(terminal_payload["used_model"], "gemini-2.0-flash")
-        self.assertEqual(terminal_payload["prompt_version"], "food-v3.2-context-engineered")
+        self.assertEqual(terminal_payload["prompt_version"], "food-v3.3.1-schema-compact")
         self.assertEqual(
             terminal_payload["analysis_diagnostics"],
             {

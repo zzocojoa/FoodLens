@@ -72,6 +72,20 @@ def _collect_internal_food_keys(value: Any) -> list[str]:
     return []
 
 
+def _collect_internal_barcode_keys(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        keys = [str(key) for key in value.keys() if str(key).startswith("_barcode_")]
+        for item in value.values():
+            keys.extend(_collect_internal_barcode_keys(item))
+        return keys
+    if isinstance(value, list):
+        keys: list[str] = []
+        for item in value:
+            keys.extend(_collect_internal_barcode_keys(item))
+        return keys
+    return []
+
+
 class _FoodUsageSpyAnalyst:
     def __init__(self) -> None:
         self.model_name = "gemini-2.5-flash"
@@ -83,7 +97,7 @@ class _FoodUsageSpyAnalyst:
             "foodName": "Toast",
             "safetyStatus": "SAFE",
             "ingredients": [],
-            "prompt_version": "food-v3.2-context-engineered",
+            "prompt_version": "food-v3.3.1-schema-compact",
             "used_model": self.model_name,
             "_food_primary_model": self.model_name,
             "_food_used_model": self.model_name,
@@ -234,8 +248,67 @@ class _BarcodeAllergenEmptyAnalyst:
             "coachMessage": f"contains {allergy_info}",
             "ingredients": [],
             "used_model": "gemini-2.0-flash",
-            "prompt_version": "barcode-v1.0-allergen-analysis",
+            "prompt_version": "barcode-v1.1-allergen-compact",
             "locale": locale,
+            "_barcode_fallback_used": True,
+            "_barcode_fallback_reason": "empty_result",
+        }
+
+
+class _BarcodeAllergenUsageAnalyst:
+    def __init__(self) -> None:
+        self.label_model_name = "gemini-2.5-flash"
+        self.called_with_ingredients: list[str] | None = None
+
+    def analyze_barcode_ingredients(
+        self,
+        ingredients: list[str],
+        allergy_info: str,
+        locale: str | None,
+    ) -> dict[str, Any]:
+        self.called_with_ingredients = list(ingredients)
+        return {
+            "safetyStatus": "DANGER",
+            "coachMessage": f"contains {allergy_info}",
+            "ingredients": [{"name": "milk", "isAllergen": True, "riskReason": "contains milk"}],
+            "used_model": "gemini-2.0-flash",
+            "prompt_version": "barcode-v1.1-allergen-compact",
+            "locale": locale,
+            "_barcode_finish_reason": 1,
+            "_barcode_truncated": False,
+            "_barcode_usage_metadata": {
+                "prompt_token_count": 21,
+                "candidates_token_count": 20,
+                "thoughts_token_count": 3,
+                "total_token_count": 44,
+            },
+        }
+
+
+class _BarcodeAllergenQuotaAnalyst:
+    def __init__(self) -> None:
+        self.label_model_name = "gemini-2.5-flash"
+        self.called_with_ingredients: list[str] | None = None
+
+    def analyze_barcode_ingredients(
+        self,
+        ingredients: list[str],
+        allergy_info: str,
+        locale: str | None,
+    ) -> dict[str, Any]:
+        self.called_with_ingredients = list(ingredients)
+        return {
+            "safetyStatus": "CAUTION",
+            "coachMessage": "Please verify the ingredient label directly.",
+            "ingredients": [{"name": ingredient, "isAllergen": False, "riskReason": ""} for ingredient in ingredients],
+            "used_model": "gemini-2.0-flash",
+            "prompt_version": "barcode-v1.1-allergen-compact",
+            "locale": locale,
+            "_barcode_chargeable": False,
+            "_barcode_error_type": "quota_exhausted_429",
+            "_barcode_fallback_used": True,
+            "_barcode_fallback_reason": "quota_exhausted_429",
+            "_barcode_truncated": False,
         }
 
 
@@ -694,7 +767,7 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertTrue(payload["found"])
         self.assertEqual(payload["request_id"], "req-barcode-empty-ingredients")
         self.assertEqual(payload["used_model"], "gemini-2.0-flash")
-        self.assertEqual(payload["prompt_version"], "barcode-v1.0-allergen-analysis")
+        self.assertEqual(payload["prompt_version"], "barcode-v1.1-allergen-compact")
         self.assertEqual(payload["data"]["safetyStatus"], "CAUTION")
         self.assertEqual(payload["data"]["coachMessage"], "contains milk")
         self.assertEqual(payload["data"]["ingredients"], ["milk", "sugar"])
@@ -703,6 +776,66 @@ class CostGuardrailTests(unittest.TestCase):
         usage = storage.get(service._period_key())
         self.assertEqual(usage.total_cost_usd, 0.001)
         self.assertEqual(usage.total_tokens, 500)
+        self.assertEqual(usage.fallback_count, 1)
+
+    def test_barcode_allergen_records_provider_usage_without_public_internal_fields(self):
+        analyst = _BarcodeAllergenUsageAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with self.assertLogs("foodlens.api", level="INFO") as captured:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        **_TEST_RUNTIME_ENV,
+                        "AI_COST_GUARDRAIL_ENABLED": "1",
+                        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+                    },
+                    clear=False,
+                ),
+                TestClient(app) as client,
+            ):
+                app.state.analyst = analyst
+                app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
+                app.state.smart_router = object()
+                app.state.analysis_cost_guardrail = service
+                app.state.label_cost_guardrail = service
+                response = client.post(
+                    "/lookup/barcode",
+                    data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                    headers={"X-Request-Id": "req-barcode-provider-usage"},
+                )
+
+        payload = response.json()
+        usage = storage.get(service._period_key())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["found"])
+        self.assertEqual(_collect_internal_barcode_keys(payload), [])
+        self.assertEqual(payload["used_model"], "gemini-2.0-flash")
+        self.assertEqual(payload["prompt_version"], "barcode-v1.1-allergen-compact")
+        self.assertEqual(payload["data"]["safetyStatus"], "DANGER")
+        self.assertEqual(analyst.called_with_ingredients, ["milk", "sugar"])
+        self.assertEqual(usage.total_cost_usd, 0.001)
+        self.assertEqual(usage.total_tokens, 44)
+        self.assertEqual(usage.provider_reported_tokens, 44)
+        self.assertEqual(usage.provider_reported_thought_tokens, 3)
+        summary_messages = [
+            record.getMessage()
+            for record in captured.records
+            if record.getMessage().startswith("[Server] Allergen analysis done")
+        ]
+        self.assertTrue(summary_messages)
+        self.assertIn("fallback_used=False", summary_messages[-1])
+        self.assertIn("fallback_reason=None", summary_messages[-1])
+        self.assertIn("error_type=None", summary_messages[-1])
+        self.assertIn("usage_prompt_tokens=21", summary_messages[-1])
+        self.assertIn("usage_candidate_tokens=20", summary_messages[-1])
+        self.assertIn("usage_total_tokens=44", summary_messages[-1])
+        self.assertIn("usage_thought_tokens=3", summary_messages[-1])
+        self.assertFalse(any("allergy_info=milk" in record.getMessage() for record in captured.records))
+        self.assertTrue(any("allergy_profile_present=True" in record.getMessage() for record in captured.records))
 
     def test_barcode_allergen_budget_fallback_skips_model_call(self):
         analyst = _BarcodeAllergenEmptyAnalyst()
@@ -710,29 +843,30 @@ class CostGuardrailTests(unittest.TestCase):
         service = CostGuardrailService(storage, monthly_budget_usd=1.0)
         service.record(cost_usd=1.0, tokens=1000)
 
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    **_TEST_RUNTIME_ENV,
-                    "AI_COST_GUARDRAIL_ENABLED": "1",
-                    "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
-                    "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
-                },
-                clear=False,
-            ),
-            TestClient(app) as client,
-        ):
-            app.state.analyst = analyst
-            app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
-            app.state.smart_router = object()
-            app.state.analysis_cost_guardrail = service
-            app.state.label_cost_guardrail = service
-            response = client.post(
-                "/lookup/barcode",
-                data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
-                headers={"X-Request-Id": "req-barcode-budget"},
-            )
+        with self.assertLogs("foodlens.api", level="INFO") as captured:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        **_TEST_RUNTIME_ENV,
+                        "AI_COST_GUARDRAIL_ENABLED": "1",
+                        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+                    },
+                    clear=False,
+                ),
+                TestClient(app) as client,
+            ):
+                app.state.analyst = analyst
+                app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
+                app.state.smart_router = object()
+                app.state.analysis_cost_guardrail = service
+                app.state.label_cost_guardrail = service
+                response = client.post(
+                    "/lookup/barcode",
+                    data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                    headers={"X-Request-Id": "req-barcode-budget"},
+                )
 
         usage = storage.get(service._period_key())
         payload = response.json()
@@ -745,6 +879,65 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(usage.total_cost_usd, 1.0)
         self.assertEqual(usage.active_reserved_cost_usd, 0.0)
         self.assertEqual(usage.total_tokens, 1000)
+        summary_messages = [
+            record.getMessage()
+            for record in captured.records
+            if record.getMessage().startswith("[Server] Allergen analysis done")
+        ]
+        self.assertTrue(summary_messages)
+        self.assertIn("fallback_used=True", summary_messages[-1])
+        self.assertIn("fallback_reason=budget_fallback", summary_messages[-1])
+        self.assertIn("usage_source=not_chargeable", summary_messages[-1])
+
+    def test_barcode_allergen_quota_result_is_not_chargeable(self):
+        analyst = _BarcodeAllergenQuotaAnalyst()
+        storage = InMemoryMonthlyUsageStorage()
+        service = CostGuardrailService(storage, monthly_budget_usd=1.0)
+
+        with self.assertLogs("foodlens.api", level="INFO") as captured:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        **_TEST_RUNTIME_ENV,
+                        "AI_COST_GUARDRAIL_ENABLED": "1",
+                        "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
+                        "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+                    },
+                    clear=False,
+                ),
+                TestClient(app) as client,
+            ):
+                app.state.analyst = analyst
+                app.state.barcode_service = _BarcodeIngredientService(["milk", "sugar"])
+                app.state.smart_router = object()
+                app.state.analysis_cost_guardrail = service
+                app.state.label_cost_guardrail = service
+                response = client.post(
+                    "/lookup/barcode",
+                    data={"barcode": "12345", "allergy_info": "milk", "locale": "en-US"},
+                    headers={"X-Request-Id": "req-barcode-quota"},
+                )
+
+        usage = storage.get(service._period_key())
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["found"])
+        self.assertEqual(payload["data"]["safetyStatus"], "CAUTION")
+        self.assertEqual(analyst.called_with_ingredients, ["milk", "sugar"])
+        self.assertEqual(usage.total_cost_usd, 0.0)
+        self.assertEqual(usage.active_reserved_cost_usd, 0.0)
+        self.assertEqual(usage.total_tokens, 0)
+        summary_messages = [
+            record.getMessage()
+            for record in captured.records
+            if record.getMessage().startswith("[Server] Allergen analysis done")
+        ]
+        self.assertTrue(summary_messages)
+        self.assertIn("fallback_used=True", summary_messages[-1])
+        self.assertIn("fallback_reason=quota_exhausted_429", summary_messages[-1])
+        self.assertIn("error_type=quota_exhausted_429", summary_messages[-1])
+        self.assertIn("usage_source=not_chargeable", summary_messages[-1])
 
     def test_smart_label_route_records_chargeable_usage_once(self):
         spy = _SpyAnalyst()
@@ -840,6 +1033,16 @@ class CostGuardrailTests(unittest.TestCase):
         self.assertEqual(observability_extra["label_usage_total_tokens"], 133)
         self.assertEqual(observability_extra["label_usage_thought_tokens"], 11)
         self.assertEqual(observability_extra["label_fallback_reason"], "extract_max_tokens")
+        summary_calls = [
+            call
+            for call in mock_logger_info.call_args_list
+            if call.args and str(call.args[0]).startswith("[Server] Label observability summary")
+        ]
+        self.assertEqual(len(summary_calls), 1)
+        self.assertIn("usage_prompt_tokens=%s", summary_calls[0].args[0])
+        self.assertIn("usage_candidate_tokens=%s", summary_calls[0].args[0])
+        self.assertIn(80, summary_calls[0].args)
+        self.assertIn(42, summary_calls[0].args)
 
     def test_label_pro_fallback_reservation_uses_pro_floor_when_generic_fallback_matches_primary(self):
         spy = _UsageSpyAnalyst()

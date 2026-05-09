@@ -47,14 +47,14 @@ describe('aiCore mappers', () => {
             decision_confidence: 'high',
             ingredients: [],
             request_id: 'req-1',
-            prompt_version: 'food-v3.2-context-engineered',
+            prompt_version: 'food-v3.3.1-schema-compact',
             used_model: 'gemini-2.5-pro',
             latency_ms: { total: 1234, preprocess: 100 },
             latency_ms_by_stage: { inference: 1200 },
         });
 
         expect(mapped.request_id).toBe('req-1');
-        expect(mapped.prompt_version).toBe('food-v3.2-context-engineered');
+        expect(mapped.prompt_version).toBe('food-v3.3.1-schema-compact');
         expect(mapped.used_model).toBe('gemini-2.5-pro');
         expect(mapped.decisionStatus).toBe('OK');
         expect(mapped.analysisOrigin).toBe('food_photo');
@@ -129,7 +129,7 @@ describe('aiCore mappers', () => {
             source: 'Barcode',
             servingSize: '100g',
             request_id: 'req-barcode-1',
-            prompt_version: 'label-v1.2-2pass-locale-country',
+            prompt_version: 'barcode-v1.1-allergen-compact',
             used_model: 'gemini-2.5-pro',
             latency_ms: { total: 345, source_lookup: 120 },
             latency_ms_by_stage: { total: 345 },
@@ -152,7 +152,7 @@ describe('aiCore mappers', () => {
         expect(mapped.ingredients[1].isAllergen).toBe(true);
         expect(mapped.nutrition?.calories).toBe(200);
         expect(mapped.request_id).toBe('req-barcode-1');
-        expect(mapped.prompt_version).toBe('label-v1.2-2pass-locale-country');
+        expect(mapped.prompt_version).toBe('barcode-v1.1-allergen-compact');
         expect(mapped.used_model).toBe('gemini-2.5-pro');
         expect(mapped.latency_ms).toEqual({ total: 345, source_lookup: 120 });
         expect(mapped.latency_ms_by_stage).toEqual({ total: 345 });
@@ -166,14 +166,14 @@ describe('aiCore mappers', () => {
             ingredients: [],
         }, {
             requestId: 'req-barcode-top-level',
-            promptVersion: 'barcode-v1.0-allergen-analysis',
+            promptVersion: 'barcode-v1.1-allergen-compact',
             usedModel: 'gemini-2.0-flash',
             latencyMs: { total: 120, source_lookup: 40 },
             latencyMsByStage: { total: 120 },
         });
 
         expect(mapped.request_id).toBe('req-barcode-top-level');
-        expect(mapped.prompt_version).toBe('barcode-v1.0-allergen-analysis');
+        expect(mapped.prompt_version).toBe('barcode-v1.1-allergen-compact');
         expect(mapped.used_model).toBe('gemini-2.0-flash');
         expect(mapped.analysisOrigin).toBeUndefined();
         expect(mapped.decisionStatus).toBeUndefined();

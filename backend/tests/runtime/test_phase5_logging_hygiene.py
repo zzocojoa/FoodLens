@@ -81,6 +81,9 @@ class _MismatchedMediaAuthService(_FakeAuthService):
 
 
 class Phase5LoggingHygieneTests(unittest.TestCase):
+    def test_httpx_info_logs_are_suppressed(self) -> None:
+        self.assertGreaterEqual(logging.getLogger("httpx").level, logging.WARNING)
+
     def test_deletion_success_log_includes_request_id(self) -> None:
         logger = logging.getLogger("foodlens.deletion")
         handler = _RecordHandler()

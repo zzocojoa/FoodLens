@@ -50,7 +50,7 @@ describe('aiCore contracts', () => {
       decision_confidence: 'high',
       ingredients: [{ name: 'rice', isAllergen: false }],
       request_id: 'req-analyze-1',
-      prompt_version: 'food-v3.2-context-engineered',
+      prompt_version: 'food-v3.3.1-schema-compact',
       used_model: 'gemini-2.5-pro',
       latency_ms: { total: 1300 },
     };
@@ -83,7 +83,7 @@ describe('aiCore contracts', () => {
       },
       request_id: 'req-barcode-1',
       used_model: 'gemini-2.5-pro',
-      prompt_version: 'label-v1.2-2pass-locale-country',
+      prompt_version: 'barcode-v1.1-allergen-compact',
       latency_ms: { total: 321, source_lookup: 120 },
     };
 
@@ -143,7 +143,7 @@ describe('aiCore contracts', () => {
       updated_at: '2026-03-17T00:00:10Z',
       poll_after_ms: 0,
       used_model: 'gemini-2.5-pro',
-      prompt_version: 'food-v3.2-context-engineered',
+      prompt_version: 'food-v3.3.1-schema-compact',
       fallback_reason: 'analysis_fallback',
       decision_status: 'ASK',
       analysis_origin: 'label_photo',

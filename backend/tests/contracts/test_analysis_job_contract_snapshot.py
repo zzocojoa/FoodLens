@@ -31,7 +31,7 @@ class AnalysisJobContractSnapshotTests(unittest.TestCase):
             "poll_after_ms": 0,
             "progress_hint": "completed",
             "used_model": "gemini-2.0-flash",
-            "prompt_version": "food-v3.2-context-engineered",
+            "prompt_version": "food-v3.3.1-schema-compact",
             "latency_ms_by_stage": {
                 "preprocessing": 12,
                 "inference": 223,
