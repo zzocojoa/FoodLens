@@ -5,6 +5,9 @@ const mockCreateOrUpdateProfile = jest.fn();
 const mockGetCurrentUserId = jest.fn();
 const mockBuildOnboardingCompletedPatch = jest.fn();
 const mockUpdateUserClientState = jest.fn();
+const mockInitializeI18nStore = jest.fn();
+const mockGetI18nSnapshot = jest.fn();
+const mockSetI18nSettings = jest.fn();
 
 jest.mock('@/services/storage', () => ({
   setOnboardingComplete: (...args: unknown[]) => mockSetOnboardingComplete(...args),
@@ -20,6 +23,12 @@ jest.mock('@/services/auth/currentUser', () => ({
   getCurrentUserId: () => mockGetCurrentUserId(),
 }));
 
+jest.mock('@/features/i18n/services/i18nStore', () => ({
+  initializeI18nStore: (...args: unknown[]) => mockInitializeI18nStore(...args),
+  getI18nSnapshot: (...args: unknown[]) => mockGetI18nSnapshot(...args),
+  setI18nSettings: (...args: unknown[]) => mockSetI18nSettings(...args),
+}));
+
 jest.mock('@/services/user/clientStateService', () => ({
   buildOnboardingCompletedPatch: (...args: unknown[]) => mockBuildOnboardingCompletedPatch(...args),
   updateUserClientState: (...args: unknown[]) => mockUpdateUserClientState(...args),
@@ -33,6 +42,16 @@ describe('completeOnboardingProfile', () => {
     mockBuildOnboardingCompletedPatch.mockReturnValue({ onboarding: { completedAt: 'now' } });
     mockUpdateUserClientState.mockResolvedValue(undefined);
     mockSetOnboardingComplete.mockResolvedValue(undefined);
+    mockInitializeI18nStore.mockResolvedValue(undefined);
+    mockGetI18nSnapshot.mockReturnValue({
+      settings: {
+        language: 'ko-KR',
+        targetLanguage: null,
+      },
+      locale: 'ko-KR',
+      ready: true,
+    });
+    mockSetI18nSettings.mockResolvedValue(undefined);
   });
 
   it('persists safety passport destination and allergy profile without fake demographic fields', async () => {
@@ -72,6 +91,11 @@ describe('completeOnboardingProfile', () => {
       'usr_onboarding',
       { onboarding: { completedAt: 'now' } }
     );
+    expect(mockInitializeI18nStore).toHaveBeenCalledTimes(1);
+    expect(mockSetI18nSettings).toHaveBeenCalledWith({
+      language: 'ko-KR',
+      targetLanguage: 'ja-JP',
+    });
     expect(mockSetOnboardingComplete).toHaveBeenCalledWith('usr_onboarding');
   });
 });

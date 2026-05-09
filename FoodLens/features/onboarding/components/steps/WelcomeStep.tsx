@@ -36,7 +36,7 @@ export default function WelcomeStep({ theme, t, onStart }: Props) {
                 {t('onboarding.welcome.previewBadge', 'Safety preview')}
               </Text>
             </View>
-            <View style={styles.analysisPreviewPanel}>
+            <View style={[styles.analysisPreviewPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.analysisPreviewHeader}>
                 <Text style={[styles.analysisPreviewFood, { color: theme.textPrimary }]}>
                   {t('onboarding.welcome.previewFood', 'Food photo')}
@@ -49,7 +49,7 @@ export default function WelcomeStep({ theme, t, onStart }: Props) {
                 </View>
               </View>
               <View style={styles.analysisPreviewGrid}>
-                <View style={styles.analysisPreviewCell}>
+                <View style={[styles.analysisPreviewCell, { backgroundColor: theme.background, borderColor: theme.border }]}>
                   <Text style={[styles.analysisPreviewCellTitle, { color: theme.textPrimary }]}>
                     {t('onboarding.welcome.previewAllergen', 'Allergens')}
                   </Text>
@@ -57,7 +57,7 @@ export default function WelcomeStep({ theme, t, onStart }: Props) {
                     {t('onboarding.welcome.previewAllergenSub', 'Matched to you')}
                   </Text>
                 </View>
-                <View style={styles.analysisPreviewCell}>
+                <View style={[styles.analysisPreviewCell, { backgroundColor: theme.background, borderColor: theme.border }]}>
                   <Text style={[styles.analysisPreviewCellTitle, { color: theme.textPrimary }]}>
                     {t('onboarding.welcome.previewCard', 'Travel card')}
                   </Text>

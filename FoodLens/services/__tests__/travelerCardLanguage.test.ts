@@ -5,6 +5,7 @@ jest.mock('@/features/i18n/services/languageService', () => ({
 import {
   resolveTravelerCardCountryCode,
   resolveTravelerLocaleFallbackCountryCode,
+  resolveRequestLocaleFromTravelerTargetLanguage,
 } from '../travelerCardLanguage';
 
 describe('travelerCardLanguage', () => {
@@ -12,6 +13,7 @@ describe('travelerCardLanguage', () => {
     expect(resolveTravelerLocaleFallbackCountryCode('ko-KR')).toBe('KR');
     expect(resolveTravelerLocaleFallbackCountryCode('ja-JP')).toBe('JP');
     expect(resolveTravelerLocaleFallbackCountryCode('en-US')).toBe('US');
+    expect(resolveTravelerLocaleFallbackCountryCode('fr-FR')).toBe('FR');
   });
 
   it('uses locale fallback when auto mode has no photo country', () => {
@@ -22,5 +24,16 @@ describe('travelerCardLanguage', () => {
         fallbackCountryCode: resolveTravelerLocaleFallbackCountryCode('ko-KR'),
       })
     ).toBe('KR');
+  });
+
+  it('maps French traveler targets between canonical and card country codes', () => {
+    expect(
+      resolveTravelerCardCountryCode({
+        photoCountryCode: null,
+        targetLanguage: 'fr-FR',
+        fallbackCountryCode: 'US',
+      })
+    ).toBe('FR');
+    expect(resolveRequestLocaleFromTravelerTargetLanguage('FR')).toBe('fr-FR');
   });
 });

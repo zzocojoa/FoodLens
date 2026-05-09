@@ -5,7 +5,8 @@ export type CanonicalLocale =
   | 'ja-JP'
   | 'zh-Hans'
   | 'th-TH'
-  | 'vi-VN';
+  | 'vi-VN'
+  | 'fr-FR';
 
 export type ResolvedLocale = Exclude<CanonicalLocale, 'auto'>;
 

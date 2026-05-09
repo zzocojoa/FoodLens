@@ -55,6 +55,7 @@ const toResolvedLocale = (value: string): ResolvedLocale | null => {
   if (normalized.startsWith('zh')) return 'zh-Hans';
   if (normalized.startsWith('th')) return 'th-TH';
   if (normalized.startsWith('vi')) return 'vi-VN';
+  if (normalized.startsWith('fr')) return 'fr-FR';
 
   return null;
 };
@@ -72,6 +73,7 @@ const toResolvedLocaleFromRegion = (value: string): ResolvedLocale | null => {
   if (region === 'CN' || region === 'TW' || region === 'HK') return 'zh-Hans';
   if (region === 'TH') return 'th-TH';
   if (region === 'VN') return 'vi-VN';
+  if (region === 'FR') return 'fr-FR';
   return null;
 };
 

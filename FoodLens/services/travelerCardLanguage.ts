@@ -3,7 +3,7 @@ import { normalizeCanonicalLocale } from '@/features/i18n/services/languageServi
 export const AUTO_TRAVELER_LANGUAGE = 'auto';
 export const DEFAULT_TRAVELER_COUNTRY_CODE = 'US';
 
-const LEGACY_LANGUAGE_CODES = new Set(['GPS', 'KR', 'US', 'JP', 'CN', 'TH', 'VN']);
+const LEGACY_LANGUAGE_CODES = new Set(['GPS', 'KR', 'US', 'JP', 'CN', 'TH', 'VN', 'FR']);
 const CANONICAL_TO_LEGACY: Record<string, string> = {
   'ko-KR': 'KR',
   'en-US': 'US',
@@ -11,6 +11,7 @@ const CANONICAL_TO_LEGACY: Record<string, string> = {
   'zh-Hans': 'CN',
   'th-TH': 'TH',
   'vi-VN': 'VN',
+  'fr-FR': 'FR',
 };
 const LEGACY_TO_CANONICAL: Record<string, string> = {
   KR: 'ko-KR',
@@ -19,6 +20,7 @@ const LEGACY_TO_CANONICAL: Record<string, string> = {
   CN: 'zh-Hans',
   TH: 'th-TH',
   VN: 'vi-VN',
+  FR: 'fr-FR',
 };
 
 const LANGUAGE_ALIASES: Record<string, string> = {
@@ -28,6 +30,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   chinese: 'CN',
   thai: 'TH',
   vietnamese: 'VN',
+  french: 'FR',
   auto: AUTO_TRAVELER_LANGUAGE,
   gps: AUTO_TRAVELER_LANGUAGE,
 };

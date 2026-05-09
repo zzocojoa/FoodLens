@@ -65,7 +65,7 @@ export const ONBOARDING_DESTINATIONS: OnboardingDestination[] = [
     id: 'france',
     countryCode: 'FR',
     currentTripLocation: 'France',
-    targetLanguage: 'FR',
+    targetLanguage: 'fr-FR',
     titleKey: 'onboarding.destination.france',
     titleFallback: 'France',
     subtitleKey: 'onboarding.destination.franceSubtitle',

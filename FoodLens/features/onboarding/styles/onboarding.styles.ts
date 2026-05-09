@@ -174,7 +174,7 @@ export const onboardingStyles = StyleSheet.create({
   analysisPreviewPanel: {
     borderRadius: 22,
     padding: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
     gap: 12,
   },
   analysisPreviewHeader: {
@@ -209,7 +209,7 @@ export const onboardingStyles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     padding: 12,
-    backgroundColor: 'rgba(248, 250, 252, 0.92)',
+    borderWidth: 1,
   },
   analysisPreviewCellTitle: {
     fontSize: 14,

@@ -1,5 +1,6 @@
 import type { AnimatedStyle } from 'react-native-reanimated';
 import type { AllergySeverity, Gender } from '@/features/profile/types/profile.types';
+import type { ResolvedLocale } from '@/features/i18n/types';
 import type { PermissionResultStatus } from '../services/onboardingPermissionService';
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -10,7 +11,7 @@ export type OnboardingDestination = {
   id: string;
   countryCode: string;
   currentTripLocation: string;
-  targetLanguage: string;
+  targetLanguage: ResolvedLocale;
   titleKey: string;
   titleFallback: string;
   subtitleKey: string;
@@ -36,7 +37,7 @@ export type CompletePayload = {
   selectedAllergies: string[];
   severityMap: SeverityMap;
   currentTripLocation: string | null;
-  targetLanguage: string | null;
+  targetLanguage: ResolvedLocale | null;
   currentTripStart: string | null;
 };
 
