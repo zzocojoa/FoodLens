@@ -37,11 +37,6 @@ const hasSettingsEvidence = (settings: MeSettingsResponse): boolean => {
   if (typeof completedAt === 'string' && completedAt.trim().length > 0) return true;
   if (settings.auto_play_audio === true) return true;
   if (typeof settings.selected_emoji === 'string' && settings.selected_emoji.trim().length > 0) return true;
-  if (typeof settings.target_language === 'string' && settings.target_language.trim().length > 0) return true;
-  if (typeof settings.language === 'string') {
-    const normalized = settings.language.trim().toLowerCase();
-    if (normalized.length > 0 && normalized !== 'auto') return true;
-  }
   return false;
 };
 

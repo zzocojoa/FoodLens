@@ -136,4 +136,48 @@ describe('onboardingGateService', () => {
     expect(result).toBe(false);
     expect(mockedSetOnboardingComplete).not.toHaveBeenCalled();
   });
+
+  it('does not treat language settings alone as completed onboarding evidence', async () => {
+    mockedPhase2Api.getSettings.mockResolvedValueOnce({
+      requestId: 'req_settings',
+      settings: {
+        user_id: 'usr_test',
+        language: 'ko-KR',
+        target_language: 'ja-JP',
+        auto_play_audio: false,
+        selected_emoji: null,
+        client_state: {},
+      },
+    });
+
+    const result = await hasCompletedOnboarding('usr_test');
+
+    expect(result).toBe(false);
+    expect(mockedSetOnboardingComplete).not.toHaveBeenCalled();
+    expect(mockedUpdateUserClientState).not.toHaveBeenCalled();
+  });
+
+  it('treats explicit onboarding completed_at settings marker as completed onboarding evidence', async () => {
+    mockedPhase2Api.getSettings.mockResolvedValueOnce({
+      requestId: 'req_settings',
+      settings: {
+        user_id: 'usr_test',
+        language: 'ko-KR',
+        target_language: 'ja-JP',
+        auto_play_audio: false,
+        selected_emoji: null,
+        client_state: {
+          onboarding: {
+            completed_at: '2026-05-10T00:00:00.000Z',
+          },
+        },
+      },
+    });
+
+    const result = await hasCompletedOnboarding('usr_test');
+
+    expect(result).toBe(true);
+    expect(mockedSetOnboardingComplete).toHaveBeenCalledWith('usr_test');
+    expect(mockedUpdateUserClientState).not.toHaveBeenCalled();
+  });
 });
