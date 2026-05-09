@@ -250,6 +250,8 @@ class _BarcodeAllergenEmptyAnalyst:
             "used_model": "gemini-2.0-flash",
             "prompt_version": "barcode-v1.1-allergen-compact",
             "locale": locale,
+            "_barcode_fallback_used": True,
+            "_barcode_fallback_reason": "empty_result",
         }
 
 
@@ -774,6 +776,7 @@ class CostGuardrailTests(unittest.TestCase):
         usage = storage.get(service._period_key())
         self.assertEqual(usage.total_cost_usd, 0.001)
         self.assertEqual(usage.total_tokens, 500)
+        self.assertEqual(usage.fallback_count, 1)
 
     def test_barcode_allergen_records_provider_usage_without_public_internal_fields(self):
         analyst = _BarcodeAllergenUsageAnalyst()

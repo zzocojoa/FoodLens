@@ -5902,7 +5902,7 @@ async def lookup_barcode(
                             tokens=barcode_recorded_tokens if barcode_chargeable else 0,
                             provider_total_tokens=barcode_usage_total_tokens,
                             provider_thought_tokens=barcode_usage_thought_tokens,
-                            fallback_used=False,
+                            fallback_used=bool(barcode_observability["fallback_used"]),
                             truncated=bool(barcode_observability["truncated"]),
                         )
                 else:
