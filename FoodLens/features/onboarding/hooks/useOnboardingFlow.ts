@@ -32,6 +32,7 @@ import type { LocationData } from '@/services/utils';
 
 type UseOnboardingFlowParams = {
   onCompleted: (target: OnboardingCompletionTarget) => void;
+  previewMode: boolean;
 };
 
 type PermissionRequestFlags = {
@@ -77,7 +78,7 @@ const resolveDestinationByCountryCode = (
   return ONBOARDING_DESTINATIONS.find((destination) => destination.countryCode === countryCode) ?? null;
 };
 
-export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
+export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlowParams) => {
   const { t } = useI18n();
   const [step, setStep] = useState<OnboardingStep>(1);
   const [priority, setPriority] = useState<SafetyPriority>('allergy');
@@ -239,6 +240,10 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
   const handleComplete = useCallback(async (target: OnboardingCompletionTarget) => {
     setLoading(true);
     try {
+      if (previewMode) {
+        onCompleted(target);
+        return;
+      }
       await completeOnboardingProfile({
         gender,
         birthDate,
@@ -259,7 +264,7 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     } finally {
       setLoading(false);
     }
-  }, [birthDate, destination, gender, onCompleted, selectedAllergies, severityMap, t]);
+  }, [birthDate, destination, gender, onCompleted, previewMode, selectedAllergies, severityMap, t]);
 
   const handleSkip = useCallback(() => {
     if (step < TOTAL_STEPS) {

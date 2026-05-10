@@ -2,7 +2,7 @@ import React from 'react';
 import { BackHandler, Platform, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/features/i18n';
@@ -19,15 +19,27 @@ import DestinationStep from '@/features/onboarding/components/steps/DestinationS
 import PassportCardStep from '@/features/onboarding/components/steps/PassportCardStep';
 import CompleteStep from '@/features/onboarding/components/steps/CompleteStep';
 import type { OnboardingCompletionTarget } from '@/features/onboarding/types/onboarding.types';
+import { resolveOnboardingPreviewAccess } from '@/features/onboarding/services/onboardingPreviewService';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ preview?: string | string[] }>();
   const { t } = useI18n();
   const { colorScheme } = useTheme();
   const theme = Colors[colorScheme];
+  const previewAccess = React.useMemo(
+    () => resolveOnboardingPreviewAccess(searchParams.preview),
+    [searchParams.preview]
+  );
+  const previewMode = previewAccess === 'preview';
 
   const flow = useOnboardingFlow({
+    previewMode,
     onCompleted: (target: OnboardingCompletionTarget) => {
+      if (previewMode && target === 'home') {
+        router.replace('/');
+        return;
+      }
       if (target === 'scan') {
         router.replace('/scan/camera');
         return;
@@ -46,6 +58,12 @@ export default function OnboardingScreen() {
       router.replace('/(tabs)');
     },
   });
+
+  React.useEffect(() => {
+    if (previewAccess === 'disabled_preview') {
+      router.replace('/');
+    }
+  }, [previewAccess, router]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -70,6 +88,10 @@ export default function OnboardingScreen() {
       };
     }, [flow, router])
   );
+
+  if (previewAccess === 'disabled_preview') {
+    return null;
+  }
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
