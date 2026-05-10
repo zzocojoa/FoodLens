@@ -156,10 +156,16 @@ function LayoutContent() {
   const searchParams = useGlobalSearchParams<{ preview?: string | string[] }>();
   const [initialOnboardingPreviewActive, setInitialOnboardingPreviewActive] =
     useState<boolean>(false);
+  const [initialOnboardingPreviewRouteSeen, setInitialOnboardingPreviewRouteSeen] =
+    useState<boolean>(false);
+  const initialOnboardingPreviewUrlConsumedRef = useRef<boolean>(false);
   const routeOnboardingPreviewActive =
     pathname === '/onboarding' && resolveOnboardingPreviewAccess(searchParams.preview) === 'preview';
+  const initialOnboardingPreviewProtectionActive =
+    initialOnboardingPreviewActive &&
+    (!initialOnboardingPreviewRouteSeen || routeOnboardingPreviewActive);
   const onboardingPreviewActive =
-    routeOnboardingPreviewActive || initialOnboardingPreviewActive;
+    routeOnboardingPreviewActive || initialOnboardingPreviewProtectionActive;
   const lastAndroidBackPressAtRef = useRef<number>(0);
   const androidProfileEditScreenOptions =
     Platform.OS === 'android'
@@ -190,6 +196,25 @@ function LayoutContent() {
       })
       .catch(() => {});
   };
+
+  useEffect(() => {
+    if (routeOnboardingPreviewActive && !initialOnboardingPreviewRouteSeen) {
+      setInitialOnboardingPreviewRouteSeen(true);
+      return;
+    }
+
+    if (
+      initialOnboardingPreviewActive &&
+      initialOnboardingPreviewRouteSeen &&
+      !routeOnboardingPreviewActive
+    ) {
+      setInitialOnboardingPreviewActive(false);
+    }
+  }, [
+    initialOnboardingPreviewActive,
+    initialOnboardingPreviewRouteSeen,
+    routeOnboardingPreviewActive,
+  ]);
 
   useAppActivePolling(() => {
     if (onboardingPreviewActive) return;
@@ -234,7 +259,13 @@ function LayoutContent() {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
-        const initialUrl = onboardingPreviewActive ? null : await Linking.getInitialURL();
+        let initialUrl: string | null = null;
+        if (onboardingPreviewActive) {
+          initialOnboardingPreviewUrlConsumedRef.current = true;
+        } else if (!initialOnboardingPreviewUrlConsumedRef.current) {
+          initialOnboardingPreviewUrlConsumedRef.current = true;
+          initialUrl = await Linking.getInitialURL();
+        }
         const initialUrlPreviewActive =
           onboardingPreviewActive ||
           resolveOnboardingPreviewAccessFromUrl(initialUrl) === 'preview';

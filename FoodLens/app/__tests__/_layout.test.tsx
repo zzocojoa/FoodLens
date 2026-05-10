@@ -416,4 +416,43 @@ describe('RootLayout polling', () => {
 
     delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
   });
+
+  it('does not reprocess the initial preview URL after leaving preview mode', async () => {
+    process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
+    mockUsePathname.mockReturnValue('/');
+    mockUseGlobalSearchParams.mockReturnValue({});
+    const initialUrlSpy = jest
+      .spyOn(Linking, 'getInitialURL')
+      .mockResolvedValue('foodlens:///onboarding?preview=1');
+
+    const { default: RootLayout } = loadLayoutModule();
+    const view = render(<RootLayout />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding?preview=1');
+    });
+
+    mockRouterReplace.mockClear();
+    mockRestoreSession.mockClear();
+    mockUsePathname.mockReturnValue('/onboarding');
+    mockUseGlobalSearchParams.mockReturnValue({ preview: '1' });
+    view.rerender(<RootLayout />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockUsePathname.mockReturnValue('/');
+    mockUseGlobalSearchParams.mockReturnValue({});
+    view.rerender(<RootLayout />);
+
+    await waitFor(() => {
+      expect(mockRestoreSession).toHaveBeenCalledTimes(1);
+    });
+
+    expect(initialUrlSpy).toHaveBeenCalledTimes(1);
+    expect(mockRouterReplace).not.toHaveBeenCalledWith('/onboarding?preview=1');
+
+    delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
+  });
 });
