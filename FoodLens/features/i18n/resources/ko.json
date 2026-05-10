@@ -976,6 +976,8 @@
   "onboarding.destination.subtitle": "국가를 고르면 현지어 알러지 카드를 준비합니다.",
   "onboarding.destination.manualFirst": "수동 선택이 기본입니다",
   "onboarding.destination.manualFirstSub": "현재 위치 감지를 누를 때만 위치 권한을 요청합니다.",
+  "onboarding.destination.locationMatchedSub": "이 국가는 준비된 카드 언어가 있습니다.",
+  "onboarding.destination.locationFallbackSub": "이 국가는 아직 빠른 카드에 없습니다. 선택한 카드 언어는 그대로 유지됩니다.",
   "onboarding.destination.japan": "일본",
   "onboarding.destination.japanSubtitle": "일본어 알러지 카드",
   "onboarding.destination.thailand": "태국",

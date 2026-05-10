@@ -20,6 +20,14 @@ export type OnboardingDestination = {
   languageLabelFallback: string;
 };
 
+export type DetectedOnboardingLocation = {
+  city: string | null;
+  country: string | null;
+  countryCode: string | null;
+  formattedAddress: string | null;
+  matchedDestinationId: string | null;
+};
+
 export type PermissionRequestKind = 'camera' | 'library' | 'location';
 
 export type OnboardingCompletionTarget = 'home' | 'scan' | 'gallery' | 'allergyCard';

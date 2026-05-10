@@ -2,7 +2,11 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { Colors } from '@/constants/theme';
 import DestinationStep from '../DestinationStep';
-import type { PermissionStatusMap, Translate } from '../../../types/onboarding.types';
+import type {
+  DetectedOnboardingLocation,
+  PermissionStatusMap,
+  Translate,
+} from '../../../types/onboarding.types';
 import {
   DEFAULT_ONBOARDING_DESTINATION,
   ONBOARDING_DESTINATIONS,
@@ -29,6 +33,7 @@ describe('DestinationStep', () => {
         destination={DEFAULT_ONBOARDING_DESTINATION}
         destinations={ONBOARDING_DESTINATIONS}
         permissionStatusMap={permissionStatusMap}
+        detectedLocation={null}
         locationDetecting={false}
         onSelectDestination={onSelectDestination}
         onDetectLocation={onDetectLocation}
@@ -54,5 +59,43 @@ describe('DestinationStep', () => {
     fireEvent.press(getByLabelText('Preview card'));
 
     expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows detected unsupported countries without changing the quick destination list', () => {
+    const detectedLocation: DetectedOnboardingLocation = {
+      city: 'Ho Chi Minh City',
+      country: 'Vietnam',
+      countryCode: 'VN',
+      formattedAddress: 'Ho Chi Minh City, Vietnam',
+      matchedDestinationId: null,
+    };
+
+    const { getByText } = render(
+      <DestinationStep
+        theme={Colors.light}
+        t={translate}
+        destination={DEFAULT_ONBOARDING_DESTINATION}
+        destinations={ONBOARDING_DESTINATIONS}
+        permissionStatusMap={{
+          ...permissionStatusMap,
+          location: 'granted',
+        }}
+        detectedLocation={detectedLocation}
+        locationDetecting={false}
+        onSelectDestination={jest.fn()}
+        onDetectLocation={jest.fn()}
+        onNext={jest.fn()}
+      />
+    );
+
+    expect(getByText('Ho Chi Minh City, Vietnam')).toBeTruthy();
+    expect(
+      getByText('This country is not in quick cards yet. Your selected card language stays unchanged.')
+    ).toBeTruthy();
+    expect(getByText('Japan')).toBeTruthy();
+    expect(getByText('Thailand')).toBeTruthy();
+    expect(getByText('France')).toBeTruthy();
+    expect(getByText('United States')).toBeTruthy();
+    expect(getByText('South Korea')).toBeTruthy();
   });
 });

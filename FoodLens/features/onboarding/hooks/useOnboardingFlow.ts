@@ -11,6 +11,7 @@ import {
 } from '../services/onboardingPermissionService';
 import { completeOnboardingProfile } from '../services/onboardingProfileService';
 import type {
+  DetectedOnboardingLocation,
   OnboardingCompletionTarget,
   OnboardingDestination,
   OnboardingStep,
@@ -67,16 +68,32 @@ const mergePermissionStatusMap = (
   location: requested.location ? next.location : current.location,
 });
 
+const normalizeCountryCode = (value: string | undefined): string | null => {
+  const countryCode = value?.trim().toUpperCase();
+  return countryCode || null;
+};
+
 const resolveDestinationByCountryCode = (
   location: LocationData | null
 ): OnboardingDestination | null => {
-  const countryCode = location?.isoCountryCode?.trim().toUpperCase();
+  const countryCode = normalizeCountryCode(location?.isoCountryCode);
   if (!countryCode) {
     return null;
   }
 
   return ONBOARDING_DESTINATIONS.find((destination) => destination.countryCode === countryCode) ?? null;
 };
+
+const toDetectedOnboardingLocation = (
+  location: LocationData,
+  matchedDestination: OnboardingDestination | null
+): DetectedOnboardingLocation => ({
+  city: location.city?.trim() || null,
+  country: location.country?.trim() || null,
+  countryCode: normalizeCountryCode(location.isoCountryCode),
+  formattedAddress: location.formattedAddress.trim() || null,
+  matchedDestinationId: matchedDestination?.id ?? null,
+});
 
 export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlowParams) => {
   const { t } = useI18n();
@@ -88,6 +105,7 @@ export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlo
   const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
   const [destination, setDestination] = useState<OnboardingDestination>(DEFAULT_ONBOARDING_DESTINATION);
   const [permissionStatusMap, setPermissionStatusMap] = useState<PermissionStatusMap>(DEFAULT_PERMISSION_STATUS);
+  const [detectedLocation, setDetectedLocation] = useState<DetectedOnboardingLocation | null>(null);
   const [loading, setLoading] = useState(false);
   const [locationDetecting, setLocationDetecting] = useState(false);
   const [scanEntryTarget, setScanEntryTarget] = useState<ScanEntryTarget>('camera');
@@ -210,6 +228,7 @@ export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlo
       const permissionResults = await requestOnboardingPermissions(false, false, true);
       setPermissionStatusMap((current) => mergePermissionStatusMap(current, permissionResults, requestFlags));
       if (permissionResults.location !== 'granted') {
+        setDetectedLocation(null);
         showTranslatedAlert(t, {
           titleKey: 'onboarding.destination.locationDeniedTitle',
           titleFallback: 'Location not available',
@@ -220,14 +239,20 @@ export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlo
       }
 
       const location = await getLocationData();
-      const detectedDestination = resolveDestinationByCountryCode(location);
-      if (!detectedDestination) {
+      if (!location) {
+        setDetectedLocation(null);
         showTranslatedAlert(t, {
           titleKey: 'onboarding.destination.locationUnsupportedTitle',
           titleFallback: 'Choose destination manually',
           messageKey: 'onboarding.destination.locationUnsupportedMessage',
-          messageFallback: 'We could not match your current country to a prepared card language.',
+          messageFallback: 'We could not detect your current country.',
         });
+        return;
+      }
+
+      const detectedDestination = resolveDestinationByCountryCode(location);
+      setDetectedLocation(toDetectedOnboardingLocation(location, detectedDestination));
+      if (!detectedDestination) {
         return;
       }
 
@@ -290,6 +315,7 @@ export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlo
     destination,
     destinations: ONBOARDING_DESTINATIONS,
     permissionStatusMap,
+    detectedLocation,
     scanEntryTarget,
     customInputValue,
     customSuggestions,

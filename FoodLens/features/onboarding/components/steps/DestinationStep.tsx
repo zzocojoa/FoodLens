@@ -1,7 +1,12 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { ArrowRight, Check, LocateFixed, MapPin } from 'lucide-react-native';
-import type { OnboardingDestination, PermissionStatusMap, Translate } from '../../types/onboarding.types';
+import type {
+  DetectedOnboardingLocation,
+  OnboardingDestination,
+  PermissionStatusMap,
+  Translate,
+} from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 
 type Props = {
@@ -10,10 +15,28 @@ type Props = {
   destination: OnboardingDestination;
   destinations: OnboardingDestination[];
   permissionStatusMap: PermissionStatusMap;
+  detectedLocation: DetectedOnboardingLocation | null;
   locationDetecting: boolean;
   onSelectDestination: (destination: OnboardingDestination) => void;
   onDetectLocation: () => void;
   onNext: () => void;
+};
+
+const compactTextParts = (parts: Array<string | null>): string[] => parts.filter((part): part is string => {
+  return Boolean(part);
+});
+
+const resolveDetectedLocationLabel = (detectedLocation: DetectedOnboardingLocation): string => {
+  const city = detectedLocation.city?.trim() || null;
+  const country = detectedLocation.country?.trim() || detectedLocation.countryCode?.trim() || null;
+  const address = detectedLocation.formattedAddress?.trim() || null;
+  const locationParts = compactTextParts([city, country]);
+
+  if (locationParts.length > 0) {
+    return locationParts.join(', ');
+  }
+
+  return address || detectedLocation.countryCode || '';
 };
 
 export default function DestinationStep({
@@ -22,12 +45,15 @@ export default function DestinationStep({
   destination,
   destinations,
   permissionStatusMap,
+  detectedLocation,
   locationDetecting,
   onSelectDestination,
   onDetectLocation,
   onNext,
 }: Props) {
   const locationStatus = permissionStatusMap.location;
+  const detectedLocationLabel = detectedLocation ? resolveDetectedLocationLabel(detectedLocation) : null;
+  const detectedCountryHasPreparedCard = Boolean(detectedLocation?.matchedDestinationId);
   const locationStatusLabel =
     locationStatus === 'granted'
       ? t('onboarding.permissions.status.granted', 'Granted')
@@ -57,10 +83,17 @@ export default function DestinationStep({
           <MapPin size={26} color={theme.primary} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.destinationMapTitle, { color: theme.textPrimary }]}>
-              {t('onboarding.destination.manualFirst', 'Manual selection first')}
+              {detectedLocationLabel ?? t('onboarding.destination.manualFirst', 'Manual selection first')}
             </Text>
             <Text style={[styles.destinationMapSub, { color: theme.textSecondary }]}>
-              {t('onboarding.destination.manualFirstSub', 'Location is only requested if you tap detect.')}
+              {detectedLocation
+                ? detectedCountryHasPreparedCard
+                  ? t('onboarding.destination.locationMatchedSub', 'This country has a prepared card language.')
+                  : t(
+                    'onboarding.destination.locationFallbackSub',
+                    'This country is not in quick cards yet. Your selected card language stays unchanged.',
+                  )
+                : t('onboarding.destination.manualFirstSub', 'Location is only requested if you tap detect.')}
             </Text>
           </View>
         </View>

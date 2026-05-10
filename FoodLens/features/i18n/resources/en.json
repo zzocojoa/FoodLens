@@ -976,6 +976,8 @@
   "onboarding.destination.subtitle": "Choose a country to prepare your allergy card in the local language.",
   "onboarding.destination.manualFirst": "Manual selection first",
   "onboarding.destination.manualFirstSub": "Location is only requested if you tap detect.",
+  "onboarding.destination.locationMatchedSub": "This country has a prepared card language.",
+  "onboarding.destination.locationFallbackSub": "This country is not in quick cards yet. Your selected card language stays unchanged.",
   "onboarding.destination.japan": "Japan",
   "onboarding.destination.japanSubtitle": "Japanese allergy card",
   "onboarding.destination.thailand": "Thailand",

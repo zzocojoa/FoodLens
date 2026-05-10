@@ -138,6 +138,7 @@ export default function OnboardingScreen() {
             destination={flow.destination}
             destinations={flow.destinations}
             permissionStatusMap={flow.permissionStatusMap}
+            detectedLocation={flow.detectedLocation}
             locationDetecting={flow.locationDetecting}
             onSelectDestination={flow.setDestination}
             onDetectLocation={() => void flow.handleDetectLocation()}

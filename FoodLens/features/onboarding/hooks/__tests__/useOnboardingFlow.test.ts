@@ -116,6 +116,54 @@ describe('useOnboardingFlow', () => {
 
     expect(result.current.destination.countryCode).toBe('KR');
     expect(result.current.destination.targetLanguage).toBe('ko-KR');
+    expect(result.current.detectedLocation).toEqual({
+      city: 'Seoul',
+      country: 'South Korea',
+      countryCode: 'KR',
+      formattedAddress: 'Seoul, South Korea',
+      matchedDestinationId: 'south-korea',
+    });
+    expect(result.current.permissionStatusMap.location).toBe('granted');
+    expect(mockShowTranslatedAlert).not.toHaveBeenCalled();
+  });
+
+  it('displays unsupported detected countries without changing selected destination', async () => {
+    const onCompleted = jest.fn();
+    mockRequestOnboardingPermissions.mockResolvedValueOnce({
+      camera: 'not_requested',
+      library: 'not_requested',
+      location: 'granted',
+    });
+    mockGetLocationData.mockResolvedValueOnce({
+      latitude: 10.8231,
+      longitude: 106.6297,
+      country: 'Vietnam',
+      city: 'Ho Chi Minh City',
+      district: '',
+      subregion: '',
+      isoCountryCode: 'VN',
+      formattedAddress: 'Ho Chi Minh City, Vietnam',
+    });
+
+    const { result } = renderHook(() =>
+      useOnboardingFlow({
+        onCompleted,
+        previewMode: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleDetectLocation();
+    });
+
+    expect(result.current.destination.countryCode).toBe('JP');
+    expect(result.current.detectedLocation).toEqual({
+      city: 'Ho Chi Minh City',
+      country: 'Vietnam',
+      countryCode: 'VN',
+      formattedAddress: 'Ho Chi Minh City, Vietnam',
+      matchedDestinationId: null,
+    });
     expect(result.current.permissionStatusMap.location).toBe('granted');
     expect(mockShowTranslatedAlert).not.toHaveBeenCalled();
   });
