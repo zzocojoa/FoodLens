@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, render, waitFor } from '@testing-library/react-native';
 import type { AppStateEvent, AppStateStatus } from 'react-native';
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 
 const mockRouterReplace = jest.fn();
 const mockRouterBack = jest.fn();
@@ -232,6 +232,7 @@ describe('RootLayout polling', () => {
         };
       }
     );
+    jest.spyOn(Linking, 'getInitialURL').mockResolvedValue(null);
     mockRouterCanGoBack.mockReturnValue(false);
     mockUsePathname.mockReturnValue('/(tabs)');
     mockUseGlobalSearchParams.mockReturnValue({});
@@ -363,6 +364,35 @@ describe('RootLayout polling', () => {
     process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
     mockUsePathname.mockReturnValue('/onboarding');
     mockUseGlobalSearchParams.mockReturnValue({ preview: '1' });
+
+    const { default: RootLayout, PROFILE_SYNC_STARTUP_DELAY_MS } = loadLayoutModule();
+    render(<RootLayout />);
+
+    await waitFor(() => {
+      expect(mockHideAsync).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(mockRestoreSession).not.toHaveBeenCalled();
+    expect(mockHasCompletedOnboarding).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      await Promise.resolve();
+    });
+
+    expect(mockSyncI18nSettingsFromProfile).not.toHaveBeenCalled();
+    expect(mockSyncHistoryFromCloud).not.toHaveBeenCalled();
+    expect(mockSyncProfileFromCloud).not.toHaveBeenCalled();
+
+    delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
+  });
+
+  it('does not replace route when the enabled onboarding preview arrives as the initial URL', async () => {
+    process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
+    mockUsePathname.mockReturnValue('/');
+    mockUseGlobalSearchParams.mockReturnValue({});
+    jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('foodlens:///onboarding?preview=1');
 
     const { default: RootLayout, PROFILE_SYNC_STARTUP_DELAY_MS } = loadLayoutModule();
     render(<RootLayout />);

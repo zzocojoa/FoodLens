@@ -2,6 +2,7 @@ import {
   isOnboardingPreviewEnabled,
   isOnboardingPreviewRequested,
   resolveOnboardingPreviewAccess,
+  resolveOnboardingPreviewAccessFromUrl,
 } from '../onboardingPreviewService';
 
 const ORIGINAL_ENV = process.env;
@@ -43,5 +44,24 @@ describe('onboardingPreviewService', () => {
 
     expect(isOnboardingPreviewRequested(['0', 'true'])).toBe(true);
     expect(resolveOnboardingPreviewAccess(['0', 'true'])).toBe('preview');
+  });
+
+  it('resolves onboarding preview access from supported deep link URL shapes', () => {
+    process.env[PREVIEW_ENV] = '1';
+
+    expect(resolveOnboardingPreviewAccessFromUrl('foodlens:///onboarding?preview=1')).toBe(
+      'preview'
+    );
+    expect(resolveOnboardingPreviewAccessFromUrl('foodlens://onboarding?preview=true')).toBe(
+      'preview'
+    );
+  });
+
+  it('ignores non-onboarding or disabled preview deep links', () => {
+    expect(resolveOnboardingPreviewAccessFromUrl('foodlens:///onboarding?preview=1')).toBe(
+      'disabled_preview'
+    );
+    expect(resolveOnboardingPreviewAccessFromUrl('foodlens:///login?preview=1')).toBe('normal');
+    expect(resolveOnboardingPreviewAccessFromUrl(null)).toBe('normal');
   });
 });

@@ -4,8 +4,8 @@ import { Stack, router as appRouter, useGlobalSearchParams, usePathname } from '
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect, useRef } from 'react';
-import { AppState, BackHandler, Platform, ToastAndroid } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
@@ -32,7 +32,10 @@ import {
 } from '../components/navigation/androidTopLevelNavigation';
 import { useI18n } from '../features/i18n';
 import { homeDashboardColors } from '../features/home/components/homeDashboardTokens';
-import { resolveOnboardingPreviewAccess } from '../features/onboarding/services/onboardingPreviewService';
+import {
+  resolveOnboardingPreviewAccess,
+  resolveOnboardingPreviewAccessFromUrl,
+} from '../features/onboarding/services/onboardingPreviewService';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -150,8 +153,12 @@ function LayoutContent() {
   const { t } = useI18n();
   const pathname = usePathname();
   const searchParams = useGlobalSearchParams<{ preview?: string | string[] }>();
-  const onboardingPreviewActive =
+  const [initialOnboardingPreviewActive, setInitialOnboardingPreviewActive] =
+    useState<boolean>(false);
+  const routeOnboardingPreviewActive =
     pathname === '/onboarding' && resolveOnboardingPreviewAccess(searchParams.preview) === 'preview';
+  const onboardingPreviewActive =
+    routeOnboardingPreviewActive || initialOnboardingPreviewActive;
   const lastAndroidBackPressAtRef = useRef<number>(0);
   const androidProfileEditScreenOptions =
     Platform.OS === 'android'
@@ -226,7 +233,14 @@ function LayoutContent() {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
-        if (onboardingPreviewActive) {
+        const initialUrl = onboardingPreviewActive ? null : await Linking.getInitialURL();
+        const initialUrlPreviewActive =
+          onboardingPreviewActive ||
+          resolveOnboardingPreviewAccessFromUrl(initialUrl) === 'preview';
+        if (initialUrlPreviewActive) {
+          if (!onboardingPreviewActive) {
+            setInitialOnboardingPreviewActive(true);
+          }
           setUser(deviceId);
           nextRoute = null;
           return;
