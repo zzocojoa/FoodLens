@@ -40,6 +40,7 @@ describe('DestinationStep', () => {
     expect(getByText('Thailand')).toBeTruthy();
     expect(getByText('France')).toBeTruthy();
     expect(getByText('United States')).toBeTruthy();
+    expect(getByText('South Korea')).toBeTruthy();
     expect(onDetectLocation).not.toHaveBeenCalled();
 
     fireEvent.press(getByLabelText('Detect current country'));

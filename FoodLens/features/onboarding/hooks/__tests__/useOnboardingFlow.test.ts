@@ -4,6 +4,8 @@ import { useOnboardingFlow } from '../useOnboardingFlow';
 const mockCompleteOnboardingProfile = jest.fn();
 const mockGetOnboardingPermissionStatuses = jest.fn();
 const mockRequestOnboardingPermissions = jest.fn();
+const mockGetLocationData = jest.fn();
+const mockShowTranslatedAlert = jest.fn();
 
 jest.mock('@/features/i18n', () => ({
   useI18n: () => ({
@@ -22,11 +24,11 @@ jest.mock('../../services/onboardingPermissionService', () => ({
 }));
 
 jest.mock('@/services/ui/uiAlerts', () => ({
-  showTranslatedAlert: jest.fn(),
+  showTranslatedAlert: (...args: unknown[]) => mockShowTranslatedAlert(...args),
 }));
 
 jest.mock('@/services/utils', () => ({
-  getLocationData: jest.fn(),
+  getLocationData: (...args: unknown[]) => mockGetLocationData(...args),
 }));
 
 describe('useOnboardingFlow', () => {
@@ -43,6 +45,7 @@ describe('useOnboardingFlow', () => {
       location: 'not_requested',
     });
     mockCompleteOnboardingProfile.mockResolvedValue(undefined);
+    mockGetLocationData.mockResolvedValue(null);
   });
 
   it('does not persist profile data in preview mode', async () => {
@@ -80,5 +83,40 @@ describe('useOnboardingFlow', () => {
 
     expect(mockCompleteOnboardingProfile).toHaveBeenCalledTimes(1);
     expect(onCompleted).toHaveBeenCalledWith('home');
+  });
+
+  it('selects South Korea when current location detection returns KR', async () => {
+    const onCompleted = jest.fn();
+    mockRequestOnboardingPermissions.mockResolvedValueOnce({
+      camera: 'not_requested',
+      library: 'not_requested',
+      location: 'granted',
+    });
+    mockGetLocationData.mockResolvedValueOnce({
+      latitude: 37.5665,
+      longitude: 126.978,
+      country: 'South Korea',
+      city: 'Seoul',
+      district: '',
+      subregion: '',
+      isoCountryCode: 'KR',
+      formattedAddress: 'Seoul, South Korea',
+    });
+
+    const { result } = renderHook(() =>
+      useOnboardingFlow({
+        onCompleted,
+        previewMode: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleDetectLocation();
+    });
+
+    expect(result.current.destination.countryCode).toBe('KR');
+    expect(result.current.destination.targetLanguage).toBe('ko-KR');
+    expect(result.current.permissionStatusMap.location).toBe('granted');
+    expect(mockShowTranslatedAlert).not.toHaveBeenCalled();
   });
 });

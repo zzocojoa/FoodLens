@@ -85,6 +85,18 @@ export const ONBOARDING_DESTINATIONS: OnboardingDestination[] = [
     languageLabelKey: 'travelerCard.language.english',
     languageLabelFallback: 'English',
   },
+  {
+    id: 'south-korea',
+    countryCode: 'KR',
+    currentTripLocation: 'South Korea',
+    targetLanguage: 'ko-KR',
+    titleKey: 'onboarding.destination.southKorea',
+    titleFallback: 'South Korea',
+    subtitleKey: 'onboarding.destination.southKoreaSubtitle',
+    subtitleFallback: 'Korean allergy card',
+    languageLabelKey: 'travelerCard.language.korean',
+    languageLabelFallback: 'Korean',
+  },
 ];
 
 export const DEFAULT_ONBOARDING_DESTINATION = ONBOARDING_DESTINATIONS[0];
