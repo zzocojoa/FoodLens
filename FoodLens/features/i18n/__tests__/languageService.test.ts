@@ -76,7 +76,7 @@ describe('languageService.getDeviceLocale', () => {
 
   it('falls back to en-US when neither iOS locale nor Intl locale is supported', () => {
     (NativeModules as any).SettingsManager.settings = {
-      AppleLanguages: ['fr-FR'],
+      AppleLanguages: ['pt-BR'],
     };
     Intl.DateTimeFormat = (() => {
       throw new Error('Intl unavailable');
@@ -85,6 +85,16 @@ describe('languageService.getDeviceLocale', () => {
     const locale = getDeviceLocale();
 
     expect(locale).toBe('en-US');
+  });
+
+  it('supports French as a traveler-card target locale', () => {
+    (NativeModules as any).SettingsManager.settings = {
+      AppleLanguages: ['fr-FR'],
+    };
+
+    const locale = getDeviceLocale();
+
+    expect(locale).toBe('fr-FR');
   });
 
   it('uses region fallback in iOS remote runtime when Intl returns en-KR', () => {
@@ -119,6 +129,18 @@ describe('languageService.normalizeLanguageSettings', () => {
     ).toEqual({
       language: 'ko-KR',
       targetLanguage: null,
+    });
+  });
+
+  it('preserves French traveler-card target language', () => {
+    expect(
+      normalizeLanguageSettings({
+        language: 'ko-KR',
+        targetLanguage: 'FR',
+      })
+    ).toEqual({
+      language: 'ko-KR',
+      targetLanguage: 'fr-FR',
     });
   });
 });

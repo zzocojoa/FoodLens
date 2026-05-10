@@ -13,6 +13,7 @@ export const LANGUAGE_OPTIONS: LanguageOptionSeed[] = [
     { code: 'zh-Hans', flag: '🇨🇳' },
     { code: 'th-TH', flag: '🇹🇭' },
     { code: 'vi-VN', flag: '🇻🇳' },
+    { code: 'fr-FR', flag: '🇫🇷' },
 ];
 
 export const UI_LANGUAGE_OPTIONS: LanguageOptionSeed[] = [

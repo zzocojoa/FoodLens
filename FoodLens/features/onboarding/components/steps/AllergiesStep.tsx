@@ -7,6 +7,7 @@ import {
   IngredientSuggestion,
   resolveRestrictionDisplayName,
 } from '@/features/profile/utils/profileSuggestions';
+import type { AllergySeverity } from '@/features/profile/types/profile.types';
 import { COMMON_ALLERGENS } from '@/features/profile/constants/profile.constants';
 import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
@@ -20,7 +21,7 @@ type Props = {
   selectedAllergies: string[];
   severityMap: SeverityMap;
   onToggleAllergen: (id: string) => void;
-  onCycleSeverity: (id: string) => void;
+  onSetSeverity: (id: string, severity: AllergySeverity) => void;
   customInputValue: string;
   customSuggestions: IngredientSuggestion[];
   onCustomInputChange: (text: string) => void;
@@ -34,7 +35,7 @@ export default function AllergiesStep({
   selectedAllergies,
   severityMap,
   onToggleAllergen,
-  onCycleSeverity,
+  onSetSeverity,
   customInputValue,
   customSuggestions,
   onCustomInputChange,
@@ -46,6 +47,66 @@ export default function AllergiesStep({
     () => selectedAllergies.filter((id) => !COMMON_ALLERGEN_ID_SET.has(id)),
     [selectedAllergies]
   );
+  const severityControls =
+    selectedAllergies.length > 0 ? (
+      <View style={{ marginTop: 20, marginBottom: 16 }}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+          {t('onboarding.allergies.severityTitle', 'Set Severity Level')}
+        </Text>
+        <Text style={[styles.severityHint, { color: theme.textSecondary }]}>
+          {t('onboarding.allergies.severityHint', 'Severe warnings appear first. Mild warnings stay quieter but visible.')}
+        </Text>
+        {selectedAllergies.map((id) => {
+          const severity = severityMap[id] || 'moderate';
+          return (
+            <View
+              key={id}
+              style={[
+                styles.severityRow,
+                { backgroundColor: theme.surface, borderColor: theme.border, alignItems: 'flex-start' },
+              ]}
+            >
+              <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
+                {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
+              </Text>
+              <View style={styles.severitySegmentRow}>
+                {SEVERITY_LEVELS.map((level) => {
+                  const selected = level.key === severity;
+                  return (
+                    <TouchableOpacity
+                      key={level.key}
+                      style={[
+                        styles.severitySegment,
+                        {
+                          backgroundColor: selected ? `${level.color}20` : theme.background,
+                          borderColor: selected ? level.color : theme.border,
+                        },
+                      ]}
+                      onPress={() => onSetSeverity(id, level.key)}
+                      activeOpacity={0.75}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
+                      accessibilityState={{ selected }}
+                    >
+                      <Text style={{ fontSize: 12 }}>{level.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.severityBadgeText,
+                          { color: selected ? level.color : theme.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {t(`onboarding.severity.${level.key}`, level.label)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    ) : null;
 
   return (
     <ScrollView
@@ -56,15 +117,17 @@ export default function AllergiesStep({
       <View style={styles.heroAreaScroll}>
         <Text style={styles.welcomeEmoji}>🚨</Text>
         <Text style={[styles.title, { color: theme.textPrimary }]}>
-          {t('onboarding.allergies.title', 'Your Allergies')}
+          {t('onboarding.allergies.title', 'What should FoodLens protect you from?')}
         </Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
           {t(
             'onboarding.allergies.subtitle',
-            'Select allergens to avoid. Tap the severity badge to adjust the warning level.',
+            'Choose allergies or foods you avoid. Each selected item can warn with a different strength.',
           )}
         </Text>
       </View>
+
+      {severityControls}
 
       <AllergenGrid
         theme={theme}
@@ -139,49 +202,6 @@ export default function AllergiesStep({
         </View>
       )}
 
-      {selectedAllergies.length > 0 && (
-        <View style={{ marginTop: 24 }}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-            {t('onboarding.allergies.severityTitle', 'Set Severity Level')}
-          </Text>
-          <Text style={[styles.severityHint, { color: theme.textSecondary }]}>
-            {t('onboarding.allergies.severityHint', 'Tap to cycle: Mild → Moderate → Severe')}
-          </Text>
-          {selectedAllergies.map((id) => {
-            const severity = severityMap[id] || 'moderate';
-            const level = SEVERITY_LEVELS.find((entry) => entry.key === severity)!;
-            return (
-              <TouchableOpacity
-                key={id}
-                style={[
-                  styles.severityRow,
-                  { backgroundColor: theme.surface, borderColor: `${level.color}40` },
-                ]}
-                onPress={() => onCycleSeverity(id)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`${t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))} - ${t(`onboarding.severity.${level.key}`, level.label)}`}
-                accessibilityHint={t('onboarding.accessibility.severityCycleHint', 'Tap to cycle severity level')}
-              >
-                <Text style={[styles.severityAllergenName, { color: theme.textPrimary }]}>
-                  {t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t))}
-                </Text>
-                <View
-                  style={[
-                    styles.severityBadge,
-                    { backgroundColor: `${level.color}20`, borderColor: level.color },
-                  ]}
-                >
-                  <Text style={{ fontSize: 14 }}>{level.emoji}</Text>
-                  <Text style={[styles.severityBadgeText, { color: level.color }]}>
-                    {t(`onboarding.severity.${level.key}`, level.label)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
     </ScrollView>
   );
 }

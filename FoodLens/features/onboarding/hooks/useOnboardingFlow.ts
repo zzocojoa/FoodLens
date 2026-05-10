@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AllergySeverity, Gender } from '@/features/profile/types/profile.types';
-import { TOTAL_STEPS, DEFAULT_BIRTH_DATE } from '../constants/onboarding.constants';
+import { TOTAL_STEPS } from '../constants/onboarding.constants';
+import {
+  DEFAULT_ONBOARDING_DESTINATION,
+  ONBOARDING_DESTINATIONS,
+} from '../constants/safetyPassport.constants';
 import {
   getOnboardingPermissionStatuses,
   requestOnboardingPermissions,
 } from '../services/onboardingPermissionService';
 import { completeOnboardingProfile } from '../services/onboardingProfileService';
-import type { OnboardingStep, PermissionStatusMap } from '../types/onboarding.types';
+import type {
+  DetectedOnboardingLocation,
+  OnboardingCompletionTarget,
+  OnboardingDestination,
+  OnboardingStep,
+  PermissionRequestKind,
+  PermissionStatusMap,
+  SafetyPriority,
+} from '../types/onboarding.types';
 import { SEARCHABLE_INGREDIENTS } from '@/data/ingredients';
 import {
   IngredientSuggestion,
@@ -16,30 +28,87 @@ import {
 } from '@/features/profile/utils/profileSuggestions';
 import { useI18n } from '@/features/i18n';
 import { showTranslatedAlert } from '@/services/ui/uiAlerts';
+import { getLocationData } from '@/services/utils';
+import type { LocationData } from '@/services/utils';
 
 type UseOnboardingFlowParams = {
-  onCompleted: () => void;
+  onCompleted: (target: OnboardingCompletionTarget) => void;
+  previewMode: boolean;
 };
 
-const normalizeAllergyKey = (value: string) => value.trim().toLowerCase();
+type PermissionRequestFlags = {
+  camera: boolean;
+  library: boolean;
+  location: boolean;
+};
+
+type ScanEntryTarget = 'camera' | 'gallery';
+
+const normalizeAllergyKey = (value: string): string => value.trim().toLowerCase();
+
 const DEFAULT_PERMISSION_STATUS: PermissionStatusMap = {
   camera: 'not_requested',
   library: 'not_requested',
   location: 'not_requested',
 };
 
-export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
+const resolveRequestFlags = (kind: PermissionRequestKind): PermissionRequestFlags => ({
+  camera: kind === 'camera',
+  library: kind === 'library',
+  location: kind === 'location',
+});
+
+const mergePermissionStatusMap = (
+  current: PermissionStatusMap,
+  next: PermissionStatusMap,
+  requested: PermissionRequestFlags
+): PermissionStatusMap => ({
+  camera: requested.camera ? next.camera : current.camera,
+  library: requested.library ? next.library : current.library,
+  location: requested.location ? next.location : current.location,
+});
+
+const normalizeCountryCode = (value: string | undefined): string | null => {
+  const countryCode = value?.trim().toUpperCase();
+  return countryCode || null;
+};
+
+const resolveDestinationByCountryCode = (
+  location: LocationData | null
+): OnboardingDestination | null => {
+  const countryCode = normalizeCountryCode(location?.isoCountryCode);
+  if (!countryCode) {
+    return null;
+  }
+
+  return ONBOARDING_DESTINATIONS.find((destination) => destination.countryCode === countryCode) ?? null;
+};
+
+const toDetectedOnboardingLocation = (
+  location: LocationData,
+  matchedDestination: OnboardingDestination | null
+): DetectedOnboardingLocation => ({
+  city: location.city?.trim() || null,
+  country: location.country?.trim() || null,
+  countryCode: normalizeCountryCode(location.isoCountryCode),
+  formattedAddress: location.formattedAddress.trim() || null,
+  matchedDestinationId: matchedDestination?.id ?? null,
+});
+
+export const useOnboardingFlow = ({ onCompleted, previewMode }: UseOnboardingFlowParams) => {
   const { t } = useI18n();
   const [step, setStep] = useState<OnboardingStep>(1);
-  const [gender, setGender] = useState<Gender | null>(null);
-  const [birthDate, setBirthDate] = useState<Date>(DEFAULT_BIRTH_DATE);
+  const [priority, setPriority] = useState<SafetyPriority>('allergy');
+  const [gender] = useState<Gender | null>(null);
+  const [birthDate] = useState<Date | null>(null);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [severityMap, setSeverityMap] = useState<Record<string, AllergySeverity>>({});
-  const [cameraAllowed, setCameraAllowed] = useState(true);
-  const [libraryAllowed, setLibraryAllowed] = useState(false);
-  const [locationAllowed, setLocationAllowed] = useState(true);
+  const [destination, setDestination] = useState<OnboardingDestination>(DEFAULT_ONBOARDING_DESTINATION);
   const [permissionStatusMap, setPermissionStatusMap] = useState<PermissionStatusMap>(DEFAULT_PERMISSION_STATUS);
+  const [detectedLocation, setDetectedLocation] = useState<DetectedOnboardingLocation | null>(null);
   const [loading, setLoading] = useState(false);
+  const [locationDetecting, setLocationDetecting] = useState(false);
+  const [scanEntryTarget, setScanEntryTarget] = useState<ScanEntryTarget>('camera');
   const [customInputValue, setCustomInputValue] = useState('');
   const [customSuggestions, setCustomSuggestions] = useState<IngredientSuggestion[]>([]);
 
@@ -61,7 +130,6 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
   }, []);
 
   const toggleAllergen = useCallback((id: string) => {
-    // Clear search when toggling from grid
     setCustomInputValue('');
     setCustomSuggestions([]);
 
@@ -77,6 +145,13 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
       setSeverityMap((map) => ({ ...map, [id]: 'moderate' }));
       return [...prev, id];
     });
+  }, []);
+
+  const setAllergenSeverity = useCallback((id: string, severity: AllergySeverity) => {
+    setSeverityMap((prev) => ({
+      ...prev,
+      [id]: severity,
+    }));
   }, []);
 
   const cycleSeverity = useCallback((id: string) => {
@@ -102,24 +177,21 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     [selectedAllergies, t]
   );
 
-  const addAllergenStorageValue = useCallback(
-    (value: string) => {
-      const item = value.trim();
-      if (!item) return;
+  const addAllergenStorageValue = useCallback((value: string) => {
+    const item = value.trim();
+    if (!item) return;
 
-      const normalizedItem = normalizeAllergyKey(item);
+    const normalizedItem = normalizeAllergyKey(item);
 
-      setSelectedAllergies((prev) => {
-        const hasDuplicate = prev.some((existing) => normalizeAllergyKey(existing) === normalizedItem);
-        if (hasDuplicate) return prev;
-        setSeverityMap((map) => ({ ...map, [item]: 'moderate' }));
-        return [...prev, item];
-      });
-      setCustomInputValue('');
-      setCustomSuggestions([]);
-    },
-    []
-  );
+    setSelectedAllergies((prev) => {
+      const hasDuplicate = prev.some((existing) => normalizeAllergyKey(existing) === normalizedItem);
+      if (hasDuplicate) return prev;
+      setSeverityMap((map) => ({ ...map, [item]: 'moderate' }));
+      return [...prev, item];
+    });
+    setCustomInputValue('');
+    setCustomSuggestions([]);
+  }, []);
 
   const addCustomAllergen = useCallback(
     (name: string) => {
@@ -137,31 +209,76 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     [addAllergenStorageValue]
   );
 
-  const handleRequestPermissions = useCallback(async (camera: boolean, library: boolean, location: boolean) => {
-    const permissionResults = await requestOnboardingPermissions(camera, library, location);
-    setPermissionStatusMap(permissionResults);
-    setStep(4);
+  const handleRequestScanPermission = useCallback(async (kind: PermissionRequestKind) => {
+    const requestFlags = resolveRequestFlags(kind);
+    const permissionResults = await requestOnboardingPermissions(
+      requestFlags.camera,
+      requestFlags.library,
+      requestFlags.location
+    );
+    setPermissionStatusMap((current) => mergePermissionStatusMap(current, permissionResults, requestFlags));
+    setScanEntryTarget(kind === 'library' ? 'gallery' : 'camera');
+    setStep(7);
   }, []);
 
-  const handleSkipPermissions = useCallback(() => {
-    setPermissionStatusMap({
-      camera: 'not_requested',
-      library: 'not_requested',
-      location: 'not_requested',
-    });
-    setStep(4);
-  }, []);
+  const handleDetectLocation = useCallback(async () => {
+    setLocationDetecting(true);
+    try {
+      const requestFlags = resolveRequestFlags('location');
+      const permissionResults = await requestOnboardingPermissions(false, false, true);
+      setPermissionStatusMap((current) => mergePermissionStatusMap(current, permissionResults, requestFlags));
+      if (permissionResults.location !== 'granted') {
+        setDetectedLocation(null);
+        showTranslatedAlert(t, {
+          titleKey: 'onboarding.destination.locationDeniedTitle',
+          titleFallback: 'Location not available',
+          messageKey: 'onboarding.destination.locationDeniedMessage',
+          messageFallback: 'Choose your destination manually to prepare the allergy card.',
+        });
+        return;
+      }
 
-  const handleComplete = useCallback(async () => {
+      const location = await getLocationData();
+      if (!location) {
+        setDetectedLocation(null);
+        showTranslatedAlert(t, {
+          titleKey: 'onboarding.destination.locationUnsupportedTitle',
+          titleFallback: 'Choose destination manually',
+          messageKey: 'onboarding.destination.locationUnsupportedMessage',
+          messageFallback: 'We could not detect your current country.',
+        });
+        return;
+      }
+
+      const detectedDestination = resolveDestinationByCountryCode(location);
+      setDetectedLocation(toDetectedOnboardingLocation(location, detectedDestination));
+      if (!detectedDestination) {
+        return;
+      }
+
+      setDestination(detectedDestination);
+    } finally {
+      setLocationDetecting(false);
+    }
+  }, [t]);
+
+  const handleComplete = useCallback(async (target: OnboardingCompletionTarget) => {
     setLoading(true);
     try {
+      if (previewMode) {
+        onCompleted(target);
+        return;
+      }
       await completeOnboardingProfile({
         gender,
         birthDate,
         selectedAllergies,
         severityMap,
+        currentTripLocation: destination.currentTripLocation,
+        targetLanguage: destination.targetLanguage,
+        currentTripStart: new Date().toISOString(),
       });
-      onCompleted();
+      onCompleted(target);
     } catch {
       showTranslatedAlert(t, {
         titleKey: 'profile.alert.errorTitle',
@@ -172,18 +289,14 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
     } finally {
       setLoading(false);
     }
-  }, [birthDate, gender, onCompleted, selectedAllergies, severityMap, t]);
-
-  const handleBirthDateSelect = useCallback((date: Date) => {
-    setBirthDate(new Date(date));
-  }, []);
+  }, [birthDate, destination, gender, onCompleted, previewMode, selectedAllergies, severityMap, t]);
 
   const handleSkip = useCallback(() => {
     if (step < TOTAL_STEPS) {
       setStep((step + 1) as OnboardingStep);
       return;
     }
-    void handleComplete();
+    void handleComplete('home');
   }, [handleComplete, step]);
 
   const goBack = useCallback(() => {
@@ -194,32 +307,33 @@ export const useOnboardingFlow = ({ onCompleted }: UseOnboardingFlowParams) => {
 
   return {
     step,
+    priority,
     gender,
     birthDate,
     selectedAllergies,
     severityMap,
-    cameraAllowed,
-    libraryAllowed,
-    locationAllowed,
+    destination,
+    destinations: ONBOARDING_DESTINATIONS,
     permissionStatusMap,
+    detectedLocation,
+    scanEntryTarget,
     customInputValue,
     customSuggestions,
     loading,
-    setGender,
-    setCameraAllowed,
-    setLibraryAllowed,
-    setLocationAllowed,
+    locationDetecting,
+    setPriority,
+    setDestination,
     goTo,
     goBack,
     toggleAllergen,
+    setAllergenSeverity,
     cycleSeverity,
     handleCustomInputChange,
     addCustomAllergen,
     selectCustomAllergenSuggestion,
-    handleRequestPermissions,
-    handleSkipPermissions,
+    handleRequestScanPermission,
+    handleDetectLocation,
     handleComplete,
-    handleBirthDateSelect,
     handleSkip,
   };
 };

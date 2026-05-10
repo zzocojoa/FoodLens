@@ -14,6 +14,7 @@ export const SUPPORTED_LOCALES: ResolvedLocale[] = [
   'zh-Hans',
   'th-TH',
   'vi-VN',
+  'fr-FR',
 ];
 
 export const LEGACY_TO_CANONICAL_LOCALE: Record<string, CanonicalLocale> = {
@@ -24,6 +25,7 @@ export const LEGACY_TO_CANONICAL_LOCALE: Record<string, CanonicalLocale> = {
   CN: 'zh-Hans',
   TH: 'th-TH',
   VN: 'vi-VN',
+  FR: 'fr-FR',
 };
 
 export const LANGUAGE_LABELS: Record<CanonicalLocale, string> = {
@@ -34,6 +36,7 @@ export const LANGUAGE_LABELS: Record<CanonicalLocale, string> = {
   'zh-Hans': 'Chinese (Simplified)',
   'th-TH': 'Thai',
   'vi-VN': 'Vietnamese',
+  'fr-FR': 'French',
 };
 
 export const TRANSLATIONS: Record<ResolvedLocale, TranslationDictionary> = {
@@ -45,4 +48,5 @@ export const TRANSLATIONS: Record<ResolvedLocale, TranslationDictionary> = {
   'zh-Hans': enResource,
   'th-TH': enResource,
   'vi-VN': enResource,
+  'fr-FR': enResource,
 };

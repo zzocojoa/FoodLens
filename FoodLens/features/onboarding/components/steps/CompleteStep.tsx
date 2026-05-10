@@ -1,11 +1,8 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowRight, Check, CircleUserRound, Shield, Sparkles, TriangleAlert } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SEVERITY_LEVELS } from '@/features/profile/constants/profile.constants';
-import type { Gender } from '@/features/profile/types/profile.types';
+import { ArrowRight, Check, Languages, ShieldAlert, TriangleAlert } from 'lucide-react-native';
 import { resolveRestrictionDisplayName } from '@/features/profile/utils/profileSuggestions';
-import type { PermissionStatusMap, SeverityMap, Translate } from '../../types/onboarding.types';
+import type { OnboardingDestination, PermissionStatusMap, SeverityMap, Translate } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
 
 type Props = {
@@ -13,15 +10,23 @@ type Props = {
   t: Translate;
   selectedAllergies: string[];
   severityMap: SeverityMap;
-  gender: Gender | null;
-  birthDate: Date;
+  destination: OnboardingDestination;
   permissionStatusMap: PermissionStatusMap;
+  scanEntryTarget: 'camera' | 'gallery';
   loading: boolean;
-  onComplete: () => void;
+  onScan: () => void;
+  onCard: () => void;
+  onHome: () => void;
 };
 
 const getAllergenDisplayLabel = (id: string, t: Translate): string => {
   return t(`profile.allergen.${id}`, resolveRestrictionDisplayName(id, t));
+};
+
+const resolveSeverityLabel = (key: string, t: Translate): string => {
+  if (key === 'mild') return t('onboarding.severity.mild', 'Mild');
+  if (key === 'severe') return t('onboarding.severity.severe', 'Severe');
+  return t('onboarding.severity.moderate', 'Moderate');
 };
 
 export default function CompleteStep({
@@ -29,258 +34,146 @@ export default function CompleteStep({
   t,
   selectedAllergies,
   severityMap,
-  gender,
-  birthDate,
+  destination,
   permissionStatusMap,
+  scanEntryTarget,
   loading,
-  onComplete,
+  onScan,
+  onCard,
+  onHome,
 }: Props) {
-  const insets = useSafeAreaInsets();
-  const now = new Date();
-  const birthMonth = birthDate.getMonth();
-  const birthDay = birthDate.getDate();
-  const hasHadBirthdayThisYear =
-    now.getMonth() > birthMonth || (now.getMonth() === birthMonth && now.getDate() >= birthDay);
-  const age = now.getFullYear() - birthDate.getFullYear() - (hasHadBirthdayThisYear ? 0 : 1);
-  const genderLabel = gender
-    ? t(`onboarding.profile.gender.${gender}`, gender.charAt(0).toUpperCase() + gender.slice(1))
-    : null;
-
-  // Group allergies by severity
   const severeAllergies = selectedAllergies.filter((id) => severityMap[id] === 'severe');
-  const mildAllergies = selectedAllergies.filter((id) => severityMap[id] === 'mild');
   const moderateAllergies = selectedAllergies.filter((id) => severityMap[id] === 'moderate' || !severityMap[id]);
-
-  const permissionRows = [
-    {
-      key: 'camera',
-      label: t('onboarding.permissions.camera', 'Camera Access'),
-      status: permissionStatusMap.camera,
-    },
-    {
-      key: 'library',
-      label: t('onboarding.permissions.gallery', 'Photo Library'),
-      status: permissionStatusMap.library,
-    },
-    {
-      key: 'location',
-      label: t('onboarding.permissions.location', 'Location Access'),
-      status: permissionStatusMap.location,
-    },
-  ] as const;
-
-  const statusTextByKey = {
-    granted: t('onboarding.permissions.status.granted', 'Granted'),
-    denied: t('onboarding.permissions.status.denied', 'Denied'),
-    not_requested: t('onboarding.permissions.status.notRequested', 'Not requested'),
-    unavailable: t('onboarding.permissions.status.unavailable', 'Unavailable'),
-  } as const;
-
-  const statusColorByKey = {
-    granted: '#10B981',
-    denied: '#EF4444',
-    not_requested: theme.textSecondary,
-    unavailable: '#F59E0B',
-  } as const;
+  const firstSevere = severeAllergies[0];
+  const firstModerate = moderateAllergies[0];
+  const cameraReady = permissionStatusMap.camera === 'granted';
+  const scanLabel =
+    scanEntryTarget === 'gallery'
+      ? t('onboarding.complete.gallery', 'Choose from photos')
+      : t('onboarding.complete.scan', 'Scan first meal');
 
   return (
-    <View style={styles.stepContainer}>
-      {/* Hero Section */}
-      <View style={{ alignItems: 'center', paddingTop: 16, paddingBottom: 8 }}>
-        <View style={{ position: 'relative', width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-          {/* Glow backdrop */}
-          <View style={{
-            position: 'absolute', width: 120, height: 120, borderRadius: 60,
-            backgroundColor: theme.primary, opacity: 0.15,
-          }} />
-          {/* Checkmark icon */}
-          <View style={{
-            width: 100, height: 100, borderRadius: 50,
-            backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center',
-            shadowColor: theme.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 20,
-          }}>
-            <Check size={56} color="white" />
-          </View>
-        </View>
-        <Text style={[styles.welcomeTitle, { color: theme.textPrimary }]}>
-          {t('onboarding.complete.title', "You're all set!")}
-        </Text>
-        <Text style={[styles.welcomeSubtitle, { color: theme.textSecondary, marginTop: 8, paddingHorizontal: 24 }]}>
-          {t('onboarding.complete.subtitle', "Your personalized allergen shield is ready. We've calibrated FoodLens to your specific needs.")}
-        </Text>
-      </View>
-
-      {/* Bento Grid Summary */}
+    <View style={[styles.stepContainer, { justifyContent: 'space-between', paddingBottom: 18 }]}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 10, gap: 12 }}
+        contentContainerStyle={{ paddingTop: 6, paddingBottom: 18 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top Row: Profile + Mild Risk */}
-        <View style={{ flexDirection: 'row', gap: 12, minHeight: 130 }}>
-          {/* Profile Card */}
-          <View style={{
-            flex: 1, borderRadius: 16, padding: 16,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-            justifyContent: 'space-between',
-          }}>
-            <CircleUserRound size={32} color={theme.primary} style={{ marginBottom: 8 }} />
-            <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-              {t('onboarding.complete.profile', 'Profile')}
-            </Text>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: theme.textPrimary }}>
-              {genderLabel ? `${genderLabel}, ${age}` : `${age}`}
-            </Text>
+        <View style={styles.readyHero}>
+          <View style={[styles.readyStamp, { backgroundColor: theme.primary }]}>
+            <Check size={36} color="#FFFFFF" />
+            <Text style={styles.readyStampText}>{t('onboarding.complete.readyBadge', 'Safety ready')}</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.title, { color: theme.textPrimary }]}>
+          {t('onboarding.complete.title', 'Your safety passport is active.')}
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          {t(
+            'onboarding.complete.subtitle',
+            'Your first scan will use your saved allergens, severity, and traveler card language.',
+          )}
+        </Text>
+
+        <View style={{ marginTop: 22, gap: 12 }}>
+          <View style={[styles.readyRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[styles.readyIcon, { backgroundColor: 'rgba(220,38,38,0.12)' }]}>
+              <ShieldAlert size={18} color="#DC2626" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.readyTitle, { color: theme.textPrimary }]}>
+                {t('onboarding.complete.severeWarning', 'Severe warning')}
+              </Text>
+              <Text style={[styles.readySub, { color: theme.textSecondary }]} numberOfLines={2}>
+                {firstSevere
+                  ? `${getAllergenDisplayLabel(firstSevere, t)} • ${resolveSeverityLabel('severe', t)}`
+                  : t('onboarding.complete.noSevere', 'No severe allergens saved yet')}
+              </Text>
+            </View>
+            <Text style={styles.readyStatusOn}>{t('onboarding.complete.on', 'ON')}</Text>
           </View>
 
-          {/* Mild / Moderate Risk Card */}
-          <View style={{
-            flex: 1, borderRadius: 16, padding: 16,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-            justifyContent: 'space-between',
-          }}>
-            <View style={{
-              width: 32, height: 32, borderRadius: 16,
-              backgroundColor: 'rgba(245,158,11,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-            }}>
+          <View style={[styles.readyRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[styles.readyIcon, { backgroundColor: 'rgba(245,158,11,0.14)' }]}>
               <TriangleAlert size={18} color="#F59E0B" />
             </View>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-              {t('onboarding.complete.mildRisk', 'Mild Risk')}
-            </Text>
-            {[...mildAllergies, ...moderateAllergies].length > 0 ? (
-              <Text style={{ fontSize: 16, fontWeight: '700', color: theme.textPrimary }} numberOfLines={2}>
-                {[...mildAllergies, ...moderateAllergies]
-                  .map((id) => getAllergenDisplayLabel(id, t))
-                  .join(', ')}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.readyTitle, { color: theme.textPrimary }]}>
+                {t('onboarding.complete.cautionWarning', 'Caution warning')}
               </Text>
-            ) : (
-              <Text style={{ fontSize: 14, fontWeight: '500', color: theme.textSecondary }}>
-                {t('onboarding.complete.none', 'None')}
+              <Text style={[styles.readySub, { color: theme.textSecondary }]} numberOfLines={2}>
+                {firstModerate
+                  ? `${getAllergenDisplayLabel(firstModerate, t)} • ${resolveSeverityLabel(severityMap[firstModerate] || 'moderate', t)}`
+                  : t('onboarding.complete.noModerate', 'Moderate and mild warnings can be added anytime')}
               </Text>
-            )}
+            </View>
+            <Text style={styles.readyStatusOn}>{t('onboarding.complete.on', 'ON')}</Text>
+          </View>
+
+          <View style={[styles.readyRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[styles.readyIcon, { backgroundColor: `${theme.primary}14` }]}>
+              <Languages size={18} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.readyTitle, { color: theme.textPrimary }]}>
+                {t('onboarding.complete.travelCard', 'Traveler card')}
+              </Text>
+              <Text style={[styles.readySub, { color: theme.textSecondary }]} numberOfLines={2}>
+                {`${t(destination.titleKey, destination.titleFallback)} • ${t(destination.languageLabelKey, destination.languageLabelFallback)}`}
+              </Text>
+            </View>
+            <Text style={styles.readyStatusReady}>{t('onboarding.complete.ready', 'READY')}</Text>
           </View>
         </View>
 
-        {/* Full Width: Severe Allergens */}
-        <View style={{
-          borderRadius: 16, padding: 20,
-          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-          overflow: 'hidden',
-        }}>
-          <View
-            style={{
-              position: 'absolute',
-              right: -40,
-              top: -40,
-              width: 120,
-              height: 120,
-              borderRadius: 60,
-              backgroundColor: 'rgba(239,68,68,0.06)',
-            }}
-          />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <View style={{
-              width: 36, height: 36, borderRadius: 18,
-              backgroundColor: 'rgba(239,68,68,0.1)', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Shield size={18} color="#EF4444" />
-            </View>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: 1 }}>
-              {t('onboarding.complete.severeAllergens', 'Severe Allergens')}
-            </Text>
-          </View>
-          {severeAllergies.length > 0 ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {severeAllergies.map((id) => (
-                <View key={id} style={{
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                  backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.15)',
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' }} />
-                  <Text style={{ fontWeight: '700', color: theme.textPrimary }}>
-                    {getAllergenDisplayLabel(id, t)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={{ fontSize: 14, fontWeight: '500', color: theme.textSecondary }}>
-              {t('onboarding.complete.noSevere', 'No severe allergens detected — great news!')}
-            </Text>
-          )}
-        </View>
-
-        {/* AI Ready Insight */}
-        <View style={{
-          borderRadius: 12, padding: 14,
-          backgroundColor: `${theme.primary}08`, borderWidth: 1, borderColor: `${theme.primary}15`,
-          flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-        }}>
-          <Sparkles size={20} color={theme.primary} style={{ marginTop: 1 }} />
-          <Text style={{ flex: 1, fontSize: 13, color: theme.textSecondary, lineHeight: 19 }}>
-            <Text style={{ fontWeight: '700', color: theme.primary }}>
-              {t('onboarding.complete.aiReady', 'AI Ready:')}
-            </Text>
-            {' '}{t('onboarding.complete.aiReadyDesc', 'FoodLens will now auto-scan labels for your specific triggers.')}
-          </Text>
-        </View>
-
-        {/* Permission Summary */}
-        <View style={{
-          borderRadius: 12, padding: 14,
-          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-          gap: 10,
-        }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textPrimary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-            {t('onboarding.complete.permissionsSummaryTitle', 'Permissions Summary')}
-          </Text>
-          {permissionRows.map((row) => (
-            <View key={row.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 14, color: theme.textSecondary }}>{row.label}</Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: statusColorByKey[row.status] }}>
-                {statusTextByKey[row.status]}
-              </Text>
-            </View>
-          ))}
-          <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 17 }}>
-            {t(
-              'onboarding.complete.permissionsSummaryHint',
-              'You can change these later in iPhone Settings > FoodLens.'
-            )}
-          </Text>
-        </View>
+        <Text style={[styles.readyPermissionNote, { color: theme.textSecondary }]}>
+          {cameraReady
+            ? t('onboarding.complete.cameraReady', 'Camera access is ready for the first scan.')
+            : t('onboarding.complete.cameraLater', 'Camera permission will stay action-based if you skipped it.')}
+        </Text>
       </ScrollView>
 
-      {/* CTA Button */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingBottom: Math.max(12, insets.bottom + 8),
-          paddingTop: 10,
-        }}
-      >
+      <View style={{ gap: 10 }}>
         <TouchableOpacity
           style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: loading ? 0.6 : 1 }]}
-          onPress={onComplete}
+          onPress={onScan}
           activeOpacity={0.8}
           disabled={loading}
           accessibilityRole="button"
-          accessibilityLabel={
-            loading
-              ? t('onboarding.complete.saving', 'Saving...')
-              : t('onboarding.complete.start', 'Start Using FoodLens')
-          }
-          accessibilityHint={t('onboarding.accessibility.completeHint', 'Finish onboarding and open the app')}
+          accessibilityLabel={loading ? t('onboarding.complete.saving', 'Saving...') : scanLabel}
           accessibilityState={{ disabled: loading, busy: loading }}
         >
           <Text style={styles.primaryButtonText}>
-            {loading
-              ? t('onboarding.complete.saving', 'Saving...')
-              : t('onboarding.complete.start', 'Start Using FoodLens')}
+            {loading ? t('onboarding.complete.saving', 'Saving...') : scanLabel}
           </Text>
           {!loading && <ArrowRight size={20} color="white" style={{ marginLeft: 8 }} />}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.secondaryActionButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+          onPress={onCard}
+          disabled={loading}
+          activeOpacity={0.78}
+          accessibilityRole="button"
+          accessibilityLabel={t('onboarding.complete.card', 'Show allergy card')}
+        >
+          <Languages size={18} color={theme.primary} />
+          <Text style={[styles.secondaryActionText, { color: theme.textPrimary }]}>
+            {t('onboarding.complete.card', 'Show allergy card')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onHome}
+          disabled={loading}
+          style={styles.skipButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('onboarding.complete.home', 'Go to home')}
+        >
+          <Text style={[styles.skipText, { color: theme.textSecondary }]}>
+            {t('onboarding.complete.home', 'Go to home')}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

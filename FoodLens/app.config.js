@@ -32,6 +32,8 @@ const ADMOB_ANDROID_APP_ID =
 const ADMOB_IOS_APP_ID =
   (process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "").trim() ||
   "ca-app-pub-3940256099942544~1458002511";
+const ONBOARDING_PREVIEW_ENABLED =
+  (process.env.EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED || "0").trim();
 
 const EXPO_BUILD_IDENTITY = {
   appName: buildIdentity.appName,
@@ -177,6 +179,7 @@ module.exports = {
       eas: {
         projectId: EAS_PROJECT_ID,
       },
+      onboardingPreviewEnabled: ONBOARDING_PREVIEW_ENABLED,
       buildIdentity: EXPO_BUILD_IDENTITY,
     },
   },

@@ -1,11 +1,11 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, router as appRouter, usePathname } from 'expo-router';
+import { Stack, router as appRouter, useGlobalSearchParams, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import { useEffect, useRef } from 'react';
-import { AppState, BackHandler, Platform, ToastAndroid } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { queryClient } from '../services/queryClient';
@@ -32,6 +32,10 @@ import {
 } from '../components/navigation/androidTopLevelNavigation';
 import { useI18n } from '../features/i18n';
 import { homeDashboardColors } from '../features/home/components/homeDashboardTokens';
+import {
+  resolveOnboardingPreviewAccess,
+  resolveOnboardingPreviewAccessFromUrl,
+} from '../features/onboarding/services/onboardingPreviewService';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +45,7 @@ const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
 export const PROFILE_SYNC_STARTUP_DELAY_MS = 5_000;
 const ANDROID_TOP_LEVEL_SCREEN_OPTIONS =
   Platform.OS === 'android' ? { animation: 'none' as const } : undefined;
+type StartupRoute = '/login' | '/onboarding' | '/(tabs)' | '/onboarding?preview=1';
 
 type AppActivePollingOptions = {
   initialDelayMs: number;
@@ -148,6 +153,19 @@ function LayoutContent() {
   const colorScheme = useColorScheme();
   const { t } = useI18n();
   const pathname = usePathname();
+  const searchParams = useGlobalSearchParams<{ preview?: string | string[] }>();
+  const [initialOnboardingPreviewActive, setInitialOnboardingPreviewActive] =
+    useState<boolean>(false);
+  const [initialOnboardingPreviewRouteSeen, setInitialOnboardingPreviewRouteSeen] =
+    useState<boolean>(false);
+  const initialOnboardingPreviewUrlConsumedRef = useRef<boolean>(false);
+  const routeOnboardingPreviewActive =
+    pathname === '/onboarding' && resolveOnboardingPreviewAccess(searchParams.preview) === 'preview';
+  const initialOnboardingPreviewProtectionActive =
+    initialOnboardingPreviewActive &&
+    (!initialOnboardingPreviewRouteSeen || routeOnboardingPreviewActive);
+  const onboardingPreviewActive =
+    routeOnboardingPreviewActive || initialOnboardingPreviewProtectionActive;
   const lastAndroidBackPressAtRef = useRef<number>(0);
   const androidProfileEditScreenOptions =
     Platform.OS === 'android'
@@ -179,7 +197,27 @@ function LayoutContent() {
       .catch(() => {});
   };
 
+  useEffect(() => {
+    if (routeOnboardingPreviewActive && !initialOnboardingPreviewRouteSeen) {
+      setInitialOnboardingPreviewRouteSeen(true);
+      return;
+    }
+
+    if (
+      initialOnboardingPreviewActive &&
+      initialOnboardingPreviewRouteSeen &&
+      !routeOnboardingPreviewActive
+    ) {
+      setInitialOnboardingPreviewActive(false);
+    }
+  }, [
+    initialOnboardingPreviewActive,
+    initialOnboardingPreviewRouteSeen,
+    routeOnboardingPreviewActive,
+  ]);
+
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     // Keep i18n in sync globally even when user stays off profile-related screens.
     void syncI18nSettingsFromProfile({ pullFromServer: true });
   }, I18N_PROFILE_SYNC_INTERVAL_MS, {
@@ -189,6 +227,7 @@ function LayoutContent() {
   });
 
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     runWithAuthenticatedUser((userId) => {
       void AnalysisService.syncHistoryFromCloud(userId, { force: false });
     });
@@ -199,6 +238,7 @@ function LayoutContent() {
   });
 
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     runWithAuthenticatedUser((userId) => {
       void UserService.syncProfileFromCloud(userId, { force: false }).then(() => {
         void syncI18nSettingsFromProfile({ pullFromServer: false });
@@ -214,11 +254,30 @@ function LayoutContent() {
     let active = true;
 
     const bootstrap = async () => {
-      let nextRoute: '/login' | '/onboarding' | '/(tabs)' | null = null;
+      let nextRoute: StartupRoute | null = null;
       try {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
+        let initialUrl: string | null = null;
+        if (onboardingPreviewActive) {
+          initialOnboardingPreviewUrlConsumedRef.current = true;
+        } else if (!initialOnboardingPreviewUrlConsumedRef.current) {
+          initialOnboardingPreviewUrlConsumedRef.current = true;
+          initialUrl = await Linking.getInitialURL();
+        }
+        const initialUrlPreviewActive =
+          onboardingPreviewActive ||
+          resolveOnboardingPreviewAccessFromUrl(initialUrl) === 'preview';
+        if (initialUrlPreviewActive) {
+          if (!onboardingPreviewActive) {
+            setInitialOnboardingPreviewActive(true);
+          }
+          setUser(deviceId);
+          nextRoute = routeOnboardingPreviewActive ? null : '/onboarding?preview=1';
+          return;
+        }
+
         const restoredSession = await restoreSession();
 
         if (!active) return;
@@ -269,7 +328,7 @@ function LayoutContent() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [onboardingPreviewActive, routeOnboardingPreviewActive]);
 
   useEffect(() => {
     void initializeGoogleAdsRuntime();
