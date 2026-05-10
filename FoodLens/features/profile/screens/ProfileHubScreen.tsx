@@ -25,6 +25,7 @@ import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
 import LogoutConfirmationDialog from '@/features/profile/components/LogoutConfirmationDialog';
+import { isOnboardingPreviewEnabled } from '@/features/onboarding/services/onboardingPreviewService';
 
 import LanguageSelectorModal from '../profileHub/components/LanguageSelectorModal';
 import ProfileDeveloperSheet from '../profileHub/components/ProfileDeveloperSheet';
@@ -117,6 +118,50 @@ const profileHubStyles = StyleSheet.create({
     logoutTextDark: {
         color: 'rgba(255, 231, 229, 0.92)',
     },
+    qaPreviewButton: {
+        backgroundColor: 'rgba(57, 110, 203, 0.11)',
+        borderColor: 'rgba(57, 110, 203, 0.24)',
+        borderCurve: 'continuous',
+        borderRadius: 20,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+    },
+    qaPreviewButtonDark: {
+        backgroundColor: 'rgba(86, 145, 255, 0.16)',
+        borderColor: 'rgba(132, 175, 255, 0.28)',
+    },
+    qaPreviewEyebrow: {
+        color: homeDashboardColors.accentBlue,
+        fontSize: 11,
+        fontWeight: '800',
+        letterSpacing: 0.6,
+        lineHeight: 14,
+        textTransform: 'uppercase',
+    },
+    qaPreviewEyebrowDark: {
+        color: 'rgba(174, 204, 255, 0.92)',
+    },
+    qaPreviewTitle: {
+        color: homeDashboardColors.ink,
+        fontSize: 15,
+        fontWeight: '800',
+        lineHeight: 19,
+        marginTop: 4,
+    },
+    qaPreviewTitleDark: {
+        color: Colors.dark.textPrimary,
+    },
+    qaPreviewSubtitle: {
+        color: homeDashboardColors.inkSoft,
+        fontSize: 13,
+        fontWeight: '600',
+        lineHeight: 18,
+        marginTop: 3,
+    },
+    qaPreviewSubtitleDark: {
+        color: Colors.dark.textSecondary,
+    },
 });
 
 const MemoizedProfileIdentitySummaryCard = React.memo(ProfileIdentitySummaryCard);
@@ -155,6 +200,7 @@ export default function ProfileHubScreen(): React.JSX.Element {
     const [isBuildFingerprintVisible, setIsBuildFingerprintVisible] = React.useState<boolean>(false);
     const buildFingerprint = React.useMemo(() => getBuildFingerprint(), []);
     const canRevealBuildFingerprint = buildFingerprint.installTrack !== 'production';
+    const canOpenOnboardingPreview = isOnboardingPreviewEnabled();
 
     const travelerOptions = React.useMemo(
         () =>
@@ -233,6 +279,13 @@ export default function ProfileHubScreen(): React.JSX.Element {
 
     const handleOpenSupportHub = React.useCallback(() => {
         router.push('/support-policies');
+    }, [router]);
+
+    const handleOpenOnboardingPreview = React.useCallback(() => {
+        router.push({
+            pathname: '/onboarding',
+            params: { preview: '1' },
+        });
     }, [router]);
 
     const handleOpenTravelerLanguage = React.useCallback(() => {
@@ -417,6 +470,56 @@ export default function ProfileHubScreen(): React.JSX.Element {
                             colorScheme={resolvedColorScheme}
                             onPress={handleOpenSupportHub}
                         />
+
+                        {canOpenOnboardingPreview ? (
+                            <HapticTouchableOpacity
+                                accessibilityHint={t(
+                                    'profileHub.qaPreview.accessibilityHint',
+                                    'Open the onboarding preview without changing your saved profile.'
+                                )}
+                                accessibilityLabel={t(
+                                    'profileHub.qaPreview.accessibilityLabel',
+                                    'Open onboarding preview'
+                                )}
+                                accessibilityRole="button"
+                                activeOpacity={0.9}
+                                hapticType="selection"
+                                onPress={handleOpenOnboardingPreview}
+                                style={[
+                                    profileHubStyles.qaPreviewButton,
+                                    isDarkTheme ? profileHubStyles.qaPreviewButtonDark : null,
+                                ]}
+                                testID="profile-onboarding-preview-action"
+                            >
+                                <Text
+                                    style={[
+                                        profileHubStyles.qaPreviewEyebrow,
+                                        isDarkTheme ? profileHubStyles.qaPreviewEyebrowDark : null,
+                                    ]}
+                                >
+                                    {t('profileHub.qaPreview.eyebrow', 'QA only')}
+                                </Text>
+                                <Text
+                                    style={[
+                                        profileHubStyles.qaPreviewTitle,
+                                        isDarkTheme ? profileHubStyles.qaPreviewTitleDark : null,
+                                    ]}
+                                >
+                                    {t('profileHub.qaPreview.title', 'Preview onboarding')}
+                                </Text>
+                                <Text
+                                    style={[
+                                        profileHubStyles.qaPreviewSubtitle,
+                                        isDarkTheme ? profileHubStyles.qaPreviewSubtitleDark : null,
+                                    ]}
+                                >
+                                    {t(
+                                        'profileHub.qaPreview.subtitle',
+                                        'Review the Safety Passport flow without saving profile changes.'
+                                    )}
+                                </Text>
+                            </HapticTouchableOpacity>
+                        ) : null}
 
                         <HapticTouchableOpacity
                             accessibilityHint={t('profileHub.menu.logout.hint')}

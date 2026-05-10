@@ -298,6 +298,7 @@ jest.mock('lucide-react-native', () => ({
 describe('ProfileHubScreen', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
         mockCapturedLogoutDialogProps = null;
         mockReadSession.mockResolvedValue({
             accessToken: 'atk_profile_hub',
@@ -389,6 +390,25 @@ describe('ProfileHubScreen', () => {
         expect(mockPush).toHaveBeenCalledWith('/support-policies');
         expect(mockSetTravelerLangModalVisible).toHaveBeenCalledWith(true);
         expect(mockSetUiLangModalVisible).toHaveBeenCalledWith(true);
+    });
+
+    it('hides the onboarding preview action when the QA preview flag is disabled', () => {
+        const { queryByTestId } = render(<ProfileHubScreen />);
+
+        expect(queryByTestId('profile-onboarding-preview-action')).toBeNull();
+    });
+
+    it('opens onboarding preview from profile when the QA preview flag is enabled', () => {
+        process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
+
+        const { getByTestId } = render(<ProfileHubScreen />);
+
+        fireEvent.press(getByTestId('profile-onboarding-preview-action'));
+
+        expect(mockPush).toHaveBeenCalledWith({
+            pathname: '/onboarding',
+            params: { preview: '1' },
+        });
     });
 
     it('passes profile hub i18n copy and accessibility labels to the logout dialog', () => {
