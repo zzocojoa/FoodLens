@@ -43,8 +43,12 @@ const DEVICE_ID_KEY = '@foodlens_device_id';
 const I18N_PROFILE_SYNC_INTERVAL_MS = 15_000;
 const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
 export const PROFILE_SYNC_STARTUP_DELAY_MS = 5_000;
-const ANDROID_TOP_LEVEL_SCREEN_OPTIONS =
-  Platform.OS === 'android' ? { animation: 'none' as const } : undefined;
+const TOP_LEVEL_TABS_SCREEN_OPTIONS =
+  Platform.OS === 'android'
+    ? { animation: 'none' as const }
+    : Platform.OS === 'ios'
+      ? { gestureEnabled: false }
+      : undefined;
 type StartupRoute = '/login' | '/onboarding' | '/(tabs)' | '/onboarding?preview=1';
 
 type AppActivePollingOptions = {
@@ -385,7 +389,7 @@ function LayoutContent() {
             <Stack.Screen name="emoji-picker" />
             <Stack.Screen name="oauth/google-callback" options={{ animation: 'none' }} />
             <Stack.Screen name="oauth/kakao-callback" options={{ animation: 'none' }} />
-            <Stack.Screen name="(tabs)" options={ANDROID_TOP_LEVEL_SCREEN_OPTIONS} />
+            <Stack.Screen name="(tabs)" options={TOP_LEVEL_TABS_SCREEN_OPTIONS} />
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>
