@@ -34,4 +34,28 @@ describe('travelerAllergyCard utils', () => {
     expect(message).not.toContain('Venison');
     expect(message).not.toContain('Pignoli');
   });
+
+  it('translates profile common allergen ids in traveler card messages', () => {
+    const koreanMessage = buildTravelerMessage(
+      '저는 식품 알레르기가 있습니다. 이 음식에 알레르기 유발 성분이 없는지 확인 부탁드립니다.',
+      false,
+      'KR',
+      ['treenut']
+    );
+    const englishMessage = buildTravelerMessage(
+      'I have food allergies. Please check ingredients carefully.',
+      false,
+      'US',
+      ['treenut']
+    );
+
+    expect(koreanMessage).toBe(
+      '저는 식품 알레르기가 있습니다. 이 음식에 알레르기 유발 성분이 없는지 확인 부탁드립니다.\n\n⚠️ My Allergies:\n견과류'
+    );
+    expect(englishMessage).toBe(
+      'I have food allergies. Please check ingredients carefully.\n\n⚠️ My Allergies:\nTree Nuts'
+    );
+    expect(koreanMessage).not.toContain('treenut');
+    expect(englishMessage).not.toContain('treenut');
+  });
 });
