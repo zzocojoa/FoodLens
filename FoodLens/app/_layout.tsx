@@ -1,6 +1,6 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, router as appRouter, usePathname } from 'expo-router';
+import { Stack, router as appRouter, useGlobalSearchParams, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
@@ -32,6 +32,7 @@ import {
 } from '../components/navigation/androidTopLevelNavigation';
 import { useI18n } from '../features/i18n';
 import { homeDashboardColors } from '../features/home/components/homeDashboardTokens';
+import { resolveOnboardingPreviewAccess } from '../features/onboarding/services/onboardingPreviewService';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -148,6 +149,9 @@ function LayoutContent() {
   const colorScheme = useColorScheme();
   const { t } = useI18n();
   const pathname = usePathname();
+  const searchParams = useGlobalSearchParams<{ preview?: string | string[] }>();
+  const onboardingPreviewActive =
+    pathname === '/onboarding' && resolveOnboardingPreviewAccess(searchParams.preview) === 'preview';
   const lastAndroidBackPressAtRef = useRef<number>(0);
   const androidProfileEditScreenOptions =
     Platform.OS === 'android'
@@ -180,6 +184,7 @@ function LayoutContent() {
   };
 
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     // Keep i18n in sync globally even when user stays off profile-related screens.
     void syncI18nSettingsFromProfile({ pullFromServer: true });
   }, I18N_PROFILE_SYNC_INTERVAL_MS, {
@@ -189,6 +194,7 @@ function LayoutContent() {
   });
 
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     runWithAuthenticatedUser((userId) => {
       void AnalysisService.syncHistoryFromCloud(userId, { force: false });
     });
@@ -199,6 +205,7 @@ function LayoutContent() {
   });
 
   useAppActivePolling(() => {
+    if (onboardingPreviewActive) return;
     runWithAuthenticatedUser((userId) => {
       void UserService.syncProfileFromCloud(userId, { force: false }).then(() => {
         void syncI18nSettingsFromProfile({ pullFromServer: false });
@@ -219,6 +226,12 @@ function LayoutContent() {
         initSentry();
         await initializeSafeStorage();
         const deviceId = await initializeDeviceId();
+        if (onboardingPreviewActive) {
+          setUser(deviceId);
+          nextRoute = null;
+          return;
+        }
+
         const restoredSession = await restoreSession();
 
         if (!active) return;
@@ -269,7 +282,7 @@ function LayoutContent() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [onboardingPreviewActive]);
 
   useEffect(() => {
     void initializeGoogleAdsRuntime();

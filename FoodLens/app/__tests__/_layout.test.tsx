@@ -7,6 +7,7 @@ const mockRouterReplace = jest.fn();
 const mockRouterBack = jest.fn();
 const mockRouterCanGoBack = jest.fn();
 const mockUsePathname = jest.fn();
+const mockUseGlobalSearchParams = jest.fn();
 const mockPreventAutoHideAsync = jest.fn();
 const mockHideAsync = jest.fn();
 const mockInitializeSafeStorage = jest.fn();
@@ -78,6 +79,7 @@ jest.mock('expo-router', () => {
       canGoBack: (...args: unknown[]) => mockRouterCanGoBack(...args),
     },
     usePathname: (...args: unknown[]) => mockUsePathname(...args),
+    useGlobalSearchParams: (...args: unknown[]) => mockUseGlobalSearchParams(...args),
   };
 });
 
@@ -232,6 +234,7 @@ describe('RootLayout polling', () => {
     );
     mockRouterCanGoBack.mockReturnValue(false);
     mockUsePathname.mockReturnValue('/(tabs)');
+    mockUseGlobalSearchParams.mockReturnValue({});
     mockPreventAutoHideAsync.mockResolvedValue(undefined);
     mockHideAsync.mockResolvedValue(undefined);
     mockInitializeSafeStorage.mockResolvedValue(undefined);
@@ -354,5 +357,33 @@ describe('RootLayout polling', () => {
     await waitFor(() => {
       expect(mockSyncHistoryFromCloud).toHaveBeenCalledWith('usr_layout', { force: false });
     });
+  });
+
+  it('does not replace route or sync profile data for enabled onboarding preview deep links', async () => {
+    process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
+    mockUsePathname.mockReturnValue('/onboarding');
+    mockUseGlobalSearchParams.mockReturnValue({ preview: '1' });
+
+    const { default: RootLayout, PROFILE_SYNC_STARTUP_DELAY_MS } = loadLayoutModule();
+    render(<RootLayout />);
+
+    await waitFor(() => {
+      expect(mockHideAsync).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(mockRestoreSession).not.toHaveBeenCalled();
+    expect(mockHasCompletedOnboarding).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(PROFILE_SYNC_STARTUP_DELAY_MS);
+      await Promise.resolve();
+    });
+
+    expect(mockSyncI18nSettingsFromProfile).not.toHaveBeenCalled();
+    expect(mockSyncHistoryFromCloud).not.toHaveBeenCalled();
+    expect(mockSyncProfileFromCloud).not.toHaveBeenCalled();
+
+    delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
   });
 });
