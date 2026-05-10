@@ -3,6 +3,7 @@ import {
   buildSuggestions,
   createCustomRestrictionValue,
   getCustomRestrictionText,
+  getRestrictionDefaultLabel,
   projectRestrictionForAi,
   resolveRestrictionDisplayName,
   resolveSuggestionStorageValue,
@@ -13,6 +14,7 @@ const translateEn = (key: string, fallback: string): string => fallback || key;
 const translateKo = (key: string, fallback: string): string => {
   if (key === 'ingredients.peach') return '복숭아';
   if (key === 'ingredients.vegan') return '비건';
+  if (key === 'ingredients.tree_nuts') return '견과류';
   return fallback || key;
 };
 
@@ -76,6 +78,17 @@ describe('profileSuggestions', () => {
 
   it('displays canonical values through the locale i18n key', () => {
     expect(resolveRestrictionDisplayName('peach', translateKo)).toBe('복숭아');
+  });
+
+  it('resolves profile common allergen ids through ingredient labels', () => {
+    expect(getRestrictionDefaultLabel('treenut')).toBe('Tree Nuts');
+    expect(resolveRestrictionDisplayName('treenut', translateKo)).toBe('견과류');
+    expect(projectRestrictionForAi('treenut', translateKo)).toEqual({
+      storedValue: 'tree_nuts',
+      displayValue: '견과류',
+      aiValue: 'Tree Nuts',
+      isCustomFreeText: false,
+    });
   });
 
   it('stores suggestion values as canonical ingredient keys', () => {

@@ -32,10 +32,20 @@ const normalizeSearchToken = (value: string): string => value.trim().toLowerCase
 
 const normalizeCustomRestrictionText = (value: string): string => value.trim();
 
+const PROFILE_ALLERGEN_INGREDIENT_KEY_ALIASES: Readonly<Record<string, string>> = {
+    treenut: 'tree_nuts',
+};
+
 const findIngredientBySuggestionValue = (value: string): SearchableIngredient | null => {
     const normalized = normalizeCustomRestrictionText(value);
     if (!normalized) return null;
-    return findSearchableIngredientByValue(normalized);
+
+    const ingredient = findSearchableIngredientByValue(normalized);
+    if (ingredient) return ingredient;
+
+    const ingredientKey = PROFILE_ALLERGEN_INGREDIENT_KEY_ALIASES[normalizeSearchToken(normalized)];
+    if (!ingredientKey) return null;
+    return findSearchableIngredientByValue(ingredientKey);
 };
 
 const getSelectedIngredientKeys = (selected: readonly string[]): Set<string> =>
