@@ -1,14 +1,20 @@
+import Constants from 'expo-constants';
+
 type PreviewParam = string | string[] | undefined;
 
 export type OnboardingPreviewAccess = 'normal' | 'preview' | 'disabled_preview';
 
 const ONBOARDING_PREVIEW_ENV = 'EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED';
+const ONBOARDING_PREVIEW_EXTRA_KEY = 'onboardingPreviewEnabled';
 const ONBOARDING_PREVIEW_PATH = '/onboarding';
 
 type PreviewDeepLinkParts = {
   path: string;
   preview: string[];
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 const normalizeFlagValue = (value: string | undefined): string => {
   if (typeof value !== 'string') {
@@ -27,8 +33,20 @@ const isPreviewParamValue = (value: string): boolean => {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 };
 
+const readOnboardingPreviewConfigValue = (): string | undefined => {
+  const extra = Constants.expoConfig?.extra;
+  if (isRecord(extra)) {
+    const extraValue = extra[ONBOARDING_PREVIEW_EXTRA_KEY];
+    if (typeof extraValue === 'string') {
+      return extraValue;
+    }
+  }
+
+  return process.env[ONBOARDING_PREVIEW_ENV];
+};
+
 export const isOnboardingPreviewEnabled = (): boolean =>
-  isEnabledFlagValue(process.env[ONBOARDING_PREVIEW_ENV]);
+  isEnabledFlagValue(readOnboardingPreviewConfigValue());
 
 export const isOnboardingPreviewRequested = (preview: PreviewParam): boolean => {
   if (Array.isArray(preview)) {
