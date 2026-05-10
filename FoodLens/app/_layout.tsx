@@ -45,6 +45,7 @@ const CROSS_DEVICE_SYNC_INTERVAL_MS = 15_000;
 export const PROFILE_SYNC_STARTUP_DELAY_MS = 5_000;
 const ANDROID_TOP_LEVEL_SCREEN_OPTIONS =
   Platform.OS === 'android' ? { animation: 'none' as const } : undefined;
+type StartupRoute = '/login' | '/onboarding' | '/(tabs)' | '/onboarding?preview=1';
 
 type AppActivePollingOptions = {
   initialDelayMs: number;
@@ -228,7 +229,7 @@ function LayoutContent() {
     let active = true;
 
     const bootstrap = async () => {
-      let nextRoute: '/login' | '/onboarding' | '/(tabs)' | null = null;
+      let nextRoute: StartupRoute | null = null;
       try {
         initSentry();
         await initializeSafeStorage();
@@ -242,7 +243,7 @@ function LayoutContent() {
             setInitialOnboardingPreviewActive(true);
           }
           setUser(deviceId);
-          nextRoute = null;
+          nextRoute = routeOnboardingPreviewActive ? null : '/onboarding?preview=1';
           return;
         }
 
@@ -296,7 +297,7 @@ function LayoutContent() {
     return () => {
       active = false;
     };
-  }, [onboardingPreviewActive]);
+  }, [onboardingPreviewActive, routeOnboardingPreviewActive]);
 
   useEffect(() => {
     void initializeGoogleAdsRuntime();

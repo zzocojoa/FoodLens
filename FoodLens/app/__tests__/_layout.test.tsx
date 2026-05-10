@@ -388,7 +388,7 @@ describe('RootLayout polling', () => {
     delete process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'];
   });
 
-  it('does not replace route when the enabled onboarding preview arrives as the initial URL', async () => {
+  it('routes to preview when the enabled onboarding preview arrives as the initial URL', async () => {
     process.env['EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED'] = '1';
     mockUsePathname.mockReturnValue('/');
     mockUseGlobalSearchParams.mockReturnValue({});
@@ -401,7 +401,7 @@ describe('RootLayout polling', () => {
       expect(mockHideAsync).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(mockRouterReplace).toHaveBeenCalledWith('/onboarding?preview=1');
     expect(mockRestoreSession).not.toHaveBeenCalled();
     expect(mockHasCompletedOnboarding).not.toHaveBeenCalled();
 
