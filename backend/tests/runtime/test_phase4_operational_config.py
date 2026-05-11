@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RENDER_BLUEPRINT_PATH = PROJECT_ROOT / "render.yaml"
 RENDER_LIVE_ENV_SCRIPT_PATH = PROJECT_ROOT / ".github" / "scripts" / "validate_render_live_env.py"
+RENDER_BLUEPRINT_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "phase2-render-blueprint.yml"
 
 
 class Phase4OperationalConfigTests(unittest.TestCase):
@@ -90,6 +91,7 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             ("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", "6"),
             ("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
             ("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", "500"),
+            ("AUTH_GOOGLE_OAUTH_PROMPT", "select_account"),
         )
         for key, value in fixed_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
@@ -115,6 +117,12 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         self.assertIn('- key: BARCODE_UPSTREAM_TIMEOUT_SECONDS\n        value: "15"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_COUNT\n        value: "3"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS\n        value: "1.0"', render_blueprint)
+
+    def test_render_live_env_gate_runs_for_same_repo_pull_requests(self) -> None:
+        workflow = RENDER_BLUEPRINT_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", workflow)
+        self.assertIn("github.event_name != 'pull_request'", workflow)
 
 
 def _load_render_live_env_module() -> Any:
@@ -197,13 +205,14 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             )
         return exit_code, buffer.getvalue()
 
-    def test_render_live_env_check_reports_missing_pro_fallback_keys_without_values(self) -> None:
+    def test_render_live_env_check_reports_missing_required_default_keys_without_values(self) -> None:
         module = _load_render_live_env_module()
         live_env_by_service = self._live_env_from_blueprint(module, False)
         missing_keys = (
             "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
             "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+            "AUTH_GOOGLE_OAUTH_PROMPT",
         )
         for service_env in live_env_by_service.values():
             for missing_key in missing_keys:
@@ -215,11 +224,13 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("GEMINI_LABEL_PRO_FALLBACK_ENABLED", output)
         self.assertIn("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", output)
         self.assertIn("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", output)
+        self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("present=false", output)
         self.assertIn("action=update Render Dashboard env keys or render.yaml", output)
         self.assertNotIn("0.12", output)
         self.assertNotIn("gemini-2.5-flash", output)
         self.assertNotIn("gemini-2.5-flash-lite", output)
+        self.assertNotIn("select_account", output)
 
     def test_render_live_env_check_passes_when_required_keys_exist(self) -> None:
         module = _load_render_live_env_module()

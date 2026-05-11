@@ -167,7 +167,7 @@
   - `BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST=500`
   - Render live env parity check:
     - `python .github/scripts/validate_render_live_env.py --blueprint render.yaml`
-    - 기본 검증 범위는 AI 모델명, label fallback, Pro fallback guardrail key로 제한한다.
+    - 기본 검증 범위는 Google OAuth prompt, AI 모델명, label fallback, Pro fallback guardrail key로 제한한다.
     - 전체 `render.yaml` env drift audit가 필요할 때만 `--all-blueprint-env`를 추가한다.
     - 값 자체는 출력하지 않고 서비스명, key 이름, 존재 여부, blueprint 일치 여부만 확인한다.
     - Pro fallback 운영 key는 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 있어야 한다.

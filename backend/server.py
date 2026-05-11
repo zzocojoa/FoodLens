@@ -2011,7 +2011,7 @@ def _build_oauth_authorize_url(
     if provider == "google":
         params["access_type"] = "offline"
         params["include_granted_scopes"] = "true"
-        prompt = os.environ.get("AUTH_GOOGLE_OAUTH_PROMPT", "select_account consent").strip()
+        prompt = os.environ.get("AUTH_GOOGLE_OAUTH_PROMPT", "select_account").strip()
         if prompt:
             params["prompt"] = prompt
 

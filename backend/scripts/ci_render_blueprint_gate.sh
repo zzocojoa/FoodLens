@@ -394,6 +394,7 @@ def main() -> None:
         "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER": "6",
         "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
         "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+        "AUTH_GOOGLE_OAUTH_PROMPT": "select_account",
         "LABEL_ROLLOUT_PERCENTAGE": "100",
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
@@ -434,6 +435,7 @@ def main() -> None:
         "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER": "6",
         "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
         "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
+        "AUTH_GOOGLE_OAUTH_PROMPT": "select_account",
     }
     for key, value in env_example_expected_values.items():
         require_example_env_value(env_example_vars, key, value)

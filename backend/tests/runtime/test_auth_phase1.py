@@ -772,7 +772,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             query = parse_qs(parsed.query)
             self.assertEqual(query["client_id"][0], "google-client-id-test")
             self.assertEqual(query["redirect_uri"][0], f"{self.AUTH_PUBLIC_BASE_URL}/auth/google/callback")
-            self.assertEqual(query["prompt"][0], "select_account consent")
+            self.assertEqual(query["prompt"][0], "select_account")
             packed_state = query["state"][0]
 
             callback = client.get(

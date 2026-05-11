@@ -33,7 +33,7 @@ jobs:
         run: python -m unittest backend.tests.runtime.test_phase4_operational_config
 
       - name: Validate Render live env parity
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
