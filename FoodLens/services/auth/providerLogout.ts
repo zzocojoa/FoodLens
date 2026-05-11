@@ -7,6 +7,10 @@ const GOOGLE_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL';
 const KAKAO_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL';
 const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
 const DEFAULT_APP_LOGOUT_REDIRECT_URI = 'foodlens://oauth/logout-complete';
+const PROVIDER_BROWSER_LOGOUT_ENABLED: Record<OAuthProvider, boolean> = {
+  google: false,
+  kakao: true,
+};
 
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
 
@@ -63,9 +67,17 @@ const buildLogoutStartUrl = (provider: OAuthProvider, appRedirectUri: string): s
   return `${startUrl}${delimiter}redirect_uri=${encodeURIComponent(appRedirectUri)}`;
 };
 
+const shouldOpenProviderBrowserLogout = (provider: OAuthProvider): boolean => (
+  PROVIDER_BROWSER_LOGOUT_ENABLED[provider]
+);
+
 export const logoutFromOAuthProvider = async (provider: string | undefined): Promise<void> => {
   const normalizedProvider = (provider ?? '').trim().toLowerCase();
   if (normalizedProvider !== 'google' && normalizedProvider !== 'kakao') {
+    return;
+  }
+
+  if (!shouldOpenProviderBrowserLogout(normalizedProvider)) {
     return;
   }
 
