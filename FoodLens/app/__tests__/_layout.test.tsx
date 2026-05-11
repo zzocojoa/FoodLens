@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, render, waitFor } from '@testing-library/react-native';
 import type { AppStateEvent, AppStateStatus } from 'react-native';
-import { AppState, Linking } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 
 const mockRouterReplace = jest.fn();
 const mockRouterBack = jest.fn();
@@ -28,7 +28,21 @@ const mockSetUser = jest.fn();
 const mockShouldUseAndroidExitFlow = jest.fn();
 const mockShouldExitOnSecondBack = jest.fn();
 
+type MockStackScreenOptions = {
+  animation?: string;
+  contentStyle?: {
+    backgroundColor: string;
+  };
+  gestureEnabled?: boolean;
+};
+
+type MockStackScreenProps = {
+  name: string;
+  options?: MockStackScreenOptions;
+};
+
 const mockAppStateListeners = new Set<(nextState: AppStateStatus) => void>();
+const mockStackScreenProps: MockStackScreenProps[] = [];
 
 const emitAppStateChange = (nextState: AppStateStatus): void => {
   mockAppStateListeners.forEach((listener) => {
@@ -67,7 +81,8 @@ jest.mock('expo-router', () => {
   const Stack = function MockStack({ children }: { children: React.ReactNode }) {
     return ReactModule.createElement(ReactModule.Fragment, null, children);
   };
-  Stack.Screen = function MockStackScreen() {
+  Stack.Screen = function MockStackScreen(props: MockStackScreenProps) {
+    mockStackScreenProps.push(props);
     return null;
   };
 
@@ -222,6 +237,8 @@ describe('RootLayout polling', () => {
     jest.useFakeTimers();
     jest.spyOn(console, 'log').mockImplementation(() => {});
     mockAppStateListeners.clear();
+    mockStackScreenProps.length = 0;
+    jest.replaceProperty(Platform, 'OS', 'ios');
     jest.spyOn(AppState, 'addEventListener').mockImplementation(
       (_event: AppStateEvent, listener: (nextState: AppStateStatus) => void) => {
         mockAppStateListeners.add(listener);
@@ -261,6 +278,15 @@ describe('RootLayout polling', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('disables native swipe-back on the tabs root screen', () => {
+    const { default: RootLayout } = loadLayoutModule();
+    render(<RootLayout />);
+
+    expect(
+      mockStackScreenProps.find((screenProps) => screenProps.name === '(tabs)')?.options,
+    ).toEqual(expect.objectContaining({ gestureEnabled: false }));
   });
 
   it('defers root startup polling until after the startup delay', async () => {

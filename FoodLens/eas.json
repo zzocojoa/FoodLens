@@ -8,6 +8,13 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "qa": {
+      "extends": "preview",
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED": "1"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "env": {
