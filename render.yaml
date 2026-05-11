@@ -223,7 +223,7 @@ services:
       - key: AUTH_GOOGLE_OAUTH_SCOPE
         value: "openid email profile"
       - key: AUTH_GOOGLE_OAUTH_PROMPT
-        value: select_account
+        value: "select_account consent"
       - key: AUTH_KAKAO_CLIENT_ID
         sync: false
       - key: AUTH_KAKAO_CLIENT_SECRET
@@ -557,7 +557,7 @@ services:
       - key: AUTH_GOOGLE_OAUTH_SCOPE
         value: "openid email profile"
       - key: AUTH_GOOGLE_OAUTH_PROMPT
-        value: select_account
+        value: "select_account consent"
       - key: AUTH_KAKAO_CLIENT_ID
         sync: false
       - key: AUTH_KAKAO_CLIENT_SECRET
@@ -891,7 +891,7 @@ services:
       - key: AUTH_GOOGLE_OAUTH_SCOPE
         value: "openid email profile"
       - key: AUTH_GOOGLE_OAUTH_PROMPT
-        value: select_account
+        value: "select_account consent"
       - key: AUTH_KAKAO_CLIENT_ID
         sync: false
       - key: AUTH_KAKAO_CLIENT_SECRET
