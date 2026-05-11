@@ -35,6 +35,7 @@ type InputGroupProps = {
   onSubmitEditing?: React.ComponentProps<typeof TextInput>['onSubmitEditing'];
   returnKeyType?: React.ComponentProps<typeof TextInput>['returnKeyType'];
   blurOnSubmit?: React.ComponentProps<typeof TextInput>['blurOnSubmit'];
+  inputTestID?: string;
   rightActionLabel?: string;
   onPressRightAction?: () => void;
   rightActionDisabled?: boolean;
@@ -55,6 +56,7 @@ const InputGroup = ({
   onSubmitEditing,
   returnKeyType,
   blurOnSubmit = true,
+  inputTestID,
   rightActionLabel,
   onPressRightAction,
   rightActionDisabled = false,
@@ -66,6 +68,7 @@ const InputGroup = ({
       <Icon size={16} color={LOGIN_COLORS.inputIcon} />
       <Text style={loginStyles.inputPipe}>|</Text>
       <TextInput
+        testID={inputTestID}
         autoCapitalize="none"
         placeholder={placeholder}
         placeholderTextColor={LOGIN_COLORS.textSecondary}
@@ -235,7 +238,12 @@ export default function LoginAuthScreen({
         </View>
       ) : null}
 
-      <Pressable disabled={loading} onPress={onSubmit} style={loginStyles.primaryButton}>
+      <Pressable
+        testID="login-submit-button"
+        disabled={loading}
+        onPress={onSubmit}
+        style={loginStyles.primaryButton}
+      >
         {loading ? (
           <ActivityIndicator color={LOGIN_COLORS.white} />
         ) : (
@@ -356,6 +364,7 @@ export default function LoginAuthScreen({
           keyboardType="email-address"
           onSubmitEditing={() => Keyboard.dismiss()}
           returnKeyType="done"
+          inputTestID="login-email-input"
         />
 
         <InputGroup
@@ -370,6 +379,7 @@ export default function LoginAuthScreen({
           style={{ marginBottom: 0 }}
           onSubmitEditing={() => Keyboard.dismiss()}
           returnKeyType="done"
+          inputTestID="login-password-input"
         />
 
         {!passwordResetStepActive ? (

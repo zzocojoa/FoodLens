@@ -132,6 +132,14 @@ describe('LoginAuthScreen', () => {
     expect(kakaoButton.props.accessibilityHint).toBe('Sign in using your Kakao account.');
   });
 
+  it('exposes release smoke identifiers for email login', () => {
+    const { getByTestId } = render(<LoginAuthScreen {...createProps()} />);
+
+    expect(getByTestId('login-email-input')).toBeTruthy();
+    expect(getByTestId('login-password-input')).toBeTruthy();
+    expect(getByTestId('login-submit-button')).toBeTruthy();
+  });
+
   it('calls OAuth handler with the selected provider', () => {
     const onOAuthLogin = jest.fn();
     const { getByTestId } = render(

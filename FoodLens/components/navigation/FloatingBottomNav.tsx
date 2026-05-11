@@ -147,6 +147,10 @@ const getLabelColor = (isActive: boolean): string => {
   return '#6B7280';
 };
 
+const getNavItemTestID = (itemKey: FloatingBottomNavVisualKey): string => {
+  return `bottom-nav-${itemKey}`;
+};
+
 export const getBottomNavPosition = (insetBottom: number): number =>
   FLOATING_BOTTOM_NAV_BOTTOM_OFFSET;
 
@@ -274,6 +278,7 @@ export default function FloatingBottomNav({ activeItem }: FloatingBottomNavProps
             return (
               <Pressable
                 key={item.key}
+                testID={getNavItemTestID(item.key)}
                 accessibilityLabel={t(item.labelKey, item.fallbackLabel)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}

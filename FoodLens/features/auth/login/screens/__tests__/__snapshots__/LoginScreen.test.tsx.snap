@@ -615,6 +615,7 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                         "paddingVertical": 2,
                       }
                     }
+                    testID="login-email-input"
                     value=""
                   />
                 </View>
@@ -685,6 +686,7 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                         "paddingVertical": 2,
                       }
                     }
+                    testID="login-password-input"
                     value=""
                   />
                   <View
@@ -1040,6 +1042,7 @@ exports[`LoginScreen matches snapshot in login state 1`] = `
                     "width": "100%",
                   }
                 }
+                testID="login-submit-button"
               >
                 <Text
                   style={
@@ -2212,6 +2215,7 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                         "paddingVertical": 2,
                       }
                     }
+                    testID="login-email-input"
                     value="example@foodlens.ai"
                   />
                 </View>
@@ -2282,6 +2286,7 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                         "paddingVertical": 2,
                       }
                     }
+                    testID="login-password-input"
                     value="password123"
                   />
                   <View
@@ -2741,6 +2746,7 @@ exports[`LoginScreen matches snapshot in signup state 1`] = `
                     "width": "100%",
                   }
                 }
+                testID="login-submit-button"
               >
                 <Text
                   style={

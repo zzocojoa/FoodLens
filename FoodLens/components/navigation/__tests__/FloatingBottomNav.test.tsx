@@ -118,6 +118,13 @@ describe('FloatingBottomNav', () => {
     expect(mockedNavigate).toHaveBeenNthCalledWith(2, '/profile');
   });
 
+  it('exposes release smoke identifiers for scan and history navigation', () => {
+    const { getByTestId } = render(<FloatingBottomNav activeItem="home" />);
+
+    expect(getByTestId('bottom-nav-scan')).toBeTruthy();
+    expect(getByTestId('bottom-nav-history')).toBeTruthy();
+  });
+
   it('does not re-push the active item', () => {
     const { getByLabelText } = render(<FloatingBottomNav activeItem="history" />);
 

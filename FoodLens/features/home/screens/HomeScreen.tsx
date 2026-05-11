@@ -297,7 +297,11 @@ export default function HomeScreen() {
       backgroundColor={homeBackgroundColor}
       hideNav={false}
     >
-      <View style={[screenStyles.container, { backgroundColor: homeBackgroundColor }]}>
+      <View
+        collapsable={false}
+        testID="home-screen"
+        style={[screenStyles.container, { backgroundColor: homeBackgroundColor }]}
+      >
         {colorScheme === 'light' ? <HomeBackgroundAtmosphere /> : null}
         <SafeAreaView style={[screenStyles.safeArea, { backgroundColor: homeBackgroundColor }]} edges={['top']}>
           <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
