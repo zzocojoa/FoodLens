@@ -21,7 +21,7 @@ This artifact is the Phase 1 mobile acceptance evidence for:
 | P1-M-04 | App restart with active session | Session auto-restores, no login prompt | Pass | session restore automated test pass (`sessionManager.test.ts`) |
 | P1-M-05 | Access token expiry path | Silent refresh succeeds or controlled re-login | Pass | request_id: `e3b496b0213a`(refresh), expired-session refresh test pass |
 | P1-M-06 | Logout (email) | App session cleared and routed to login | Pass | request_id: `09e975ea44a2`(logout) |
-| P1-M-07 | Logout (google) | App session clears without opening Google browser logout; next Google login prompts account selection | Pass | `providerLogout.test.ts` Google browser logout skip, auth runtime prompt assertion |
+| P1-M-07 | Logout (google) | App session clears without opening Google browser logout; next Google login prompts account selection | Pass | Real-device verification pass (2026-05-11), `providerLogout.test.ts` Google browser logout skip, auth runtime prompt assertion |
 | P1-M-08 | Logout (kakao) | App logout + browser redirect logout flow completes | Pass | live smoke pass (`/auth/kakao/logout/start`), callback request_id: `36e8aa2243b7` |
 | P1-M-09 | Account switch A -> B | Data remains isolated by `user_id` | Pass | `test_account_switch_keeps_profiles_isolated` pass |
 | P1-M-10 | Account switch B -> A | Data remains isolated by `user_id` | Pass | `test_account_switch_keeps_profiles_isolated` pass |
