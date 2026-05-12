@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { pickGalleryImage } from '@/services/native/galleryPicker';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
-import { persistProfileImageIfNeeded, pickProfileImageUri } from '../profileHubStateUtils';
+import { persistProfileImageIfNeeded, pickProfileImageUri } from '../profileSheetStateUtils';
 
 const mockSaveImagePermanentlyOrThrow = jest.fn();
 
@@ -20,12 +20,6 @@ jest.mock('expo-media-library', () => ({
   __esModule: true,
   getAssetInfoAsync: jest.fn(),
   saveToLibraryAsync: jest.fn(),
-}));
-
-jest.mock('react-native', () => ({
-  Platform: {
-    OS: 'android',
-  },
 }));
 
 jest.mock('@/services/imageStorage', () => ({

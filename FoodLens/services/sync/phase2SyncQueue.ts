@@ -6,6 +6,7 @@ import { logger } from '@/services/logger';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
 import { getUserStorageKey } from '@/services/user/constants';
+import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
 import { resolveImageUri } from '@/services/imageStorage';
 import { IMAGE_DIR } from '@/services/imageStorage.helpers';
 import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage';
@@ -234,7 +235,7 @@ const applyServerVersionToLocalProfile = async (
     profileImageAssetId?: string;
     profileImageRenderUrl?: string;
   }
-): Promise<void> => {
+): Promise<boolean> => {
   if (
     !versionPatch.profileUpdatedAt &&
     !versionPatch.allergiesUpdatedAt &&
@@ -242,11 +243,11 @@ const applyServerVersionToLocalProfile = async (
     !versionPatch.profileImageAssetId &&
     !versionPatch.profileImageRenderUrl
   ) {
-    return;
+    return false;
   }
   const storageKey = getUserStorageKey(userId);
   const current = await SafeStorage.get<UserProfile | null>(storageKey, null);
-  if (!current) return;
+  if (!current) return false;
   const nextSyncVersions = {
     ...(current.syncVersions || {}),
     ...(versionPatch.profileUpdatedAt ? { profileUpdatedAt: versionPatch.profileUpdatedAt } : {}),
@@ -269,15 +270,16 @@ const applyServerVersionToLocalProfile = async (
     syncVersions: nextSyncVersions,
   };
   await SafeStorage.set(storageKey, nextProfile);
+  return true;
 };
 
 const applyServerSettingsToLocalProfile = async (
   userId: string,
   settings: MeSettingsResponse
-): Promise<void> => {
+): Promise<boolean> => {
   const storageKey = getUserStorageKey(userId);
   const current = await SafeStorage.get<UserProfile | null>(storageKey, null);
-  if (!current) return;
+  if (!current) return false;
 
   const nextProfile: UserProfile = {
     ...current,
@@ -307,6 +309,7 @@ const applyServerSettingsToLocalProfile = async (
     },
   };
   await SafeStorage.set(storageKey, nextProfile);
+  return true;
 };
 
 const applyServerHistoryItemToLocalAnalyses = async (
@@ -1061,20 +1064,23 @@ export const dispatchPhase2SyncQueue = async (
           requestId: result.requestId,
           lastError: undefined,
         };
-        await applyServerVersionToLocalProfile(sending.userId, {
+        const appliedServerVersion = await applyServerVersionToLocalProfile(sending.userId, {
           profileUpdatedAt: result.profileUpdatedAt,
           allergiesUpdatedAt: result.allergiesUpdatedAt,
           settingsUpdatedAt: result.settingsUpdatedAt,
           profileImageAssetId: result.profileImageAssetId,
           profileImageRenderUrl: result.profileImageRenderUrl,
         });
-        if (result.settings) {
-          await applyServerSettingsToLocalProfile(sending.userId, result.settings);
-        }
+        const appliedServerSettings = result.settings
+          ? await applyServerSettingsToLocalProfile(sending.userId, result.settings)
+          : false;
         if (result.historyItem) {
           await applyServerHistoryItemToLocalAnalyses(sending.userId, result.historyItem);
         }
         await saveQueueOperation(synced);
+        if (appliedServerVersion || appliedServerSettings) {
+          publishUserProfileUpdated(sending.userId, 'sync_apply');
+        }
       } catch (error) {
         const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;

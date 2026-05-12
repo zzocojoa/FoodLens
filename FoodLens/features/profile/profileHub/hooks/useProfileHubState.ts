@@ -361,6 +361,7 @@ export const useProfileHubState = (
                         userId,
                         name,
                         image: image || '',
+                        imageChanged: imageDirtyRef.current,
                         travelerLanguage,
                         uiLanguage,
                     });

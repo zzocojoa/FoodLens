@@ -158,6 +158,28 @@ describe('useProfileHubState conflict handling', () => {
     alertSpy.mockRestore();
   });
 
+  it('shows a save error and keeps the sheet open when profile update fails before sync', async () => {
+    const saveError = new Error('copy failed');
+    mockUpdateProfile.mockRejectedValueOnce(saveError);
+    mockGetManualMergeConflictOperationsForUser.mockClear();
+    const { result } = await renderProfileHubState(false);
+    const onUpdate = jest.fn();
+    const onClose = jest.fn();
+
+    await act(async () => {
+      await result.current.handleUpdate(onUpdate, onClose);
+    });
+
+    expect(mockGetManualMergeConflictOperationsForUser).not.toHaveBeenCalled();
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(mockShowTranslatedAlert).toHaveBeenCalledWith(expect.any(Function), {
+      titleKey: 'profile.alert.errorTitle',
+      messageKey: 'profile.alert.saveFailed',
+    });
+  });
+
   it('does not overwrite existing image when loaded profile has no image', async () => {
     mockLoadProfile.mockResolvedValue({
       uid: 'usr_profile',

@@ -64,6 +64,23 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
         self.assertIn("request_id", verify_body)
         return verify_body
 
+    @staticmethod
+    def _register_media_asset(
+        *,
+        user_id: str,
+        asset_id: str,
+        scope: str = "profile",
+    ) -> dict[str, object]:
+        return app.state.auth_service.register_media_asset(
+            user_id=user_id,
+            scope=scope,
+            mime_type="image/jpeg",
+            size_bytes=1234,
+            sha256="b" * 64,
+            object_key=f"media/{user_id}/{scope}/{asset_id}/original.jpg",
+            asset_id=asset_id,
+        )
+
     def test_me_endpoints_roundtrip_profile_allergies_settings_history(self):
         with TestClient(app) as client:
             session = self._signup_and_verify(client, email=self._unique_email("phase2-roundtrip"))
@@ -271,6 +288,10 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(legacy_profile.status_code, 200)
             self.assertIsNone(legacy_profile.json()["profile"]["profile_image_url"])
 
+            self._register_media_asset(
+                user_id=user_id,
+                asset_id="asset_profile_1",
+            )
             asset_profile = client.put(
                 "/me/profile",
                 json={
@@ -393,6 +414,86 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 history_entries["history-asset"]["image_render_url"],
             )
             self.assertIsNone(history_entries["history-legacy-local"].get("imageUri"))
+
+    def test_profile_image_asset_id_requires_media_owner(self):
+        with TestClient(app) as client:
+            session_a = self._signup_and_verify(client, email=self._unique_email("phase2-profile-asset-a"))
+            session_b = self._signup_and_verify(client, email=self._unique_email("phase2-profile-asset-b"))
+            headers_a = _auth_headers(session_a["access_token"])
+            user_id_a = str(session_a["user"]["id"])
+            user_id_b = str(session_b["user"]["id"])
+
+            owned_asset = self._register_media_asset(
+                user_id=user_id_a,
+                asset_id="asset_profile_owned",
+            )
+            foreign_asset = self._register_media_asset(
+                user_id=user_id_b,
+                asset_id="asset_profile_foreign",
+            )
+            history_asset = self._register_media_asset(
+                user_id=user_id_a,
+                asset_id="asset_history_owned",
+                scope="history",
+            )
+
+            unknown_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_asset_id": "asset_profile_unknown",
+                },
+                headers=headers_a,
+            )
+            self.assertEqual(unknown_profile.status_code, 404)
+            self.assertEqual(unknown_profile.json()["detail"]["code"], "AUTH_MEDIA_NOT_FOUND")
+            profile_after_unknown = client.get("/me/profile", headers=headers_a)
+            self.assertEqual(profile_after_unknown.status_code, 200)
+            self.assertIsNone(profile_after_unknown.json()["profile"]["profile_image_asset_id"])
+
+            foreign_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_asset_id": foreign_asset["asset_id"],
+                },
+                headers=headers_a,
+            )
+            self.assertEqual(foreign_profile.status_code, 403)
+            self.assertEqual(foreign_profile.json()["detail"]["code"], "AUTH_MEDIA_FORBIDDEN")
+            profile_after_foreign = client.get("/me/profile", headers=headers_a)
+            self.assertEqual(profile_after_foreign.status_code, 200)
+            self.assertIsNone(profile_after_foreign.json()["profile"]["profile_image_asset_id"])
+
+            history_scope_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_asset_id": history_asset["asset_id"],
+                },
+                headers=headers_a,
+            )
+            self.assertEqual(history_scope_profile.status_code, 400)
+            self.assertEqual(
+                history_scope_profile.json()["detail"]["code"],
+                "AUTH_MEDIA_SCOPE_INVALID",
+            )
+            profile_after_history_scope = client.get("/me/profile", headers=headers_a)
+            self.assertEqual(profile_after_history_scope.status_code, 200)
+            self.assertIsNone(profile_after_history_scope.json()["profile"]["profile_image_asset_id"])
+
+            owned_profile = client.put(
+                "/me/profile",
+                json={
+                    "profile_image_asset_id": owned_asset["asset_id"],
+                },
+                headers=headers_a,
+            )
+            self.assertEqual(owned_profile.status_code, 200)
+            owned_profile_body = owned_profile.json()["profile"]
+            self.assertEqual(owned_profile_body["profile_image_asset_id"], owned_asset["asset_id"])
+            self.assertTrue(
+                owned_profile_body["profile_image_render_url"].startswith(
+                    "http://testserver/media/render/asset_profile_owned"
+                )
+            )
 
     def test_history_idempotency_isolated_by_user(self):
         with TestClient(app) as client:

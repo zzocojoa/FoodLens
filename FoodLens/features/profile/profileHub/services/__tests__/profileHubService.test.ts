@@ -116,25 +116,41 @@ describe('profileHubService.updateProfile', () => {
     );
   });
 
-  it('keeps the original Android local image URI when persistence falls back to the source URI', async () => {
+  it('does not save the profile when image persistence fails', async () => {
     const androidLocalImageUri = 'content://media/external/images/media/456';
-    mockPersistProfileImageIfNeeded.mockResolvedValueOnce(androidLocalImageUri);
+    const persistenceError = new Error('copy failed');
+    mockPersistProfileImageIfNeeded.mockRejectedValueOnce(persistenceError);
 
-    await profileHubService.updateProfile({
+    await expect(profileHubService.updateProfile({
       userId: 'usr_1',
       name: 'Tester',
       image: androidLocalImageUri,
       uiLanguage: 'ko-KR',
-    });
+    })).rejects.toThrow(persistenceError);
 
     expect(mockPersistProfileImageIfNeeded).toHaveBeenCalledWith(androidLocalImageUri);
+    expect(mockCreateOrUpdateProfileDeferredSync).not.toHaveBeenCalled();
+    expect(mockSetI18nSettings).not.toHaveBeenCalled();
+  });
+
+  it('does not repersist the existing image when only profile text changes', async () => {
+    const existingImageUri = 'content://media/external/images/media/existing';
+
+    await profileHubService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: existingImageUri,
+      imageChanged: false,
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockPersistProfileImageIfNeeded).not.toHaveBeenCalled();
     expect(mockCreateOrUpdateProfileDeferredSync).toHaveBeenCalledWith(
       'usr_1',
       'user@example.com',
-      expect.objectContaining({
+      {
         name: 'Tester',
-        profileImage: androidLocalImageUri,
-      })
+      }
     );
   });
 

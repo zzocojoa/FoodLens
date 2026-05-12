@@ -82,6 +82,18 @@ const buildSelectedDatePatch = (date: Date) => ({
   },
 });
 
+const createDeferred = <T,>() => {
+  let resolvePromise: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve: resolvePromise,
+  };
+};
+
 describe('useHomeDashboard profile update subscription', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -412,6 +424,165 @@ describe('useHomeDashboard profile update subscription', () => {
     });
 
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates and refreshes immediately on focus after missing a profile update while blurred', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    const updatedProfile = {
+      uid: 'usr_home',
+      name: 'Updated Tester',
+      email: 'updated@example.com',
+      safetyProfile: {
+        allergies: ['egg', 'milk'],
+        dietaryRestrictions: ['vegan'],
+        severityMap: {},
+      },
+      settings: {
+        language: 'en',
+        autoPlayAudio: false,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+
+    const { rerender } = renderHook(
+      ({ focused }: { focused: boolean }) => {
+        mockIsFocused = focused;
+        return useHomeDashboard();
+      },
+      {
+        initialProps: { focused: true },
+      }
+    );
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalled();
+    });
+    mockSafeStorageGet.mockClear();
+    mockSafeStorageGet.mockResolvedValue(updatedProfile);
+    mockFetchHomeDashboardData.mockResolvedValueOnce({
+      recentData: [],
+      allHistory: [],
+      profile: updatedProfile,
+      weeklyStats: [],
+      safeCount: 0,
+    });
+
+    rerender({ focused: false });
+
+    act(() => {
+      jest.advanceTimersByTime(500);
+      listener?.('server_pull');
+    });
+
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    expect(mockSafeStorageGet).not.toHaveBeenCalled();
+
+    rerender({ focused: true });
+
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalledTimes(1);
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('keeps a missed profile refresh queued when focus returns during an in-flight load', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    const initialProfile = {
+      uid: 'usr_home',
+      name: 'Initial Tester',
+      email: 'initial@example.com',
+      safetyProfile: {
+        allergies: ['egg'],
+        dietaryRestrictions: ['vegan'],
+        severityMap: {},
+      },
+      settings: {
+        language: 'en',
+        autoPlayAudio: false,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedProfile = {
+      ...initialProfile,
+      name: 'Updated Tester',
+      safetyProfile: {
+        allergies: ['egg', 'milk'],
+        dietaryRestrictions: ['vegan'],
+        severityMap: {},
+      },
+    };
+    const initialDashboard = createDeferred<{
+      recentData: never[];
+      allHistory: never[];
+      profile: typeof initialProfile;
+      weeklyStats: never[];
+      safeCount: number;
+    }>();
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+    mockFetchHomeDashboardData
+      .mockImplementationOnce(() => initialDashboard.promise)
+      .mockResolvedValueOnce({
+        recentData: [],
+        allHistory: [],
+        profile: updatedProfile,
+        weeklyStats: [],
+        safeCount: 0,
+      });
+
+    const { rerender } = renderHook(
+      ({ focused }: { focused: boolean }) => {
+        mockIsFocused = focused;
+        return useHomeDashboard();
+      },
+      {
+        initialProps: { focused: true },
+      }
+    );
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+    mockSafeStorageGet.mockClear();
+    mockSafeStorageGet.mockResolvedValue(updatedProfile);
+
+    rerender({ focused: false });
+    act(() => {
+      listener?.('server_pull');
+    });
+    rerender({ focused: true });
+
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalledTimes(1);
+    });
+    expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      initialDashboard.resolve({
+        recentData: [],
+        allHistory: [],
+        profile: initialProfile,
+        weeklyStats: [],
+        safeCount: 0,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('cancels pending refresh timer on unmount', async () => {

@@ -123,6 +123,8 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const lastLoadedAtRef = useRef(0);
   const isFocusedRef = useRef(isFocused);
   const dashboardRefreshTaskRef = useRef<{ cancel?: () => void } | null>(null);
+  const hasMissedProfileUpdateRef = useRef(false);
+  const shouldRefreshAfterLoadRef = useRef(false);
   const pendingSelectedDateWriteIdsRef = useRef<Set<number>>(new Set<number>());
   const nextSelectedDateWriteIdRef = useRef(0);
 
@@ -155,6 +157,37 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       profileRefreshTimerRef.current = null;
     }
   }, [isFocused]);
+
+  const hydrateProfileFromCache = useCallback(async () => {
+    if (profileHydrationInFlightRef.current) {
+      return;
+    }
+    profileHydrationInFlightRef.current = true;
+    try {
+      const userId = getCurrentUserIdSnapshot();
+      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+      if (!profile) return;
+      if (!isFocusedRef.current) {
+        return;
+      }
+
+      setUserProfile((previous) => {
+        if (!shouldKeepExistingProfileImage(previous, profile)) {
+          return profile;
+        }
+        return {
+          ...profile,
+          profileImage: previous?.profileImage || profile.profileImage,
+          photoURL: previous?.profileImage || profile.profileImage,
+        };
+      });
+      setAllergyCount(getProfileRestrictionCount(profile));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      profileHydrationInFlightRef.current = false;
+    }
+  }, []);
 
   const loadDashboardData = useCallback(async () => {
     if (loadInFlightRef.current) {
@@ -202,8 +235,14 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       console.error(error);
     } finally {
       loadInFlightRef.current = false;
+      if (shouldRefreshAfterLoadRef.current && isFocusedRef.current) {
+        shouldRefreshAfterLoadRef.current = false;
+        hasMissedProfileUpdateRef.current = false;
+        void hydrateProfileFromCache();
+        void loadDashboardData();
+      }
     }
-  }, []);
+  }, [hydrateProfileFromCache]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -231,37 +270,6 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       unsubscribe();
     };
   }, [applyHistorySnapshot, isFocused]);
-
-  const hydrateProfileFromCache = useCallback(async () => {
-    if (profileHydrationInFlightRef.current) {
-      return;
-    }
-    profileHydrationInFlightRef.current = true;
-    try {
-      const userId = getCurrentUserIdSnapshot();
-      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
-      if (!profile) return;
-      if (!isFocusedRef.current) {
-        return;
-      }
-
-      setUserProfile((previous) => {
-        if (!shouldKeepExistingProfileImage(previous, profile)) {
-          return profile;
-        }
-        return {
-          ...profile,
-          profileImage: previous?.profileImage || profile.profileImage,
-          photoURL: previous?.profileImage || profile.profileImage,
-        };
-      });
-      setAllergyCount(getProfileRestrictionCount(profile));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      profileHydrationInFlightRef.current = false;
-    }
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -307,8 +315,18 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       hasRequestedInitialLoadRef.current &&
       !hasSkippedInitialFocusRefreshRef.current &&
       lastLoadedAtRef.current <= 0;
+    const hasMissedProfileUpdate = hasMissedProfileUpdateRef.current;
 
-    if (shouldSkipInitialFocusRefresh) {
+    if (hasMissedProfileUpdate) {
+      void hydrateProfileFromCache();
+      if (loadInFlightRef.current) {
+        shouldRefreshAfterLoadRef.current = true;
+        return;
+      }
+      hasMissedProfileUpdateRef.current = false;
+      shouldRefreshAfterLoadRef.current = false;
+      void loadDashboardData();
+    } else if (shouldSkipInitialFocusRefresh) {
       hasSkippedInitialFocusRefreshRef.current = true;
     } else if (
       hasRequestedInitialLoadRef.current &&
@@ -329,7 +347,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         dashboardRefreshTaskRef.current = null;
       }
     };
-  }, [isFocused, loadDashboardData]);
+  }, [hydrateProfileFromCache, isFocused, loadDashboardData]);
 
   useEffect(() => {
     const userId = getCurrentUserIdSnapshot();
@@ -338,15 +356,18 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         return;
       }
 
+      if (reason === 'client_state_write') {
+        return;
+      }
+
       if (!isFocusedRef.current) {
+        hasMissedProfileUpdateRef.current = true;
         return;
       }
 
       if (loadInFlightRef.current) {
-        return;
-      }
-
-      if (reason === 'client_state_write') {
+        hasMissedProfileUpdateRef.current = true;
+        shouldRefreshAfterLoadRef.current = true;
         return;
       }
 

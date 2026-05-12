@@ -51,20 +51,22 @@ export const profileHubService = {
     userId: string;
     name: string;
     image?: string;
+    imageChanged?: boolean;
     travelerLanguage?: string;
     uiLanguage?: string;
   }) {
     const imageInput = params.image?.trim() || '';
-    const shouldLoadExistingProfile = !imageInput || !params.uiLanguage;
+    const shouldPersistImage = params.imageChanged !== false;
+    const shouldLoadExistingProfile = (shouldPersistImage && !imageInput) || !params.uiLanguage;
     const existing = shouldLoadExistingProfile
       ? await UserService.getUserProfile(params.userId, {
           allowBackgroundRefresh: false,
         })
       : null;
-    const imageToPersist = imageInput || existing?.profileImage || '';
-    const profileImageToSave = imageToPersist
+    const imageToPersist = shouldPersistImage ? imageInput || existing?.profileImage || '' : '';
+    const profileImageToSave = shouldPersistImage && imageToPersist
       ? await persistProfileImageIfNeeded(imageToPersist)
-      : '';
+      : undefined;
     const normalizedUiLanguage = normalizeCanonicalLocale(
       params.uiLanguage || existing?.settings?.language || 'auto'
     );
@@ -74,7 +76,7 @@ export const profileHubService = {
       // Avoid resending potentially stale settings payload from profile update path.
       await UserService.CreateOrUpdateProfileDeferredSync(params.userId, 'user@example.com', {
         name: params.name,
-        profileImage: profileImageToSave,
+        ...(profileImageToSave !== undefined ? { profileImage: profileImageToSave } : {}),
       });
     } catch (error) {
       if (isDeferredPhase2SyncError(error)) {

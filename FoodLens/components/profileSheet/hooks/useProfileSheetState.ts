@@ -339,6 +339,7 @@ export const useProfileSheetState = (userId: string) => {
                         userId,
                         name,
                         image: image || '',
+                        imageChanged: imageDirtyRef.current,
                         travelerLanguage,
                         uiLanguage,
                     });
