@@ -1,9 +1,11 @@
 import NetInfo from '@react-native-community/netinfo';
 import { waitFor } from '@testing-library/react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import type { UserProfile } from '@/models/User';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
 import { SafeStorage } from '@/services/storage';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 import {
   __resetPhase2SettingsDispatchDedupeForTests,
@@ -221,6 +223,142 @@ describe('phase2SyncQueue', () => {
     expect(userA?.state).toBe('synced');
     expect(userA?.requestId).toBe('req-profile-a');
     expect(userB?.state).toBe('pending');
+  });
+
+  it('publishes sync_apply after applying server profile version locally', async () => {
+    const appliedProfileVersions: string[] = [];
+    let profileState: UserProfile = {
+      uid: 'usr_a',
+      email: 'a@example.com',
+      name: 'A',
+      profileImage: '',
+      safetyProfile: {
+        allergies: [],
+        dietaryRestrictions: [],
+        severityMap: {},
+        dislikedIngredients: [],
+      },
+      settings: {
+        language: 'en-US',
+        autoPlayAudio: false,
+      },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      syncVersions: {
+        profileUpdatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    };
+    queueState = [pendingProfileOperation('op-profile-version-a', 'usr_a')];
+    mockedPhase2Api.putProfile.mockResolvedValueOnce({
+      profile: {
+        user_id: 'usr_a',
+        email: 'a@example.com',
+        updated_at: '2026-03-20T00:00:00.000Z',
+      },
+      requestId: 'req-profile-version-a',
+    });
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        return queueState as unknown;
+      }
+      if (key === '@foodlens_user_profile:usr_a') {
+        return profileState;
+      }
+      return fallback;
+    });
+    mockedSafeStorage.set.mockImplementation(async (key, value) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        queueState = value as Phase2SyncOperation[];
+        return;
+      }
+      if (key === '@foodlens_user_profile:usr_a') {
+        profileState = value as UserProfile;
+      }
+    });
+    const unsubscribe = subscribeUserProfileUpdated('usr_a', (reason) => {
+      appliedProfileVersions.push(`${reason}:${profileState.syncVersions?.profileUpdatedAt || ''}`);
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    unsubscribe();
+    expect(appliedProfileVersions).toEqual([
+      'sync_apply:2026-03-20T00:00:00.000Z',
+    ]);
+    expect(queueState[0].state).toBe('synced');
+  });
+
+  it('publishes sync_apply after applying server settings without updated_at', async () => {
+    const appliedReasons: string[] = [];
+    let profileState: UserProfile = {
+      uid: 'usr_a',
+      email: 'a@example.com',
+      name: 'A',
+      profileImage: '',
+      safetyProfile: {
+        allergies: [],
+        dietaryRestrictions: [],
+        severityMap: {},
+        dislikedIngredients: [],
+      },
+      settings: {
+        language: 'en-US',
+        autoPlayAudio: false,
+      },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    queueState = [
+      {
+        id: 'op-settings-without-updated-at',
+        userId: 'usr_a',
+        entity: 'settings',
+        state: 'pending',
+        payload: {
+          language: 'ko-KR',
+          auto_play_audio: true,
+        },
+        attempts: 0,
+        nextAttemptAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Phase2SyncOperation,
+    ];
+    mockedPhase2Api.putSettings.mockResolvedValueOnce({
+      settings: {
+        user_id: 'usr_a',
+        language: 'ko-KR',
+        auto_play_audio: true,
+      },
+      requestId: 'req-settings-without-updated-at',
+    });
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        return queueState as unknown;
+      }
+      if (key === '@foodlens_user_profile:usr_a') {
+        return profileState;
+      }
+      return fallback;
+    });
+    mockedSafeStorage.set.mockImplementation(async (key, value) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        queueState = value as Phase2SyncOperation[];
+        return;
+      }
+      if (key === '@foodlens_user_profile:usr_a') {
+        profileState = value as UserProfile;
+      }
+    });
+    const unsubscribe = subscribeUserProfileUpdated('usr_a', (reason) => {
+      appliedReasons.push(`${reason}:${profileState.settings.language}`);
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    unsubscribe();
+    expect(appliedReasons).toEqual(['sync_apply:ko-KR']);
+    expect(queueState[0].state).toBe('synced');
   });
 
   it('skips dispatch when no authenticated user is active', async () => {

@@ -51,19 +51,24 @@ export const profileSheetService = {
     userId: string;
     name: string;
     image?: string;
+    imageChanged?: boolean;
     travelerLanguage?: string;
     uiLanguage?: string;
   }) {
-    const existing = await UserService.getUserProfile(params.userId, {
-      allowBackgroundRefresh: false,
-    });
+    const shouldPersistImage = params.imageChanged !== false;
     const imageInput = params.image?.trim() || '';
-    const imageToPersist = imageInput || existing.profileImage || '';
-    const profileImageToSave = imageToPersist
+    const shouldLoadExistingProfile = (shouldPersistImage && !imageInput) || !params.uiLanguage;
+    const existing = shouldLoadExistingProfile
+      ? await UserService.getUserProfile(params.userId, {
+          allowBackgroundRefresh: false,
+        })
+      : null;
+    const imageToPersist = shouldPersistImage ? imageInput || existing?.profileImage || '' : '';
+    const profileImageToSave = shouldPersistImage && imageToPersist
       ? await persistProfileImageIfNeeded(imageToPersist)
-      : '';
+      : undefined;
     const normalizedUiLanguage = normalizeCanonicalLocale(
-      params.uiLanguage || existing.settings?.language || 'auto'
+      params.uiLanguage || existing?.settings?.language || 'auto'
     );
 
     try {
@@ -71,7 +76,7 @@ export const profileSheetService = {
       // Avoid resending potentially stale settings payload from profile update path.
       await UserService.CreateOrUpdateProfile(params.userId, 'user@example.com', {
         name: params.name,
-        profileImage: profileImageToSave,
+        ...(profileImageToSave !== undefined ? { profileImage: profileImageToSave } : {}),
       });
     } catch (error) {
       if (isDeferredPhase2SyncError(error)) {

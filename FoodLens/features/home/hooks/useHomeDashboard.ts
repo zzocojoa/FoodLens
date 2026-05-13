@@ -23,6 +23,7 @@ import {
 } from '@/services/user/clientStateService';
 import { fromLocalDateString, toLocalDateString } from '@/services/sync/clientState';
 import { queryClient } from '@/services/queryClient';
+import { resolveImageUri } from '@/services/imageStorage';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_FOCUS_REFRESH_STALE_MS = 15_000;
@@ -53,6 +54,24 @@ const shouldKeepExistingProfileImage = (
   return expiryMs - Date.now() > PROFILE_IMAGE_REUSE_BUFFER_MS;
 };
 
+const resolveProfileImageForDisplay = (profile: UserProfile): UserProfile => {
+  const profileImage = profile.profileImage?.trim();
+  if (!profileImage) {
+    return profile;
+  }
+
+  const resolvedImage = resolveImageUri(profileImage) ?? profileImage;
+  if (resolvedImage === profile.profileImage && profile.photoURL === profile.profileImage) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    profileImage: resolvedImage,
+    photoURL: resolvedImage,
+  };
+};
+
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
   allergyCount: number;
@@ -70,7 +89,8 @@ type UseHomeDashboardReturn = {
 
 const readInitialProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
-  return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  const profile = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  return profile ? resolveProfileImageForDisplay(profile) : null;
 };
 
 const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolean => {
@@ -123,6 +143,8 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   const lastLoadedAtRef = useRef(0);
   const isFocusedRef = useRef(isFocused);
   const dashboardRefreshTaskRef = useRef<{ cancel?: () => void } | null>(null);
+  const hasMissedProfileUpdateRef = useRef(false);
+  const shouldRefreshAfterLoadRef = useRef(false);
   const pendingSelectedDateWriteIdsRef = useRef<Set<number>>(new Set<number>());
   const nextSelectedDateWriteIdRef = useRef(0);
 
@@ -156,6 +178,38 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
     }
   }, [isFocused]);
 
+  const hydrateProfileFromCache = useCallback(async () => {
+    if (profileHydrationInFlightRef.current) {
+      return;
+    }
+    profileHydrationInFlightRef.current = true;
+    try {
+      const userId = getCurrentUserIdSnapshot();
+      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+      if (!profile) return;
+      if (!isFocusedRef.current) {
+        return;
+      }
+      const displayProfile = resolveProfileImageForDisplay(profile);
+
+      setUserProfile((previous) => {
+        if (!shouldKeepExistingProfileImage(previous, displayProfile)) {
+          return displayProfile;
+        }
+        return {
+          ...displayProfile,
+          profileImage: previous?.profileImage || displayProfile.profileImage,
+          photoURL: previous?.profileImage || displayProfile.profileImage,
+        };
+      });
+      setAllergyCount(getProfileRestrictionCount(displayProfile));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      profileHydrationInFlightRef.current = false;
+    }
+  }, []);
+
   const loadDashboardData = useCallback(async () => {
     if (loadInFlightRef.current) {
       return;
@@ -178,6 +232,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       setSafeCount(safeCount);
 
       if (profile) {
+        const displayProfile = resolveProfileImageForDisplay(profile);
         const syncedSelectedDate = fromLocalDateString(profile.settings.clientState?.home?.selectedDate);
         if (syncedSelectedDate) {
           const syncedKey = toLocalDateString(syncedSelectedDate);
@@ -187,23 +242,29 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
           }
         }
         setUserProfile((previous) => {
-          if (!shouldKeepExistingProfileImage(previous, profile)) {
-            return profile;
+          if (!shouldKeepExistingProfileImage(previous, displayProfile)) {
+            return displayProfile;
           }
           return {
-            ...profile,
-            profileImage: previous?.profileImage || profile.profileImage,
-            photoURL: previous?.profileImage || profile.profileImage,
+            ...displayProfile,
+            profileImage: previous?.profileImage || displayProfile.profileImage,
+            photoURL: previous?.profileImage || displayProfile.profileImage,
           };
         });
-        setAllergyCount(getProfileRestrictionCount(profile));
+        setAllergyCount(getProfileRestrictionCount(displayProfile));
       }
     } catch (error) {
       console.error(error);
     } finally {
       loadInFlightRef.current = false;
+      if (shouldRefreshAfterLoadRef.current && isFocusedRef.current) {
+        shouldRefreshAfterLoadRef.current = false;
+        hasMissedProfileUpdateRef.current = false;
+        void hydrateProfileFromCache();
+        void loadDashboardData();
+      }
     }
-  }, []);
+  }, [hydrateProfileFromCache]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -231,37 +292,6 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       unsubscribe();
     };
   }, [applyHistorySnapshot, isFocused]);
-
-  const hydrateProfileFromCache = useCallback(async () => {
-    if (profileHydrationInFlightRef.current) {
-      return;
-    }
-    profileHydrationInFlightRef.current = true;
-    try {
-      const userId = getCurrentUserIdSnapshot();
-      const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
-      if (!profile) return;
-      if (!isFocusedRef.current) {
-        return;
-      }
-
-      setUserProfile((previous) => {
-        if (!shouldKeepExistingProfileImage(previous, profile)) {
-          return profile;
-        }
-        return {
-          ...profile,
-          profileImage: previous?.profileImage || profile.profileImage,
-          photoURL: previous?.profileImage || profile.profileImage,
-        };
-      });
-      setAllergyCount(getProfileRestrictionCount(profile));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      profileHydrationInFlightRef.current = false;
-    }
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -307,8 +337,18 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       hasRequestedInitialLoadRef.current &&
       !hasSkippedInitialFocusRefreshRef.current &&
       lastLoadedAtRef.current <= 0;
+    const hasMissedProfileUpdate = hasMissedProfileUpdateRef.current;
 
-    if (shouldSkipInitialFocusRefresh) {
+    if (hasMissedProfileUpdate) {
+      void hydrateProfileFromCache();
+      if (loadInFlightRef.current) {
+        shouldRefreshAfterLoadRef.current = true;
+        return;
+      }
+      hasMissedProfileUpdateRef.current = false;
+      shouldRefreshAfterLoadRef.current = false;
+      void loadDashboardData();
+    } else if (shouldSkipInitialFocusRefresh) {
       hasSkippedInitialFocusRefreshRef.current = true;
     } else if (
       hasRequestedInitialLoadRef.current &&
@@ -329,24 +369,24 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
         dashboardRefreshTaskRef.current = null;
       }
     };
-  }, [isFocused, loadDashboardData]);
+  }, [hydrateProfileFromCache, isFocused, loadDashboardData]);
 
   useEffect(() => {
     const userId = getCurrentUserIdSnapshot();
     const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
-      if (consumePendingSelectedDateWrite(pendingSelectedDateWriteIdsRef.current)) {
+      if (reason === 'client_state_write') {
+        consumePendingSelectedDateWrite(pendingSelectedDateWriteIdsRef.current);
         return;
       }
 
       if (!isFocusedRef.current) {
+        hasMissedProfileUpdateRef.current = true;
         return;
       }
 
       if (loadInFlightRef.current) {
-        return;
-      }
-
-      if (reason === 'client_state_write') {
+        hasMissedProfileUpdateRef.current = true;
+        shouldRefreshAfterLoadRef.current = true;
         return;
       }
 

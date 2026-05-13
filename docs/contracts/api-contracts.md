@@ -194,6 +194,8 @@
 - `current_trip_coordinates`
 - `expected_updated_at`
 
+`profile_image_asset_id`는 요청 사용자 본인이 소유한 `scope=profile` media asset만 허용합니다. `history` scope 자산이나 다른 사용자의 자산은 프로필 이미지로 참조할 수 없습니다.
+
 `PUT /me/settings` 주요 입력:
 
 - `language`

@@ -1,8 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { Platform } from 'react-native';
 import { saveImagePermanentlyOrThrow } from '@/services/imageStorage';
-import { pickGalleryImage } from '@/services/native/galleryPicker';
 import { showOpenSettingsAlert } from '@/services/ui/permissionDialogs';
 
 type ImagePickerPermissionDialogTexts = {
@@ -41,16 +39,7 @@ const resolveAssetUriForPersistence = async (
 export const persistProfileImageIfNeeded = async (image: string): Promise<string> => {
   if (isRemoteImage(image) || isDataImage(image)) return image;
 
-  let savedReference = image;
-  try {
-    savedReference = await saveImagePermanentlyOrThrow(image, 'Failed to save image.');
-  } catch (error) {
-    // Release on iOS may return ph:// URI that copyAsync cannot persist.
-    // Keep original URI to avoid dropping the user's profile photo update.
-    console.warn('[ProfileImage] Falling back to original URI without persistence:', error);
-  }
-
-  return savedReference;
+  return await saveImagePermanentlyOrThrow(image, 'Failed to save image.');
 };
 
 export const pickProfileImageUri = async (
@@ -78,10 +67,6 @@ export const pickProfileImageUri = async (
       console.error('Failed to save profile photo to gallery:', error);
     }
     return uri;
-  }
-
-  if (Platform.OS === 'android') {
-    return pickGalleryImage();
   }
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();

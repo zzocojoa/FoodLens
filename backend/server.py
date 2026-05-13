@@ -4470,6 +4470,21 @@ async def put_me_profile(payload: ProfileUpdateRequest, request: Request):
             if sanitized_profile_image_url is None:
                 sanitized_profile_image_url = ""
 
+        if "profile_image_asset_id" in fields_set:
+            profile_image_asset_id = str(payload.profile_image_asset_id or "").strip()
+            if profile_image_asset_id:
+                media_asset = auth_service.get_media_asset(
+                    user_id=user.user_id,
+                    asset_id=profile_image_asset_id,
+                )
+                if media_asset.get("scope") != "profile":
+                    raise AuthServiceError(
+                        code="AUTH_MEDIA_SCOPE_INVALID",
+                        message="profile_image_asset_id must reference profile media.",
+                        status_code=400,
+                        user_id=user.user_id,
+                    )
+
         profile = auth_service.update_profile(
             user_id=user.user_id,
             display_name=payload.display_name,

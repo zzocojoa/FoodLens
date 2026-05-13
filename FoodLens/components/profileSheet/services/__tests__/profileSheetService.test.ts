@@ -81,6 +81,43 @@ describe('profileSheetService.updateProfile', () => {
       targetLanguage: null,
     });
   });
+
+  it('does not save the profile when image persistence fails', async () => {
+    const persistenceError = new Error('copy failed');
+    mockPersistProfileImageIfNeeded.mockRejectedValueOnce(persistenceError);
+
+    await expect(
+      profileSheetService.updateProfile({
+        userId: 'usr_1',
+        name: 'Tester',
+        image: 'content://media/external/images/media/456',
+        uiLanguage: 'ko-KR',
+      })
+    ).rejects.toThrow(persistenceError);
+
+    expect(mockCreateOrUpdateProfile).not.toHaveBeenCalled();
+    expect(mockSetI18nSettings).not.toHaveBeenCalled();
+  });
+
+  it('does not repersist the existing image when only profile text changes', async () => {
+    await profileSheetService.updateProfile({
+      userId: 'usr_1',
+      name: 'Tester',
+      image: 'content://media/external/images/media/existing',
+      imageChanged: false,
+      uiLanguage: 'ko-KR',
+    });
+
+    expect(mockGetUserProfile).not.toHaveBeenCalled();
+    expect(mockPersistProfileImageIfNeeded).not.toHaveBeenCalled();
+    expect(mockCreateOrUpdateProfile).toHaveBeenCalledWith(
+      'usr_1',
+      'user@example.com',
+      {
+        name: 'Tester',
+      }
+    );
+  });
 });
 
 describe('profileSheetService.updateSettingsLanguage', () => {
