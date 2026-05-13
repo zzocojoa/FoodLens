@@ -23,6 +23,7 @@ import {
 } from '@/services/user/clientStateService';
 import { fromLocalDateString, toLocalDateString } from '@/services/sync/clientState';
 import { queryClient } from '@/services/queryClient';
+import { resolveImageUri } from '@/services/imageStorage';
 
 const PROFILE_REFRESH_DEBOUNCE_MS = 250;
 const DASHBOARD_FOCUS_REFRESH_STALE_MS = 15_000;
@@ -53,6 +54,24 @@ const shouldKeepExistingProfileImage = (
   return expiryMs - Date.now() > PROFILE_IMAGE_REUSE_BUFFER_MS;
 };
 
+const resolveProfileImageForDisplay = (profile: UserProfile): UserProfile => {
+  const profileImage = profile.profileImage?.trim();
+  if (!profileImage) {
+    return profile;
+  }
+
+  const resolvedImage = resolveImageUri(profileImage) ?? profileImage;
+  if (resolvedImage === profile.profileImage && profile.photoURL === profile.profileImage) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    profileImage: resolvedImage,
+    photoURL: resolvedImage,
+  };
+};
+
 type UseHomeDashboardReturn = {
   activeModal: HomeModalType;
   allergyCount: number;
@@ -70,7 +89,8 @@ type UseHomeDashboardReturn = {
 
 const readInitialProfileSnapshot = (): UserProfile | null => {
   const userId = getCurrentUserIdSnapshot();
-  return SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  const profile = SafeStorage.getSync<UserProfile | null>(getUserStorageKey(userId), null);
+  return profile ? resolveProfileImageForDisplay(profile) : null;
 };
 
 const isRefreshStale = (lastLoadedAtMs: number, refreshWindowMs: number): boolean => {
@@ -170,18 +190,19 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       if (!isFocusedRef.current) {
         return;
       }
+      const displayProfile = resolveProfileImageForDisplay(profile);
 
       setUserProfile((previous) => {
-        if (!shouldKeepExistingProfileImage(previous, profile)) {
-          return profile;
+        if (!shouldKeepExistingProfileImage(previous, displayProfile)) {
+          return displayProfile;
         }
         return {
-          ...profile,
-          profileImage: previous?.profileImage || profile.profileImage,
-          photoURL: previous?.profileImage || profile.profileImage,
+          ...displayProfile,
+          profileImage: previous?.profileImage || displayProfile.profileImage,
+          photoURL: previous?.profileImage || displayProfile.profileImage,
         };
       });
-      setAllergyCount(getProfileRestrictionCount(profile));
+      setAllergyCount(getProfileRestrictionCount(displayProfile));
     } catch (error) {
       console.error(error);
     } finally {
@@ -211,6 +232,7 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
       setSafeCount(safeCount);
 
       if (profile) {
+        const displayProfile = resolveProfileImageForDisplay(profile);
         const syncedSelectedDate = fromLocalDateString(profile.settings.clientState?.home?.selectedDate);
         if (syncedSelectedDate) {
           const syncedKey = toLocalDateString(syncedSelectedDate);
@@ -220,16 +242,16 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
           }
         }
         setUserProfile((previous) => {
-          if (!shouldKeepExistingProfileImage(previous, profile)) {
-            return profile;
+          if (!shouldKeepExistingProfileImage(previous, displayProfile)) {
+            return displayProfile;
           }
           return {
-            ...profile,
-            profileImage: previous?.profileImage || profile.profileImage,
-            photoURL: previous?.profileImage || profile.profileImage,
+            ...displayProfile,
+            profileImage: previous?.profileImage || displayProfile.profileImage,
+            photoURL: previous?.profileImage || displayProfile.profileImage,
           };
         });
-        setAllergyCount(getProfileRestrictionCount(profile));
+        setAllergyCount(getProfileRestrictionCount(displayProfile));
       }
     } catch (error) {
       console.error(error);
@@ -352,11 +374,8 @@ export const useHomeDashboard = (): UseHomeDashboardReturn => {
   useEffect(() => {
     const userId = getCurrentUserIdSnapshot();
     const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
-      if (consumePendingSelectedDateWrite(pendingSelectedDateWriteIdsRef.current)) {
-        return;
-      }
-
       if (reason === 'client_state_write') {
+        consumePendingSelectedDateWrite(pendingSelectedDateWriteIdsRef.current);
         return;
       }
 

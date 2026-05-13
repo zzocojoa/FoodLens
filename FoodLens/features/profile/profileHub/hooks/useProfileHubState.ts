@@ -91,56 +91,87 @@ export const useProfileHubState = (
     const [loading, setLoading] = useState(false);
     const profileImageAssetIdRef = useRef<string | undefined>(initialAssetId);
     const loadProfileRequestIdRef = useRef(0);
+    const profileHydrationRequestIdRef = useRef(0);
     const languageSaveRequestIdRef = useRef(0);
     const travelerLanguageSaveRequestIdRef = useRef(0);
     const travelerLanguageSaveInFlightRef = useRef<Promise<void> | null>(null);
     const pendingTravelerLanguageSaveRef = useRef<string | undefined>(initialTravelerLanguage);
+    const pendingUiLanguageSaveRef = useRef<CanonicalLocale>(initialUiLanguage);
     const nameDirtyRef = useRef(false);
     const imageDirtyRef = useRef(false);
     const travelerLanguageDirtyRef = useRef(false);
+    const uiLanguageDirtyRef = useRef(false);
+
+    const applyProfileSnapshot = useCallback((profile: UserProfile) => {
+        if (!nameDirtyRef.current) {
+            setNameState(profile.name || DEFAULT_NAME);
+        }
+
+        const nextImage = resolveProfileImageReference(profile.profileImage);
+        const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
+        setImageState((previous) => {
+            if (imageDirtyRef.current) return previous;
+            if (!nextImage) return previous;
+            if (shouldKeepExistingProfileImage(
+                previous,
+                profileImageAssetIdRef.current,
+                nextImage,
+                nextAssetId,
+            )) {
+                return previous;
+            }
+
+            return nextImage;
+        });
+        profileImageAssetIdRef.current = nextAssetId;
+
+        if (!travelerLanguageDirtyRef.current) {
+            pendingTravelerLanguageSaveRef.current = profile.settings?.targetLanguage;
+            setTravelerLanguageState(profile.settings?.targetLanguage);
+        }
+
+        const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);
+        const shouldApplyUiLanguage =
+            !uiLanguageDirtyRef.current || pendingUiLanguageSaveRef.current === normalizedLanguage;
+        if (shouldApplyUiLanguage) {
+            uiLanguageDirtyRef.current = false;
+            pendingUiLanguageSaveRef.current = normalizedLanguage;
+            setUiLanguageState((previous) => {
+                if (previous !== normalizedLanguage) {
+                    void setUiLanguageInStore(normalizedLanguage);
+                }
+
+                return normalizedLanguage;
+            });
+        }
+    }, []);
+
+    const hydrateProfileFromCache = useCallback(async () => {
+        const requestId = ++profileHydrationRequestIdRef.current;
+        const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
+        if (!profile) return;
+        if (requestId !== profileHydrationRequestIdRef.current) return;
+
+        applyProfileSnapshot(profile);
+    }, [applyProfileSnapshot, userId]);
 
     useEffect(() => {
         let cancelled = false;
         const loadLocalSnapshot = async () => {
+            const requestId = ++profileHydrationRequestIdRef.current;
             const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(userId), null);
             if (cancelled || !profile) return;
+            if (requestId !== profileHydrationRequestIdRef.current) return;
 
-            const localImage = resolveProfileImageReference(profile.profileImage);
-            if (localImage) {
-                setImageState((previous) => {
-                    if (imageDirtyRef.current) return previous;
-                    return previous || localImage;
-                });
-                profileImageAssetIdRef.current = profile.profileImageAssetId?.trim() || undefined;
-            }
-            const localName = profile.name?.trim();
-            if (localName) {
-                setNameState((previous) => {
-                    if (nameDirtyRef.current) return previous;
-                    return previous === DEFAULT_NAME ? localName : previous;
-                });
-            }
-            if (profile.settings) {
-                setTravelerLanguageState((previous) => {
-                    if (travelerLanguageDirtyRef.current) return previous;
-                    pendingTravelerLanguageSaveRef.current = profile.settings?.targetLanguage;
-                    return profile.settings?.targetLanguage;
-                });
-            }
-            if (profile.settings?.language) {
-                setUiLanguageState((previous) =>
-                    previous === 'auto'
-                        ? normalizeCanonicalLocale(profile.settings?.language)
-                        : previous
-                );
-            }
+            applyProfileSnapshot(profile);
         };
 
         void loadLocalSnapshot();
         return () => {
             cancelled = true;
+            profileHydrationRequestIdRef.current += 1;
         };
-    }, [userId]);
+    }, [applyProfileSnapshot, userId]);
 
     const isSyncNotConfirmedError = useCallback(
         (error: unknown): boolean => error instanceof Error && error.message === 'PHASE2_SYNC_NOT_CONFIRMED',
@@ -290,41 +321,14 @@ export const useProfileHubState = (
             return;
         }
         if (profile) {
-            if (!nameDirtyRef.current) {
-                setNameState(profile.name || DEFAULT_NAME);
-            }
-            const nextImage = resolveProfileImageReference(profile.profileImage);
-            const nextAssetId = profile.profileImageAssetId?.trim() || undefined;
-            setImageState((previous) => {
-                if (imageDirtyRef.current) return previous;
-                if (!nextImage) return previous;
-                if (shouldKeepExistingProfileImage(
-                    previous,
-                    profileImageAssetIdRef.current,
-                    nextImage,
-                    nextAssetId,
-                )) {
-                    return previous;
-                }
-                return nextImage;
-            });
-            profileImageAssetIdRef.current = nextAssetId;
-            if (!travelerLanguageDirtyRef.current) {
-                pendingTravelerLanguageSaveRef.current = profile.settings?.targetLanguage;
-                setTravelerLanguageState(profile.settings?.targetLanguage);
-            }
-            const normalizedLanguage = normalizeCanonicalLocale(profile.settings?.language);
-            setUiLanguageState((previous) => {
-                if (previous !== normalizedLanguage) {
-                    void setUiLanguageInStore(normalizedLanguage);
-                }
-                return normalizedLanguage;
-            });
+            applyProfileSnapshot(profile);
         }
-    }, [userId]);
+    }, [applyProfileSnapshot, userId]);
 
     const setUiLanguage = useCallback((value: CanonicalLocale) => {
         const normalized = normalizeCanonicalLocale(value);
+        uiLanguageDirtyRef.current = true;
+        pendingUiLanguageSaveRef.current = normalized;
         setUiLanguageState(normalized);
         void setUiLanguageInStore(normalized);
         const requestId = ++languageSaveRequestIdRef.current;
@@ -333,10 +337,20 @@ export const useProfileHubState = (
                 userId,
                 uiLanguage: normalized,
             })
+            .then(() => {
+                if (requestId !== languageSaveRequestIdRef.current) {
+                    return;
+                }
+
+                uiLanguageDirtyRef.current = false;
+                pendingUiLanguageSaveRef.current = normalized;
+            })
             .catch((error) => {
                 if (requestId !== languageSaveRequestIdRef.current) {
                     return;
                 }
+                uiLanguageDirtyRef.current = false;
+                pendingUiLanguageSaveRef.current = normalized;
                 console.warn('[ProfileHub] settings language auto-save failed', error);
             });
     }, [userId]);
@@ -432,6 +446,7 @@ export const useProfileHubState = (
         setUiLangModalVisible,
         loading,
         loadProfile,
+        hydrateProfileFromCache,
         invalidateProfileLoad,
         resetLocalEdits,
         handleUpdate,

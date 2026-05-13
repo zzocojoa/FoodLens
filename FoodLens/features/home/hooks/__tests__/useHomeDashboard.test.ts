@@ -16,6 +16,7 @@ const mockBuildHomeSelectedDatePatch = jest.fn();
 const mockUpdateUserClientState = jest.fn();
 const mockShowTranslatedAlert = jest.fn();
 const mockDeleteAnalysis = jest.fn();
+const mockResolveImageUri = jest.fn();
 let mockIsFocused = true;
 
 jest.mock('@react-navigation/native', () => {
@@ -54,6 +55,10 @@ jest.mock('@/services/user/clientStateService', () => ({
   readHomeSelectedDateSnapshot: (...args: unknown[]) => mockReadHomeSelectedDateSnapshot(...args),
   buildHomeSelectedDatePatch: (...args: unknown[]) => mockBuildHomeSelectedDatePatch(...args),
   updateUserClientState: (...args: unknown[]) => mockUpdateUserClientState(...args),
+}));
+
+jest.mock('@/services/imageStorage', () => ({
+  resolveImageUri: (...args: unknown[]) => mockResolveImageUri(...args),
 }));
 
 jest.mock('@/features/i18n', () => ({
@@ -130,6 +135,17 @@ describe('useHomeDashboard profile update subscription', () => {
     mockGetProfileRestrictionCount.mockReturnValue(2);
     mockSafeStorageGetSync.mockReturnValue(null);
     mockSafeStorageGet.mockResolvedValue(null);
+    mockResolveImageUri.mockImplementation((value: string) => {
+      if (typeof value !== 'string' || value.length === 0) {
+        return null;
+      }
+
+      if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('file://')) {
+        return value;
+      }
+
+      return `file:///documents/foodlens_images/${value}`;
+    });
     mockReadHomeSelectedDateSnapshot.mockReturnValue(null);
     mockBuildHomeSelectedDatePatch.mockImplementation((date: Date) => buildSelectedDatePatch(date));
     mockSubscribeUserProfileUpdated.mockReturnValue(jest.fn());
@@ -393,6 +409,55 @@ describe('useHomeDashboard profile update subscription', () => {
     });
 
     expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not consume profile image events with pending selected-date writes', async () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    const updatedProfile = {
+      uid: 'usr_home',
+      name: 'Updated Tester',
+      email: 'updated@example.com',
+      profileImage: 'profile_updated.jpg',
+      safetyProfile: {
+        allergies: ['egg'],
+        dietaryRestrictions: ['vegan'],
+        severityMap: {},
+      },
+      settings: {
+        language: 'en',
+        autoPlayAudio: false,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, cb: typeof listener) => {
+      listener = cb;
+      return jest.fn();
+    });
+
+    const { result } = renderHook(() => useHomeDashboard());
+
+    await waitFor(() => {
+      expect(mockFetchHomeDashboardData).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalled();
+    });
+    mockSafeStorageGet.mockClear();
+    mockSafeStorageGet.mockResolvedValue(updatedProfile);
+
+    act(() => {
+      result.current.setSelectedDate(new Date('2026-04-25T12:00:00.000Z'));
+      listener?.('local_write');
+      jest.advanceTimersByTime(250);
+    });
+
+    await waitFor(() => {
+      expect(mockSafeStorageGet).toHaveBeenCalledTimes(1);
+      expect(result.current.userProfile?.profileImage).toBe(
+        'file:///documents/foodlens_images/profile_updated.jpg'
+      );
+    });
   });
 
   it('does not reload dashboard from profile updates while blurred', async () => {

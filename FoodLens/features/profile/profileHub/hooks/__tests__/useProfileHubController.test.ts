@@ -3,12 +3,14 @@ import { act, renderHook } from '@testing-library/react-native';
 import { useProfileHubController } from '../useProfileHubController';
 
 const mockLoadProfile = jest.fn();
+const mockHydrateProfileFromCache = jest.fn();
 const mockInvalidateProfileLoad = jest.fn();
 const mockResetLocalEdits = jest.fn();
 const mockSetTravelerLangModalVisible = jest.fn();
 const mockSetUiLangModalVisible = jest.fn();
 const mockOpenSheet = jest.fn();
 const mockRemoveAppStateListener = jest.fn();
+const mockSubscribeUserProfileUpdated = jest.fn();
 
 let capturedFocusEffect:
   | (() => void | (() => void))
@@ -23,6 +25,7 @@ jest.mock('@react-navigation/native', () => ({
 
 jest.mock('../useProfileHubState', () => ({
   useProfileHubState: () => ({
+    hydrateProfileFromCache: mockHydrateProfileFromCache,
     invalidateProfileLoad: mockInvalidateProfileLoad,
     loadProfile: mockLoadProfile,
     resetLocalEdits: mockResetLocalEdits,
@@ -39,12 +42,17 @@ jest.mock('../useModalSheetGesture', () => ({
   }),
 }));
 
+jest.mock('@/services/user/userProfileStore', () => ({
+  subscribeUserProfileUpdated: (...args: unknown[]) => mockSubscribeUserProfileUpdated(...args),
+}));
+
 describe('useProfileHubController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     capturedFocusEffect = null;
     capturedAppStateHandler = null;
+    mockSubscribeUserProfileUpdated.mockReturnValue(jest.fn());
     jest.spyOn(AppState, 'addEventListener').mockImplementation((eventType, handler) => {
       if (eventType === 'change') {
         capturedAppStateHandler = handler as (nextAppState: string) => void;
@@ -108,5 +116,39 @@ describe('useProfileHubController', () => {
     revisitCleanup?.();
 
     unmount();
+  });
+
+  it('hydrates cached profile immediately when profile update events are published', () => {
+    let listener: ((reason: 'local_write' | 'server_pull' | 'sync_apply' | 'client_state_write') => void) | null = null;
+    mockSubscribeUserProfileUpdated.mockImplementation((_userId: string, callback: typeof listener) => {
+      listener = callback;
+      return jest.fn();
+    });
+
+    renderHook(() =>
+      useProfileHubController({ userId: 'usr_profile', initialState: undefined })
+    );
+
+    expect(mockSubscribeUserProfileUpdated).toHaveBeenCalledWith('usr_profile', expect.any(Function));
+
+    act(() => {
+      listener?.('client_state_write');
+    });
+    expect(mockHydrateProfileFromCache).toHaveBeenCalledTimes(0);
+
+    act(() => {
+      listener?.('local_write');
+    });
+    expect(mockHydrateProfileFromCache).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      listener?.('server_pull');
+    });
+    expect(mockHydrateProfileFromCache).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      listener?.('sync_apply');
+    });
+    expect(mockHydrateProfileFromCache).toHaveBeenCalledTimes(3);
   });
 });

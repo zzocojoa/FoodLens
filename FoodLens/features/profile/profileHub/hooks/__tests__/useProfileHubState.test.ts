@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useProfileHubState } from '../useProfileHubState';
 
 const mockUpdateProfile = jest.fn();
@@ -271,6 +271,145 @@ describe('useProfileHubState conflict handling', () => {
 
     expect(result.current.name).toBe('유준');
     expect(result.current.image).toBe('https://cdn.example.com/profile-current.jpg');
+  });
+
+  it('replaces a route-provided stale image when the local cache has a newer asset', async () => {
+    mockSafeStorageGetSync.mockReturnValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: 'profile_old.jpg',
+      profileImageAssetId: 'asset_old',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    mockSafeStorageGet.mockResolvedValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: 'profile_new.jpg',
+      profileImageAssetId: 'asset_new',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() =>
+      useProfileHubState('usr_profile', {
+        name: 'Traveler',
+        image: 'profile_old.jpg',
+      })
+    );
+
+    expect(result.current.image).toBe('file:///documents/foodlens_images/profile_old.jpg');
+
+    await waitFor(() => {
+      expect(result.current.image).toBe('file:///documents/foodlens_images/profile_new.jpg');
+    });
+  });
+
+  it('does not revert an in-flight ui language edit from stale cache hydration', async () => {
+    const pendingLanguageSave = createDeferred<void>();
+    mockUpdateSettingsLanguage.mockReturnValueOnce(pendingLanguageSave.promise);
+    const { result } = await renderProfileHubState();
+
+    act(() => {
+      result.current.setUiLanguage('ko-KR');
+    });
+    expect(result.current.uiLanguage).toBe('ko-KR');
+
+    mockSetUiLanguageInStore.mockClear();
+    mockSafeStorageGet.mockResolvedValueOnce({
+      uid: 'usr_profile',
+      name: 'Traveler',
+      email: 'user@example.com',
+      profileImage: '',
+      safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+      settings: { language: 'en', autoPlayAudio: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await act(async () => {
+      await result.current.hydrateProfileFromCache();
+    });
+
+    expect(result.current.uiLanguage).toBe('ko-KR');
+    expect(mockSetUiLanguageInStore).not.toHaveBeenCalledWith('en');
+
+    await act(async () => {
+      pendingLanguageSave.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it('ignores older cache hydrations that resolve after newer snapshots', async () => {
+    const firstHydration = createDeferred<{
+      uid: string;
+      name: string;
+      email: string;
+      profileImage: string;
+      profileImageAssetId: string;
+      safetyProfile: { allergies: never[]; dietaryRestrictions: never[]; severityMap: Record<string, never> };
+      settings: { language: string; autoPlayAudio: boolean };
+      createdAt: string;
+      updatedAt: string;
+    } | null>();
+    const secondHydration = createDeferred<{
+      uid: string;
+      name: string;
+      email: string;
+      profileImage: string;
+      profileImageAssetId: string;
+      safetyProfile: { allergies: never[]; dietaryRestrictions: never[]; severityMap: Record<string, never> };
+      settings: { language: string; autoPlayAudio: boolean };
+      createdAt: string;
+      updatedAt: string;
+    } | null>();
+    const { result } = await renderProfileHubState();
+    mockSafeStorageGet
+      .mockImplementationOnce(() => firstHydration.promise)
+      .mockImplementationOnce(() => secondHydration.promise);
+
+    const firstPromise = result.current.hydrateProfileFromCache();
+    const secondPromise = result.current.hydrateProfileFromCache();
+
+    await act(async () => {
+      secondHydration.resolve({
+        uid: 'usr_profile',
+        name: 'Traveler',
+        email: 'user@example.com',
+        profileImage: 'profile_new.jpg',
+        profileImageAssetId: 'asset_new',
+        safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+        settings: { language: 'en', autoPlayAudio: false },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      await secondPromise;
+    });
+
+    expect(result.current.image).toBe('file:///documents/foodlens_images/profile_new.jpg');
+
+    await act(async () => {
+      firstHydration.resolve({
+        uid: 'usr_profile',
+        name: 'Traveler',
+        email: 'user@example.com',
+        profileImage: 'profile_old.jpg',
+        profileImageAssetId: 'asset_old',
+        safetyProfile: { allergies: [], dietaryRestrictions: [], severityMap: {} },
+        settings: { language: 'en', autoPlayAudio: false },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      await firstPromise;
+    });
+
+    expect(result.current.image).toBe('file:///documents/foodlens_images/profile_new.jpg');
   });
 
   it('keeps profile image uri stable when only signed url rotates for same asset', async () => {

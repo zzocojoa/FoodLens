@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useProfileHubState } from './useProfileHubState';
 import { useModalSheetGesture } from './useModalSheetGesture';
 import { ProfileHubControllerParams } from '../types';
+import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 
 const PROFILE_HUB_REFRESH_INTERVAL_MS = 15_000;
 
@@ -38,6 +39,7 @@ export const useProfileHubController = ({ userId, initialState }: ProfileHubCont
     );
 
     const {
+        hydrateProfileFromCache,
         invalidateProfileLoad,
         loadProfile,
         resetLocalEdits,
@@ -69,6 +71,18 @@ export const useProfileHubController = ({ userId, initialState }: ProfileHubCont
             invalidateProfileLoad();
         };
     }, [invalidateProfileLoad, loadProfileAndMarkFresh, resetLocalEdits]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeUserProfileUpdated(userId, (reason) => {
+            if (reason === 'client_state_write') {
+                return;
+            }
+
+            void hydrateProfileFromCache();
+        });
+
+        return unsubscribe;
+    }, [hydrateProfileFromCache, userId]);
 
     useFocusEffect(
         useCallback(() => {
