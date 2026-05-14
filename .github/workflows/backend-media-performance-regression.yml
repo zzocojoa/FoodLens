@@ -753,7 +753,9 @@ jobs:
             mapfile -t baseline_matches < <(
               find "${baseline_download_dir}" -type f -name summary.json | while IFS= read -r candidate_path; do
                 relative_path="${candidate_path#${baseline_download_dir}/}"
-                if [[ "${relative_path}" != baseline/* ]]; then
+                if [[ "${relative_path}" == baseline/* || "${relative_path}" == backend-media-stress-* ]]; then
+                  :
+                elif [[ "${relative_path}" == backend-media-smoke-*/summary.json || "${relative_path}" == backend-media-[0-9]*/summary.json ]]; then
                   printf '%s\n' "${candidate_path}"
                 fi
               done | sort
@@ -837,6 +839,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: backend-media-performance-regression-${{ github.run_id }}
-          path: artifacts/perf
+          path: |
+            artifacts/perf
+            !artifacts/perf/baseline/**
           if-no-files-found: error
           retention-days: 14
