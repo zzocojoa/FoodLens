@@ -10,6 +10,8 @@ import { publishUserProfileUpdated } from '@/services/user/userProfileStore';
 import { resolveImageUri } from '@/services/imageStorage';
 import { IMAGE_DIR } from '@/services/imageStorage.helpers';
 import { getStoredAnalyses, saveAnalyses } from '@/services/analysis/storage';
+import type { AnalysisRecord } from '@/services/analysis/types';
+import { queryClient } from '@/services/queryClient';
 import { Phase2Api, Phase2SyncApiError } from './phase2Api';
 import {
   buildRemoteClientState,
@@ -168,6 +170,27 @@ const isAuthRecoveryError = (apiError: Phase2SyncApiError | null): boolean => {
   );
 };
 
+const normalizedApiErrorCode = (apiError: Phase2SyncApiError | null): string =>
+  (apiError?.code || '').trim().toUpperCase();
+
+const isMediaUploadRetryError = (apiError: Phase2SyncApiError | null): boolean =>
+  normalizedApiErrorCode(apiError).startsWith('MEDIA_');
+
+const failedOperationAttempts = (
+  sending: Phase2SyncOperation,
+  apiError: Phase2SyncApiError | null
+): number => (isMediaUploadRetryError(apiError) ? sending.attempts : sending.attempts + 1);
+
+const failedOperationNextAttemptAt = (
+  attempts: number,
+  apiError: Phase2SyncApiError | null
+): number => {
+  if (isMediaUploadRetryError(apiError)) {
+    return now() + MEDIA_UPLOAD_COOLDOWN_MS;
+  }
+  return attempts >= RETRY_LIMIT ? Number.MAX_SAFE_INTEGER : nextRetryAt(attempts);
+};
+
 const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
   const synced = queue
     .filter((item) => item.state === 'synced')
@@ -180,12 +203,17 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
 const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
 const mediaCooldownKey = (userId: string, scope: 'profile' | 'history'): string =>
   `${userId}:${scope}`;
-
-const isNonBlockingMediaUploadError = (error: unknown): boolean => {
-  if (!(error instanceof Phase2SyncApiError)) return false;
-  const code = (error.code || '').trim().toUpperCase();
-  if (code.startsWith('MEDIA_')) return true;
-  return false;
+const historyQueryKey = (userId: string): readonly [string, string] => ['history', userId] as const;
+const sortHistoryByRecentTimestamp = (records: AnalysisRecord[]): AnalysisRecord[] =>
+  [...records].sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
+const saveAnalysesAndUpdateHistoryQueryCache = async (
+  userId: string,
+  records: AnalysisRecord[]
+): Promise<AnalysisRecord[]> => {
+  const sorted = sortHistoryByRecentTimestamp(records);
+  await saveAnalyses(userId, sorted);
+  queryClient.setQueryData(historyQueryKey(userId), sorted);
+  return sorted;
 };
 
 const upsertPendingEntityOperation = async (
@@ -324,10 +352,10 @@ const applyServerHistoryItemToLocalAnalyses = async (
   const mergedItem = existing
     ? mergeRemoteHistory([existing], [historyItem])[0]
     : parsed;
-  const next = current.filter((item) => item.id !== mergedItem.id);
-  next.unshift(mergedItem);
-  next.sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
-  await saveAnalyses(userId, next);
+  await saveAnalysesAndUpdateHistoryQueryCache(userId, [
+    mergedItem,
+    ...current.filter((item) => item.id !== mergedItem.id),
+  ]);
 };
 
 const isRemoteImageUri = (uri: string): boolean => {
@@ -544,29 +572,10 @@ const normalizeProfilePayloadForSync = async (
         : '';
 
   if (!existingAssetId && localCandidateRaw && !isRemoteImageUri(localCandidateRaw)) {
-    try {
-      const uploaded = await uploadMediaSource(userId, 'profile', localCandidateRaw);
-      if (uploaded?.assetId) {
-        next['profile_image_asset_id'] = uploaded.assetId;
-        next['profile_image_url'] = null;
-      }
-    } catch (error) {
-      if (!isNonBlockingMediaUploadError(error)) {
-        throw error;
-      }
-      logger.warn('[Phase2Sync] profile media upload bypassed; syncing profile without image', {
-        request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
-        user_id: userId,
-        code:
-          error instanceof Phase2SyncApiError
-            ? error.code
-            : error instanceof Error
-              ? error.message
-              : 'MEDIA_UPLOAD_FAILED',
-      });
-      delete next['profile_image_url'];
-      delete next['profile_image_asset_id'];
-      delete next['profile_image_local_uri'];
+    const uploaded = await uploadMediaSource(userId, 'profile', localCandidateRaw);
+    if (uploaded?.assetId) {
+      next['profile_image_asset_id'] = uploaded.assetId;
+      next['profile_image_url'] = null;
     }
   }
 
@@ -620,29 +629,7 @@ const normalizeHistoryEntryForSync = async (
   }
 
   const linkedEntryId = typeof next['id'] === 'string' ? next['id'] : undefined;
-  let uploaded: { assetId: string; renderUrl?: string } | null = null;
-  try {
-    uploaded = await uploadMediaSource(userId, 'history', imageUri, linkedEntryId);
-  } catch (error) {
-    if (!isNonBlockingMediaUploadError(error)) {
-      throw error;
-    }
-    logger.warn('[Phase2Sync] history media upload bypassed; syncing entry without image', {
-      request_id: error instanceof Phase2SyncApiError ? error.requestId || 'unknown' : 'unknown',
-      user_id: userId,
-      history_id: linkedEntryId || 'unknown',
-      code:
-        error instanceof Phase2SyncApiError
-          ? error.code
-          : error instanceof Error
-            ? error.message
-            : 'MEDIA_UPLOAD_FAILED',
-    });
-    delete next['imageUri'];
-    delete next['image_asset_id'];
-    delete next['image_render_url'];
-    return next;
-  }
+  const uploaded = await uploadMediaSource(userId, 'history', imageUri, linkedEntryId);
 
   if (!uploaded?.assetId) {
     return next;
@@ -753,7 +740,7 @@ const migrateLegacyMediaIfNeeded = async (userId: string): Promise<void> => {
       }
     }
     if (changed) {
-      await saveAnalyses(userId, analyses);
+      await saveAnalysesAndUpdateHistoryQueryCache(userId, analyses);
     }
   }
 
@@ -1082,7 +1069,6 @@ export const dispatchPhase2SyncQueue = async (
           publishUserProfileUpdated(sending.userId, 'sync_apply');
         }
       } catch (error) {
-        const previousAttempts = sending.attempts + 1;
         const apiError = error instanceof Phase2SyncApiError ? error : null;
 
         if (isAuthRecoveryError(apiError)) {
@@ -1097,6 +1083,8 @@ export const dispatchPhase2SyncQueue = async (
           });
           break;
         }
+
+        const previousAttempts = failedOperationAttempts(sending, apiError);
 
         if (isConflictError(apiError)) {
           await saveQueueOperation({
@@ -1117,14 +1105,12 @@ export const dispatchPhase2SyncQueue = async (
           continue;
         }
 
-        const reachedLimit = previousAttempts >= RETRY_LIMIT;
-
         const failed: Phase2SyncOperation = {
           ...sending,
           attempts: previousAttempts,
           state: 'failed',
           updatedAt: now(),
-          nextAttemptAt: reachedLimit ? Number.MAX_SAFE_INTEGER : nextRetryAt(previousAttempts),
+          nextAttemptAt: failedOperationNextAttemptAt(previousAttempts, apiError),
           requestId: apiError?.requestId,
           lastError: apiError?.code || (error instanceof Error ? error.message : 'unknown'),
           conflict: undefined,

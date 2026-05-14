@@ -15,12 +15,14 @@ FoodLens 모바일 앱의 사용자 기능이 `완전 sync`, `부분 sync`, `로
 | 기능 | 근거 | 메모 |
 | --- | --- | --- |
 | 프로필 기본 정보 | `FoodLens/services/userService.ts` `getUserProfile`, `CreateOrUpdateProfile` | 사용자 프로필을 user-scoped local cache에 저장하고 Phase2 queue로 profile/allergies/settings를 동기화한다. |
+| 프로필 이미지 | `FoodLens/features/profile/profileHub/services/profileHubService.ts`, `FoodLens/services/sync/phase2SyncQueue.ts`, `FoodLens/components/SecureImage.tsx` | 편집 이미지는 media upload 자산으로 올린 뒤 `profile_image_asset_id`와 signed render URL을 sync한다. 업로드 실패 시 이미지 없는 profile payload를 synced 처리하지 않고 retry 가능한 queue 상태로 유지한다. |
 | 알러지 / 식이 제한 / 심각도 | `FoodLens/features/profile/utils/profilePersistence.ts`, `FoodLens/services/userService.ts` | 프로필 저장 경로를 그대로 타므로 cross-device sync 대상이다. |
 | Traveler Card Language | `FoodLens/components/profileSheet/services/profileSheetService.ts` `updateTravelerLanguage` | 로컬 i18n store를 즉시 갱신하고, 이후 프로필 settings로 저장해 sync한다. |
 | 앱 UI 언어 설정 데이터 | `FoodLens/components/profileSheet/services/profileSheetService.ts` `updateSettingsLanguage`, `FoodLens/features/i18n/services/i18nStore.ts` | 설정값을 로컬 store + 프로필 snapshot + 원격 settings pull 경로로 맞춘다. |
 | 대표 이모지 선택 | `FoodLens/features/emojiPicker/services/emojiPickerService.ts` | 선택 이모지가 `UserService.updateUserProfile`를 타므로 settings sync 대상이다. |
 | 여행 시작 정보 | `FoodLens/features/tripStats/services/tripStatsService.ts` `startTrip` | 현재 여행 시작 시점/위치를 프로필에 저장하므로 sync된다. |
 | 새 분석 결과 저장 | `FoodLens/hooks/result/useAutoSave.ts`, `FoodLens/hooks/result/autoSaveService.ts`, `FoodLens/services/analysisService.ts` `saveAnalysis` | 결과 생성 시 history 엔티티로 enqueue/flush까지 수행한다. |
+| 분석 이미지 | `FoodLens/services/analysisService.ts`, `FoodLens/services/sync/phase2SyncQueue.ts`, `FoodLens/components/FoodThumbnail.tsx` | history 이미지도 media upload 자산과 signed render URL로 동기화한다. 서버 반영 후 로컬 history 저장소와 React Query cache를 같이 갱신해 홈/히스토리/다른 기기 표시가 같은 자산을 바라보게 한다. |
 | 결과 날짜 수정 | `FoodLens/features/result/hooks/useResultSideEffects.ts` `useDateUpdateAction`, `FoodLens/services/analysisService.ts` `updateAnalysisTimestamp` | 날짜 수정 시 로컬 cache/query cache를 즉시 갱신하고 `timestamp_patch` history queue로 서버까지 동기화한다. |
 
 ## 부분 sync

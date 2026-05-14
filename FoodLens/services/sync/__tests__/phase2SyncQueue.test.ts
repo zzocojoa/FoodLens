@@ -4,6 +4,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { UserProfile } from '@/models/User';
 import { getCurrentUserId, hasAuthenticatedUser } from '@/services/auth/currentUser';
 import { restoreSession } from '@/services/auth/sessionManager';
+import type { AnalysisRecord } from '@/services/analysis/types';
+import { queryClient } from '@/services/queryClient';
 import { SafeStorage } from '@/services/storage';
 import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
@@ -107,6 +109,7 @@ const mockedRestoreSession = restoreSession as jest.Mock;
 const mockedPhase2Api = Phase2Api as jest.Mocked<typeof Phase2Api>;
 
 let queueState: Phase2SyncOperation[] = [];
+const TEST_MEDIA_UPLOAD_COOLDOWN_MS = 5 * 60 * 1_000;
 
 const pendingProfileOperation = (id: string, userId: string): Phase2SyncOperation => ({
   id,
@@ -123,6 +126,7 @@ const pendingProfileOperation = (id: string, userId: string): Phase2SyncOperatio
 beforeEach(() => {
   jest.clearAllMocks();
   __resetPhase2SettingsDispatchDedupeForTests();
+  queryClient.clear();
   queueState = [];
   mockedFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
   mockedFileSystem.deleteAsync.mockResolvedValue(undefined);
@@ -1167,10 +1171,170 @@ describe('phase2SyncQueue', () => {
     expect(queueState[0].state).toBe('synced');
   });
 
-  it('continues profile sync without image when media upload is non-blocking failure', async () => {
+  it('updates the history query cache after applying a server history item locally', async () => {
+    const analysesKey = '@foodlens_analyses:usr_a';
+    const existingAnalysis = {
+      id: 'analysis_cache_1',
+      foodName: 'Old soup',
+      safetyStatus: 'CAUTION',
+      ingredients: [],
+      timestamp: new Date('2026-03-19T00:00:00.000Z'),
+    } as AnalysisRecord;
+    const otherUserAnalysis = {
+      id: 'analysis_other_user',
+      foodName: 'Other user soup',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+      timestamp: new Date('2026-03-18T00:00:00.000Z'),
+    } as AnalysisRecord;
+    let analysesState: AnalysisRecord[] = [existingAnalysis];
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-cache',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        kind: 'create',
+        entry: {
+          id: 'analysis_cache_1',
+          foodName: 'Old soup',
+          safetyStatus: 'CAUTION',
+          ingredients: [],
+          timestamp: '2026-03-19T00:00:00.000Z',
+        },
+      },
+      idempotencyKey: 'analysis_cache_1',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+    queryClient.setQueryData(['history', 'usr_a'], [existingAnalysis]);
+    queryClient.setQueryData(['history', 'usr_b'], [otherUserAnalysis]);
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        return queueState as unknown;
+      }
+      if (key === analysesKey) {
+        return analysesState as unknown;
+      }
+      return fallback;
+    });
+    mockedSafeStorage.set.mockImplementation(async (key, value) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        queueState = value as Phase2SyncOperation[];
+        return;
+      }
+      if (key === analysesKey) {
+        analysesState = value as AnalysisRecord[];
+      }
+    });
+    mockedPhase2Api.postHistory.mockResolvedValueOnce({
+      historyItem: {
+        id: 'server_history_cache_1',
+        user_id: 'usr_a',
+        entry: {
+          id: 'analysis_cache_1',
+          foodName: 'Server soup',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+          timestamp: '2026-03-20T00:00:00.000Z',
+          image_asset_id: 'asset_history_cache_1',
+          image_render_url: 'https://cdn.example.com/media/render/asset_history_cache_1',
+        },
+        updated_at: '2026-03-20T00:00:01.000Z',
+      },
+      requestId: 'req-history-cache',
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    expect(queueState[0].state).toBe('synced');
+    expect(analysesState[0].foodName).toBe('Server soup');
+    expect(analysesState[0].imageAssetId).toBe('asset_history_cache_1');
+    expect(queryClient.getQueryData(['history', 'usr_a'])).toEqual(analysesState);
+    expect(queryClient.getQueryData(['history', 'usr_b'])).toEqual([otherUserAnalysis]);
+  });
+
+  it('updates the history query cache after legacy history image upload succeeds', async () => {
+    const analysesKey = '@foodlens_analyses:usr_a';
+    const localImageUri = 'data:image/jpeg;base64,Zm9vYmFy';
+    const renderUrl = 'https://cdn.example.com/media/render/asset_history_migrated?w=512&exp=4102444800&sig=new';
+    const storedAnalysis = {
+      id: 'analysis_migrated_1',
+      foodName: 'Local noodles',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+      timestamp: new Date('2026-03-21T00:00:00.000Z'),
+      imageUri: localImageUri,
+    } as AnalysisRecord;
+    const cachedAnalysis = {
+      ...storedAnalysis,
+      timestamp: new Date(storedAnalysis.timestamp),
+    } as AnalysisRecord;
+    let analysesState: AnalysisRecord[] = [storedAnalysis];
+
+    queryClient.setQueryData(['history', 'usr_a'], [cachedAnalysis]);
+    mockedPhase2Api.postMediaUpload.mockResolvedValueOnce({
+      asset: {
+        asset_id: 'asset_history_migrated',
+        user_id: 'usr_a',
+        scope: 'history',
+        mime_type: 'image/jpeg',
+        size_bytes: 1234,
+        sha256: 'hash',
+        object_key: 'media/usr_a/history/asset_history_migrated/original.jpg',
+        render_url: renderUrl,
+      },
+      requestId: 'req-media-migrated',
+    });
+    mockedSafeStorage.get.mockImplementation(async (key, fallback) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        return queueState as unknown;
+      }
+      if (key === analysesKey) {
+        return analysesState as unknown;
+      }
+      return fallback;
+    });
+    mockedSafeStorage.set.mockImplementation(async (key, value) => {
+      if (key === '@foodlens_phase2_sync_queue_v1') {
+        queueState = value as Phase2SyncOperation[];
+        return;
+      }
+      if (key === analysesKey) {
+        analysesState = value as AnalysisRecord[];
+      }
+    });
+
+    await dispatchPhase2SyncQueue();
+
+    const cached = queryClient.getQueryData<AnalysisRecord[]>(['history', 'usr_a']);
+
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledWith({
+      fileUri: expect.any(String),
+      contentType: 'image/jpeg',
+      fileName: 'foodlens-history.jpg',
+      scope: 'history',
+      linkedEntryId: 'analysis_migrated_1',
+    });
+    expect(mockedPhase2Api.patchHistoryImage).toHaveBeenCalledWith(
+      'analysis_migrated_1',
+      'asset_history_migrated'
+    );
+    expect(analysesState[0].imageAssetId).toBe('asset_history_migrated');
+    expect(analysesState[0].imageRenderUrl).toBe(renderUrl);
+    expect(cached?.[0].imageAssetId).toBe('asset_history_migrated');
+    expect(cached?.[0].imageRenderUrl).toBe(renderUrl);
+    expect(cached?.[0].imageUri).toBe(renderUrl);
+  });
+
+  it('leaves profile sync retryable when media upload fails with MEDIA_*', async () => {
     queueState = [
       {
         ...pendingProfileOperation('op-profile-media-fallback', 'usr_a'),
+        attempts: 2,
         payload: {
           display_name: 'usr_a-name',
           profile_image_url: 'file:///tmp/profile.jpg',
@@ -1188,18 +1352,24 @@ describe('phase2SyncQueue', () => {
       )
     );
 
+    const startedAt = Date.now();
     await dispatchPhase2SyncQueue();
 
-    expect(mockedPhase2Api.putProfile).toHaveBeenCalledTimes(1);
-    const sentPayload = mockedPhase2Api.putProfile.mock.calls[0][0] as Record<string, unknown>;
-    expect(sentPayload['display_name']).toBe('usr_a-name');
-    expect(sentPayload['profile_image_url']).toBeUndefined();
-    expect(sentPayload['profile_image_local_uri']).toBeUndefined();
-    expect(sentPayload['profile_image_asset_id']).toBeUndefined();
-    expect(queueState[0].state).toBe('synced');
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
+    expect(mockedPhase2Api.putProfile).not.toHaveBeenCalled();
+    expect(queueState[0].state).toBe('failed');
+    expect(queueState[0].attempts).toBe(2);
+    expect(queueState[0].requestId).toBe('req-media-fallback-a');
+    expect(queueState[0].lastError).toBe('MEDIA_GCS_BUCKET_NOT_FOUND');
+    expect(queueState[0].nextAttemptAt).not.toBe(Number.MAX_SAFE_INTEGER);
+    expect(queueState[0].nextAttemptAt).toBeGreaterThanOrEqual(
+      startedAt + TEST_MEDIA_UPLOAD_COOLDOWN_MS
+    );
+    expect(queueState[0].payload['profile_image_url']).toBe('file:///tmp/profile.jpg');
+    expect(queueState[0].payload['profile_image_local_uri']).toBe('file:///tmp/profile.jpg');
   });
 
-  it('continues history sync without image when media upload is non-blocking failure', async () => {
+  it('leaves history sync retryable when media upload fails with MEDIA_*', async () => {
     const historyOp: Phase2SyncOperation = {
       id: 'op-history-media-fallback',
       userId: 'usr_a',
@@ -1230,19 +1400,25 @@ describe('phase2SyncQueue', () => {
       )
     );
 
+    const startedAt = Date.now();
     await dispatchPhase2SyncQueue();
 
-    expect(mockedPhase2Api.postHistory).toHaveBeenCalledTimes(1);
-    const sent = mockedPhase2Api.postHistory.mock.calls[0][0] as {
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
+    expect(mockedPhase2Api.postHistory).not.toHaveBeenCalled();
+    expect(queueState[0].state).toBe('failed');
+    expect(queueState[0].attempts).toBe(0);
+    expect(queueState[0].requestId).toBe('req-media-fallback-b');
+    expect(queueState[0].lastError).toBe('MEDIA_GCS_BUCKET_NOT_FOUND');
+    expect(queueState[0].nextAttemptAt).not.toBe(Number.MAX_SAFE_INTEGER);
+    expect(queueState[0].nextAttemptAt).toBeGreaterThanOrEqual(
+      startedAt + TEST_MEDIA_UPLOAD_COOLDOWN_MS
+    );
+    const payload = queueState[0].payload as {
+      kind: 'create';
       entry: Record<string, unknown>;
-      idempotency_key?: string;
     };
-    expect(sent.idempotency_key).toBe('analysis_2');
-    expect(sent.entry['id']).toBe('analysis_2');
-    expect(sent.entry['foodName']).toBe('Pasta');
-    expect(sent.entry['imageUri']).toBeUndefined();
-    expect(sent.entry['image_asset_id']).toBeUndefined();
-    expect(sent.entry['image_render_url']).toBeUndefined();
-    expect(queueState[0].state).toBe('synced');
+    expect(payload.entry['imageUri']).toBe('data:image/jpeg;base64,Zm9vYmFy');
+    expect(payload.entry['image_asset_id']).toBeUndefined();
+    expect(payload.entry['image_render_url']).toBeUndefined();
   });
 });
