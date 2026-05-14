@@ -2,17 +2,37 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, StyleProp, ViewStyle, ImageStyle } from 'react-native';
 import { Image as ExpoImage, type ImageSource } from 'expo-image';
 const BARCODE_PATTERN = [2, 1, 3, 1, 2, 4, 1, 2];
+const MEDIA_RENDER_PATH_PATTERN = /\/media\/render\/[^/?#]+/i;
 
-const extractMediaRenderAssetId = (uri: string): string | null => {
+interface ResolvedImageSource {
+    source: ImageSource;
+    recyclingKey: string;
+}
+
+const resolveMediaRenderCacheKey = (uri: string): string | null => {
     try {
         const parsed = new URL(uri);
-        const match = parsed.pathname.match(/\/media\/render\/([^/?#]+)/i);
-        return match?.[1] || null;
+        return MEDIA_RENDER_PATH_PATTERN.test(parsed.pathname) ? uri : null;
     } catch {
         const withoutQuery = uri.split('?')[0] || uri;
-        const match = withoutQuery.match(/\/media\/render\/([^/?#]+)/i);
-        return match?.[1] || null;
+        return MEDIA_RENDER_PATH_PATTERN.test(withoutQuery) ? uri : null;
     }
+};
+
+const resolveImageSource = (uri: string): ResolvedImageSource => {
+    const cacheKey = resolveMediaRenderCacheKey(uri);
+
+    if (cacheKey) {
+        return {
+            source: { uri, cacheKey },
+            recyclingKey: cacheKey,
+        };
+    }
+
+    return {
+        source: { uri },
+        recyclingKey: uri,
+    };
 };
 
 interface FoodThumbnailProps {
@@ -35,10 +55,9 @@ export const FoodThumbnail = React.memo(function FoodThumbnail({
     const isBarcodePattern = typeof uri === 'string' && uri.startsWith('barcode://');
     const hasError = typeof uri === 'string' && failedUri === uri;
     const resolvedFallbackFontSize = fallbackFontSize ?? 24;
-    const resolvedSource = useMemo<ImageSource | null>(() => {
+    const resolvedImageSource = useMemo<ResolvedImageSource | null>(() => {
         if (!uri) return null;
-        const cacheKey = extractMediaRenderAssetId(uri);
-        return cacheKey ? { uri, cacheKey } : { uri };
+        return resolveImageSource(uri);
     }, [uri]);
 
     useEffect(() => {
@@ -71,7 +90,7 @@ export const FoodThumbnail = React.memo(function FoodThumbnail({
     }
 
     // URI가 없거나 현재 URI 로드에 실패한 경우 emoji fallback을 표시합니다.
-    if (!uri || hasError || !resolvedSource) {
+    if (!uri || hasError || !resolvedImageSource) {
         return (
             <View style={[styles.container, style]}>
                 <Text style={{ fontSize: resolvedFallbackFontSize }}>{emoji}</Text>
@@ -82,8 +101,8 @@ export const FoodThumbnail = React.memo(function FoodThumbnail({
     return (
         <View style={[styles.container, style]}>
             <ExpoImage
-                recyclingKey={uri}
-                source={resolvedSource}
+                recyclingKey={resolvedImageSource.recyclingKey}
+                source={resolvedImageSource.source}
                 style={[styles.image, imageStyle]}
                 contentFit="cover"
                 cachePolicy="memory-disk"

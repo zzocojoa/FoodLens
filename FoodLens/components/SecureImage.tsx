@@ -22,23 +22,75 @@ const extractMediaRenderAssetId = (uri: string): string | null => {
   }
 };
 
+const buildMediaRenderCacheKey = (uri: string): string | null => {
+  const assetId = extractMediaRenderAssetId(uri);
+  return assetId ? uri : null;
+};
+
+const isUriImageSource = (source: unknown): source is ImageSource & { uri: string } =>
+  typeof source === 'object' &&
+  source !== null &&
+  !Array.isArray(source) &&
+  'uri' in source &&
+  typeof source.uri === 'string';
+
+const toCachedUriSource = (uri: string): ImageSource => {
+  const cacheKey = buildMediaRenderCacheKey(uri);
+  return cacheKey ? ({ uri, cacheKey } satisfies ImageSource) : ({ uri } satisfies ImageSource);
+};
+
+const toCachedObjectSource = (source: ImageSource & { uri: string }): ImageSource => {
+  const cacheKey = buildMediaRenderCacheKey(source.uri);
+  return cacheKey ? { ...source, cacheKey } : source;
+};
+
 const toCachedImageSource = (source: ImageProps['source']): ImageProps['source'] => {
   if (!source) return source;
   if (typeof source === 'string') {
-    const cacheKey = extractMediaRenderAssetId(source);
-    return cacheKey ? ({ uri: source, cacheKey } satisfies ImageSource) : ({ uri: source } satisfies ImageSource);
+    return toCachedUriSource(source);
   }
   if (typeof source === 'number') {
     return source;
   }
   if (Array.isArray(source)) {
-    return source;
+    return source.map((item): ImageSource => {
+      if (typeof item === 'string') {
+        return toCachedUriSource(item);
+      }
+      if (isUriImageSource(item)) {
+        return toCachedObjectSource(item);
+      }
+      return item as ImageSource;
+    });
   }
-  if (typeof source === 'object' && source && 'uri' in source && typeof source.uri === 'string') {
-    const cacheKey = extractMediaRenderAssetId(source.uri);
-    return cacheKey ? { ...source, cacheKey } : source;
+  if (isUriImageSource(source)) {
+    return toCachedObjectSource(source);
   }
   return source;
+};
+
+const toMediaRenderRecyclingKey = (source: ImageProps['source']): string | null => {
+  if (typeof source === 'string') {
+    return buildMediaRenderCacheKey(source);
+  }
+  if (Array.isArray(source)) {
+    const cacheKeys = source
+      .map((item) => {
+        if (typeof item === 'string') {
+          return buildMediaRenderCacheKey(item);
+        }
+        if (isUriImageSource(item)) {
+          return buildMediaRenderCacheKey(item.uri);
+        }
+        return null;
+      })
+      .filter((item): item is string => typeof item === 'string' && item.length > 0);
+    return cacheKeys.length > 0 ? cacheKeys.join('|') : null;
+  }
+  if (isUriImageSource(source)) {
+    return buildMediaRenderCacheKey(source.uri);
+  }
+  return null;
 };
 
 /**
@@ -60,6 +112,8 @@ export const SecureImage: React.FC<SecureImageProps> = ({
   const [hasError, setHasError] = useState(false);
   const [imageSource, setImageSource] = useState(source);
   const resolvedSource = useMemo(() => toCachedImageSource(imageSource), [imageSource]);
+  const mediaRenderRecyclingKey = useMemo(() => toMediaRenderRecyclingKey(imageSource), [imageSource]);
+  const hasExplicitRecyclingKey = Object.prototype.hasOwnProperty.call(props, 'recyclingKey');
 
   useEffect(() => {
     setHasError(false);
@@ -78,6 +132,7 @@ export const SecureImage: React.FC<SecureImageProps> = ({
     <ExpoImage
       {...props}
       source={resolvedSource}
+      recyclingKey={hasExplicitRecyclingKey ? props.recyclingKey : mediaRenderRecyclingKey ?? undefined}
       cachePolicy="memory-disk"
       contentFit={props.contentFit || 'cover'}
       style={style}
