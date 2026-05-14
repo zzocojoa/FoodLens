@@ -49,6 +49,7 @@ jobs:
               "permissions:\n  contents: read",
               "secrets.STAGING_RENDER_API_KEY",
               "secrets.STAGING_RENDER_SERVICE_ID",
+              "RENDER_FORBIDDEN_SERVICE_NAMES",
               "render_deploy_ready_gate.py",
               "render_one_off_job_gate.py",
               "Scan staging smoke artifacts for secret leaks",
@@ -69,6 +70,7 @@ jobs:
     env:
       RENDER_API_KEY: ${{ secrets.STAGING_RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.STAGING_RENDER_SERVICE_ID }}
+      RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"
       RENDER_DEPLOY_POLL_SECONDS: "10"

@@ -23,6 +23,7 @@ FAILED_STATUSES: frozenset[str] = frozenset(("build_failed", "update_failed", "c
 DEFAULT_TIMEOUT_SECONDS = 900
 DEFAULT_POLL_SECONDS = 10
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json"
+FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
 
 
 JsonRequester = Callable[[str, str, str], dict[str, object]]
@@ -59,6 +60,10 @@ def _parse_timestamp(value: str) -> datetime:
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _split_csv(value: str) -> frozenset[str]:
+    return frozenset(item.strip() for item in value.split(",") if item.strip())
 
 
 def _request_json(method: str, url: str, api_key: str) -> dict[str, object]:
@@ -104,6 +109,31 @@ def _list_deploys(api_key: str, service_id: str, request_json: JsonRequester) ->
     query = urlencode({"limit": "20"})
     url = f"https://api.render.com/v1/services/{service_id}/deploys?{query}"
     return _extract_deploys(request_json("GET", url, api_key))
+
+
+def _retrieve_service(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, object]:
+    url = f"https://api.render.com/v1/services/{service_id}"
+    return request_json("GET", url, api_key)
+
+
+def _service_summary(service: dict[str, object]) -> dict[str, object]:
+    return {
+        "name": service.get("name"),
+        "type": service.get("type"),
+        "branch": service.get("branch"),
+        "repo": service.get("repo"),
+    }
+
+
+def _forbidden_service_error(service: dict[str, object], forbidden_names: frozenset[str]) -> str | None:
+    if not forbidden_names:
+        return None
+    service_name = service.get("name")
+    if not isinstance(service_name, str):
+        return "render_service_name_missing"
+    if service_name in forbidden_names:
+        return "forbidden_render_service"
+    return None
 
 
 def _deploy_created_at(deploy: dict[str, object]) -> datetime | None:
@@ -153,10 +183,26 @@ def run_gate(
 
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
+    forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds
+
+    if forbidden_names:
+        service = _retrieve_service(api_key, service_id, request_json)
+        service_error = _forbidden_service_error(service, forbidden_names)
+        if service_error is not None:
+            _write_json(
+                summary_path,
+                {
+                    "passed": False,
+                    "error": service_error,
+                    "render_service": _service_summary(service),
+                },
+            )
+            print(f"[RenderDeployReadyGate] Refusing to wait on Render service: {service_error}", file=sys.stderr)
+            return 1
 
     latest_candidate: dict[str, object] | None = None
     while True:
