@@ -71,7 +71,7 @@ def _configure_runtime_env() -> None:
     os.environ.setdefault("MEDIA_STORAGE_BACKEND", "gcs")
     os.environ.setdefault("DELETION_QUEUE_BACKEND", "postgres")
     os.environ.setdefault("DELETION_HANDLER_BACKEND", "user")
-    os.environ.setdefault("MEDIA_GCS_PREFIX", "media")
+    os.environ.setdefault("MEDIA_GCS_PREFIX", "staging-media")
     os.environ.setdefault("MEDIA_MAX_UPLOAD_MB", "10")
 
 

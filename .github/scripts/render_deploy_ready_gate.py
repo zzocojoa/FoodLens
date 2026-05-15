@@ -24,6 +24,7 @@ DEFAULT_TIMEOUT_SECONDS = 900
 DEFAULT_POLL_SECONDS = 10
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json"
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
+ALLOWED_SERVICE_PLANS_ENV = "RENDER_ALLOWED_SERVICE_PLANS"
 
 
 JsonRequester = Callable[[str, str, str], dict[str, object]]
@@ -122,7 +123,18 @@ def _service_summary(service: dict[str, object]) -> dict[str, object]:
         "type": service.get("type"),
         "branch": service.get("branch"),
         "repo": service.get("repo"),
+        "plan": _service_plan(service),
     }
+
+
+def _service_plan(service: dict[str, object]) -> str | None:
+    details = service.get("serviceDetails")
+    if isinstance(details, dict) and isinstance(details.get("plan"), str):
+        return details["plan"]
+    plan = service.get("plan")
+    if isinstance(plan, str):
+        return plan
+    return None
 
 
 def _forbidden_service_error(service: dict[str, object], forbidden_names: frozenset[str]) -> str | None:
@@ -133,6 +145,17 @@ def _forbidden_service_error(service: dict[str, object], forbidden_names: frozen
         return "render_service_name_missing"
     if service_name in forbidden_names:
         return "forbidden_render_service"
+    return None
+
+
+def _service_plan_error(service: dict[str, object], allowed_plans: frozenset[str]) -> str | None:
+    if not allowed_plans:
+        return None
+    service_plan = _service_plan(service)
+    if service_plan is None:
+        return "render_service_plan_missing"
+    if service_plan not in allowed_plans:
+        return "disallowed_render_service_plan"
     return None
 
 
@@ -184,14 +207,15 @@ def run_gate(
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
+    allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds
 
-    if forbidden_names:
+    if forbidden_names or allowed_plans:
         service = _retrieve_service(api_key, service_id, request_json)
-        service_error = _forbidden_service_error(service, forbidden_names)
+        service_error = _forbidden_service_error(service, forbidden_names) or _service_plan_error(service, allowed_plans)
         if service_error is not None:
             _write_json(
                 summary_path,

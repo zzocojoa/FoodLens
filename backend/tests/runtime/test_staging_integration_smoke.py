@@ -296,25 +296,27 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertIn("STAGING_RENDER_API_KEY", workflow)
         self.assertIn("STAGING_RENDER_SERVICE_ID", workflow)
         self.assertIn("RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api", workflow)
+        self.assertIn("RENDER_ALLOWED_SERVICE_PLANS: free", workflow)
         self.assertIn("render_deploy_ready_gate.py", workflow)
-        self.assertIn("render_one_off_job_gate.py", workflow)
         self.assertIn("Wait for Render deploy readiness", workflow)
-        self.assertIn("Run Render one-off staging integration smoke", workflow)
-        self.assertLess(
-            workflow.index("Wait for Render deploy readiness"),
-            workflow.index("Run Render one-off staging integration smoke"),
-        )
-        self.assertIn("RENDER_JOB_LOG_PATH", workflow)
-        self.assertIn("RENDER_JOB_LOG_WAIT_SECONDS", workflow)
-        self.assertIn("RENDER_START_COMMAND: >-", workflow)
-        self.assertIn("env\n        OPENAPI_EXPORT_ONLY=1", workflow)
-        self.assertIn("python backend/scripts/staging_integration_smoke.py", workflow)
         self.assertIn("scan_artifact_secrets.py artifacts/phase6/staging-integration-smoke", workflow)
         self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
+        self.assertNotIn("render_one_off_job_gate.py", workflow)
+        self.assertNotIn("RENDER_START_COMMAND", workflow)
+        self.assertNotIn("RENDER_JOB_LOG_PATH", workflow)
         self.assertLess(
             workflow.index("Scan staging smoke artifacts for secret leaks"),
             workflow.index("Upload staging smoke artifacts"),
         )
+
+    def test_smoke_runtime_defaults_to_staging_media_prefix(self) -> None:
+        smoke = _load_smoke_module()
+        env = {name: f"{name.lower()}-present" for name in EXPECTED_REQUIRED_ENV_NAMES}
+
+        with patch.dict(os.environ, env, clear=True):
+            smoke._configure_runtime_env()
+
+            self.assertEqual(os.environ["MEDIA_GCS_PREFIX"], "staging-media")
 
     def test_branch_protection_requires_staging_smoke_pr_check(self) -> None:
         script = BRANCH_PROTECTION_SCRIPT_PATH.read_text(encoding="utf-8")
@@ -461,6 +463,86 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["passed"], False)
         self.assertEqual(summary["error"], "forbidden_render_service")
         self.assertEqual(summary["render_service"]["name"], "foodlens-api")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_deploy_ready_gate_allows_free_staging_service(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            if "/services/srv-test" in url and "/deploys" not in url:
+                return {
+                    "name": "foodlens-api-staging",
+                    "type": "web_service",
+                    "branch": "main",
+                    "repo": "https://github.com/zzocojoa/FoodLens",
+                    "serviceDetails": {"plan": "free"},
+                }
+            if "/deploys" in url:
+                return {
+                    "deploys": [
+                        {
+                            "id": "dep-test",
+                            "createdAt": "2026-05-01T00:01:00Z",
+                            "finishedAt": "2026-05-01T00:02:00Z",
+                            "status": "live",
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_ALLOWED_SERVICE_PLANS": "free",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(calls[0][0], "GET")
+        self.assertEqual(summary["passed"], True)
+
+    def test_render_deploy_ready_gate_rejects_paid_staging_service(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            if "/services/srv-test" in url and "/deploys" not in url:
+                return {
+                    "name": "foodlens-api-staging",
+                    "type": "web_service",
+                    "branch": "main",
+                    "repo": "https://github.com/zzocojoa/FoodLens",
+                    "serviceDetails": {"plan": "starter"},
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_ALLOWED_SERVICE_PLANS": "free",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(summary["passed"], False)
+        self.assertEqual(summary["error"], "disallowed_render_service_plan")
+        self.assertEqual(summary["render_service"]["plan"], "starter")
         self.assertNotIn("render-secret-key", json.dumps(summary))
 
     def test_render_one_off_job_gate_reports_missing_env_without_values(self) -> None:

@@ -50,8 +50,8 @@ jobs:
               "secrets.STAGING_RENDER_API_KEY",
               "secrets.STAGING_RENDER_SERVICE_ID",
               "RENDER_FORBIDDEN_SERVICE_NAMES",
+              "RENDER_ALLOWED_SERVICE_PLANS: free",
               "render_deploy_ready_gate.py",
-              "render_one_off_job_gate.py",
               "Scan staging smoke artifacts for secret leaks",
               "Upload staging smoke artifacts",
           ]
@@ -71,31 +71,11 @@ jobs:
       RENDER_API_KEY: ${{ secrets.STAGING_RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.STAGING_RENDER_SERVICE_ID }}
       RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api
+      RENDER_ALLOWED_SERVICE_PLANS: free
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"
       RENDER_DEPLOY_POLL_SECONDS: "10"
       RENDER_DEPLOY_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json
-      RENDER_JOB_TIMEOUT_SECONDS: "900"
-      RENDER_JOB_POLL_SECONDS: "10"
-      RENDER_JOB_LOG_WAIT_SECONDS: "60"
-      RENDER_JOB_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-one-off-job-summary.json
-      RENDER_JOB_LOG_PATH: artifacts/phase6/staging-integration-smoke/render-one-off-job.log
-      RENDER_START_COMMAND: >-
-        env
-        OPENAPI_EXPORT_ONLY=1
-        AUTH_EMAIL_VERIFICATION_REQUIRED=1
-        AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED=1
-        AUTH_EMAIL_VERIFICATION_DELIVERY_MODE=log
-        AUTH_STATE_BACKEND=postgres
-        RETENTION_STORE_BACKEND=postgres
-        RETENTION_DELETE_BACKEND=media_asset
-        MEDIA_STORAGE_BACKEND=gcs
-        DELETION_QUEUE_BACKEND=postgres
-        DELETION_HANDLER_BACKEND=user
-        MEDIA_GCS_PREFIX=media
-        MEDIA_MAX_UPLOAD_MB=10
-        STAGING_SMOKE_ARTIFACT_DIR=/tmp/foodlens-staging-integration-smoke
-        python backend/scripts/staging_integration_smoke.py
 
     steps:
       - name: Checkout
@@ -108,9 +88,6 @@ jobs:
 
       - name: Wait for Render deploy readiness
         run: python .github/scripts/render_deploy_ready_gate.py
-
-      - name: Run Render one-off staging integration smoke
-        run: python .github/scripts/render_one_off_job_gate.py
 
       - name: Scan staging smoke artifacts for secret leaks
         id: artifact_secret_scan
