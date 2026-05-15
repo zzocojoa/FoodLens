@@ -30,6 +30,9 @@ DEFAULT_LOG_WAIT_SECONDS = 60
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job-summary.json"
 DEFAULT_LOG_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job.log"
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
+DEFAULT_FORBIDDEN_SERVICE_NAMES: frozenset[str] = frozenset(
+    ("foodlens-api", "foodlens-worker", "foodlens-retention-cron")
+)
 RENDER_API_BASE_URL = "https://api.render.com/v1"
 SMOKE_CHECK_PATTERN = re.compile(r"^\[StagingSmoke\]\s+([A-Za-z0-9_]+):\s+(PASS|FAIL)\s*$")
 LOG_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -74,6 +77,10 @@ def _write_text(path: Path, lines: list[str]) -> None:
 
 def _split_csv(value: str) -> frozenset[str]:
     return frozenset(item.strip() for item in value.split(",") if item.strip())
+
+
+def _forbidden_service_names(env: dict[str, str]) -> frozenset[str]:
+    return DEFAULT_FORBIDDEN_SERVICE_NAMES.union(_split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, "")))
 
 
 def _request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
@@ -292,7 +299,7 @@ def run_gate(
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
     start_command = env["RENDER_START_COMMAND"]
-    forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
+    forbidden_names = _forbidden_service_names(env)
     timeout_seconds = _positive_int_env(env, "RENDER_JOB_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_JOB_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     log_wait_seconds = _positive_int_env(env, "RENDER_JOB_LOG_WAIT_SECONDS", DEFAULT_LOG_WAIT_SECONDS)

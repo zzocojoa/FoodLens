@@ -58,6 +58,16 @@ jobs:
           missing_markers = [marker for marker in required_markers if marker not in workflow]
           if missing_markers:
               raise SystemExit(f"Missing staging smoke workflow markers: {missing_markers}")
+          forbidden_markers = [
+              "render_" + "one_off_job_gate.py",
+              "Run Render " + "one-off staging integration smoke",
+              "RENDER_" + "START_COMMAND",
+              "RENDER_" + "JOB_LOG_PATH",
+              "RENDER_" + "JOB_SUMMARY_PATH",
+          ]
+          present_forbidden_markers = [marker for marker in forbidden_markers if marker in workflow]
+          if present_forbidden_markers:
+              raise SystemExit(f"Forbidden paid staging smoke markers: {present_forbidden_markers}")
           if workflow.index("Scan staging smoke artifacts for secret leaks") > workflow.index("Upload staging smoke artifacts"):
               raise SystemExit("Artifact upload must run after the secret scan.")
           PY

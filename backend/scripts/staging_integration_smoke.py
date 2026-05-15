@@ -22,6 +22,7 @@ REQUIRED_ENV_NAMES: tuple[str, ...] = (
 )
 ARTIFACT_DIR_ENV_NAME = "STAGING_SMOKE_ARTIFACT_DIR"
 DEFAULT_ARTIFACT_DIR = "artifacts/phase6/staging-integration-smoke"
+STAGING_MEDIA_GCS_PREFIX = "staging-media"
 SMOKE_PASSWORD = "Passw0rd!"
 SENSITIVE_ENV_NAMES: tuple[str, ...] = (
     "DATABASE_URL",
@@ -34,6 +35,11 @@ BEARER_TOKEN_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+")
 SERVER_HOST_PATTERN = re.compile(r'(server at|host name)\s+"[^"]+"', re.IGNORECASE)
 PSYCOPG_HOST_FIELD_PATTERN = re.compile(r"(host(?:addr)?):\s*'[^']+'", re.IGNORECASE)
 IPV4_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+SIGNED_MEDIA_RENDER_URL_PATTERN = re.compile(
+    r"https?://[^\s\"'<>]+/media/render/[^\s\"'<>]+[?&][^\s\"'<>]*sig=[^\s\"'<>]+|"
+    r"/media/render/[^\s\"'<>]+[?&][^\s\"'<>]*sig=[^\s\"'<>]+",
+    re.IGNORECASE,
+)
 
 
 def _ensure_repo_root_on_path() -> None:
@@ -71,7 +77,7 @@ def _configure_runtime_env() -> None:
     os.environ.setdefault("MEDIA_STORAGE_BACKEND", "gcs")
     os.environ.setdefault("DELETION_QUEUE_BACKEND", "postgres")
     os.environ.setdefault("DELETION_HANDLER_BACKEND", "user")
-    os.environ.setdefault("MEDIA_GCS_PREFIX", "staging-media")
+    os.environ.setdefault("MEDIA_GCS_PREFIX", STAGING_MEDIA_GCS_PREFIX)
     os.environ.setdefault("MEDIA_MAX_UPLOAD_MB", "10")
 
 
@@ -83,6 +89,13 @@ def _configure_logging() -> None:
 
 def missing_required_env(env: Mapping[str, str]) -> list[str]:
     return [name for name in REQUIRED_ENV_NAMES if not (env.get(name) or "").strip()]
+
+
+def unsafe_runtime_env(env: Mapping[str, str]) -> list[str]:
+    media_gcs_prefix = (env.get("MEDIA_GCS_PREFIX") or "").strip()
+    if media_gcs_prefix != STAGING_MEDIA_GCS_PREFIX:
+        return [f"MEDIA_GCS_PREFIX must be {STAGING_MEDIA_GCS_PREFIX}"]
+    return []
 
 
 def _write_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -118,6 +131,7 @@ def _safe_error_message(error: BaseException) -> str:
             message = message.replace(env_value, f"[REDACTED_{env_name}]")
     message = DATABASE_URL_PATTERN.sub("[REDACTED_DATABASE_URL]", message)
     message = BEARER_TOKEN_PATTERN.sub("Bearer [REDACTED_TOKEN]", message)
+    message = SIGNED_MEDIA_RENDER_URL_PATTERN.sub("[REDACTED_SIGNED_MEDIA_RENDER_URL]", message)
     message = SERVER_HOST_PATTERN.sub(lambda match: f'{match.group(1)} "[REDACTED_HOST]"', message)
     message = PSYCOPG_HOST_FIELD_PATTERN.sub(lambda match: f"{match.group(1)}: '[REDACTED_HOST]'", message)
     message = IPV4_PATTERN.sub("[REDACTED_IP]", message)
@@ -536,6 +550,15 @@ def main(argv: list[str]) -> int:
                 [SmokeResult("required_env", False, {"missing_env": missing})],
             )
         print(f"[StagingSmoke] Missing required env: {', '.join(missing)}", file=sys.stderr)
+        return 2
+    unsafe = unsafe_runtime_env(os.environ)
+    if unsafe:
+        if not args.check_env_only:
+            _write_summary(
+                Path(str(args.artifact_dir)),
+                [SmokeResult("runtime_env", False, {"errors": unsafe})],
+            )
+        print(f"[StagingSmoke] Unsafe runtime env: {', '.join(unsafe)}", file=sys.stderr)
         return 2
     if args.check_env_only:
         print("[StagingSmoke] Required env is present.")

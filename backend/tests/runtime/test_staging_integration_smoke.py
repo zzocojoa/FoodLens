@@ -318,6 +318,32 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
 
             self.assertEqual(os.environ["MEDIA_GCS_PREFIX"], "staging-media")
 
+    def test_smoke_runtime_rejects_production_media_prefix(self) -> None:
+        smoke = _load_smoke_module()
+        env = {name: f"{name.lower()}-present" for name in EXPECTED_REQUIRED_ENV_NAMES}
+        env["MEDIA_GCS_PREFIX"] = "media"
+
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(smoke, "_load_backend_env", return_value=None),
+            patch.object(smoke, "_run_smokes", side_effect=AssertionError("live smoke should not run")),
+            patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            status = smoke.main(["--check-env-only"])
+
+        self.assertEqual(status, 2)
+        self.assertIn("MEDIA_GCS_PREFIX must be staging-media", stderr.getvalue())
+
+    def test_safe_error_details_redacts_signed_media_render_url(self) -> None:
+        smoke = _load_smoke_module()
+        error = RuntimeError("failed https://example.com/media/render/asset_1?exp=1&sig=secret")
+
+        details = smoke._safe_error_details(error)
+
+        serialized = json.dumps(details, sort_keys=True)
+        self.assertIn("[REDACTED_SIGNED_MEDIA_RENDER_URL]", serialized)
+        self.assertNotIn("sig=secret", serialized)
+
     def test_branch_protection_requires_staging_smoke_pr_check(self) -> None:
         script = BRANCH_PROTECTION_SCRIPT_PATH.read_text(encoding="utf-8")
 
@@ -580,7 +606,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             if "/jobs/job-test" in url:
                 return {"id": "job-test", "status": next(statuses), "finishedAt": "2026-05-01T00:01:00Z"}
             if "/services/srv-test" in url:
-                return {"ownerId": "owner-test"}
+                return {"ownerId": "owner-test", "name": "foodlens-api-staging"}
             if "/logs?" in url:
                 return {
                     "logs": [
@@ -610,8 +636,9 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             log_content = log_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
-        self.assertEqual(calls[0][0], "POST")
-        self.assertEqual(calls[0][2], {"startCommand": "python backend/scripts/staging_integration_smoke.py"})
+        self.assertEqual(calls[0][0], "GET")
+        self.assertEqual(calls[1][0], "POST")
+        self.assertEqual(calls[1][2], {"startCommand": "python backend/scripts/staging_integration_smoke.py"})
         self.assertEqual(summary["passed"], True)
         self.assertEqual(summary["render_job"]["status"], "succeeded")
         self.assertEqual(summary["smoke_checks"]["media_delete"], "pass")
@@ -656,6 +683,40 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_service"]["name"], "foodlens-api")
         self.assertNotIn("render-secret-key", json.dumps(summary))
 
+    def test_render_one_off_job_gate_rejects_default_production_service_before_job_creation(self) -> None:
+        gate = _load_render_job_gate_module()
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            calls.append((method, url, payload))
+            if method == "GET" and "/services/srv-test" in url:
+                return {
+                    "name": "foodlens-worker",
+                    "type": "background_worker",
+                    "branch": "main",
+                    "repo": "https://github.com/zzocojoa/FoodLens",
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(summary["passed"], False)
+        self.assertEqual(summary["error"], "forbidden_render_service")
+        self.assertEqual(summary["render_service"]["name"], "foodlens-worker")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
     def test_render_one_off_job_gate_retries_transient_log_timeout(self) -> None:
         gate = _load_render_job_gate_module()
         now = 0.0
@@ -673,7 +734,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             if method == "POST":
                 return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
             if "/services/srv-test" in url:
-                return {"ownerId": "owner-test"}
+                return {"ownerId": "owner-test", "name": "foodlens-api-staging"}
             if "/logs?" in url:
                 log_attempts += 1
                 if log_attempts == 1:
@@ -724,7 +785,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             if method == "POST":
                 return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
             if "/services/srv-test" in url:
-                return {"ownerId": "owner-test"}
+                return {"ownerId": "owner-test", "name": "foodlens-api-staging"}
             if "/logs?" in url:
                 return {"logs": [{"message": "[Startup] ready"}]}
             raise AssertionError(f"unexpected request: {method} {url}")
@@ -758,7 +819,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             if method == "POST":
                 return {"id": "job-test", "status": "succeeded", "createdAt": "2026-05-01T00:00:00Z"}
             if "/services/srv-test" in url:
-                return {"ownerId": "owner-test"}
+                return {"ownerId": "owner-test", "name": "foodlens-api-staging"}
             if "/logs?" in url:
                 return {
                     "logs": [
