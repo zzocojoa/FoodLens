@@ -141,6 +141,15 @@ class ArtifactSecretScannerTests(unittest.TestCase):
         self.assertIn("python3 .github/scripts/scan_artifact_secrets.py artifacts/perf", workflow)
         self.assertIn("steps.artifact_secret_scan.outcome == 'success'", workflow)
 
+    def test_backend_media_performance_baseline_selection_ignores_non_smoke_summaries(self) -> None:
+        workflow = PERF_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('"${relative_path}" == baseline/*', workflow)
+        self.assertIn('"${relative_path}" == backend-media-stress-*', workflow)
+        self.assertIn('"${relative_path}" == backend-media-smoke-*/summary.json', workflow)
+        self.assertIn('"${relative_path}" == backend-media-[0-9]*/summary.json', workflow)
+        self.assertIn("!artifacts/perf/baseline/**", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

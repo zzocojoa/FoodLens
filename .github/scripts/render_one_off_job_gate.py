@@ -29,6 +29,10 @@ DEFAULT_POLL_SECONDS = 10
 DEFAULT_LOG_WAIT_SECONDS = 60
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job-summary.json"
 DEFAULT_LOG_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job.log"
+FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
+DEFAULT_FORBIDDEN_SERVICE_NAMES: frozenset[str] = frozenset(
+    ("foodlens-api", "foodlens-worker", "foodlens-retention-cron")
+)
 RENDER_API_BASE_URL = "https://api.render.com/v1"
 SMOKE_CHECK_PATTERN = re.compile(r"^\[StagingSmoke\]\s+([A-Za-z0-9_]+):\s+(PASS|FAIL)\s*$")
 LOG_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -71,6 +75,14 @@ def _write_text(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _split_csv(value: str) -> frozenset[str]:
+    return frozenset(item.strip() for item in value.split(",") if item.strip())
+
+
+def _forbidden_service_names(env: dict[str, str]) -> frozenset[str]:
+    return DEFAULT_FORBIDDEN_SERVICE_NAMES.union(_split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, "")))
+
+
 def _request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     request = Request(
@@ -111,6 +123,26 @@ def _retrieve_job(api_key: str, service_id: str, job_id: str, request_json: Json
 def _retrieve_service(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, object]:
     url = f"{RENDER_API_BASE_URL}/services/{service_id}"
     return request_json("GET", url, api_key, None)
+
+
+def _service_summary(service: dict[str, object]) -> dict[str, object]:
+    return {
+        "name": service.get("name"),
+        "type": service.get("type"),
+        "branch": service.get("branch"),
+        "repo": service.get("repo"),
+    }
+
+
+def _forbidden_service_error(service: dict[str, object], forbidden_names: frozenset[str]) -> str | None:
+    if not forbidden_names:
+        return None
+    service_name = service.get("name")
+    if not isinstance(service_name, str):
+        return "render_service_name_missing"
+    if service_name in forbidden_names:
+        return "forbidden_render_service"
+    return None
 
 
 def _extract_owner_id(service: dict[str, object]) -> str:
@@ -267,10 +299,26 @@ def run_gate(
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
     start_command = env["RENDER_START_COMMAND"]
+    forbidden_names = _forbidden_service_names(env)
     timeout_seconds = _positive_int_env(env, "RENDER_JOB_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_JOB_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     log_wait_seconds = _positive_int_env(env, "RENDER_JOB_LOG_WAIT_SECONDS", DEFAULT_LOG_WAIT_SECONDS)
     deadline = clock() + timeout_seconds
+
+    if forbidden_names:
+        service = _retrieve_service(api_key, service_id, request_json)
+        service_error = _forbidden_service_error(service, forbidden_names)
+        if service_error is not None:
+            _write_json(
+                summary_path,
+                {
+                    "passed": False,
+                    "error": service_error,
+                    "render_service": _service_summary(service),
+                },
+            )
+            print(f"[RenderOneOffJobGate] Refusing to run staging smoke on Render service: {service_error}", file=sys.stderr)
+            return 1
 
     created = _create_job(api_key, service_id, start_command, request_json)
     job_id = str(created.get("id") or "")
