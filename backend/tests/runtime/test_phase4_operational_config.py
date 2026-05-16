@@ -124,6 +124,8 @@ class Phase4OperationalConfigTests(unittest.TestCase):
 
         required_values = (
             ("AUTH_RATE_LIMIT_ENABLED", "1"),
+            ("AUTH_RATE_LIMIT_BACKEND", "postgres"),
+            ("AUTH_RATE_LIMIT_TABLE", "auth_rate_limit_events"),
             ("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60"),
             ("AUTH_RATE_LIMIT_LOGIN_PER_MIN", "5"),
             ("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", "3"),
@@ -160,6 +162,8 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "POST /auth/email/verification/request",
             "POST /auth/email/password/reset/request",
             "AUTH_RATE_LIMIT_ENABLED",
+            "AUTH_RATE_LIMIT_BACKEND",
+            "AUTH_RATE_LIMIT_TABLE",
             "AUTH_RATE_LIMIT_WINDOW_SECONDS",
             "AUTH_RATE_LIMIT_LOGIN_PER_MIN",
             "AUTH_RATE_LIMIT_SIGNUP_PER_MIN",
@@ -268,6 +272,8 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
             "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+            "AUTH_RATE_LIMIT_BACKEND",
+            "AUTH_RATE_LIMIT_TABLE",
             "AUTH_GOOGLE_OAUTH_PROMPT",
         )
         for service_env in live_env_by_service.values():
@@ -280,6 +286,8 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("GEMINI_LABEL_PRO_FALLBACK_ENABLED", output)
         self.assertIn("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", output)
         self.assertIn("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", output)
+        self.assertIn("AUTH_RATE_LIMIT_BACKEND", output)
+        self.assertIn("AUTH_RATE_LIMIT_TABLE", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("present=false", output)
         self.assertIn("action=update Render Dashboard env keys or render.yaml", output)

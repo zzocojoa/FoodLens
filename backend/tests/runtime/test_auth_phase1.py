@@ -16,6 +16,7 @@ os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
 os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
+from backend import server as server_module  # noqa: E402
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
 from backend.modules.ops.api_edge_guard import InMemorySlidingWindowRateLimiter  # noqa: E402
@@ -256,6 +257,33 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             )
             self.assertEqual(login_with_updated_password.status_code, 200)
             self.assertIn("access_token", login_with_updated_password.json())
+
+    def test_auth_runtime_controls_select_postgres_rate_limiter_backend(self):
+        app_state = getattr(app.state, "_state", None)
+        if not isinstance(app_state, dict):
+            raise TypeError("app.state._state must be a dictionary.")
+        previous_state = dict(app_state)
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                    "AUTH_RATE_LIMIT_ENABLED": "1",
+                    "AUTH_RATE_LIMIT_BACKEND": "postgres",
+                    "AUTH_RATE_LIMIT_TABLE": "auth_rate_limit_events",
+                },
+                clear=False,
+            ), patch.object(server_module, "PostgresSlidingWindowRateLimiter") as limiter_class:
+                server_module._initialize_api_runtime_controls()
+            self.assertIs(app.state.auth_rate_limiter, limiter_class.return_value)
+            limiter_class.assert_called_once()
+            call_kwargs = limiter_class.call_args.kwargs
+            self.assertEqual(call_kwargs["database_url"], "postgresql://foodlens:test@db/foodlens")
+            self.assertEqual(call_kwargs["table_name"], "auth_rate_limit_events")
+            self.assertEqual(call_kwargs["endpoint_limits_per_minute"]["/auth/email/login"], 5)
+        finally:
+            app_state.clear()
+            app_state.update(previous_state)
 
     def test_email_signup_rate_limit_blocks_repeated_same_email_and_device(self):
         with TestClient(app) as client:

@@ -182,11 +182,20 @@
   - `POST /auth/email/password/reset/request`
 - 운영 환경 변수:
   - `AUTH_RATE_LIMIT_ENABLED`
+  - `AUTH_RATE_LIMIT_BACKEND`: `auto`, `memory`, `postgres`
+  - `AUTH_RATE_LIMIT_TABLE`: Postgres backend table name
   - `AUTH_RATE_LIMIT_WINDOW_SECONDS`
   - `AUTH_RATE_LIMIT_LOGIN_PER_MIN`
   - `AUTH_RATE_LIMIT_SIGNUP_PER_MIN`
   - `AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN`
   - `AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN`
+- Render 운영 기본값:
+  - `AUTH_RATE_LIMIT_BACKEND=postgres`
+  - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
+  - Postgres backend는 `DATABASE_URL`을 사용하고 API 인스턴스 간 카운터를 공유한다.
+- 롤백:
+  - `AUTH_RATE_LIMIT_BACKEND=memory`: process-local limiter로 되돌린다.
+  - `AUTH_RATE_LIMIT_ENABLED=0`: 임시 긴급 차단 해제 전용이며 brute-force 보호를 끈다. 정상 롤백은 `AUTH_RATE_LIMIT_BACKEND=memory`를 사용한다.
 - 제한 초과 응답:
   - HTTP Status: `429`
   - Header: `Retry-After: <seconds>`

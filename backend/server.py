@@ -71,6 +71,7 @@ from backend.modules.ops.rollout_control import (
 from backend.modules.ops.api_edge_guard import (
     InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
+    PostgresSlidingWindowRateLimiter,
     build_auth_rate_limit_settings_from_env,
     build_cors_config_from_env,
     build_inflight_admission_settings_from_env,
@@ -1193,12 +1194,21 @@ def _initialize_api_runtime_controls() -> None:
 
     auth_rate_limit_settings = build_auth_rate_limit_settings_from_env()
     if auth_rate_limit_settings.enabled:
-        app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
-            endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
-            window_seconds=auth_rate_limit_settings.window_seconds,
-        )
+        if auth_rate_limit_settings.backend == "postgres":
+            app.state.auth_rate_limiter = PostgresSlidingWindowRateLimiter(
+                database_url=_env_str("DATABASE_URL", ""),
+                endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
+                table_name=auth_rate_limit_settings.table_name,
+                window_seconds=auth_rate_limit_settings.window_seconds,
+            )
+        else:
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
+                window_seconds=auth_rate_limit_settings.window_seconds,
+            )
         logger.info(
-            "[AuthRateLimit] enabled window_seconds=%d limits=%s",
+            "[AuthRateLimit] enabled backend=%s window_seconds=%d limits=%s",
+            auth_rate_limit_settings.backend,
             auth_rate_limit_settings.window_seconds,
             auth_rate_limit_settings.endpoint_limits_per_minute,
         )
@@ -3355,7 +3365,8 @@ async def _run_auth_route(
     auth_service = _service("auth_service")
     try:
         if rate_limit_endpoint is not None and rate_limit_email is not None:
-            _apply_auth_rate_limit(
+            await run_in_threadpool(
+                _apply_auth_rate_limit,
                 request=request,
                 endpoint=rate_limit_endpoint,
                 email=rate_limit_email,

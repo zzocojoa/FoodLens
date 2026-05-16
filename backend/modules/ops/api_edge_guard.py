@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import math
 import os
+import re
 import time
-from ipaddress import ip_address
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from ipaddress import ip_address
 from threading import Lock
 from typing import Deque
 
 from fastapi import HTTPException, Request
+
+_POSTGRES_IDENTIFIER_MAX_LENGTH = 63
+_AUTH_RATE_LIMIT_TABLE_MAX_LENGTH = 40
 
 
 @dataclass(frozen=True)
@@ -27,6 +32,8 @@ class RateLimitSettings:
 @dataclass(frozen=True)
 class AuthRateLimitSettings:
     enabled: bool
+    backend: str
+    table_name: str
     window_seconds: int
     endpoint_limits_per_minute: dict[str, int]
 
@@ -42,6 +49,10 @@ class InflightAdmissionSettings:
 class RateLimitDecision:
     allowed: bool
     retry_after_seconds: int
+
+
+class RateLimitStorageError(Exception):
+    pass
 
 
 def _parse_csv(raw: str | None) -> list[str]:
@@ -85,6 +96,45 @@ def _env_int(name: str, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _auth_rate_limit_backend() -> str:
+    raw_backend = (os.environ.get("AUTH_RATE_LIMIT_BACKEND") or "auto").strip().lower()
+    if raw_backend not in {"auto", "memory", "postgres"}:
+        raise RateLimitStorageError(
+            "AUTH_RATE_LIMIT_BACKEND must be one of: auto, memory, postgres."
+        )
+    if raw_backend == "auto":
+        return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+    return raw_backend
+
+
+def _sanitize_identifier_name(raw: str, *, fallback: str, max_length: int) -> str:
+    candidate = (raw or "").strip() or fallback
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", candidate):
+        raise RateLimitStorageError(f"Invalid rate limit identifier: {candidate}")
+    if len(candidate) > max_length:
+        raise RateLimitStorageError(
+            "Invalid rate limit identifier: "
+            f"{candidate} exceeds {max_length} characters."
+        )
+    return candidate
+
+
+def _sanitize_table_name(raw: str, *, fallback: str) -> str:
+    return _sanitize_identifier_name(
+        raw,
+        fallback=fallback,
+        max_length=_AUTH_RATE_LIMIT_TABLE_MAX_LENGTH,
+    )
+
+
+def _sanitize_index_name(raw: str, *, fallback: str) -> str:
+    return _sanitize_identifier_name(
+        raw,
+        fallback=fallback,
+        max_length=_POSTGRES_IDENTIFIER_MAX_LENGTH,
+    )
+
+
 def build_rate_limit_settings_from_env() -> RateLimitSettings:
     enabled = (os.environ.get("ANALYSIS_RATE_LIMIT_ENABLED", "1").strip() != "0")
     window_seconds = _env_int("ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", 60)
@@ -110,6 +160,15 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
 
 def build_auth_rate_limit_settings_from_env() -> AuthRateLimitSettings:
     enabled = (os.environ.get("AUTH_RATE_LIMIT_ENABLED", "1").strip() != "0")
+    if enabled:
+        backend = _auth_rate_limit_backend()
+        table_name = _sanitize_table_name(
+            os.environ.get("AUTH_RATE_LIMIT_TABLE", ""),
+            fallback="auth_rate_limit_events",
+        )
+    else:
+        backend = "memory"
+        table_name = "auth_rate_limit_events"
     window_seconds = _env_int("AUTH_RATE_LIMIT_WINDOW_SECONDS", 60)
     login_limit = _env_int("AUTH_RATE_LIMIT_LOGIN_PER_MIN", 5)
     signup_limit = _env_int("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", 3)
@@ -117,6 +176,8 @@ def build_auth_rate_limit_settings_from_env() -> AuthRateLimitSettings:
     password_reset_request_limit = _env_int("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", 3)
     return AuthRateLimitSettings(
         enabled=enabled,
+        backend=backend,
+        table_name=table_name,
         window_seconds=window_seconds,
         endpoint_limits_per_minute={
             "/auth/email/login": login_limit,
@@ -274,6 +335,138 @@ class InMemorySlidingWindowRateLimiter:
             return RateLimitDecision(allowed=False, retry_after_seconds=retry_after_seconds)
 
 
+class PostgresSlidingWindowRateLimiter:
+    """
+    API 인스턴스가 공유하는 PostgreSQL 기반 sliding-window rate limiter.
+    """
+
+    def __init__(
+        self,
+        *,
+        database_url: str,
+        endpoint_limits_per_minute: dict[str, int],
+        table_name: str,
+        window_seconds: int,
+    ) -> None:
+        normalized_database_url = database_url.strip()
+        if not normalized_database_url:
+            raise RateLimitStorageError("DATABASE_URL is required for postgres auth rate limiting.")
+        self._database_url = normalized_database_url
+        self._endpoint_limits = dict(endpoint_limits_per_minute)
+        self._table_name = _sanitize_table_name(table_name, fallback="auth_rate_limit_events")
+        self._event_ts_index_name = _sanitize_index_name(
+            f"{self._table_name}_event_ts_idx",
+            fallback="auth_rate_limit_events_event_ts_idx",
+        )
+        self._subject_index_name = _sanitize_index_name(
+            f"{self._table_name}_endpoint_subject_ts_idx",
+            fallback="auth_rate_limit_events_endpoint_subject_ts_idx",
+        )
+        self._window_seconds = max(1, int(window_seconds))
+        self._ensure_lock = Lock()
+        self._table_ensured = False
+
+    def evaluate(self, *, endpoint: str, subject: str, now: float | None = None) -> RateLimitDecision:
+        limit = self._endpoint_limits.get(endpoint)
+        if limit is None or limit <= 0:
+            return RateLimitDecision(allowed=True, retry_after_seconds=0)
+
+        current_ts = None if now is None else float(now)
+        connect = _load_connect()
+        database_error = _load_database_error()
+        try:
+            self._ensure_table(connect=connect)
+            with connect(self._database_url) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                        (endpoint, subject),
+                    )
+                    if current_ts is None:
+                        cursor.execute("SELECT EXTRACT(EPOCH FROM clock_timestamp())")
+                        clock_row = cursor.fetchone()
+                        if clock_row is None or clock_row[0] is None:
+                            raise RateLimitStorageError(
+                                "Failed to read postgres clock for auth rate limiting."
+                            )
+                        current_ts = float(clock_row[0])
+                    cutoff_ts = current_ts - self._window_seconds
+                    cursor.execute(
+                        f"DELETE FROM {self._table_name} WHERE event_ts <= to_timestamp(%s)",
+                        (cutoff_ts,),
+                    )
+                    cursor.execute(
+                        (
+                            f"SELECT COUNT(*), EXTRACT(EPOCH FROM MIN(event_ts)) "
+                            f"FROM {self._table_name} "
+                            "WHERE endpoint = %s AND subject = %s"
+                        ),
+                        (endpoint, subject),
+                    )
+                    row = cursor.fetchone()
+                    event_count = int(row[0] or 0) if row is not None else 0
+                    oldest_ts = float(row[1]) if row is not None and row[1] is not None else current_ts
+                    if event_count < limit:
+                        cursor.execute(
+                            (
+                                f"INSERT INTO {self._table_name} "
+                                "(endpoint,subject,event_ts) VALUES (%s,%s,to_timestamp(%s))"
+                            ),
+                            (endpoint, subject, current_ts),
+                        )
+                        return RateLimitDecision(allowed=True, retry_after_seconds=0)
+                    retry_after_seconds = max(
+                        1,
+                        int(math.ceil(oldest_ts + self._window_seconds - current_ts)),
+                    )
+                    return RateLimitDecision(
+                        allowed=False,
+                        retry_after_seconds=retry_after_seconds,
+                    )
+        except database_error as error:
+            raise RateLimitStorageError(
+                f"Failed to evaluate postgres auth rate limit endpoint={endpoint}: {error}"
+            ) from error
+
+    def _ensure_table(self, *, connect) -> None:
+        if self._table_ensured:
+            return
+        with self._ensure_lock:
+            if self._table_ensured:
+                return
+            database_error = _load_database_error()
+            try:
+                with connect(self._database_url, autocommit=True) as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            (
+                                f"CREATE TABLE IF NOT EXISTS {self._table_name} ("
+                                "id BIGSERIAL PRIMARY KEY,"
+                                "endpoint TEXT NOT NULL,"
+                                "subject TEXT NOT NULL,"
+                                "event_ts TIMESTAMPTZ NOT NULL"
+                                ")"
+                            )
+                        )
+                        cursor.execute(
+                            (
+                                f"CREATE INDEX IF NOT EXISTS {self._subject_index_name} "
+                                f"ON {self._table_name} (endpoint, subject, event_ts)"
+                            )
+                        )
+                        cursor.execute(
+                            (
+                                f"CREATE INDEX IF NOT EXISTS {self._event_ts_index_name} "
+                                f"ON {self._table_name} (event_ts)"
+                            )
+                        )
+                self._table_ensured = True
+            except database_error as error:
+                raise RateLimitStorageError(
+                    f"Failed to initialize postgres auth rate limit table={self._table_name}: {error}"
+                ) from error
+
+
 class InMemoryEndpointAdmissionLimiter:
     """
     Thread-safe in-flight admission control.
@@ -334,3 +527,23 @@ def build_rate_limit_http_exception(
         },
         headers={"Retry-After": str(retry_after_seconds)},
     )
+
+
+def _load_connect():
+    try:
+        from psycopg import connect  # type: ignore
+    except ImportError as error:
+        raise RateLimitStorageError(
+            "psycopg is required for postgres auth rate limiting. Install backend/requirements.txt."
+        ) from error
+    return connect
+
+
+def _load_database_error():
+    try:
+        from psycopg import Error  # type: ignore
+    except ImportError as error:
+        raise RateLimitStorageError(
+            "psycopg is required for postgres auth rate limiting. Install backend/requirements.txt."
+        ) from error
+    return Error

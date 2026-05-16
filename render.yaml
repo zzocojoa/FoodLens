@@ -40,6 +40,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
@@ -386,6 +390,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
@@ -732,6 +740,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
