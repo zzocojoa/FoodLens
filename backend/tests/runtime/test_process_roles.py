@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import os
 import unittest
@@ -29,6 +30,12 @@ class _DisabledMediaStorage:
 class _RunningTask:
     def done(self) -> bool:
         return False
+
+
+def _fake_running_task(coroutine: object) -> _RunningTask:
+    if inspect.iscoroutine(coroutine):
+        coroutine.close()
+    return _RunningTask()
 
 
 class ProcessRoleRuntimeTests(unittest.TestCase):
@@ -160,6 +167,98 @@ class ProcessRoleRuntimeTests(unittest.TestCase):
         self.assertTrue(payload["ready"])
         self.assertTrue(payload["checks"]["analysis_job_remote_worker"])
         self.assertEqual(payload["analysis_job_remote_worker_heartbeat_at"], "2026-04-19T14:10:00+00:00")
+
+    def test_web_role_readiness_accepts_embedded_worker_for_postgres_job_backend(self) -> None:
+        self._prime_common_runtime_state()
+        self._set_running_workers(1)
+        app.state.deletion_queue_task = _RunningTask()
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "AUTH_STATE_BACKEND": "postgres",
+                "ANALYSIS_JOB_BACKEND": "postgres",
+                "ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            payload, status_code = self._call_readiness_report(WEB_ROLE)
+
+        self.assertEqual(status_code, 200)
+        self.assertTrue(payload["ready"])
+        self.assertTrue(payload["checks"]["analysis_job_embedded_worker_enabled"])
+        self.assertTrue(payload["checks"]["analysis_job_workers"])
+        self.assertTrue(payload["checks"]["deletion_queue_task"])
+        self.assertIn("analysis_job_workers", payload["required_checks"])
+        self.assertIn("deletion_queue_task", payload["required_checks"])
+        self.assertNotIn("analysis_job_remote_worker", payload["required_checks"])
+
+    def test_web_role_readiness_requires_embedded_worker_tasks_when_enabled(self) -> None:
+        self._prime_common_runtime_state()
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "AUTH_STATE_BACKEND": "postgres",
+                "ANALYSIS_JOB_BACKEND": "postgres",
+                "ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            payload, status_code = self._call_readiness_report(WEB_ROLE)
+
+        self.assertEqual(status_code, 503)
+        self.assertFalse(payload["ready"])
+        issue_codes = {issue["code"] for issue in payload["issues"]}
+        self.assertIn("ANALYSIS_JOB_WORKERS_NOT_READY", issue_codes)
+        self.assertIn("DELETION_QUEUE_TASK_NOT_RUNNING", issue_codes)
+        self.assertNotIn("ANALYSIS_JOB_REMOTE_WORKER_NOT_READY", issue_codes)
+
+    def test_submit_job_worker_check_accepts_embedded_worker(self) -> None:
+        self._prime_common_runtime_state()
+        self._set_running_workers(1)
+        app.state.deletion_queue_task = _RunningTask()
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "AUTH_STATE_BACKEND": "postgres",
+                "ANALYSIS_JOB_BACKEND": "postgres",
+                "ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            server._assert_analysis_job_remote_worker_available(request_id="req-embedded-worker")
+
+    def test_web_startup_starts_embedded_worker_runtime_when_enabled(self) -> None:
+        with (
+            patch("backend.server._initialize_auth_and_media_runtime"),
+            patch("backend.server._initialize_analysis_runtime"),
+            patch("backend.server._initialize_retention_runtime"),
+            patch("backend.server._initialize_deletion_queue_runtime"),
+            patch("backend.server._initialize_core_runtime_services"),
+            patch("backend.server._initialize_api_runtime_controls"),
+            patch("backend.server._start_analysis_job_workers") as start_workers,
+            patch("backend.server._build_analysis_job_worker_heartbeat_store", return_value=object()),
+            patch("backend.server.asyncio.create_task", side_effect=_fake_running_task) as create_task,
+            patch.dict(
+                os.environ,
+                {
+                    "ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED": "1",
+                    "OPENAPI_EXPORT_ONLY": "0",
+                },
+                clear=False,
+            ),
+        ):
+            asyncio.run(server._startup_runtime(WEB_ROLE))
+
+        start_workers.assert_called_once()
+        self.assertEqual(create_task.call_count, 2)
+        self.assertTrue(getattr(app.state, "startup_completed"))
+        self.assertEqual(getattr(app.state, "process_role"), WEB_ROLE)
 
     def test_worker_role_readiness_requires_analysis_workers_and_deletion_queue_loop(self) -> None:
         self._prime_common_runtime_state()

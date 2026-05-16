@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sys
 import threading
@@ -16,7 +17,15 @@ os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
 os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
-sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
+sys.modules.setdefault(
+    "sentry_sdk",
+    types.SimpleNamespace(
+        init=lambda **_kwargs: None,
+        push_scope=lambda: contextlib.nullcontext(
+            types.SimpleNamespace(set_tag=lambda *_args, **_kwargs: None, set_extra=lambda *_args, **_kwargs: None)
+        ),
+    ),
+)
 from backend import server as server_module  # noqa: E402
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
