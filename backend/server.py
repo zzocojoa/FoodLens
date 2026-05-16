@@ -338,10 +338,12 @@ def _normalize_idempotency_key(header_value: str | None, form_value: str | None)
 
 
 def _resolve_analysis_job_idempotency_user_id(request: Request, idempotency_key: str | None) -> str | None:
-    if idempotency_key is None:
-        return None
     subject, user_id = _resolve_rate_limit_subject(request)
-    return user_id or subject
+    if user_id is not None:
+        return user_id
+    if idempotency_key is not None:
+        return subject
+    return None
 
 
 def _normalize_optional_header_value(value: str | None) -> str | None:
@@ -1093,6 +1095,7 @@ def _initialize_deletion_queue_runtime() -> None:
     else:
         deletion_handler = UserDeletionHandler(
             auth_service=app.state.auth_service,
+            analysis_job_store=app.state.analysis_job_store,
             media_storage=app.state.media_storage,
             retention_store=app.state.retention_store,
         )
@@ -3599,6 +3602,42 @@ def _resolve_authenticated_user(request: Request, request_id: str):
         )
         raise _auth_error_to_http_exception(error, request_id) from error
 
+
+def _analysis_job_owner_user_id(*, record: dict[str, Any]) -> str | None:
+    owner_user_id = record.get("user_id")
+    if owner_user_id is None:
+        return None
+    normalized_owner_user_id = str(owner_user_id).strip()
+    if normalized_owner_user_id.startswith(("device:", "ip:")):
+        return None
+    return normalized_owner_user_id or None
+
+
+def _require_analysis_job_status_access(*, request: Request, request_id: str, record: dict[str, Any]) -> None:
+    owner_user_id = _analysis_job_owner_user_id(record=record)
+    if owner_user_id is None:
+        return None
+
+    user = _resolve_authenticated_user(request, request_id)
+    if user.user_id == owner_user_id:
+        return None
+
+    _log_auth_failure(
+        request_id=request_id,
+        user_id=user.user_id,
+        provider=None,
+        code="ANALYSIS_JOB_FORBIDDEN",
+    )
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": "Analysis job access is forbidden.",
+            "code": "ANALYSIS_JOB_FORBIDDEN",
+            "request_id": request_id,
+        },
+    )
+
+
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
@@ -4864,6 +4903,7 @@ async def get_analysis_job_status(request: Request, job_id: str):
                 "request_id": request_id,
             },
         )
+    _require_analysis_job_status_access(request=request, request_id=request_id, record=record)
     payload = _analysis_job_status_payload(record=record)
     logger.info(
         "[AnalysisJob] poll request_id=%s job_id=%s status=%s poll_after_ms=%s",

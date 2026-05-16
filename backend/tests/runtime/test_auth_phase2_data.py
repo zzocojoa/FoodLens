@@ -2,6 +2,7 @@ import os
 import sys
 import types
 import unittest
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -80,6 +81,102 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             object_key=f"media/{user_id}/{scope}/{asset_id}/original.jpg",
             asset_id=asset_id,
         )
+
+    @staticmethod
+    def _create_completed_analysis_job(
+        *,
+        user_id: str | None,
+        idempotency_key: str | None,
+        allergy_info: str,
+        result_food_name: str,
+    ) -> str:
+        job_id = f"job_privacy_{uuid4().hex}"
+        accepted_at = datetime.now(timezone.utc)
+        app.state.analysis_job_store.submit_job(
+            job_id=job_id,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            request_id=f"req_{job_id}",
+            mode="food",
+            allergy_info=allergy_info,
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="cHJpdmF0ZS1pbWFnZQ==",
+            image_sha256="a" * 64,
+            accepted_at=accepted_at,
+            poll_after_ms=1000,
+        )
+        app.state.analysis_job_store.update_job(
+            job_id=job_id,
+            updates={
+                "status": "completed",
+                "result_json": {
+                    "foodName": result_food_name,
+                    "ingredients": [{"name": "peanut", "isAllergen": True}],
+                    "safetyStatus": "CAUTION",
+                },
+                "updated_at": accepted_at,
+            },
+        )
+        return job_id
+
+    @classmethod
+    def _create_analysis_job_for_user(
+        cls,
+        *,
+        user_id: str,
+        allergy_info: str,
+        result_food_name: str,
+    ) -> str:
+        return cls._create_completed_analysis_job(
+            user_id=user_id,
+            idempotency_key=f"idempotency_{uuid4().hex}",
+            allergy_info=allergy_info,
+            result_food_name=result_food_name,
+        )
+
+    @classmethod
+    def _create_anonymous_analysis_job(
+        cls,
+        *,
+        allergy_info: str,
+        result_food_name: str,
+    ) -> str:
+        return cls._create_completed_analysis_job(
+            user_id=None,
+            idempotency_key=None,
+            allergy_info=allergy_info,
+            result_food_name=result_food_name,
+        )
+
+    @classmethod
+    def _create_device_scoped_analysis_job(
+        cls,
+        *,
+        allergy_info: str,
+        result_food_name: str,
+    ) -> str:
+        return cls._create_completed_analysis_job(
+            user_id=f"device:device_{uuid4().hex}",
+            idempotency_key=f"idempotency_{uuid4().hex}",
+            allergy_info=allergy_info,
+            result_food_name=result_food_name,
+        )
+
+    def _assert_analysis_job_user_data_scrubbed(self, *, job_id: str) -> None:
+        record = app.state.analysis_job_store.get_job(job_id=job_id)
+        self.assertIsNotNone(record)
+        if record is None:
+            raise AssertionError(f"Analysis job not found: {job_id}")
+        self.assertIsNone(record["user_id"])
+        self.assertIsNone(record["idempotency_key"])
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["allergy_info"], "")
+        self.assertEqual(record["image_base64"], "")
+        self.assertEqual(record["image_sha256"], "")
+        self.assertIsNone(record["result_json"])
+        self.assertEqual(record["error_code"], "USER_DATA_DELETED")
 
     def test_me_endpoints_roundtrip_profile_allergies_settings_history(self):
         with TestClient(app) as client:
@@ -590,6 +687,7 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             password = "Passw0rd!"
             session = self._signup_and_verify(client, email=email, password=password)
             headers = _auth_headers(session["access_token"])
+            user_id = str(session["user"]["id"])
 
             put_profile = client.put(
                 "/me/profile",
@@ -642,6 +740,11 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 headers=headers,
             )
             self.assertEqual(post_history.status_code, 200)
+            analysis_job_id = self._create_analysis_job_for_user(
+                user_id=user_id,
+                allergy_info="soy allergy",
+                result_food_name="Private Data Meal",
+            )
 
             deletion = client.post(
                 "/me/deletion-requests",
@@ -653,6 +756,7 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertIn("request_id", deletion_body)
             self.assertEqual(deletion_body["deletion_request"]["target"], "data")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+            self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)
 
             latest = client.get("/me/deletion-requests/latest", headers=headers)
             self.assertEqual(latest.status_code, 401)
@@ -705,6 +809,12 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
         with TestClient(app) as client:
             session = self._signup_and_verify(client, email=self._unique_email("phase5-account-delete"))
             headers = _auth_headers(session["access_token"])
+            user_id = str(session["user"]["id"])
+            analysis_job_id = self._create_analysis_job_for_user(
+                user_id=user_id,
+                allergy_info="shellfish allergy",
+                result_food_name="Private Account Meal",
+            )
 
             deletion = client.post(
                 "/me/deletion-requests",
@@ -715,10 +825,51 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             deletion_body = deletion.json()
             self.assertEqual(deletion_body["deletion_request"]["target"], "account")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+            self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)
 
             profile = client.get("/me/profile", headers=headers)
             self.assertEqual(profile.status_code, 401)
             self.assertEqual(profile.json()["detail"]["code"], "AUTH_TOKEN_INVALID")
+
+    def test_analysis_job_status_requires_owner_for_user_jobs_and_preserves_anonymous_jobs(self):
+        with TestClient(app) as client:
+            session_a = self._signup_and_verify(client, email=self._unique_email("phase5-job-owner-a"))
+            session_b = self._signup_and_verify(client, email=self._unique_email("phase5-job-owner-b"))
+            headers_a = _auth_headers(session_a["access_token"])
+            headers_b = _auth_headers(session_b["access_token"])
+            user_job_id = self._create_analysis_job_for_user(
+                user_id=str(session_a["user"]["id"]),
+                allergy_info="peanut allergy",
+                result_food_name="Owner Meal",
+            )
+            anonymous_job_id = self._create_anonymous_analysis_job(
+                allergy_info="anonymous allergy",
+                result_food_name="Legacy Anonymous Meal",
+            )
+            device_scoped_job_id = self._create_device_scoped_analysis_job(
+                allergy_info="anonymous device allergy",
+                result_food_name="Legacy Device Meal",
+            )
+
+            missing_owner = client.get(f"/analyze/jobs/{user_job_id}")
+            self.assertEqual(missing_owner.status_code, 401)
+            self.assertEqual(missing_owner.json()["detail"]["code"], "AUTH_TOKEN_MISSING")
+
+            foreign_owner = client.get(f"/analyze/jobs/{user_job_id}", headers=headers_b)
+            self.assertEqual(foreign_owner.status_code, 403)
+            self.assertEqual(foreign_owner.json()["detail"]["code"], "ANALYSIS_JOB_FORBIDDEN")
+
+            owner = client.get(f"/analyze/jobs/{user_job_id}", headers=headers_a)
+            self.assertEqual(owner.status_code, 200)
+            self.assertEqual(owner.json()["foodName"], "Owner Meal")
+
+            anonymous = client.get(f"/analyze/jobs/{anonymous_job_id}")
+            self.assertEqual(anonymous.status_code, 200)
+            self.assertEqual(anonymous.json()["foodName"], "Legacy Anonymous Meal")
+
+            device_scoped = client.get(f"/analyze/jobs/{device_scoped_job_id}")
+            self.assertEqual(device_scoped.status_code, 200)
+            self.assertEqual(device_scoped.json()["foodName"], "Legacy Device Meal")
 
     def test_me_update_conflict_returns_409_with_server_payload(self):
         with TestClient(app) as client:
