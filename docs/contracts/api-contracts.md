@@ -165,11 +165,44 @@
 - `AUTH_EMAIL_NOT_VERIFIED`
 - `AUTH_EMAIL_VERIFICATION_INVALID`
 - `AUTH_EMAIL_VERIFICATION_EXPIRED`
+- `AUTH_EMAIL_VERIFICATION_LOCKED`
 - `AUTH_EMAIL_VERIFICATION_DELIVERY_FAILED`
 - `AUTH_PASSWORD_RESET_INVALID`
 - `AUTH_PASSWORD_RESET_EXPIRED`
 - `AUTH_PASSWORD_RESET_LOCKED`
 - `AUTH_PASSWORD_RESET_DELIVERY_FAILED`
+- `AUTH_RATE_LIMITED`
+
+### E. 인증 Rate Limit 계약
+
+- 대상:
+  - `POST /auth/email/signup`
+  - `POST /auth/email/login`
+  - `POST /auth/email/verification/request`
+  - `POST /auth/email/password/reset/request`
+- 운영 환경 변수:
+  - `AUTH_RATE_LIMIT_ENABLED`
+  - `AUTH_RATE_LIMIT_WINDOW_SECONDS`
+  - `AUTH_RATE_LIMIT_LOGIN_PER_MIN`
+  - `AUTH_RATE_LIMIT_SIGNUP_PER_MIN`
+  - `AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN`
+  - `AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN`
+- 제한 초과 응답:
+  - HTTP Status: `429`
+  - Header: `Retry-After: <seconds>`
+  - `detail.code`: `AUTH_RATE_LIMITED`
+  - `detail.message`: `Too many authentication attempts. Please retry shortly.`
+  - `detail.request_id`
+  - `detail.retry_after_seconds`
+  - `detail.retry_scope`: 제한이 걸린 인증 endpoint
+  - `detail.retryable_by_client`: `true`
+- 인증 코드 잠금 응답:
+  - 대상: `POST /auth/email/verify`, `POST /auth/email/password/reset/confirm`
+  - HTTP Status: `429`
+  - Header: `Retry-After: <seconds>`
+  - `detail.code`: `AUTH_EMAIL_VERIFICATION_LOCKED` 또는 `AUTH_PASSWORD_RESET_LOCKED`
+  - `detail.retry_scope`: 잠금 에러 코드
+  - `detail.retryable_by_client`: `false`
 
 ## 5) 사용자 데이터 API
 
@@ -297,6 +330,6 @@
 
 ---
 
-문서 버전: v1.7
+문서 버전: v1.8
 소유: Backend Lead + Mobile Lead  
-최종 수정: 2026-04-09
+최종 수정: 2026-05-16

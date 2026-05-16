@@ -7,6 +7,7 @@ from starlette.requests import Request
 from backend.modules.ops.api_edge_guard import (
     InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
+    build_auth_rate_limit_settings_from_env,
     build_cors_config_from_env,
     build_inflight_admission_settings_from_env,
     build_rate_limit_settings_from_env,
@@ -61,6 +62,37 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertEqual(settings.endpoint_limits_per_minute["/analyze"], 15)
         self.assertEqual(settings.endpoint_limits_per_minute["/analyze/label"], 15)
         self.assertEqual(settings.endpoint_limits_per_minute["/lookup/barcode"], 30)
+
+    def test_auth_rate_limit_settings_defaults(self):
+        with patch.dict(os.environ, {}, clear=True):
+            settings = build_auth_rate_limit_settings_from_env()
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.window_seconds, 60)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/login"], 5)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/signup"], 3)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/verification/request"], 3)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/password/reset/request"], 3)
+
+    def test_auth_rate_limit_settings_from_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_ENABLED": "1",
+                "AUTH_RATE_LIMIT_WINDOW_SECONDS": "30",
+                "AUTH_RATE_LIMIT_LOGIN_PER_MIN": "2",
+                "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "1",
+                "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "4",
+                "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "6",
+            },
+            clear=True,
+        ):
+            settings = build_auth_rate_limit_settings_from_env()
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.window_seconds, 30)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/login"], 2)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/signup"], 1)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/verification/request"], 4)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/password/reset/request"], 6)
 
     def test_rate_limit_subject_priority(self):
         self.assertEqual(

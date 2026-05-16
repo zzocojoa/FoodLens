@@ -38,6 +38,18 @@ services:
         value: "90"
       - key: ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN
         value: "30"
+      - key: AUTH_RATE_LIMIT_ENABLED
+        value: "1"
+      - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
+        value: "5"
+      - key: AUTH_RATE_LIMIT_SIGNUP_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN
+        value: "3"
       - key: ANALYSIS_INFLIGHT_GUARD_ENABLED
         value: "1"
       - key: ANALYSIS_INFLIGHT_MAX_ANALYZE
@@ -372,6 +384,18 @@ services:
         value: "90"
       - key: ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN
         value: "30"
+      - key: AUTH_RATE_LIMIT_ENABLED
+        value: "1"
+      - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
+        value: "5"
+      - key: AUTH_RATE_LIMIT_SIGNUP_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN
+        value: "3"
       - key: ANALYSIS_INFLIGHT_GUARD_ENABLED
         value: "1"
       - key: ANALYSIS_INFLIGHT_MAX_ANALYZE
@@ -706,6 +730,18 @@ services:
         value: "90"
       - key: ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN
         value: "30"
+      - key: AUTH_RATE_LIMIT_ENABLED
+        value: "1"
+      - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
+        value: "5"
+      - key: AUTH_RATE_LIMIT_SIGNUP_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN
+        value: "3"
+      - key: AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN
+        value: "3"
       - key: ANALYSIS_INFLIGHT_GUARD_ENABLED
         value: "1"
       - key: ANALYSIS_INFLIGHT_MAX_ANALYZE

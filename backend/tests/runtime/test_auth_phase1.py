@@ -18,6 +18,7 @@ os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
 sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
+from backend.modules.ops.api_edge_guard import InMemorySlidingWindowRateLimiter  # noqa: E402
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -256,6 +257,223 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(login_with_updated_password.status_code, 200)
             self.assertIn("access_token", login_with_updated_password.json())
 
+    def test_email_signup_rate_limit_blocks_repeated_same_email_and_device(self):
+        with TestClient(app) as client:
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={"/auth/email/signup": 1},
+                window_seconds=60,
+            )
+            try:
+                first_signup = client.post(
+                    "/auth/email/signup",
+                    json={
+                        "email": "Signup-Limit@Example.com",
+                        "password": "Passw0rd!",
+                        "display_name": "Signup Limit",
+                        "device_id": "ios-signup-limit",
+                    },
+                    headers={"X-Request-Id": "req-auth-signup-limit-1"},
+                )
+                self.assertEqual(first_signup.status_code, 200)
+
+                blocked_signup = client.post(
+                    "/auth/email/signup",
+                    json={
+                        "email": "signup-limit@example.com",
+                        "password": "Passw0rd!",
+                        "display_name": "Signup Limit",
+                        "device_id": "ios-signup-limit",
+                    },
+                    headers={"X-Request-Id": "req-auth-signup-limit-2"},
+                )
+                self.assertEqual(blocked_signup.status_code, 429)
+                self.assertIsNotNone(blocked_signup.headers.get("Retry-After"))
+                blocked_body = blocked_signup.json()["detail"]
+                self.assertEqual(blocked_body["code"], "AUTH_RATE_LIMITED")
+                self.assertEqual(blocked_body["request_id"], "req-auth-signup-limit-2")
+                self.assertEqual(blocked_body["retry_scope"], "/auth/email/signup")
+                self.assertTrue(blocked_body["retryable_by_client"])
+                self.assertGreaterEqual(blocked_body["retry_after_seconds"], 1)
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+    def test_email_login_rate_limit_blocks_same_email_across_device_rotation(self):
+        with TestClient(app) as client:
+            self._signup_and_verify(
+                client,
+                email="login-limit@example.com",
+                password="Passw0rd!",
+                display_name="Login Limit",
+                device_id="ios-login-limit",
+            )
+
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={"/auth/email/login": 2},
+                window_seconds=60,
+            )
+            try:
+                for index in range(2):
+                    login_response = client.post(
+                        "/auth/email/login",
+                        json={
+                            "email": "LOGIN-LIMIT@example.com",
+                            "password": f"WrongPassw0rd!{index}",
+                            "device_id": f"ios-login-limit-{index}",
+                        },
+                        headers={"X-Request-Id": f"req-auth-login-limit-{index}"},
+                    )
+                    self.assertEqual(login_response.status_code, 401)
+                    self.assertEqual(login_response.json()["detail"]["code"], "AUTH_INVALID_CREDENTIALS")
+
+                blocked_login = client.post(
+                    "/auth/email/login",
+                    json={
+                        "email": "login-limit@example.com",
+                        "password": "Passw0rd!",
+                        "device_id": "ios-login-limit-rotated",
+                    },
+                    headers={"X-Request-Id": "req-auth-login-limit-blocked"},
+                )
+                self.assertEqual(blocked_login.status_code, 429)
+                blocked_body = blocked_login.json()["detail"]
+                self.assertEqual(blocked_login.headers.get("Retry-After"), str(blocked_body["retry_after_seconds"]))
+                self.assertEqual(blocked_body["code"], "AUTH_RATE_LIMITED")
+                self.assertEqual(blocked_body["request_id"], "req-auth-login-limit-blocked")
+                self.assertEqual(blocked_body["retry_scope"], "/auth/email/login")
+                self.assertTrue(blocked_body["retryable_by_client"])
+                self.assertGreaterEqual(blocked_body["retry_after_seconds"], 1)
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+    def test_email_login_rate_limit_blocks_same_socket_client_across_spoofed_forwarding_headers(self):
+        with TestClient(app) as client:
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={"/auth/email/login": 2},
+                window_seconds=60,
+            )
+            try:
+                for index in range(2):
+                    login_response = client.post(
+                        "/auth/email/login",
+                        json={
+                            "email": f"rotating-email-{index}@example.com",
+                            "password": "WrongPassw0rd!",
+                            "device_id": f"ios-rotating-device-{index}",
+                        },
+                        headers={
+                            "X-Forwarded-For": f"8.8.8.{index + 1}",
+                            "X-Request-Id": f"req-auth-ip-limit-{index}",
+                        },
+                    )
+                    self.assertEqual(login_response.status_code, 401)
+                    self.assertEqual(login_response.json()["detail"]["code"], "AUTH_INVALID_CREDENTIALS")
+
+                blocked_login = client.post(
+                    "/auth/email/login",
+                    json={
+                        "email": "rotating-email-2@example.com",
+                        "password": "WrongPassw0rd!",
+                        "device_id": "ios-rotating-device-2",
+                    },
+                    headers={
+                        "X-Forwarded-For": "1.1.1.1",
+                        "X-Request-Id": "req-auth-ip-limit-blocked",
+                    },
+                )
+                self.assertEqual(blocked_login.status_code, 429)
+                blocked_body = blocked_login.json()["detail"]
+                self.assertEqual(blocked_login.headers.get("Retry-After"), str(blocked_body["retry_after_seconds"]))
+                self.assertEqual(blocked_body["code"], "AUTH_RATE_LIMITED")
+                self.assertEqual(blocked_body["request_id"], "req-auth-ip-limit-blocked")
+                self.assertEqual(blocked_body["retry_scope"], "/auth/email/login")
+                self.assertTrue(blocked_body["retryable_by_client"])
+                self.assertGreaterEqual(blocked_body["retry_after_seconds"], 1)
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+    def test_email_verification_and_password_reset_request_rate_limits(self):
+        with TestClient(app) as client:
+            self._signup_email(
+                client,
+                email="verification-request-limit@example.com",
+                password="Passw0rd!",
+                display_name="Verification Request Limit",
+            )
+            self._signup_and_verify(
+                client,
+                email="password-reset-request-limit@example.com",
+                password="Passw0rd!",
+                display_name="Password Reset Request Limit",
+            )
+
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={
+                    "/auth/email/verification/request": 1,
+                    "/auth/email/password/reset/request": 1,
+                },
+                window_seconds=60,
+            )
+            try:
+                verification_request = client.post(
+                    "/auth/email/verification/request",
+                    json={"email": "verification-request-limit@example.com"},
+                    headers={
+                        "X-Device-Id": "ios-verification-request-limit",
+                        "X-Request-Id": "req-auth-verification-request-limit-1",
+                    },
+                )
+                self.assertEqual(verification_request.status_code, 200)
+
+                blocked_verification_request = client.post(
+                    "/auth/email/verification/request",
+                    json={"email": "VERIFICATION-REQUEST-LIMIT@example.com"},
+                    headers={
+                        "X-Device-Id": "ios-verification-request-limit",
+                        "X-Request-Id": "req-auth-verification-request-limit-2",
+                    },
+                )
+                self.assertEqual(blocked_verification_request.status_code, 429)
+                self.assertIsNotNone(blocked_verification_request.headers.get("Retry-After"))
+                blocked_verification_body = blocked_verification_request.json()["detail"]
+                self.assertEqual(blocked_verification_body["code"], "AUTH_RATE_LIMITED")
+                self.assertEqual(blocked_verification_body["request_id"], "req-auth-verification-request-limit-2")
+                self.assertEqual(blocked_verification_body["retry_scope"], "/auth/email/verification/request")
+                self.assertTrue(blocked_verification_body["retryable_by_client"])
+                self.assertGreaterEqual(blocked_verification_body["retry_after_seconds"], 1)
+
+                reset_request = client.post(
+                    "/auth/email/password/reset/request",
+                    json={"email": "password-reset-request-limit@example.com"},
+                    headers={
+                        "X-Device-Id": "ios-password-reset-request-limit",
+                        "X-Request-Id": "req-auth-reset-request-limit-1",
+                    },
+                )
+                self.assertEqual(reset_request.status_code, 200)
+
+                blocked_reset_request = client.post(
+                    "/auth/email/password/reset/request",
+                    json={"email": "PASSWORD-RESET-REQUEST-LIMIT@example.com"},
+                    headers={
+                        "X-Device-Id": "ios-password-reset-request-limit",
+                        "X-Request-Id": "req-auth-reset-request-limit-2",
+                    },
+                )
+                self.assertEqual(blocked_reset_request.status_code, 429)
+                self.assertIsNotNone(blocked_reset_request.headers.get("Retry-After"))
+                blocked_reset_body = blocked_reset_request.json()["detail"]
+                self.assertEqual(blocked_reset_body["code"], "AUTH_RATE_LIMITED")
+                self.assertEqual(blocked_reset_body["request_id"], "req-auth-reset-request-limit-2")
+                self.assertEqual(blocked_reset_body["retry_scope"], "/auth/email/password/reset/request")
+                self.assertTrue(blocked_reset_body["retryable_by_client"])
+                self.assertGreaterEqual(blocked_reset_body["retry_after_seconds"], 1)
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
     def test_email_verification_rejects_invalid_code(self):
         with TestClient(app) as client:
             self._signup_email(
@@ -271,6 +489,33 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             )
             self.assertEqual(verify_response.status_code, 400)
             self.assertEqual(verify_response.json()["detail"]["code"], "AUTH_EMAIL_VERIFICATION_INVALID")
+
+    def test_email_verification_lockout_returns_retry_metadata(self):
+        with TestClient(app) as client:
+            self._signup_email(
+                client,
+                email="locked-code@example.com",
+                password="Passw0rd!",
+                display_name="Locked Code",
+            )
+
+            locked_response = None
+            for _index in range(5):
+                locked_response = client.post(
+                    "/auth/email/verify",
+                    json={"email": "locked-code@example.com", "code": "000000"},
+                    headers={"X-Request-Id": "req-auth-verification-locked"},
+                )
+
+            self.assertIsNotNone(locked_response)
+            self.assertEqual(locked_response.status_code, 429)
+            locked_body = locked_response.json()["detail"]
+            self.assertEqual(locked_response.headers.get("Retry-After"), str(locked_body["retry_after_seconds"]))
+            self.assertEqual(locked_body["code"], "AUTH_EMAIL_VERIFICATION_LOCKED")
+            self.assertEqual(locked_body["request_id"], "req-auth-verification-locked")
+            self.assertEqual(locked_body["retry_scope"], "AUTH_EMAIL_VERIFICATION_LOCKED")
+            self.assertFalse(locked_body["retryable_by_client"])
+            self.assertGreaterEqual(locked_body["retry_after_seconds"], 1)
 
     def test_password_reset_request_and_confirm_rotates_password(self):
         with TestClient(app) as client:
@@ -346,6 +591,43 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             )
             self.assertEqual(reset_confirm.status_code, 400)
             self.assertEqual(reset_confirm.json()["detail"]["code"], "AUTH_PASSWORD_RESET_INVALID")
+
+    def test_password_reset_lockout_returns_retry_metadata(self):
+        with TestClient(app) as client:
+            self._signup_and_verify(
+                client,
+                email="reset-locked@example.com",
+                password="Passw0rd!",
+                display_name="Reset Locked",
+            )
+
+            reset_request = client.post(
+                "/auth/email/password/reset/request",
+                json={"email": "reset-locked@example.com"},
+            )
+            self.assertEqual(reset_request.status_code, 200)
+
+            locked_response = None
+            for _index in range(5):
+                locked_response = client.post(
+                    "/auth/email/password/reset/confirm",
+                    json={
+                        "email": "reset-locked@example.com",
+                        "code": "000000",
+                        "new_password": "N3wPassw0rd!",
+                    },
+                    headers={"X-Request-Id": "req-auth-reset-locked"},
+                )
+
+            self.assertIsNotNone(locked_response)
+            self.assertEqual(locked_response.status_code, 429)
+            locked_body = locked_response.json()["detail"]
+            self.assertEqual(locked_response.headers.get("Retry-After"), str(locked_body["retry_after_seconds"]))
+            self.assertEqual(locked_body["code"], "AUTH_PASSWORD_RESET_LOCKED")
+            self.assertEqual(locked_body["request_id"], "req-auth-reset-locked")
+            self.assertEqual(locked_body["retry_scope"], "AUTH_PASSWORD_RESET_LOCKED")
+            self.assertFalse(locked_body["retryable_by_client"])
+            self.assertGreaterEqual(locked_body["retry_after_seconds"], 1)
 
     def test_refresh_reuse_detection_revokes_session_family(self):
         with TestClient(app) as client:
