@@ -29,6 +29,8 @@ from backend.modules.analysis_jobs import (
 
 Mode = Literal["dry-run", "execute"]
 Reason = Literal["deleted_user_request", "missing_user_id"]
+DEVICE_SCOPED_USER_ID_PATTERN = "device:%"
+IP_SCOPED_USER_ID_PATTERN = "ip:%"
 
 
 class DatabaseCursor(Protocol):
@@ -288,8 +290,8 @@ WITH deleted_users AS (
     LEFT JOIN deleted_users ON deleted_users.user_id = btrim(jobs.user_id)
     WHERE jobs.user_id IS NOT NULL
       AND btrim(jobs.user_id) <> ''
-      AND btrim(jobs.user_id) NOT LIKE 'device:%'
-      AND btrim(jobs.user_id) NOT LIKE 'ip:%'
+      AND btrim(jobs.user_id) NOT LIKE %s
+      AND btrim(jobs.user_id) NOT LIKE %s
       AND COALESCE(jobs.error_code, '') <> %s
       AND (
           (deleted_users.user_id IS NOT NULL AND jobs.accepted_at <= deleted_users.deleted_at)
@@ -315,6 +317,8 @@ WHERE jobs.job_id = matched.job_id
 RETURNING jobs.job_id
 """.strip(),
             (
+                DEVICE_SCOPED_USER_ID_PATTERN,
+                IP_SCOPED_USER_ID_PATTERN,
                 USER_DATA_DELETED_ERROR_CODE,
                 list(plan.missing_user_ids),
                 _to_iso(datetime.now(timezone.utc)),
@@ -354,6 +358,8 @@ RETURNING job_id
             (
                 _to_iso(datetime.now(timezone.utc)),
                 USER_DATA_DELETED_ERROR_CODE,
+                DEVICE_SCOPED_USER_ID_PATTERN,
+                IP_SCOPED_USER_ID_PATTERN,
                 _to_iso(config.anonymous_cutoff),
                 USER_DATA_DELETED_ERROR_CODE,
             ),
@@ -408,8 +414,8 @@ WITH deleted_users AS (
     LEFT JOIN deleted_users ON deleted_users.user_id = btrim(jobs.user_id)
     WHERE jobs.user_id IS NOT NULL
       AND btrim(jobs.user_id) <> ''
-      AND btrim(jobs.user_id) NOT LIKE 'device:%'
-      AND btrim(jobs.user_id) NOT LIKE 'ip:%'
+      AND btrim(jobs.user_id) NOT LIKE %s
+      AND btrim(jobs.user_id) NOT LIKE %s
       AND COALESCE(jobs.error_code, '') <> %s
 )
 SELECT user_id, reason, COUNT(*)
@@ -417,7 +423,7 @@ FROM classified
 GROUP BY user_id, reason
 ORDER BY MIN(user_id), reason
 """.strip(),
-        (USER_DATA_DELETED_ERROR_CODE,),
+        (DEVICE_SCOPED_USER_ID_PATTERN, IP_SCOPED_USER_ID_PATTERN, USER_DATA_DELETED_ERROR_CODE),
     )
     rows = cursor.fetchall()
     parsed_rows: list[tuple[str, Reason, int]] = []
@@ -444,7 +450,12 @@ def _fetch_old_anonymous_device_scoped_count(
             "AND accepted_at < %s::timestamptz "
             "AND COALESCE(error_code, '') <> %s"
         ),
-        params=(_to_iso(config.anonymous_cutoff), USER_DATA_DELETED_ERROR_CODE),
+        params=(
+            DEVICE_SCOPED_USER_ID_PATTERN,
+            IP_SCOPED_USER_ID_PATTERN,
+            _to_iso(config.anonymous_cutoff),
+            USER_DATA_DELETED_ERROR_CODE,
+        ),
         label="old anonymous/device-scoped analysis jobs",
     )
 
@@ -462,7 +473,12 @@ def _fetch_newer_anonymous_device_scoped_count(
             "AND accepted_at >= %s::timestamptz "
             "AND COALESCE(error_code, '') <> %s"
         ),
-        params=(_to_iso(config.anonymous_cutoff), USER_DATA_DELETED_ERROR_CODE),
+        params=(
+            DEVICE_SCOPED_USER_ID_PATTERN,
+            IP_SCOPED_USER_ID_PATTERN,
+            _to_iso(config.anonymous_cutoff),
+            USER_DATA_DELETED_ERROR_CODE,
+        ),
         label="newer anonymous/device-scoped analysis jobs",
     )
 
@@ -545,7 +561,7 @@ def _cleanup_result(
 
 
 def _anonymous_or_device_scoped_predicate() -> str:
-    return "(user_id IS NULL OR btrim(user_id) = '' OR btrim(user_id) LIKE 'device:%' OR btrim(user_id) LIKE 'ip:%')"
+    return "(user_id IS NULL OR btrim(user_id) = '' OR btrim(user_id) LIKE %s OR btrim(user_id) LIKE %s)"
 
 
 def _parse_json_object(*, value: object, label: str) -> dict[str, object]:
