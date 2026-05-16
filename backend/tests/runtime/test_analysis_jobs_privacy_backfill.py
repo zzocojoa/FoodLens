@@ -129,6 +129,8 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         )
         self.assertEqual(result.counts["deleted_missing_user_id"]["skipped_reasons"], {"active_user_id": 1})
         self.assertFalse(result.criteria["deleted_missing_user_id"]["allow_empty_auth_state"])
+        self.assertEqual(result.criteria["old_anonymous_device_scoped"]["accepted_before"], "2026-04-01T00:00:00Z")
+        _assert_default_execute_safety_criteria(test_case=self, result=result)
         self.assertEqual(connection.commit_count, 0)
         self.assertEqual(connection.rollback_count, 1)
         self.assertNotIn("UPDATE analysis_jobs", statements)
@@ -165,8 +167,14 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         self.assertEqual(result.counts["deleted_missing_user_id"]["skipped_reasons"], {"active_user_id": 1})
         self.assertEqual(connection.commit_count, 1)
         self.assertEqual(connection.rollback_count, 0)
-        self.assertTrue(any("pg_try_advisory_xact_lock" in call.statement for call in cursor.calls))
-        self.assertTrue(any("set_config" in call.statement for call in cursor.calls))
+        self.assertIn("pg_try_advisory_xact_lock", cursor.calls[0].statement)
+        self.assertEqual(cursor.calls[0].params, (backfill.DEFAULT_ADVISORY_LOCK_KEY,))
+        self.assertEqual(cursor.calls[1].params, ("lock_timeout", f"{backfill.DEFAULT_EXECUTE_LOCK_TIMEOUT_MS}ms"))
+        self.assertEqual(
+            cursor.calls[2].params,
+            ("statement_timeout", f"{backfill.DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS}ms"),
+        )
+        _assert_default_execute_safety_criteria(test_case=self, result=result)
         for statement in (deleted_missing_update, anonymous_update):
             self.assertIn("user_id = NULL", statement)
             self.assertIn("idempotency_key = NULL", statement)
@@ -300,6 +308,49 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
                 now=datetime(2026, 5, 16, 0, 0, tzinfo=timezone.utc),
             )
 
+    def test_config_parses_execute_safety_env(self) -> None:
+        config = backfill.build_config_from_env(
+            mode="execute",
+            anonymous_older_than_days=30,
+            allow_empty_auth_state=False,
+            getenv=_getenv_factory(
+                {
+                    "DATABASE_URL": "postgresql://privacy-backfill-test",
+                    "ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_TIMEOUT_MS": "1234",
+                    "ANALYSIS_JOBS_PRIVACY_BACKFILL_STATEMENT_TIMEOUT_MS": "5678",
+                    "ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_KEY": " custom-privacy-backfill-lock ",
+                }
+            ),
+            now=datetime(2026, 5, 16, 0, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(config.execute_lock_timeout_ms, 1234)
+        self.assertEqual(config.execute_statement_timeout_ms, 5678)
+        self.assertEqual(config.advisory_lock_key, "custom-privacy-backfill-lock")
+
+    def test_config_rejects_invalid_execute_safety_timeout_env(self) -> None:
+        cases: tuple[tuple[str, str], ...] = (
+            ("ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_TIMEOUT_MS", "0"),
+            ("ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_TIMEOUT_MS", "not-a-number"),
+            ("ANALYSIS_JOBS_PRIVACY_BACKFILL_STATEMENT_TIMEOUT_MS", "-1"),
+        )
+
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                with self.assertRaises(AnalysisJobStoreError):
+                    backfill.build_config_from_env(
+                        mode="execute",
+                        anonymous_older_than_days=30,
+                        allow_empty_auth_state=False,
+                        getenv=_getenv_factory(
+                            {
+                                "DATABASE_URL": "postgresql://privacy-backfill-test",
+                                key: value,
+                            }
+                        ),
+                        now=datetime(2026, 5, 16, 0, 0, tzinfo=timezone.utc),
+                    )
+
     def test_error_payload_redacts_user_id_shapes(self) -> None:
         error = RuntimeError(
             'failed user_id=usr_private_one {"user_id":"usr_private_two"} '
@@ -364,6 +415,17 @@ def _assert_output_has_no_pii(*, test_case: unittest.TestCase, result: CleanupRe
     output_json = json.dumps(asdict(result), ensure_ascii=False, sort_keys=True)
     for token in PRIVATE_TOKENS:
         test_case.assertNotIn(token, output_json)
+
+
+def _assert_default_execute_safety_criteria(*, test_case: unittest.TestCase, result: CleanupResult) -> None:
+    test_case.assertEqual(
+        result.criteria["execute_safety"],
+        {
+            "advisory_lock_key": backfill.DEFAULT_ADVISORY_LOCK_KEY,
+            "lock_timeout_ms": backfill.DEFAULT_EXECUTE_LOCK_TIMEOUT_MS,
+            "statement_timeout_ms": backfill.DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS,
+        },
+    )
 
 
 def _getenv_factory(values: dict[str, str]) -> Callable[[str, str | None], str | None]:

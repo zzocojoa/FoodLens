@@ -31,6 +31,7 @@ Run execute only after all items are true:
 - The operator accepts that app deploy rollback does not restore scrubbed DB fields. Only DB restore/PITR can recover them.
 - The expected target counts are small enough for one transaction, or a batch-specific plan has been approved.
 - Execute is scheduled for a quiet window. If the target set includes rows that might still be processed by `foodlens-worker`, suspend/scale down the worker first or stop and design a batch-specific plan.
+- If the dry-run fails because auth state is empty while user-scoped jobs exist, do not use `--allow-empty-auth-state` unless the active-user source has been independently verified and approved for this run.
 
 ## Dry-Run
 
@@ -77,4 +78,4 @@ Expected result:
 
 If dry-run or execute fails, use the structured error payload only. The script redacts database URLs, bearer tokens, common secret key/value pairs, `user_id` values, and Postgres key-detail values before printing.
 
-If execute commits but the result is wrong, do not use app rollback as the recovery path. Use Render Postgres PITR or restore into a new database, then decide whether to cut over `DATABASE_URL`.
+If execute commits but the result is wrong, do not use app rollback as the recovery path. Before any DB restore/cutover, stop new writes by scaling down web/worker writers or putting the API into maintenance. Use Render Postgres PITR or restore into a new database, then decide whether to cut over `DATABASE_URL`.

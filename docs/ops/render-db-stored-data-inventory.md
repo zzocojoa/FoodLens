@@ -10,6 +10,9 @@
 - 백엔드 Auth/Session 런타임 상태 저장 경로
 - 인증 rate limit 이벤트 저장 경로
 - 비동기 분석 작업 `analysis_jobs` 저장 경로
+- 분석 영양 캐시 저장 경로
+- AI 비용 가드레일 사용량/예약 저장 경로
+- media retention 및 삭제 큐/상태 저장 경로
 - `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history` 쓰기 경로
 - `/auth/logout` 세션/토큰 상태 변경 경로
 
@@ -25,6 +28,7 @@
 - 저장 방식:
   - `state_key` 기준 upsert (`INSERT ... ON CONFLICT ... DO UPDATE`)
   - 즉, 다수 정규화 테이블이 아니라 단일 JSONB 스냅샷 저장 방식
+  - 같은 테이블에는 `state_key=analysis_job_worker_heartbeat` 형태의 worker heartbeat 스냅샷도 저장될 수 있다. 이 heartbeat에는 process role, pid, worker count/id, heartbeat timestamp만 저장하며 사용자 식별자나 분석 입력은 저장하지 않는다.
 
 ### Auth rate limit events
 
@@ -57,6 +61,45 @@
   - 계정 삭제 또는 데이터 삭제 시 해당 사용자 `analysis_jobs`는 `USER_DATA_DELETED`로 scrub되어야 한다.
   - 오래된 anonymous/device/ip scoped 작업은 [analysis jobs privacy backfill runbook](./analysis-jobs-privacy-backfill-runbook.md)에 따라 dry-run 검토 후 scrub한다.
   - scrub은 행 삭제가 아니라 복구 가능한 민감 필드를 비우고 `error_code=USER_DATA_DELETED`로 표시하는 방식이다.
+
+### Analysis nutrition cache
+
+- 기본 테이블: `analysis_nutrition_cache`
+- 컬럼:
+  - `cache_key` (`TEXT`, PK): `<normalized ingredient>|<normalized origin>` 형식
+  - `payload_json` (`JSONB`, NOT NULL): 영양 조회 결과
+  - `updated_at` (`TIMESTAMPTZ`, NOT NULL)
+- 저장 방식:
+  - 음식 분석 결과의 ingredient name과 food origin 기준으로 영양 조회 결과를 캐시한다.
+  - 사용자 식별자, 이미지, 알러지 정보, 요청 ID는 저장하지 않는다.
+
+### AI cost guardrail state
+
+- 기본 테이블:
+  - `ai_monthly_usage`
+  - `ai_monthly_usage_reservations`
+- 저장 항목:
+  - 월별 period key
+  - 확정/예약 비용
+  - 토큰 수, 요청 수, fallback/truncation count
+  - request ID 기반 reservation key
+- 저장 방식:
+  - 분석 비용 예산 초과를 막기 위한 운영 집계 상태이다.
+  - 사용자 식별자, 이미지, 알러지 정보, 분석 결과는 저장하지 않는다.
+
+### Retention and deletion state
+
+- 기본 테이블:
+  - `retention_records`
+  - `deletion_queue`
+  - `deletion_statuses`
+- 저장 항목:
+  - `retention_records`: `record_id`, `data_class`, `created_at`, `user_id`, `request_id`, `storage_key`, `object_generation`
+  - `deletion_queue`: `queue_id`, `created_at`, `target`, `user_id`, `request_id`, `reason`, `dequeued_at`
+  - `deletion_statuses`: `queue_id`, `created_at`, `updated_at`, `status`, `target`, `user_id`, `request_id`, `reason`, `error`
+- 저장 방식:
+  - media 원본 TTL 삭제와 계정/데이터 삭제 요청 처리 상태를 보존한다.
+  - 삭제 완료 후 `deletion_queue` 행은 제거되고, `deletion_statuses`는 최근 요청 상태 조회 및 운영 감사 목적으로 남는다.
 
 ## 4) `state_json` 내부 저장 항목(payload 키)
 
@@ -117,6 +160,7 @@
 - 단, 비동기 `/analyze/jobs` 경로는 운영 작업 처리를 위해 `analysis_jobs`에 이미지/알러지/결과 필드를 저장할 수 있으므로 위 삭제/정리 정책 대상입니다.
 - Render Live Logs는 DB 저장 데이터가 아니라 로그 스트림입니다.
 - 인증 rate limit 테이블에는 원본 client IP, 이메일, device id, access token, refresh token, 인증 코드가 저장되지 않습니다.
+- 분석 영양 캐시와 비용 가드레일 테이블에는 사용자 식별자, 이미지, 알러지 정보, 분석 결과가 저장되지 않습니다.
 
 ## 8) 근거 코드
 
@@ -132,6 +176,13 @@
   - `backend/modules/analysis_jobs.py`
 - Analysis jobs privacy backfill:
   - `backend/scripts/backfill_analysis_jobs_privacy.py`
+- Nutrition cache store:
+  - `backend/modules/analysis_jobs.py`
+- Cost guardrail store:
+  - `backend/modules/ops/cost_guardrail.py`
+- Retention/deletion stores:
+  - `backend/modules/ops/data_retention.py`
+  - `backend/modules/ops/deletion_queue.py`
 
 ## 9) 운영 확인 포인트
 
@@ -144,9 +195,19 @@
   - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
   - `ANALYSIS_JOB_BACKEND=postgres`
   - `ANALYSIS_JOB_TABLE=analysis_jobs`
+  - `ANALYSIS_NUTRITION_CACHE_BACKEND=postgres`
+  - `ANALYSIS_NUTRITION_CACHE_TABLE=analysis_nutrition_cache`
+  - `AI_COST_GUARDRAIL_STORAGE_BACKEND=postgres`
+  - `AI_COST_GUARDRAIL_USAGE_TABLE=ai_monthly_usage`
+  - `AI_COST_GUARDRAIL_RESERVATION_TABLE=ai_monthly_usage_reservations`
+  - `RETENTION_STORE_BACKEND=postgres`
+  - `RETENTION_STORE_TABLE=retention_records`
+  - `DELETION_QUEUE_BACKEND=postgres`
+  - `DELETION_QUEUE_TABLE=deletion_queue`
+  - `DELETION_STATUS_TABLE=deletion_statuses`
 - 권한:
   - 자동 테이블 생성 운영이면 앱 DB 계정에 schema `CREATE`, table/index 생성, sequence 사용 권한이 필요합니다.
-  - 사전 생성 후 least-privilege 운영이면 앱 DB 계정에 `auth_rate_limit_events` `SELECT`, `INSERT`, `DELETE`와 sequence `USAGE` 권한이 필요합니다.
+  - 사전 생성 후 least-privilege 운영이면 앱 DB 계정에 각 코드 경로가 실제 사용하는 `SELECT`, `INSERT`, `UPDATE`, `DELETE` 권한과 필요한 sequence `USAGE` 권한이 필요합니다.
 - 장기 cleanup:
   - 정상 auth traffic이 있으면 요청 평가 경로가 만료 이벤트를 제거합니다.
   - 장시간 traffic이 없으면 만료 이벤트가 다음 auth 요청까지 남을 수 있으므로, 운영 점검에서 아래 SQL로 잔여분을 확인합니다.
