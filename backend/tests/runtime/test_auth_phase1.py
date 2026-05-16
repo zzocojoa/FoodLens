@@ -331,11 +331,12 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             }
         )
 
-        subjects, masked_email, client_scope = server_module._resolve_auth_rate_limit_subjects(
-            request=request,
-            email="Owner@Example.com",
-            device_id="ios-device-123",
-        )
+        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://unit:secret@localhost/foodlens"}, clear=False):
+            subjects, masked_email, client_scope = server_module._resolve_auth_rate_limit_subjects(
+                request=request,
+                email="Owner@Example.com",
+                device_id="ios-device-123",
+            )
 
         joined_subjects = " ".join(subject for _scope, subject in subjects)
         self.assertEqual(masked_email, "ow***@example.com")
@@ -345,6 +346,52 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         for scope, subject in subjects:
             self.assertTrue(subject.startswith(f"{scope}:"))
             self.assertEqual(len(subject.split(":", 1)[1]), 64)
+
+    def test_auth_rate_limit_subject_hash_uses_runtime_secret(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "",
+                "DATABASE_URL": "postgresql://unit:first-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            first_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "",
+                "DATABASE_URL": "postgresql://unit:second-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            second_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "explicit-secret",
+                "DATABASE_URL": "postgresql://unit:first-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            explicit_first_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "explicit-secret",
+                "DATABASE_URL": "postgresql://unit:second-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            explicit_second_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        self.assertNotEqual(first_subject, second_subject)
+        self.assertEqual(explicit_first_subject, explicit_second_subject)
+        self.assertTrue(first_subject.startswith("email:"))
+        self.assertEqual(len(first_subject.split(":", 1)[1]), 64)
 
     def test_auth_rate_limit_ip_subject_normalizes_equivalent_ipv6_hosts(self):
         first_request = Request(
@@ -382,6 +429,39 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         self.assertEqual(first_ip_subject, second_ip_subject)
         self.assertNotIn("2001:0db8", first_ip_subject)
         self.assertNotIn("2001:db8::1", first_ip_subject)
+
+    def test_auth_rate_limit_ip_subject_uses_forwarded_client_address(self):
+        first_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [(b"x-forwarded-for", b"8.8.8.8")],
+                "client": ("10.0.0.10", 12345),
+            }
+        )
+        second_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [(b"x-forwarded-for", b"1.1.1.1")],
+                "client": ("10.0.0.10", 12345),
+            }
+        )
+
+        first_subjects, _first_masked_email, _first_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=first_request,
+            email="forwarded@example.com",
+            device_id=None,
+        )
+        second_subjects, _second_masked_email, _second_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=second_request,
+            email="forwarded@example.com",
+            device_id=None,
+        )
+
+        self.assertNotEqual(dict(first_subjects)["ip"], dict(second_subjects)["ip"])
 
     def test_email_login_rate_limit_storage_outage_returns_retryable_503(self):
         with TestClient(app) as client:
@@ -499,7 +579,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             finally:
                 app.state.auth_rate_limiter = previous_limiter
 
-    def test_email_login_rate_limit_blocks_same_socket_client_across_spoofed_forwarding_headers(self):
+    def test_email_login_rate_limit_blocks_same_forwarded_client_across_email_and_device_rotation(self):
         with TestClient(app) as client:
             previous_limiter = getattr(app.state, "auth_rate_limiter", None)
             app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
@@ -516,7 +596,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                             "device_id": f"ios-rotating-device-{index}",
                         },
                         headers={
-                            "X-Forwarded-For": f"8.8.8.{index + 1}",
+                            "X-Forwarded-For": "8.8.8.8",
                             "X-Request-Id": f"req-auth-ip-limit-{index}",
                         },
                     )
@@ -531,7 +611,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                         "device_id": "ios-rotating-device-2",
                     },
                     headers={
-                        "X-Forwarded-For": "1.1.1.1",
+                        "X-Forwarded-For": "8.8.8.8",
                         "X-Request-Id": "req-auth-ip-limit-blocked",
                     },
                 )

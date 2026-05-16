@@ -13,7 +13,6 @@ import os
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
-from ipaddress import ip_address
 from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Literal, TypeAlias, TypeVar
 import requests
@@ -3300,20 +3299,31 @@ def _normalize_auth_rate_limit_email(email: str) -> str:
     return normalized_email or "unknown"
 
 
+def _auth_rate_limit_subject_hash_secret() -> str:
+    explicit_secret = (os.environ.get("AUTH_RATE_LIMIT_HASH_SECRET") or "").strip()
+    if explicit_secret:
+        return explicit_secret
+
+    database_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if database_url:
+        return database_url
+
+    auth_state_key = (os.environ.get("AUTH_STATE_KEY") or "").strip()
+    if auth_state_key and auth_state_key != "default":
+        return auth_state_key
+
+    return "foodlens-auth-rate-limit-local"
+
+
 def _auth_rate_limit_subject(scope: str, value: str) -> str:
-    digest = hashlib.sha256(f"{scope}:{value}".encode("utf-8")).hexdigest()
+    secret = _auth_rate_limit_subject_hash_secret().encode("utf-8")
+    payload = f"{scope}:{value}".encode("utf-8")
+    digest = hmac.new(secret, payload, hashlib.sha256).hexdigest()
     return f"{scope}:{digest}"
 
 
 def _auth_rate_limit_client_ip(request: Request) -> str:
-    if request.client and request.client.host:
-        normalized_host = request.client.host.strip()
-        if normalized_host:
-            try:
-                return ip_address(normalized_host).compressed
-            except ValueError:
-                return normalized_host
-    return "unknown"
+    return extract_client_ip(request)
 
 
 def _resolve_auth_rate_limit_subjects(

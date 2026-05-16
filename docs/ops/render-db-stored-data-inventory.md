@@ -38,7 +38,7 @@
   - `auth_rate_limit_events_event_ts_idx` (`event_ts`)
 - 저장 방식:
   - 인증 요청 평가 시 `endpoint`와 hashed `subject` 기준으로 sliding window 이벤트를 insert한다.
-  - `subject`는 `<scope>:<sha256(scope:value)>` 형식이다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
+  - `subject`는 `<scope>:<hmac_sha256(scope:value)>` 형식이다. HMAC key는 `AUTH_RATE_LIMIT_HASH_SECRET`, `DATABASE_URL`, non-default `AUTH_STATE_KEY` 순서로 선택한다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
   - 평가마다 `DELETE FROM auth_rate_limit_events WHERE event_ts <= ...`로 window 밖 이벤트를 제거한다.
 
 ## 4) `state_json` 내부 저장 항목(payload 키)
