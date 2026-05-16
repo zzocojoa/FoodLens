@@ -65,6 +65,18 @@ class _FakeRetentionStore:
         return None
 
 
+class _FakeAnalysisJobStore:
+    def __init__(self) -> None:
+        self.scrubbed_user_ids: list[str] = []
+        self.scrubbed_count = 4
+        self.scrubbed_at: datetime | None = None
+
+    def scrub_jobs_for_user(self, *, user_id: str, scrubbed_at: datetime) -> int:
+        self.scrubbed_user_ids.append(user_id)
+        self.scrubbed_at = scrubbed_at
+        return self.scrubbed_count
+
+
 class _MismatchedMediaAuthService(_FakeAuthService):
     def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, object]]:
         return [
@@ -92,6 +104,7 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
         try:
             deletion_handler = UserDeletionHandler(
                 auth_service=_FakeAuthService(),
+                analysis_job_store=_FakeAnalysisJobStore(),
                 media_storage=_FakeMediaStorage(),
                 retention_store=_FakeRetentionStore(),
             )
@@ -110,12 +123,15 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
             self.assertEqual(result.status.value, "done")
             self.assertEqual(len(handler.records), 1)
             self.assertEqual(getattr(handler.records[0], "request_id", None), "req_123")
+            self.assertEqual(getattr(handler.records[0], "scrubbed_analysis_job_count", None), 4)
         finally:
             logger.removeHandler(handler)
 
     def test_account_deletion_retry_treats_missing_user_as_done(self) -> None:
+        analysis_job_store = _FakeAnalysisJobStore()
         deletion_handler = UserDeletionHandler(
             auth_service=_MissingAccountAuthService(),
+            analysis_job_store=analysis_job_store,
             media_storage=_FakeMediaStorage(),
             retention_store=_FakeRetentionStore(),
         )
@@ -132,11 +148,14 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
         )
 
         self.assertEqual(result.status.value, "done")
+        self.assertEqual(analysis_job_store.scrubbed_user_ids, ["usr_deleted"])
 
     def test_user_deletion_rejects_generated_asset_with_object_key_mismatch(self) -> None:
         media_storage = _FakeMediaStorage()
+        analysis_job_store = _FakeAnalysisJobStore()
         deletion_handler = UserDeletionHandler(
             auth_service=_MismatchedMediaAuthService(),
+            analysis_job_store=analysis_job_store,
             media_storage=media_storage,
             retention_store=_FakeRetentionStore(),
         )
@@ -154,6 +173,7 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
 
         self.assertEqual(result.status.value, "failed")
         self.assertIn("MEDIA_OBJECT_KEY_MISMATCH", str(result.error))
+        self.assertEqual(analysis_job_store.scrubbed_user_ids, ["usr_owner"])
         self.assertEqual(media_storage.deleted, [])
 
     def test_logging_sender_masks_email_and_never_logs_code(self) -> None:

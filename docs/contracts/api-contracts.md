@@ -80,6 +80,9 @@
 - Endpoint:
   - `POST /analyze/jobs`
   - `GET /analyze/jobs/{job_id}`
+- 인증/소유권:
+  - 로그인 사용자의 job은 같은 사용자의 bearer token으로만 조회할 수 있습니다.
+  - 소유자가 없는 기존 anonymous job은 기존 호환성을 위해 `job_id` poll을 유지합니다.
 - 출력(핵심):
   - `job_id`, `request_id`, `status`, `accepted_at`, `updated_at`, `poll_after_ms`
   - 완료 시 결과 payload

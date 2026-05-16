@@ -21,6 +21,7 @@ logger = logging.getLogger("foodlens.analysis_jobs")
 
 
 TERMINAL_JOB_STATUSES = {"completed", "fallback_completed", "failed"}
+USER_DATA_DELETED_ERROR_CODE = "USER_DATA_DELETED"
 PROGRESS_HINTS = {
     "queued": "queued",
     "preprocessing": "preprocessing_image",
@@ -61,6 +62,9 @@ ANALYSIS_JOB_ROW_COLUMNS: tuple[str, ...] = (
     "result_json",
 )
 ANALYSIS_JOB_ROW_COLUMNS_SQL: str = ",".join(ANALYSIS_JOB_ROW_COLUMNS)
+ANALYSIS_JOB_MUTABLE_COLUMNS: frozenset[str] = frozenset(
+    column for column in ANALYSIS_JOB_ROW_COLUMNS if column != "job_id"
+)
 
 
 class AnalysisJobStoreError(Exception):
@@ -115,6 +119,9 @@ class AnalysisJobStore(Protocol):
         ...
 
     def update_job(self, *, job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def scrub_jobs_for_user(self, *, user_id: str, scrubbed_at: datetime) -> int:
         ...
 
 
@@ -633,14 +640,32 @@ class InMemoryAnalysisJobStore:
         return None
 
     def update_job(self, *, job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        _validate_analysis_job_update_columns(updates=updates)
         with self._lock:
             existing = self._jobs.get(job_id)
             if existing is None:
                 raise AnalysisJobStoreError(f"Job not found: {job_id}")
+            if _is_user_data_deleted_record(record=existing):
+                return _copy_job_record(existing)
             merged = dict(existing)
             merged.update(updates)
             self._jobs[job_id] = merged
             return _copy_job_record(merged)
+
+    def scrub_jobs_for_user(self, *, user_id: str, scrubbed_at: datetime) -> int:
+        normalized_user_id = _normalize_required_user_id(user_id=user_id)
+        with self._lock:
+            matching_job_ids = [
+                job_id
+                for job_id, record in self._jobs.items()
+                if record.get("user_id") == normalized_user_id
+            ]
+            for job_id in matching_job_ids:
+                self._jobs[job_id] = _scrub_analysis_job_record(
+                    record=self._jobs[job_id],
+                    scrubbed_at=scrubbed_at,
+                )
+            return len(matching_job_ids)
 
 
 @dataclass(slots=True)
@@ -856,6 +881,7 @@ class PostgresAnalysisJobStore:
             raise AnalysisJobStoreError(f"Failed to claim analysis job: {error}") from error
 
     def update_job(self, *, job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        _validate_analysis_job_update_columns(updates=updates)
         self.initialize_schema()
         connect = _load_connect()
         fields: list[str] = []
@@ -877,23 +903,60 @@ class PostgresAnalysisJobStore:
             return record
 
         values.append(job_id)
+        values.append(USER_DATA_DELETED_ERROR_CODE)
         try:
             with connect(self.database_url, autocommit=True) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
                             f"UPDATE {self.table_name} SET {', '.join(fields)} "
-                            "WHERE job_id = %s "
+                            "WHERE job_id = %s AND COALESCE(error_code, '') <> %s "
                             f"RETURNING {ANALYSIS_JOB_ROW_COLUMNS_SQL}"
                         ),
                         tuple(values),
                     )
                     row = cursor.fetchone()
                     if row is None:
+                        existing = self.get_job(job_id=job_id)
+                        if existing is not None and _is_user_data_deleted_record(record=existing):
+                            return existing
                         raise AnalysisJobStoreError(f"Job not found: {job_id}")
                     return _record_from_row(row)
         except Exception as error:
             raise AnalysisJobStoreError(f"Failed to update analysis job: {error}") from error
+
+    def scrub_jobs_for_user(self, *, user_id: str, scrubbed_at: datetime) -> int:
+        normalized_user_id = _normalize_required_user_id(user_id=user_id)
+        self.initialize_schema()
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            f"UPDATE {self.table_name} SET "
+                            "user_id = NULL, "
+                            "idempotency_key = NULL, "
+                            "status = 'failed', "
+                            "allergy_info = '', "
+                            "image_base64 = '', "
+                            "image_sha256 = '', "
+                            "result_json = NULL, "
+                            "lease_expires_at = NULL, "
+                            "worker_id = NULL, "
+                            "updated_at = %s::timestamptz, "
+                            "fallback_reason = NULL, "
+                            "error_code = %s, "
+                            "error_message = NULL "
+                            "WHERE user_id = %s"
+                        ),
+                        (_to_iso(scrubbed_at), USER_DATA_DELETED_ERROR_CODE, normalized_user_id),
+                    )
+                    return int(cursor.rowcount)
+        except Exception as error:
+            raise AnalysisJobStoreError(
+                f"Failed to scrub analysis jobs for user_id={normalized_user_id}: {error}"
+            ) from error
 
     def _ensure_table(self, conn: object) -> None:
         with conn.cursor() as cursor:
@@ -936,6 +999,9 @@ class PostgresAnalysisJobStore:
             )
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.table_name}_lease_idx ON {self.table_name} (lease_expires_at)"
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.table_name}_user_id_idx ON {self.table_name} (user_id)"
             )
             cursor.execute(
                 (
@@ -1298,6 +1364,19 @@ def _normalize_submit_identity(*, user_id: str | None, idempotency_key: str | No
     return normalized_user_id, normalized_idempotency_key
 
 
+def _normalize_required_user_id(*, user_id: str) -> str:
+    normalized_user_id = _normalize_optional_text(value=user_id)
+    if normalized_user_id is None:
+        raise AnalysisJobStoreError("user_id is required for user-scoped analysis job cleanup.")
+    return normalized_user_id
+
+
+def _validate_analysis_job_update_columns(*, updates: dict[str, Any]) -> None:
+    invalid_columns = sorted(set(updates) - ANALYSIS_JOB_MUTABLE_COLUMNS)
+    if invalid_columns:
+        raise AnalysisJobStoreError(f"Invalid analysis job update columns: {', '.join(invalid_columns)}")
+
+
 def _build_analysis_job_record(
     *,
     job_id: str,
@@ -1353,6 +1432,33 @@ def _copy_job_record(record: dict[str, Any]) -> dict[str, Any]:
         else:
             copied[key] = value
     return copied
+
+
+def _scrub_analysis_job_record(*, record: dict[str, Any], scrubbed_at: datetime) -> dict[str, Any]:
+    scrubbed = _copy_job_record(record)
+    scrubbed.update(
+        {
+            "user_id": None,
+            "idempotency_key": None,
+            "status": "failed",
+            "allergy_info": "",
+            "image_base64": "",
+            "image_sha256": "",
+            "result_json": None,
+            "lease_expires_at": None,
+            "worker_id": None,
+            "updated_at": scrubbed_at,
+            "fallback_reason": None,
+            "error_code": USER_DATA_DELETED_ERROR_CODE,
+            "error_message": None,
+            "idempotency_reused": False,
+        }
+    )
+    return scrubbed
+
+
+def _is_user_data_deleted_record(*, record: dict[str, Any]) -> bool:
+    return str(record.get("error_code") or "") == USER_DATA_DELETED_ERROR_CODE
 
 
 def _load_connect():

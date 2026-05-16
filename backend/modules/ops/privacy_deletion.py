@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
+from backend.modules.analysis_jobs import AnalysisJobStoreError
 from backend.modules.auth.service import AuthServiceError
 from backend.modules.media.service import MediaStorage, MediaStorageError
 from backend.modules.ops.data_retention import RetentionStore
@@ -23,6 +25,7 @@ class UserDeletionSummary:
     deleted_history_count: int
     deleted_media_count: int
     revoked_sessions_count: int
+    scrubbed_analysis_job_count: int
 
 
 class UserDeletionHandler:
@@ -30,18 +33,22 @@ class UserDeletionHandler:
         self,
         *,
         auth_service: Any,
+        analysis_job_store: Any,
         media_storage: MediaStorage,
         retention_store: RetentionStore,
     ) -> None:
         self._auth_service = auth_service
+        self._analysis_job_store = analysis_job_store
         self._media_storage = media_storage
         self._retention_store = retention_store
 
     def handle(self, item: DeletionRequest) -> DeletionResult:
         try:
             if item.target == DeletionTarget.DATA:
-                self._delete_user_media_assets(user_id=self._require_user_id(item))
-                reset_summary = self._auth_service.reset_user_data(user_id=self._require_user_id(item))
+                user_id = self._require_user_id(item)
+                scrubbed_analysis_job_count = self._scrub_user_analysis_jobs(user_id=user_id)
+                self._delete_user_media_assets(user_id=user_id)
+                reset_summary = self._auth_service.reset_user_data(user_id=user_id)
                 logger.info(
                     "[Deletion] completed",
                     extra={
@@ -53,6 +60,7 @@ class UserDeletionHandler:
                         "deleted_history_count": reset_summary.get("deleted_history_count", 0),
                         "deleted_media_count": reset_summary.get("deleted_media_count", 0),
                         "revoked_sessions_count": reset_summary.get("revoked_sessions_count", 0),
+                        "scrubbed_analysis_job_count": scrubbed_analysis_job_count,
                     },
                 )
                 return DeletionResult(
@@ -63,6 +71,7 @@ class UserDeletionHandler:
 
             if item.target == DeletionTarget.ACCOUNT:
                 user_id = self._require_user_id(item)
+                scrubbed_analysis_job_count = self._scrub_user_analysis_jobs(user_id=user_id)
                 try:
                     summary = self._delete_user_media_assets(user_id=user_id)
                     account_summary = self._auth_service.delete_user_account(user_id=user_id)
@@ -80,6 +89,7 @@ class UserDeletionHandler:
                             "deleted_history_count": 0,
                             "deleted_media_count": 0,
                             "revoked_sessions_count": 0,
+                            "scrubbed_analysis_job_count": scrubbed_analysis_job_count,
                         },
                     )
                     return DeletionResult(
@@ -98,6 +108,7 @@ class UserDeletionHandler:
                         "deleted_history_count": account_summary.get("deleted_history_count", 0),
                         "deleted_media_count": summary.deleted_media_count,
                         "revoked_sessions_count": account_summary.get("revoked_sessions_count", 0),
+                        "scrubbed_analysis_job_count": scrubbed_analysis_job_count,
                     },
                 )
                 return DeletionResult(
@@ -151,7 +162,14 @@ class UserDeletionHandler:
             deleted_history_count=0,
             deleted_media_count=deleted_media_count,
             revoked_sessions_count=0,
+            scrubbed_analysis_job_count=0,
         )
+
+    def _scrub_user_analysis_jobs(self, *, user_id: str) -> int:
+        scrub_jobs_for_user = getattr(self._analysis_job_store, "scrub_jobs_for_user", None)
+        if not callable(scrub_jobs_for_user):
+            raise AnalysisJobStoreError("analysis job store does not support user data scrubbing.")
+        return int(scrub_jobs_for_user(user_id=user_id, scrubbed_at=datetime.now(timezone.utc)))
 
     def _resolve_asset_generation(self, *, asset: dict[str, object]) -> int:
         object_key = str(asset.get("object_key", "")).strip()
@@ -211,6 +229,8 @@ def _coerce_optional_int(value: object) -> int | None:
 def _deletion_error_message(error: Exception) -> str:
     if isinstance(error, MediaStorageError):
         return f"{error.code}: {error.message}"
+    if isinstance(error, AnalysisJobStoreError):
+        return str(error)
     if isinstance(error, AuthServiceError):
         return f"{error.code}: {error.message}"
     return str(error)

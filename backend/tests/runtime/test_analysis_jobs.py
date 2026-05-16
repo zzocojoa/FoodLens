@@ -98,7 +98,13 @@ class _RecordingCursor:
         self.connection.executed_params.append(params)
 
     def fetchone(self) -> tuple[object, ...] | None:
+        if self.connection.fetch_rows:
+            return self.connection.fetch_rows.pop(0)
         return self.connection.row
+
+    @property
+    def rowcount(self) -> int:
+        return self.connection.rowcount
 
     def __enter__(self) -> "_RecordingCursor":
         return self
@@ -108,8 +114,10 @@ class _RecordingCursor:
 
 
 class _RecordingConnection:
-    def __init__(self, row: tuple[object, ...]) -> None:
+    def __init__(self, row: tuple[object, ...], rowcount: int) -> None:
         self.row = row
+        self.rowcount = rowcount
+        self.fetch_rows: list[tuple[object, ...] | None] = []
         self.executed_sql: list[str] = []
         self.executed_params: list[tuple[object, ...] | None] = []
         self.commit_count = 0
@@ -505,6 +513,43 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
 
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_submit_job_authenticated_request_sets_user_id_without_idempotency_key(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        store = _IdempotencyRecordingJobStore()
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = store
+            try:
+                with patch(
+                    "backend.server._resolve_rate_limit_subject",
+                    return_value=("user:usr_analysis_job", "usr_analysis_job"),
+                ):
+                    response = client.post(
+                        "/analyze/jobs",
+                        files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                        data={
+                            "allergy_info": "None",
+                            "locale": "ko-KR",
+                            "mode": "food",
+                        },
+                        headers={
+                            "Authorization": "Bearer token-user-owned",
+                            "X-Request-Id": "req-analysis-job-auth-owner",
+                        },
+                    )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(store.records_by_job_id[payload["job_id"]]["user_id"], "usr_analysis_job")
+        self.assertIsNone(store.records_by_job_id[payload["job_id"]]["idempotency_key"])
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
     def test_submit_job_empty_idempotency_key_preserves_new_job_behavior(
         self,
         _worker_stop: object,
@@ -830,9 +875,220 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         assert second is not None
         self.assertEqual(second["worker_id"], "worker-b")
 
+    def test_in_memory_job_store_scrubs_user_jobs(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+        deleted_payload = create_analysis_job_payload(
+            request_id="req-analysis-job-delete-user",
+            mode="food",
+            allergy_info="peanut, shellfish",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=b"user-image",
+            image_sha256="user-image-sha256",
+            poll_after_ms=1000,
+        )
+        retained_payload = create_analysis_job_payload(
+            request_id="req-analysis-job-retain-user",
+            mode="food",
+            allergy_info="sesame",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=b"other-user-image",
+            image_sha256="other-user-image-sha256",
+            poll_after_ms=1000,
+        )
+        deleted_record: dict[str, Any] = store.submit_job(
+            job_id=deleted_payload.job_id,
+            user_id=" user-delete ",
+            idempotency_key="delete-key",
+            request_id=deleted_payload.request_id,
+            mode=deleted_payload.mode,
+            allergy_info=deleted_payload.allergy_info,
+            iso_country_code=deleted_payload.iso_country_code,
+            locale=deleted_payload.locale,
+            content_type=deleted_payload.content_type,
+            image_base64=deleted_payload.image_base64,
+            image_sha256=deleted_payload.image_sha256,
+            accepted_at=deleted_payload.accepted_at,
+            poll_after_ms=deleted_payload.poll_after_ms,
+        )
+        retained_record: dict[str, Any] = store.submit_job(
+            job_id=retained_payload.job_id,
+            user_id="user-retain",
+            idempotency_key="retain-key",
+            request_id=retained_payload.request_id,
+            mode=retained_payload.mode,
+            allergy_info=retained_payload.allergy_info,
+            iso_country_code=retained_payload.iso_country_code,
+            locale=retained_payload.locale,
+            content_type=retained_payload.content_type,
+            image_base64=retained_payload.image_base64,
+            image_sha256=retained_payload.image_sha256,
+            accepted_at=retained_payload.accepted_at,
+            poll_after_ms=retained_payload.poll_after_ms,
+        )
+        store.update_job(
+            job_id=deleted_payload.job_id,
+            updates={
+                "status": "completed",
+                "result_json": {
+                    "foodName": "Private Meal",
+                    "ingredients": [{"name": "Peanut", "isAllergen": True}],
+                },
+                "updated_at": deleted_payload.accepted_at,
+            },
+        )
+
+        scrubbed_count = store.scrub_jobs_for_user(user_id=" user-delete ", scrubbed_at=scrubbed_at)
+
+        scrubbed_record: dict[str, Any] | None = store.get_job(job_id=deleted_payload.job_id)
+        retained_after_scrub: dict[str, Any] | None = store.get_job(job_id=retained_payload.job_id)
+        self.assertEqual(scrubbed_count, 1)
+        assert scrubbed_record is not None
+        self.assertIsNone(scrubbed_record["user_id"])
+        self.assertIsNone(scrubbed_record["idempotency_key"])
+        self.assertEqual(scrubbed_record["status"], "failed")
+        self.assertEqual(scrubbed_record["allergy_info"], "")
+        self.assertEqual(scrubbed_record["image_base64"], "")
+        self.assertEqual(scrubbed_record["image_sha256"], "")
+        self.assertIsNone(scrubbed_record["result_json"])
+        self.assertIsNone(scrubbed_record["lease_expires_at"])
+        self.assertIsNone(scrubbed_record["worker_id"])
+        self.assertEqual(scrubbed_record["updated_at"], scrubbed_at)
+        self.assertEqual(scrubbed_record["error_code"], "USER_DATA_DELETED")
+        assert retained_after_scrub is not None
+        self.assertEqual(retained_after_scrub["user_id"], retained_record["user_id"])
+        self.assertEqual(retained_after_scrub["allergy_info"], retained_record["allergy_info"])
+        self.assertEqual(retained_after_scrub["image_base64"], retained_record["image_base64"])
+        self.assertEqual(retained_after_scrub["image_sha256"], retained_record["image_sha256"])
+        self.assertEqual(deleted_record["allergy_info"], "peanut, shellfish")
+
+    def test_in_memory_job_store_rejects_resurrecting_scrubbed_user_data(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+        payload = create_analysis_job_payload(
+            request_id="req-analysis-job-scrub-race",
+            mode="food",
+            allergy_info="peanut",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_bytes=b"user-image",
+            image_sha256="user-image-sha256",
+            poll_after_ms=1000,
+        )
+        store.submit_job(
+            job_id=payload.job_id,
+            user_id="user-delete",
+            idempotency_key=None,
+            request_id=payload.request_id,
+            mode=payload.mode,
+            allergy_info=payload.allergy_info,
+            iso_country_code=payload.iso_country_code,
+            locale=payload.locale,
+            content_type=payload.content_type,
+            image_base64=payload.image_base64,
+            image_sha256=payload.image_sha256,
+            accepted_at=payload.accepted_at,
+            poll_after_ms=payload.poll_after_ms,
+        )
+
+        store.scrub_jobs_for_user(user_id="user-delete", scrubbed_at=scrubbed_at)
+        update_result = store.update_job(
+            job_id=payload.job_id,
+            updates={
+                "status": "completed",
+                "result_json": {"foodName": "Private Meal", "ingredients": [{"name": "Peanut"}]},
+                "allergy_info": "peanut",
+                "image_base64": payload.image_base64,
+            },
+        )
+
+        self.assertEqual(update_result["status"], "failed")
+        self.assertEqual(update_result["error_code"], "USER_DATA_DELETED")
+        self.assertEqual(update_result["allergy_info"], "")
+        self.assertEqual(update_result["image_base64"], "")
+        self.assertIsNone(update_result["result_json"])
+
+    def test_postgres_analysis_job_store_scrubs_user_jobs(self) -> None:
+        row = _analysis_job_row("job_postgres_scrub")
+        connection = _RecordingConnection(row=row, rowcount=2)
+        connect = _RecordingConnect(connection)
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+        with patch.object(analysis_jobs, "_load_connect", return_value=connect):
+            store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
+            scrubbed_count = store.scrub_jobs_for_user(user_id=" user-postgres ", scrubbed_at=scrubbed_at)
+
+        scrub_statements = [
+            sql for sql in connection.executed_sql if sql.startswith("UPDATE analysis_jobs SET user_id = NULL")
+        ]
+        self.assertEqual(scrubbed_count, 2)
+        self.assertEqual(len(scrub_statements), 1)
+        self.assertIn("idempotency_key = NULL", scrub_statements[0])
+        self.assertIn("allergy_info = ''", scrub_statements[0])
+        self.assertIn("image_base64 = ''", scrub_statements[0])
+        self.assertIn("image_sha256 = ''", scrub_statements[0])
+        self.assertIn("result_json = NULL", scrub_statements[0])
+        self.assertIn("WHERE user_id = %s", scrub_statements[0])
+        self.assertEqual(
+            connection.executed_params[-1],
+            ("2026-05-16T12:00:00Z", "USER_DATA_DELETED", "user-postgres"),
+        )
+
+    def test_postgres_analysis_job_store_rejects_invalid_update_column(self) -> None:
+        with patch.object(analysis_jobs, "_load_connect") as load_connect:
+            store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
+            with self.assertRaises(AnalysisJobStoreError) as captured:
+                store.update_job(
+                    job_id="job_postgres_invalid_update",
+                    updates={"status = 'completed'": "ignored"},
+                )
+
+        self.assertIn("Invalid analysis job update columns", str(captured.exception))
+        self.assertIn("status = 'completed'", str(captured.exception))
+        load_connect.assert_not_called()
+
+    def test_postgres_analysis_job_store_returns_scrubbed_record_when_update_races_deletion(self) -> None:
+        scrubbed_row_parts = list(_analysis_job_row("job_postgres_scrubbed_update"))
+        scrubbed_row_parts[1] = None
+        scrubbed_row_parts[2] = None
+        scrubbed_row_parts[5] = "failed"
+        scrubbed_row_parts[6] = ""
+        scrubbed_row_parts[10] = ""
+        scrubbed_row_parts[11] = ""
+        scrubbed_row_parts[23] = "USER_DATA_DELETED"
+        scrubbed_row_parts[25] = None
+        scrubbed_row = tuple(scrubbed_row_parts)
+        connection = _RecordingConnection(row=scrubbed_row, rowcount=0)
+        connection.fetch_rows = [None, scrubbed_row]
+        connect = _RecordingConnect(connection)
+
+        with patch.object(analysis_jobs, "_load_connect", return_value=connect):
+            store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
+            update_result = store.update_job(
+                job_id="job_postgres_scrubbed_update",
+                updates={
+                    "status": "completed",
+                    "allergy_info": "peanut",
+                    "image_base64": "cGVhbnV0LWltYWdl",
+                    "result_json": {"foodName": "Private Meal"},
+                },
+            )
+
+        self.assertEqual(update_result["status"], "failed")
+        self.assertEqual(update_result["error_code"], "USER_DATA_DELETED")
+        self.assertEqual(update_result["allergy_info"], "")
+        self.assertEqual(update_result["image_base64"], "")
+        self.assertIsNone(update_result["result_json"])
+        self.assertTrue(any("COALESCE(error_code, '') <> %s" in sql for sql in connection.executed_sql))
+
     def test_postgres_analysis_job_store_initializes_schema_once(self) -> None:
         row = _analysis_job_row("job_postgres_1")
-        connection = _RecordingConnection(row=row)
+        connection = _RecordingConnection(row=row, rowcount=1)
         connect = _RecordingConnect(connection)
 
         with patch.object(analysis_jobs, "_load_connect", return_value=connect):
@@ -888,6 +1144,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertTrue(any(sql.startswith("SELECT job_id") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("WITH candidate AS") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("UPDATE analysis_jobs SET") for sql in connection.executed_sql))
+        self.assertTrue(any("COALESCE(error_code, '') <> %s" in sql for sql in connection.executed_sql))
 
 
 if __name__ == "__main__":

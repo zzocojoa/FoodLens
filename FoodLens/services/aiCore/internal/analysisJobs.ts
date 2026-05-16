@@ -23,6 +23,7 @@ import {
 } from '../contracts';
 import { mapAnalyzedData } from '../mappers';
 import { logger } from '@/services/logger';
+import { restoreSession } from '@/services/auth/sessionManager';
 import { sleep } from './retryUtils';
 import {
   buildImageCacheKey,
@@ -36,11 +37,13 @@ import type { AnalysisStoreLocation } from '@/services/contracts/analysisStore';
 
 type AnalysisStageCallback = (status: AnalysisJobStatus) => void;
 type AnalysisJobPollingErrorCode = 'ANALYSIS_JOB_POLL_TIMEOUT' | 'ANALYSIS_JOB_POLL_STALE';
+type AnalysisJobAuthHeaders = Record<string, string>;
 
 type SubmitAnalysisJobParams = {
   mode: AnalysisJobMode;
   imageUri: string;
   isoCountryCode: string;
+  authHeaders: AnalysisJobAuthHeaders;
   onUploadProgress?: (progress: number) => void;
 };
 
@@ -48,6 +51,7 @@ type PollAnalysisJobParams = {
   jobId: string;
   requestId: string;
   submittedAt: string;
+  authHeaders: AnalysisJobAuthHeaders;
   onStageChange?: AnalysisStageCallback;
   isCancelled?: { current: boolean };
 };
@@ -78,6 +82,18 @@ type AnalysisJobPollingError = Error & {
   submitted_at: string;
   updated_at: string;
   elapsed_ms: number;
+};
+
+const buildAnalysisJobAuthHeaders = async (): Promise<AnalysisJobAuthHeaders> => {
+  const session = await restoreSession({
+    clearCurrentUserOnMissing: false,
+    logWarnings: false,
+    refreshIfExpired: true,
+  });
+  if (!session?.accessToken) {
+    return {};
+  }
+  return { Authorization: `Bearer ${session.accessToken}` };
 };
 
 const ANALYSIS_JOB_POLL_MAX_DURATION_MS = 2 * 60 * 1000;
@@ -282,6 +298,7 @@ const submitAnalysisJob = async ({
   mode,
   imageUri,
   isoCountryCode,
+  authHeaders,
   onUploadProgress,
 }: SubmitAnalysisJobParams): Promise<AnalysisJobSubmitResponse> => {
   const activeServerUrl = await ServerConfig.getServerUrl();
@@ -298,6 +315,7 @@ const submitAnalysisJob = async ({
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       fieldName: 'file',
       headers: {
+        ...authHeaders,
         'X-Request-Id': requestId,
       },
       parameters: {
@@ -320,6 +338,7 @@ const pollAnalysisJobUntilTerminal = async ({
   jobId,
   requestId,
   submittedAt,
+  authHeaders,
   onStageChange,
   isCancelled,
 }: PollAnalysisJobParams): Promise<AnalysisJobStatusResponse> => {
@@ -362,6 +381,7 @@ const pollAnalysisJobUntilTerminal = async ({
     const response = await fetchJobStatusWithRetry({
       url: `${activeServerUrl}/analyze/jobs/${jobId}`,
       headers: {
+        ...authHeaders,
         'X-Request-Id': `${requestId}-poll-${attempt + 1}`,
         'X-Parent-Request-Id': requestId,
       },
@@ -410,10 +430,12 @@ export const runAsyncAnalysisJob = async (
     return mapAnalyzedData(cached);
   }
 
+  const authHeaders = await buildAnalysisJobAuthHeaders();
   const submit = await submitAnalysisJob({
     mode: params.mode,
     imageUri: params.imageUri,
     isoCountryCode: params.isoCountryCode,
+    authHeaders,
     onUploadProgress: params.onUploadProgress,
   });
   const pending = createPendingAnalysisJob({
@@ -428,6 +450,7 @@ export const runAsyncAnalysisJob = async (
       jobId: submit.job_id,
       requestId: submit.request_id,
       submittedAt: submit.accepted_at,
+      authHeaders,
       onStageChange: asyncStatus => {
         if (params.isCancelled?.current) {
           return;
@@ -481,10 +504,15 @@ export const resumePendingAnalysisJob = async ({
     status: pendingJob.status,
   });
   try {
+    if (isCancelled?.current) {
+      throw new Error('Analysis polling cancelled.');
+    }
+    const authHeaders = await buildAnalysisJobAuthHeaders();
     const terminal = await pollAnalysisJobUntilTerminal({
       jobId: pendingJob.jobId,
       requestId: pendingJob.requestId,
       submittedAt: pendingJob.submittedAt,
+      authHeaders,
       onStageChange: asyncStatus => {
         if (isCancelled?.current) {
           return;

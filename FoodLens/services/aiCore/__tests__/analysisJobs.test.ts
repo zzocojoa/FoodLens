@@ -5,6 +5,10 @@ jest.mock('../upload', () => ({
   uploadWithRetryForAcceptedStatuses: jest.fn(),
 }));
 
+jest.mock('@/services/auth/sessionManager', () => ({
+  restoreSession: jest.fn(async () => null),
+}));
+
 jest.mock('../constants', () => ({
   AI_ASYNC_ANALYZE_ENABLED: true,
   AI_REQUEST_MAX_RETRIES: 3,
@@ -77,8 +81,23 @@ type MockResponse = {
   };
 };
 
+type MockAuthSession = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  issuedAt: number;
+  user: {
+    id: string;
+    email: string;
+  };
+};
+
 const uploadModule = jest.requireMock('../upload') as {
   uploadWithRetryForAcceptedStatuses: jest.Mock;
+};
+
+const sessionManagerModule = jest.requireMock('@/services/auth/sessionManager') as {
+  restoreSession: jest.Mock;
 };
 
 const cacheModule = jest.requireMock('../cache') as {
@@ -112,9 +131,27 @@ const createMockResponse = ({
   },
 });
 
+const createMockAuthSession = ({
+  accessToken,
+  userId,
+}: {
+  accessToken: string;
+  userId: string;
+}): MockAuthSession => ({
+  accessToken,
+  refreshToken: `refresh-${accessToken}`,
+  expiresIn: 3600,
+  issuedAt: Date.now(),
+  user: {
+    id: userId,
+    email: `${userId}@example.com`,
+  },
+});
+
 describe('analysisJobs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    sessionManagerModule.restoreSession.mockResolvedValue(null);
     global.fetch = jest.fn() as jest.Mock;
   });
 
@@ -193,6 +230,71 @@ describe('analysisJobs', () => {
     expect(pendingStoreModule.savePendingAnalysisJob).toHaveBeenCalled();
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
     expect(cacheModule.setAiCacheValue).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches authenticated session token when submitting async analysis jobs', async () => {
+    sessionManagerModule.restoreSession.mockResolvedValue(
+      createMockAuthSession({
+        accessToken: 'atk-analysis-job',
+        userId: 'usr_analysis_job',
+      })
+    );
+    uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
+      status: 202,
+      body: JSON.stringify({
+        job_id: 'job_auth_123',
+        request_id: 'req_auth_123',
+        status: 'queued',
+        accepted_at: '2026-03-17T00:00:00Z',
+        poll_after_ms: 1000,
+      }),
+    });
+
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_auth_123',
+          request_id: 'req_auth_123',
+          status: 'completed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          foodName: 'Bibimbap',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+        },
+      }) as unknown as Response
+    );
+
+    await runAsyncAnalysisJob({
+      flow: 'camera',
+      mode: 'food',
+      imageUri: 'file://food.jpg',
+      isoCountryCode: 'KR',
+      location: null,
+      timestamp: null,
+      sourceType: 'camera',
+    });
+
+    const uploadOptions = uploadModule.uploadWithRetryForAcceptedStatuses.mock.calls[0][2];
+    expect(uploadOptions.headers.Authorization).toBe('Bearer atk-analysis-job');
+    expect(uploadOptions.headers['X-Request-Id']).toEqual(expect.stringMatching(/^analyze-job-food-/));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/analyze/jobs/job_auth_123',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer atk-analysis-job',
+          'X-Parent-Request-Id': 'req_auth_123',
+        }),
+      })
+    );
+    expect(sessionManagerModule.restoreSession).toHaveBeenCalledTimes(1);
+    expect(sessionManagerModule.restoreSession).toHaveBeenCalledWith({
+      clearCurrentUserOnMissing: false,
+      logWarnings: false,
+      refreshIfExpired: true,
+    });
   });
 
   it('throws when terminal status is failed', async () => {
@@ -333,6 +435,7 @@ describe('analysisJobs', () => {
 
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
     expect(global.fetch).not.toHaveBeenCalled();
+    expect(sessionManagerModule.restoreSession).not.toHaveBeenCalled();
   });
 
   it('clears pending jobs when polling retries exhaust after repeated server errors', async () => {
@@ -459,6 +562,58 @@ describe('analysisJobs', () => {
     expect(result.recommendedAction).toBe('eat');
     expect(result.uncertaintyReason).toBe('unknown');
     expect(pendingStoreModule.clearPendingAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches authenticated session token when resuming async analysis job polling', async () => {
+    sessionManagerModule.restoreSession.mockResolvedValue(
+      createMockAuthSession({
+        accessToken: 'atk-resume-analysis-job',
+        userId: 'usr_analysis_resume',
+      })
+    );
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        body: {
+          job_id: 'job_resume_auth',
+          request_id: 'req_resume_auth',
+          status: 'completed',
+          accepted_at: '2026-03-17T00:00:00Z',
+          updated_at: '2026-03-17T00:00:02Z',
+          poll_after_ms: 0,
+          foodName: 'Rice',
+          safetyStatus: 'SAFE',
+          ingredients: [],
+        },
+      }) as unknown as Response
+    );
+
+    await resumePendingAnalysisJob({
+      pendingJob: {
+        jobId: 'job_resume_auth',
+        requestId: 'req_resume_auth',
+        flow: 'scan',
+        mode: 'food',
+        status: 'queued',
+        imageUri: 'file://food.jpg',
+        isoCountryCode: 'US',
+        location: null,
+        timestamp: null,
+        sourceType: 'camera',
+        submittedAt: '2026-03-17T00:00:00Z',
+      },
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/analyze/jobs/job_resume_auth',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer atk-resume-analysis-job',
+          'X-Parent-Request-Id': 'req_resume_auth',
+        }),
+      })
+    );
+    expect(sessionManagerModule.restoreSession).toHaveBeenCalledTimes(1);
   });
 
   it('treats fallback_completed as a terminal success status', async () => {
@@ -604,6 +759,12 @@ describe('analysisJobs', () => {
   });
 
   it('retries poll requests after 429 using Retry-After', async () => {
+    sessionManagerModule.restoreSession.mockResolvedValue(
+      createMockAuthSession({
+        accessToken: 'atk-retry-analysis-job',
+        userId: 'usr_analysis_retry',
+      })
+    );
     uploadModule.uploadWithRetryForAcceptedStatuses.mockResolvedValue({
       status: 202,
       body: JSON.stringify({
@@ -657,6 +818,27 @@ describe('analysisJobs', () => {
 
     expect(result.foodName).toBe('Toast');
     expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/analyze/jobs/job_retry',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer atk-retry-analysis-job',
+          'X-Parent-Request-Id': 'req_retry',
+        }),
+      })
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/analyze/jobs/job_retry',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer atk-retry-analysis-job',
+          'X-Parent-Request-Id': 'req_retry',
+        }),
+      })
+    );
+    expect(sessionManagerModule.restoreSession).toHaveBeenCalledTimes(1);
     expect(retryUtilsModule.sleep).toHaveBeenCalledWith(2000);
   });
 });
