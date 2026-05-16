@@ -31,6 +31,9 @@ Mode = Literal["dry-run", "execute"]
 Reason = Literal["deleted_user_request", "missing_user_id"]
 DEVICE_SCOPED_USER_ID_PATTERN = "device:%"
 IP_SCOPED_USER_ID_PATTERN = "ip:%"
+DEFAULT_EXECUTE_LOCK_TIMEOUT_MS = 5000
+DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS = 60000
+DEFAULT_ADVISORY_LOCK_KEY = "analysis_jobs_privacy_backfill"
 
 
 class DatabaseCursor(Protocol):
@@ -76,6 +79,9 @@ class AnalysisJobsPrivacyBackfillConfig:
     deletion_status_table: str
     anonymous_cutoff: datetime
     allow_empty_auth_state: bool
+    execute_lock_timeout_ms: int
+    execute_statement_timeout_ms: int
+    advisory_lock_key: str
 
 
 @dataclass(frozen=True)
@@ -184,6 +190,18 @@ def build_config_from_env(
         ),
         anonymous_cutoff=now - timedelta(days=anonymous_older_than_days),
         allow_empty_auth_state=allow_empty_auth_state,
+        execute_lock_timeout_ms=_positive_int_env(
+            getenv=getenv,
+            key="ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_TIMEOUT_MS",
+            fallback=DEFAULT_EXECUTE_LOCK_TIMEOUT_MS,
+        ),
+        execute_statement_timeout_ms=_positive_int_env(
+            getenv=getenv,
+            key="ANALYSIS_JOBS_PRIVACY_BACKFILL_STATEMENT_TIMEOUT_MS",
+            fallback=DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS,
+        ),
+        advisory_lock_key=(getenv("ANALYSIS_JOBS_PRIVACY_BACKFILL_LOCK_KEY", None) or DEFAULT_ADVISORY_LOCK_KEY).strip()
+        or DEFAULT_ADVISORY_LOCK_KEY,
     )
 
 
@@ -196,16 +214,58 @@ def run_dry_run(*, config: AnalysisJobsPrivacyBackfillConfig, connect_factory: C
 
 def run_execute(*, config: AnalysisJobsPrivacyBackfillConfig, connect_factory: ConnectFactory) -> CleanupResult:
     with connect_factory(config.database_url) as conn:
-        plan = _build_cleanup_plan(config=config, conn=conn)
-        deleted_missing_scrubbed = _scrub_deleted_missing_jobs(config=config, conn=conn, plan=plan.deleted_missing)
-        old_anonymous_scrubbed = _scrub_old_anonymous_device_scoped_jobs(config=config, conn=conn)
-        conn.commit()
+        try:
+            _apply_execute_safety_settings(config=config, conn=conn)
+            plan = _build_cleanup_plan(config=config, conn=conn)
+            deleted_missing_scrubbed = _scrub_deleted_missing_jobs(config=config, conn=conn, plan=plan.deleted_missing)
+            old_anonymous_scrubbed = _scrub_old_anonymous_device_scoped_jobs(config=config, conn=conn)
+            _assert_scrubbed_counts_match_plan(
+                plan=plan,
+                deleted_missing_scrubbed=deleted_missing_scrubbed,
+                old_anonymous_scrubbed=old_anonymous_scrubbed,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     return _cleanup_result(
         config=config,
         plan=plan,
         deleted_missing_scrubbed=deleted_missing_scrubbed,
         old_anonymous_scrubbed=old_anonymous_scrubbed,
     )
+
+
+def _apply_execute_safety_settings(*, config: AnalysisJobsPrivacyBackfillConfig, conn: DatabaseConnection) -> None:
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_xact_lock(hashtext(%s))", (config.advisory_lock_key,))
+        row = cursor.fetchone()
+        if row is None or len(row) != 1 or row[0] is not True:
+            raise AnalysisJobStoreError("analysis_jobs privacy backfill advisory lock is already held.")
+        cursor.execute(
+            "SELECT set_config(%s, %s, true)",
+            ("lock_timeout", f"{config.execute_lock_timeout_ms}ms"),
+        )
+        cursor.execute(
+            "SELECT set_config(%s, %s, true)",
+            ("statement_timeout", f"{config.execute_statement_timeout_ms}ms"),
+        )
+
+
+def _assert_scrubbed_counts_match_plan(
+    *,
+    plan: CleanupPlan,
+    deleted_missing_scrubbed: int,
+    old_anonymous_scrubbed: int,
+) -> None:
+    if deleted_missing_scrubbed != plan.deleted_missing.target:
+        raise AnalysisJobStoreError(
+            "deleted/missing analysis job scrub count did not match the pre-execute target count."
+        )
+    if old_anonymous_scrubbed != plan.old_anonymous_device_scoped.target:
+        raise AnalysisJobStoreError(
+            "old anonymous/device-scoped analysis job scrub count did not match the pre-execute target count."
+        )
 
 
 def _build_cleanup_plan(*, config: AnalysisJobsPrivacyBackfillConfig, conn: DatabaseConnection) -> CleanupPlan:
@@ -543,6 +603,7 @@ def _cleanup_result(
             "user_id_scope": "non-empty user_id excluding device:/ip: legacy subjects",
             "deleted_request_status": "deletion_statuses.status=done and target in account/data",
             "missing_user_source": "auth runtime state _users_by_id",
+            "allow_empty_auth_state": config.allow_empty_auth_state,
         },
         "old_anonymous_device_scoped": {
             "accepted_before": _to_iso(config.anonymous_cutoff),
@@ -550,6 +611,11 @@ def _cleanup_result(
         },
         "already_user_data_deleted": {
             "error_code": USER_DATA_DELETED_ERROR_CODE,
+        },
+        "execute_safety": {
+            "advisory_lock_key": config.advisory_lock_key,
+            "lock_timeout_ms": config.execute_lock_timeout_ms,
+            "statement_timeout_ms": config.execute_statement_timeout_ms,
         },
     }
     return CleanupResult(
@@ -606,6 +672,18 @@ def _sanitize_table_name(*, raw: str | None, fallback: str, error_name: str) -> 
     return candidate
 
 
+def _positive_int_env(*, getenv: Callable[[str, str | None], str | None], key: str, fallback: int) -> int:
+    raw = (getenv(key, None) or "").strip()
+    if not raw:
+        return fallback
+    if not raw.isdigit():
+        raise AnalysisJobStoreError(f"{key} must be a positive integer.")
+    value = int(raw)
+    if value < 1:
+        raise AnalysisJobStoreError(f"{key} must be a positive integer.")
+    return value
+
+
 def _to_iso(value: datetime) -> str:
     normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
     return normalized.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -644,6 +722,24 @@ def _error_payload(*, error: Exception) -> dict[str, object]:
 def _safe_error_message(*, error: Exception) -> str:
     message = str(error) or "analysis job privacy backfill failed"
     message = re.sub(r"postgres(?:ql)?://[^\s'\"),]+", "[REDACTED_DATABASE_URL]", message, flags=re.IGNORECASE)
+    message = re.sub(
+        r"(Key\s*\([^)]*(?:user_id|idempotency_key|image_sha256|allergy_info)[^)]*\)\s*=\s*)\([^)]*\)",
+        r"\1([REDACTED])",
+        message,
+        flags=re.IGNORECASE,
+    )
+    message = re.sub(
+        r'("?(?:password|passwd|pwd|token|secret|api[_-]?key|database_url)"?\s*:\s*")[^"]*(")',
+        r"\1[REDACTED]\2",
+        message,
+        flags=re.IGNORECASE,
+    )
+    message = re.sub(
+        r"\b(password|passwd|pwd|token|secret|api[_-]?key|database_url)\s*=\s*[^\s,;)}]+",
+        lambda match: f"{match.group(1)}=[REDACTED]",
+        message,
+        flags=re.IGNORECASE,
+    )
     message = re.sub(
         r'("user_id"\s*:\s*")[^"]*(")',
         r'\1[REDACTED]\2',

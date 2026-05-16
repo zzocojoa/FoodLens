@@ -31,6 +31,10 @@
     - 선택 수집: 마케팅/부가기능 (별도 동의 필수)
     - **Third-Party Data Tracking**: 분석/광고 SDK 수집 항목 전수 조사 및 명시
   - 보존기간 정책 승인 (원본/파생/로그)
+  - Google Play 계정 삭제 고지 승인:
+    - 앱 내 계정 삭제 요청 경로
+    - 앱을 재설치하지 않아도 요청 가능한 외부 웹 삭제 경로
+    - 법적/보안/부정사용 방지 목적으로 보존하는 데이터와 보존기간
 - Backend Lead
   - 데이터 삭제 범위 정의:
     - 즉시 삭제 대상
@@ -38,6 +42,7 @@
     - 법적 보존 대상(있는 경우)
 - Mobile Lead
   - "데이터 삭제 요청" 화면/문구 설계
+  - Google Play Data safety 삭제 링크와 일관된 앱 내 삭제 진입점 설계
 - QA
   - 삭제 검증 시나리오 설계
 - 완료 체크
@@ -65,6 +70,7 @@
   - [ ] 삭제 요청 접수 성공
   - [ ] 큐 처리 후 실제 삭제 확인
   - [ ] TTL 만료 데이터 정리 동작 확인
+  - [ ] Play Console Data safety 삭제 질문, 개인정보처리방침, 외부 웹 삭제 링크가 실제 처리 경로와 일치
 
 ### Week 3 (검증/감사 대비)
 
@@ -96,10 +102,12 @@
   - 계정/데이터 삭제 요청 접수 가능
   - 삭제 큐 처리로 실제 데이터 삭제
   - TTL 만료 데이터 자동 정리
+  - Google Play 계정 삭제 요구사항에 맞는 앱 내/외부 요청 경로 제공
 - 품질 기준:
   - 삭제 후 조회 불가 보장
   - 감사 로그 추적 가능
   - 민감정보 로그 노출 없음
+  - 개인정보처리방침과 Data safety 표기가 실제 수집/삭제/보존 동작과 일치
 
 ## 6-1) 현재 계약 기준 메모
 
@@ -119,6 +127,9 @@
 - 운영 루프:
   - retention cleanup loop가 TTL 만료 데이터를 정리
   - deletion queue loop가 사용자 삭제 요청을 처리
+- 비동기 분석 작업:
+  - `analysis_jobs`에는 작업 처리를 위해 이미지/알러지/분석 결과 필드가 남을 수 있다.
+  - 기존 잔존 데이터 또는 오래된 anonymous/device/ip scoped 작업은 [Analysis Jobs Privacy Backfill Runbook](../ops/analysis-jobs-privacy-backfill-runbook.md)에 따라 dry-run 검토 후 scrub한다.
 
 ## 6-2) 현재 최소수집·제3자 연동 증적
 
