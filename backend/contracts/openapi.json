@@ -2846,6 +2846,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/email/login",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Login"
@@ -2882,6 +2899,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_PASSWORD_RESET_LOCKED",
+                    "message": "Too many invalid password reset attempts.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "AUTH_PASSWORD_RESET_LOCKED",
+                    "retryable_by_client": false
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Password Reset Confirm"
@@ -2918,6 +2952,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/email/password/reset/request",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Password Reset Request"
@@ -2954,6 +3005,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/email/signup",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Signup"
@@ -2990,6 +3058,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/email/verification/request",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Verification Request"
@@ -3026,6 +3111,23 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_EMAIL_VERIFICATION_LOCKED",
+                    "message": "Too many invalid verification attempts.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "AUTH_EMAIL_VERIFICATION_LOCKED",
+                    "retryable_by_client": false
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout."
           }
         },
         "summary": "Auth Email Verify"

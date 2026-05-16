@@ -37,6 +37,9 @@ on:
         default: ""
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   mobile-store-evidence:
     runs-on: ubuntu-latest
@@ -58,7 +61,7 @@ jobs:
         run: npm ci
 
       - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e
         with:
           expo-version: latest
           eas-version: latest

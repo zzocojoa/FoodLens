@@ -25,6 +25,13 @@ class RateLimitSettings:
 
 
 @dataclass(frozen=True)
+class AuthRateLimitSettings:
+    enabled: bool
+    window_seconds: int
+    endpoint_limits_per_minute: dict[str, int]
+
+
+@dataclass(frozen=True)
 class InflightAdmissionSettings:
     enabled: bool
     retry_after_seconds: int
@@ -97,6 +104,25 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
             "/analyze/jobs": jobs_limit,
             "/analyze/jobs/status": job_status_limit,
             "/lookup/barcode": barcode_limit,
+        },
+    )
+
+
+def build_auth_rate_limit_settings_from_env() -> AuthRateLimitSettings:
+    enabled = (os.environ.get("AUTH_RATE_LIMIT_ENABLED", "1").strip() != "0")
+    window_seconds = _env_int("AUTH_RATE_LIMIT_WINDOW_SECONDS", 60)
+    login_limit = _env_int("AUTH_RATE_LIMIT_LOGIN_PER_MIN", 5)
+    signup_limit = _env_int("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", 3)
+    verification_request_limit = _env_int("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", 3)
+    password_reset_request_limit = _env_int("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", 3)
+    return AuthRateLimitSettings(
+        enabled=enabled,
+        window_seconds=window_seconds,
+        endpoint_limits_per_minute={
+            "/auth/email/login": login_limit,
+            "/auth/email/signup": signup_limit,
+            "/auth/email/verification/request": verification_request_limit,
+            "/auth/email/password/reset/request": password_reset_request_limit,
         },
     )
 

@@ -1,0 +1,14 @@
+*
+!Dockerfile
+!.dockerignore
+!backend/
+!backend/**
+backend/.env
+backend/.env.*
+backend/**/.env
+backend/**/.env.*
+backend/Dockerfile
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/tests/fixtures/food_canary/images/*
+!backend/tests/fixtures/food_canary/images/README.md

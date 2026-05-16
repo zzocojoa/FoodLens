@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RENDER_BLUEPRINT_PATH = PROJECT_ROOT / "render.yaml"
+API_CONTRACT_PATH = PROJECT_ROOT / "docs" / "contracts" / "api-contracts.md"
 RENDER_LIVE_ENV_SCRIPT_PATH = PROJECT_ROOT / ".github" / "scripts" / "validate_render_live_env.py"
 RENDER_BLUEPRINT_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "phase2-render-blueprint.yml"
 
@@ -117,6 +118,61 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         self.assertIn('- key: BARCODE_UPSTREAM_TIMEOUT_SECONDS\n        value: "15"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_COUNT\n        value: "3"', render_blueprint)
         self.assertIn('- key: BARCODE_UPSTREAM_RETRY_BACKOFF_SECONDS\n        value: "1.0"', render_blueprint)
+
+    def test_render_blueprint_declares_auth_rate_limit_policy_envs(self):
+        render_blueprint = RENDER_BLUEPRINT_PATH.read_text(encoding="utf-8")
+
+        required_values = (
+            ("AUTH_RATE_LIMIT_ENABLED", "1"),
+            ("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60"),
+            ("AUTH_RATE_LIMIT_LOGIN_PER_MIN", "5"),
+            ("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", "3"),
+            ("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", "3"),
+            ("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", "3"),
+        )
+        for key, value in required_values:
+            self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
+
+    def test_render_blueprint_keeps_sensitive_envs_dashboard_managed(self) -> None:
+        render_blueprint = RENDER_BLUEPRINT_PATH.read_text(encoding="utf-8")
+
+        sensitive_keys = (
+            "DATABASE_URL",
+            "GCP_SERVICE_ACCOUNT_JSON",
+            "MEDIA_RENDER_SIGNING_SECRET",
+            "AUTH_GOOGLE_CLIENT_SECRET",
+            "AUTH_KAKAO_CLIENT_SECRET",
+            "AUTH_EMAIL_SMTP_PASSWORD",
+            "DATAGO_API_KEY",
+            "DATAGO_I2790_API_KEY",
+            "KOREAN_FDA_API_KEY",
+            "SENTRY_DSN",
+        )
+        for sensitive_key in sensitive_keys:
+            self.assertEqual(render_blueprint.count(f"- key: {sensitive_key}\n        sync: false"), 3)
+
+    def test_api_contract_documents_auth_rate_limit_policy_envs_and_response(self) -> None:
+        api_contract = API_CONTRACT_PATH.read_text(encoding="utf-8")
+
+        required_terms = (
+            "POST /auth/email/signup",
+            "POST /auth/email/login",
+            "POST /auth/email/verification/request",
+            "POST /auth/email/password/reset/request",
+            "AUTH_RATE_LIMIT_ENABLED",
+            "AUTH_RATE_LIMIT_WINDOW_SECONDS",
+            "AUTH_RATE_LIMIT_LOGIN_PER_MIN",
+            "AUTH_RATE_LIMIT_SIGNUP_PER_MIN",
+            "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN",
+            "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN",
+            "AUTH_RATE_LIMITED",
+            "Retry-After: <seconds>",
+            "Too many authentication attempts. Please retry shortly.",
+            "detail.retry_scope",
+            "detail.retryable_by_client",
+        )
+        for required_term in required_terms:
+            self.assertIn(required_term, api_contract)
 
     def test_render_live_env_gate_runs_for_same_repo_pull_requests(self) -> None:
         workflow = RENDER_BLUEPRINT_WORKFLOW_PATH.read_text(encoding="utf-8")
