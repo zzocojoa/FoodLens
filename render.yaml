@@ -40,6 +40,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
@@ -69,6 +73,8 @@ services:
       - key: ANALYSIS_JOB_TABLE
         value: analysis_jobs
       - key: ANALYSIS_JOB_WORKER_COUNT
+        value: "0"
+      - key: ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED
         value: "0"
       - key: ANALYSIS_JOB_LEASE_SECONDS
         value: "90"
@@ -386,6 +392,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
@@ -416,6 +426,8 @@ services:
         value: analysis_jobs
       - key: ANALYSIS_JOB_WORKER_COUNT
         value: "1"
+      - key: ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED
+        value: "0"
       - key: ANALYSIS_JOB_LEASE_SECONDS
         value: "90"
       - key: ANALYSIS_JOB_POLL_AFTER_MS
@@ -732,6 +744,10 @@ services:
         value: "30"
       - key: AUTH_RATE_LIMIT_ENABLED
         value: "1"
+      - key: AUTH_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: AUTH_RATE_LIMIT_TABLE
+        value: "auth_rate_limit_events"
       - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: AUTH_RATE_LIMIT_LOGIN_PER_MIN
@@ -761,6 +777,8 @@ services:
       - key: ANALYSIS_JOB_TABLE
         value: analysis_jobs
       - key: ANALYSIS_JOB_WORKER_COUNT
+        value: "0"
+      - key: ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED
         value: "0"
       - key: ANALYSIS_JOB_LEASE_SECONDS
         value: "90"

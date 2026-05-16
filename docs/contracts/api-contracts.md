@@ -172,6 +172,7 @@
 - `AUTH_PASSWORD_RESET_LOCKED`
 - `AUTH_PASSWORD_RESET_DELIVERY_FAILED`
 - `AUTH_RATE_LIMITED`
+- `AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE`
 
 ### E. 인증 Rate Limit 계약
 
@@ -182,11 +183,31 @@
   - `POST /auth/email/password/reset/request`
 - 운영 환경 변수:
   - `AUTH_RATE_LIMIT_ENABLED`
+  - `AUTH_RATE_LIMIT_BACKEND`: `auto`, `memory`, `postgres`
+  - `AUTH_RATE_LIMIT_TABLE`: Postgres backend table name
   - `AUTH_RATE_LIMIT_WINDOW_SECONDS`
   - `AUTH_RATE_LIMIT_LOGIN_PER_MIN`
   - `AUTH_RATE_LIMIT_SIGNUP_PER_MIN`
   - `AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN`
   - `AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN`
+  - `AUTH_RATE_LIMIT_HASH_SECRET`: 선택값. 있으면 subject HMAC key로 우선 사용한다.
+- Render 운영 기본값:
+  - `AUTH_RATE_LIMIT_BACKEND=postgres`
+  - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
+  - Postgres backend는 `DATABASE_URL`을 사용해 같은 DB 이벤트 테이블 기준으로 제한을 평가한다.
+  - 이 항목은 저장/계약 기준이며, Render branch 배포 또는 scale-out counter 공유 검증 완료 증적은 아니다.
+- 저장 데이터:
+  - `auth_rate_limit_events.subject`에는 `<scope>:<hmac_sha256(scope:value)>` 형식만 저장한다. HMAC key는 `AUTH_RATE_LIMIT_HASH_SECRET`, `DATABASE_URL`, non-default `AUTH_STATE_KEY` 순서로 선택한다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
+  - 이벤트는 sliding window 계산용 단기 운영 데이터이며, 요청 평가마다 `DELETE FROM auth_rate_limit_events WHERE event_ts <= ...`로 만료분을 제거한다.
+- 운영 권한:
+  - 최초 자동 생성 경로는 `CREATE TABLE`, `CREATE INDEX`, sequence 사용 권한이 필요하다.
+  - 테이블을 사전 생성한 least-privilege 운영 계정은 `SELECT`, `INSERT`, `DELETE`와 sequence `USAGE`가 필요하다.
+- 운영 알림:
+  - Postgres 지연 또는 connection pressure 의심 시 Render Logs에서 `[AuthRateLimit] slow evaluation` 경고를 확인한다.
+  - storage unavailable 로그가 발생하면 DB 연결/권한/connection limit을 먼저 확인한다.
+- 롤백:
+  - `AUTH_RATE_LIMIT_BACKEND=memory`: process-local limiter로 되돌린다.
+  - `AUTH_RATE_LIMIT_ENABLED=0`: 임시 긴급 차단 해제 전용이며 brute-force 보호를 끈다. 정상 롤백은 `AUTH_RATE_LIMIT_BACKEND=memory`를 사용한다.
 - 제한 초과 응답:
   - HTTP Status: `429`
   - Header: `Retry-After: <seconds>`
@@ -195,6 +216,15 @@
   - `detail.request_id`
   - `detail.retry_after_seconds`
   - `detail.retry_scope`: 제한이 걸린 인증 endpoint
+  - `detail.retryable_by_client`: `true`
+- Postgres backend 장애 응답:
+  - HTTP Status: `503`
+  - Header: `Retry-After: 5`
+  - `detail.code`: `AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE`
+  - `detail.message`: `Authentication rate limiting is temporarily unavailable. Please retry shortly.`
+  - `detail.request_id`
+  - `detail.retry_after_seconds`: `5`
+  - `detail.retry_scope`: 제한 평가 대상 인증 endpoint
   - `detail.retryable_by_client`: `true`
 - 인증 코드 잠금 응답:
   - 대상: `POST /auth/email/verify`, `POST /auth/email/password/reset/confirm`

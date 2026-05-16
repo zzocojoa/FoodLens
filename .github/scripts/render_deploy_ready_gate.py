@@ -18,6 +18,8 @@ REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "RENDER_SERVICE_ID",
     "RENDER_DEPLOY_MIN_CREATED_AT",
 )
+EXPECTED_COMMIT_ENV = "RENDER_DEPLOY_EXPECTED_COMMIT"
+GITHUB_SHA_ENV = "GITHUB_SHA"
 LIVE_STATUS = "live"
 FAILED_STATUSES: frozenset[str] = frozenset(("build_failed", "update_failed", "canceled", "cancelled"))
 DEFAULT_TIMEOUT_SECONDS = 900
@@ -170,18 +172,93 @@ def _deploy_created_at(deploy: dict[str, object]) -> datetime | None:
 
 
 def _candidate_deploys(deploys: list[dict[str, object]], min_created_at: datetime) -> list[dict[str, object]]:
-    return [
-        deploy
-        for deploy in deploys
-        if (created_at := _deploy_created_at(deploy)) is not None and created_at >= min_created_at
-    ]
+    candidates: list[tuple[datetime, str, dict[str, object]]] = []
+    for deploy in deploys:
+        created_at = _deploy_created_at(deploy)
+        if created_at is None or created_at < min_created_at:
+            continue
+        deploy_id = deploy.get("id")
+        deploy_id_sort_value = deploy_id if isinstance(deploy_id, str) else ""
+        candidates.append((created_at, deploy_id_sort_value, deploy))
+    sorted_candidates = sorted(candidates, key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
+    return [deploy for _created_at, _deploy_id, deploy in sorted_candidates]
 
 
-def _deploy_summary(deploy: dict[str, object] | None, status: str, passed: bool) -> dict[str, object]:
-    selected = deploy or {}
+def _expected_commit(env: dict[str, str]) -> str | None:
+    explicit_commit = (env.get(EXPECTED_COMMIT_ENV) or "").strip()
+    if explicit_commit:
+        return explicit_commit
+    github_sha = (env.get(GITHUB_SHA_ENV) or "").strip()
+    if github_sha:
+        return github_sha
+    return None
+
+
+def _deploy_commit_id(deploy: dict[str, object]) -> str | None:
+    commit = deploy.get("commit")
+    if isinstance(commit, dict):
+        commit_id = commit.get("id")
+        if isinstance(commit_id, str) and commit_id.strip():
+            return commit_id.strip()
+    for key in ("commitId", "commitSHA", "commitSha", "sha"):
+        commit_id = deploy.get(key)
+        if isinstance(commit_id, str) and commit_id.strip():
+            return commit_id.strip()
+    return None
+
+
+def _matches_expected_commit(deploy: dict[str, object], expected_commit: str | None) -> bool:
+    if expected_commit is None:
+        return True
+    commit_id = _deploy_commit_id(deploy)
+    if commit_id is None:
+        return False
+    normalized_commit_id = commit_id.lower()
+    normalized_expected = expected_commit.lower()
+    return (
+        normalized_commit_id == normalized_expected
+        or (len(normalized_expected) >= 7 and normalized_commit_id.startswith(normalized_expected))
+        or (len(normalized_commit_id) >= 7 and normalized_expected.startswith(normalized_commit_id))
+    )
+
+
+def _deploy_observation(deploy: dict[str, object]) -> dict[str, object]:
     return {
+        "commit": _deploy_commit_id(deploy),
+        "created_at": deploy.get("createdAt"),
+        "finished_at": deploy.get("finishedAt"),
+        "id": deploy.get("id"),
+        "status": deploy.get("status"),
+        "updated_at": deploy.get("updatedAt"),
+    }
+
+
+def _deploy_timeout_error(
+    expected_commit: str | None,
+    latest_matching_deploy: dict[str, object] | None,
+    latest_observed_deploy: dict[str, object] | None,
+) -> str:
+    if expected_commit is None:
+        return "render_deploy_timed_out"
+    if latest_matching_deploy is not None:
+        return "expected_commit_deploy_not_ready"
+    if latest_observed_deploy is not None:
+        return "expected_commit_deploy_not_found"
+    return "render_deploy_not_found_after_min_created_at"
+
+
+def _deploy_summary(
+    deploy: dict[str, object] | None,
+    status: str,
+    passed: bool,
+    expected_commit: str | None,
+    latest_observed_deploy: dict[str, object] | None,
+) -> dict[str, object]:
+    selected = deploy or {}
+    summary: dict[str, object] = {
         "passed": passed,
         "render_deploy": {
+            "commit": _deploy_commit_id(selected),
             "created_at": selected.get("createdAt"),
             "finished_at": selected.get("finishedAt"),
             "id": selected.get("id"),
@@ -189,6 +266,11 @@ def _deploy_summary(deploy: dict[str, object] | None, status: str, passed: bool)
             "updated_at": selected.get("updatedAt"),
         },
     }
+    if expected_commit is not None:
+        summary["expected_commit"] = expected_commit
+    if latest_observed_deploy is not None and latest_observed_deploy is not deploy:
+        summary["latest_observed_deploy"] = _deploy_observation(latest_observed_deploy)
+    return summary
 
 
 def run_gate(
@@ -209,6 +291,7 @@ def run_gate(
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
     allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
+    expected_commit = _expected_commit(env)
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds
@@ -229,27 +312,42 @@ def run_gate(
             return 1
 
     latest_candidate: dict[str, object] | None = None
+    latest_observed_candidate: dict[str, object] | None = None
     while True:
         deploys = _list_deploys(api_key, service_id, request_json)
-        candidates = _candidate_deploys(deploys, min_created_at)
+        observed_candidates = _candidate_deploys(deploys, min_created_at)
+        if observed_candidates:
+            latest_observed_candidate = observed_candidates[0]
+        candidates = [deploy for deploy in observed_candidates if _matches_expected_commit(deploy, expected_commit)]
         if candidates:
             latest_candidate = candidates[0]
             status = str(latest_candidate.get("status") or "unknown")
             deploy_id = str(latest_candidate.get("id") or "unknown")
             print(f"[RenderDeployReadyGate] Latest candidate deploy {deploy_id} status: {status}")
             if status == LIVE_STATUS:
-                _write_json(summary_path, _deploy_summary(latest_candidate, status, True))
+                _write_json(
+                    summary_path,
+                    _deploy_summary(latest_candidate, status, True, expected_commit, latest_observed_candidate),
+                )
                 print("[RenderDeployReadyGate] Render deploy is live.")
                 return 0
             if status in FAILED_STATUSES:
-                _write_json(summary_path, _deploy_summary(latest_candidate, status, False))
+                _write_json(
+                    summary_path,
+                    _deploy_summary(latest_candidate, status, False, expected_commit, latest_observed_candidate),
+                )
                 print(f"[RenderDeployReadyGate] Render deploy failed with status: {status}", file=sys.stderr)
                 return 1
         else:
-            print("[RenderDeployReadyGate] Waiting for a Render deploy created after the workflow commit timestamp.")
+            if expected_commit is None:
+                print("[RenderDeployReadyGate] Waiting for a Render deploy created after the workflow commit timestamp.")
+            else:
+                print("[RenderDeployReadyGate] Waiting for a Render deploy matching the expected commit.")
 
         if clock() >= deadline:
-            _write_json(summary_path, _deploy_summary(latest_candidate, "timed_out", False))
+            summary = _deploy_summary(latest_candidate, "timed_out", False, expected_commit, latest_observed_candidate)
+            summary["error"] = _deploy_timeout_error(expected_commit, latest_candidate, latest_observed_candidate)
+            _write_json(summary_path, summary)
             print("[RenderDeployReadyGate] Timed out waiting for Render deploy readiness.", file=sys.stderr)
             return 1
         sleeper(poll_seconds)

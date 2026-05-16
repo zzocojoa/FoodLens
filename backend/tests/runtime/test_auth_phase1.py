@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sys
 import threading
@@ -7,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
@@ -15,10 +17,33 @@ os.environ["AUTH_EMAIL_VERIFICATION_REQUIRED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DEBUG_CODE_ENABLED"] = "1"
 os.environ["AUTH_EMAIL_VERIFICATION_DELIVERY_MODE"] = "log"
 os.environ["AUTH_PASSWORD_RESET_DEBUG_CODE_ENABLED"] = "1"
-sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs: None))
+sys.modules.setdefault(
+    "sentry_sdk",
+    types.SimpleNamespace(
+        init=lambda **_kwargs: None,
+        push_scope=lambda: contextlib.nullcontext(
+            types.SimpleNamespace(set_tag=lambda *_args, **_kwargs: None, set_extra=lambda *_args, **_kwargs: None)
+        ),
+    ),
+)
+from backend import server as server_module  # noqa: E402
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
-from backend.modules.ops.api_edge_guard import InMemorySlidingWindowRateLimiter  # noqa: E402
+from backend.modules.ops.api_edge_guard import (  # noqa: E402
+    InMemorySlidingWindowRateLimiter,
+    RateLimitStorageError,
+)
+
+
+class _FailingAuthRateLimiter:
+    def evaluate_many(
+        self,
+        *,
+        endpoint: str,
+        subjects: tuple[tuple[str, str], ...],
+        now: float | None,
+    ) -> None:
+        raise RateLimitStorageError("postgres auth rate limit unavailable")
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -257,6 +282,222 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(login_with_updated_password.status_code, 200)
             self.assertIn("access_token", login_with_updated_password.json())
 
+    def test_auth_runtime_controls_select_postgres_rate_limiter_backend(self):
+        app_state = getattr(app.state, "_state", None)
+        if not isinstance(app_state, dict):
+            raise TypeError("app.state._state must be a dictionary.")
+        previous_state = dict(app_state)
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                    "AUTH_RATE_LIMIT_ENABLED": "1",
+                    "AUTH_RATE_LIMIT_BACKEND": "postgres",
+                    "AUTH_RATE_LIMIT_TABLE": "auth_rate_limit_events",
+                },
+                clear=False,
+            ), patch.object(server_module, "PostgresSlidingWindowRateLimiter") as limiter_class:
+                server_module._initialize_api_runtime_controls()
+            self.assertIs(app.state.auth_rate_limiter, limiter_class.return_value)
+            limiter_class.assert_called_once()
+            call_kwargs = limiter_class.call_args.kwargs
+            self.assertEqual(call_kwargs["database_url"], "postgresql://foodlens:test@db/foodlens")
+            self.assertEqual(call_kwargs["table_name"], "auth_rate_limit_events")
+            self.assertEqual(call_kwargs["endpoint_limits_per_minute"]["/auth/email/login"], 5)
+        finally:
+            app_state.clear()
+            app_state.update(previous_state)
+
+    def test_auth_rate_limit_openapi_responses_document_retry_after_header(self):
+        rate_limit_responses = server_module._auth_rate_limited_openapi_responses(
+            retry_scope="/auth/email/login",
+        )
+        lockout_responses = server_module._auth_429_openapi_responses(
+            code="AUTH_EMAIL_VERIFICATION_LOCKED",
+            message="Too many invalid verification attempts.",
+            retry_scope="AUTH_EMAIL_VERIFICATION_LOCKED",
+            retryable_by_client=False,
+        )
+
+        for response in (
+            rate_limit_responses[429],
+            rate_limit_responses[503],
+            lockout_responses[429],
+        ):
+            retry_after_header = response["headers"]["Retry-After"]
+            self.assertEqual(retry_after_header["schema"]["type"], "string")
+            self.assertIn("retrying", retry_after_header["description"])
+
+    def test_auth_rate_limit_subjects_do_not_store_raw_email_or_device(self):
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("203.0.113.10", 12345),
+            }
+        )
+
+        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://unit:secret@localhost/foodlens"}, clear=False):
+            subjects, masked_email, client_scope = server_module._resolve_auth_rate_limit_subjects(
+                request=request,
+                email="Owner@Example.com",
+                device_id="ios-device-123",
+            )
+
+        joined_subjects = " ".join(subject for _scope, subject in subjects)
+        self.assertEqual(masked_email, "ow***@example.com")
+        self.assertEqual(client_scope, "ip+device")
+        self.assertNotIn("owner@example.com", joined_subjects)
+        self.assertNotIn("ios-device-123", joined_subjects)
+        for scope, subject in subjects:
+            self.assertTrue(subject.startswith(f"{scope}:"))
+            self.assertEqual(len(subject.split(":", 1)[1]), 64)
+
+    def test_auth_rate_limit_subject_hash_uses_runtime_secret(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "",
+                "DATABASE_URL": "postgresql://unit:first-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            first_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "",
+                "DATABASE_URL": "postgresql://unit:second-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            second_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "explicit-secret",
+                "DATABASE_URL": "postgresql://unit:first-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            explicit_first_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_RATE_LIMIT_HASH_SECRET": "explicit-secret",
+                "DATABASE_URL": "postgresql://unit:second-secret@localhost/foodlens",
+            },
+            clear=False,
+        ):
+            explicit_second_subject = server_module._auth_rate_limit_subject("email", "owner@example.com")
+
+        self.assertNotEqual(first_subject, second_subject)
+        self.assertEqual(explicit_first_subject, explicit_second_subject)
+        self.assertTrue(first_subject.startswith("email:"))
+        self.assertEqual(len(first_subject.split(":", 1)[1]), 64)
+
+    def test_auth_rate_limit_ip_subject_normalizes_equivalent_ipv6_hosts(self):
+        first_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("2001:0db8:0000:0000:0000:0000:0000:0001", 12345),
+            }
+        )
+        second_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("2001:db8::1", 12345),
+            }
+        )
+
+        first_subjects, _first_masked_email, _first_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=first_request,
+            email="ipv6@example.com",
+            device_id=None,
+        )
+        second_subjects, _second_masked_email, _second_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=second_request,
+            email="ipv6@example.com",
+            device_id=None,
+        )
+
+        first_ip_subject = dict(first_subjects)["ip"]
+        second_ip_subject = dict(second_subjects)["ip"]
+        self.assertEqual(first_ip_subject, second_ip_subject)
+        self.assertNotIn("2001:0db8", first_ip_subject)
+        self.assertNotIn("2001:db8::1", first_ip_subject)
+
+    def test_auth_rate_limit_ip_subject_uses_forwarded_client_address(self):
+        first_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [(b"x-forwarded-for", b"8.8.8.8")],
+                "client": ("10.0.0.10", 12345),
+            }
+        )
+        second_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [(b"x-forwarded-for", b"1.1.1.1")],
+                "client": ("10.0.0.10", 12345),
+            }
+        )
+
+        first_subjects, _first_masked_email, _first_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=first_request,
+            email="forwarded@example.com",
+            device_id=None,
+        )
+        second_subjects, _second_masked_email, _second_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=second_request,
+            email="forwarded@example.com",
+            device_id=None,
+        )
+
+        self.assertNotEqual(dict(first_subjects)["ip"], dict(second_subjects)["ip"])
+
+    def test_email_login_rate_limit_storage_outage_returns_retryable_503(self):
+        with TestClient(app) as client:
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = _FailingAuthRateLimiter()
+            try:
+                response = client.post(
+                    "/auth/email/login",
+                    json={
+                        "email": "storage-outage@example.com",
+                        "password": "Passw0rd!",
+                    },
+                    headers={"X-Request-Id": "req-auth-rate-storage-outage"},
+                )
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers.get("Retry-After"), "5")
+        body = response.json()["detail"]
+        self.assertEqual(body["code"], "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE")
+        self.assertEqual(body["request_id"], "req-auth-rate-storage-outage")
+        self.assertEqual(body["retry_after_seconds"], 5)
+        self.assertEqual(body["retry_scope"], "/auth/email/login")
+        self.assertTrue(body["retryable_by_client"])
+        self.assertNotIn("postgres auth rate limit unavailable", str(body))
+
     def test_email_signup_rate_limit_blocks_repeated_same_email_and_device(self):
         with TestClient(app) as client:
             previous_limiter = getattr(app.state, "auth_rate_limiter", None)
@@ -347,7 +588,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             finally:
                 app.state.auth_rate_limiter = previous_limiter
 
-    def test_email_login_rate_limit_blocks_same_socket_client_across_spoofed_forwarding_headers(self):
+    def test_email_login_rate_limit_blocks_same_forwarded_client_across_email_and_device_rotation(self):
         with TestClient(app) as client:
             previous_limiter = getattr(app.state, "auth_rate_limiter", None)
             app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
@@ -364,7 +605,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                             "device_id": f"ios-rotating-device-{index}",
                         },
                         headers={
-                            "X-Forwarded-For": f"8.8.8.{index + 1}",
+                            "X-Forwarded-For": "8.8.8.8",
                             "X-Request-Id": f"req-auth-ip-limit-{index}",
                         },
                     )
@@ -379,7 +620,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                         "device_id": "ios-rotating-device-2",
                     },
                     headers={
-                        "X-Forwarded-For": "1.1.1.1",
+                        "X-Forwarded-For": "8.8.8.8",
                         "X-Request-Id": "req-auth-ip-limit-blocked",
                     },
                 )

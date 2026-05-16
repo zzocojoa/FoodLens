@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlparse
-from typing import Any, Awaitable, Callable, Literal, TypeVar
+from typing import Any, Awaitable, Callable, Literal, TypeAlias, TypeVar
 import requests
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -71,6 +71,9 @@ from backend.modules.ops.rollout_control import (
 from backend.modules.ops.api_edge_guard import (
     InMemoryEndpointAdmissionLimiter,
     InMemorySlidingWindowRateLimiter,
+    PostgresSlidingWindowRateLimiter,
+    RateLimitDecision,
+    RateLimitStorageError,
     build_auth_rate_limit_settings_from_env,
     build_cors_config_from_env,
     build_inflight_admission_settings_from_env,
@@ -241,6 +244,9 @@ app.add_middleware(
 
 MediaRenderResult = tuple[bytes, str, str, str, dict[str, int]]
 MediaRenderValue = TypeVar("MediaRenderValue")
+AuthRateLimitSubject: TypeAlias = tuple[str, str]
+AuthRateLimitSubjects: TypeAlias = tuple[AuthRateLimitSubject, ...]
+AuthRateLimitBlockedDecision: TypeAlias = tuple[str, RateLimitDecision]
 
 logger = logging.getLogger("foodlens.api")
 if not logging.getLogger().handlers:
@@ -520,6 +526,13 @@ def _build_scoped_rate_limit_http_exception(
     return error
 
 
+def _auth_retry_after_openapi_header() -> dict[str, Any]:
+    return {
+        "description": "Seconds to wait before retrying the authentication request.",
+        "schema": {"type": "string"},
+    }
+
+
 def _auth_429_openapi_responses(
     *,
     code: str,
@@ -530,6 +543,7 @@ def _auth_429_openapi_responses(
     return {
         429: {
             "description": "Authentication rate limit or code lockout.",
+            "headers": {"Retry-After": _auth_retry_after_openapi_header()},
             "content": {
                 "application/json": {
                     "example": {
@@ -546,6 +560,37 @@ def _auth_429_openapi_responses(
             },
         }
     }
+
+
+def _auth_rate_limited_openapi_responses(
+    *,
+    retry_scope: str,
+) -> dict[int | str, dict[str, Any]]:
+    responses = _auth_429_openapi_responses(
+        code="AUTH_RATE_LIMITED",
+        message="Too many authentication attempts. Please retry shortly.",
+        retry_scope=retry_scope,
+        retryable_by_client=True,
+    )
+    responses[503] = {
+        "description": "Authentication rate limit storage is unavailable.",
+        "headers": {"Retry-After": _auth_retry_after_openapi_header()},
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": {
+                        "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                        "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                        "request_id": "req-example",
+                        "retry_after_seconds": 5,
+                        "retry_scope": retry_scope,
+                        "retryable_by_client": True,
+                    }
+                }
+            }
+        },
+    }
+    return responses
 
 
 def _safe_label_int(value: Any) -> int | None:
@@ -798,6 +843,10 @@ def _analysis_job_worker_count() -> int:
     return max(0, _env_int("ANALYSIS_JOB_WORKER_COUNT", 1))
 
 
+def _is_analysis_job_embedded_worker_enabled() -> bool:
+    return os.environ.get("ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED", "0").strip() == "1"
+
+
 def _analysis_job_lease_seconds() -> int:
     return max(15, _env_int("ANALYSIS_JOB_LEASE_SECONDS", 90))
 
@@ -857,6 +906,8 @@ def _is_analysis_job_remote_worker_required() -> bool:
     if _is_openapi_export_mode():
         return False
     if _current_process_role() != PROCESS_ROLE_WEB:
+        return False
+    if _is_analysis_job_embedded_worker_enabled():
         return False
     if _analysis_job_backend_name() != "postgres":
         return False
@@ -1072,6 +1123,14 @@ def _start_analysis_job_workers() -> None:
     )
 
 
+def _start_analysis_job_worker_runtime_tasks() -> None:
+    _start_analysis_job_workers()
+    app.state.analysis_job_worker_heartbeat_store = _build_analysis_job_worker_heartbeat_store()
+    app.state.analysis_job_worker_started_at = datetime.now(timezone.utc).isoformat()
+    app.state.analysis_job_worker_heartbeat_task = asyncio.create_task(_run_analysis_job_worker_heartbeat_loop())
+    app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
+
+
 def _initialize_retention_runtime() -> None:
     app.state.retention_policy = RetentionPolicyConfig.from_env(os.environ.get)
     database_url = _env_str("DATABASE_URL", "")
@@ -1193,12 +1252,21 @@ def _initialize_api_runtime_controls() -> None:
 
     auth_rate_limit_settings = build_auth_rate_limit_settings_from_env()
     if auth_rate_limit_settings.enabled:
-        app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
-            endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
-            window_seconds=auth_rate_limit_settings.window_seconds,
-        )
+        if auth_rate_limit_settings.backend == "postgres":
+            app.state.auth_rate_limiter = PostgresSlidingWindowRateLimiter(
+                database_url=_env_str("DATABASE_URL", ""),
+                endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
+                table_name=auth_rate_limit_settings.table_name,
+                window_seconds=auth_rate_limit_settings.window_seconds,
+            )
+        else:
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute=auth_rate_limit_settings.endpoint_limits_per_minute,
+                window_seconds=auth_rate_limit_settings.window_seconds,
+            )
         logger.info(
-            "[AuthRateLimit] enabled window_seconds=%d limits=%s",
+            "[AuthRateLimit] enabled backend=%s window_seconds=%d limits=%s",
+            auth_rate_limit_settings.backend,
             auth_rate_limit_settings.window_seconds,
             auth_rate_limit_settings.endpoint_limits_per_minute,
         )
@@ -1249,14 +1317,12 @@ async def _startup_runtime(process_role: str) -> None:
 
     if normalized_role == PROCESS_ROLE_WEB:
         _initialize_api_runtime_controls()
+        if _is_analysis_job_embedded_worker_enabled():
+            _start_analysis_job_worker_runtime_tasks()
 
     if normalized_role == PROCESS_ROLE_WORKER:
         _initialize_label_policy_controls()
-        _start_analysis_job_workers()
-        app.state.analysis_job_worker_heartbeat_store = _build_analysis_job_worker_heartbeat_store()
-        app.state.analysis_job_worker_started_at = datetime.now(timezone.utc).isoformat()
-        app.state.analysis_job_worker_heartbeat_task = asyncio.create_task(_run_analysis_job_worker_heartbeat_loop())
-        app.state.deletion_queue_task = asyncio.create_task(_deletion_queue_loop())
+        _start_analysis_job_worker_runtime_tasks()
 
     app.state.startup_completed = True
 
@@ -1324,6 +1390,15 @@ def _task_is_running(task: Any) -> bool:
         return False
 
 
+def _analysis_job_local_workers_ready() -> bool:
+    analysis_job_workers = getattr(app.state, "analysis_job_workers", None)
+    return (
+        isinstance(analysis_job_workers, list)
+        and len(analysis_job_workers) > 0
+        and all(_task_is_running(getattr(worker, "_task", None)) for worker in analysis_job_workers)
+    )
+
+
 def _is_media_storage_ready() -> tuple[bool, bool]:
     media_storage = getattr(app.state, "media_storage", None)
     if media_storage is None:
@@ -1356,12 +1431,8 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         for service_name in ("analyst", "barcode_service", "smart_router")
     )
 
-    analysis_job_workers = getattr(app.state, "analysis_job_workers", None)
-    analysis_job_workers_ready = (
-        isinstance(analysis_job_workers, list)
-        and len(analysis_job_workers) > 0
-        and all(_task_is_running(getattr(worker, "_task", None)) for worker in analysis_job_workers)
-    )
+    analysis_job_embedded_worker_enabled = _is_analysis_job_embedded_worker_enabled()
+    analysis_job_workers_ready = _analysis_job_local_workers_ready()
     analysis_job_remote_worker_ready, analysis_job_remote_worker_snapshot = _analysis_job_remote_worker_readiness()
     analysis_job_remote_worker_age_seconds = _analysis_job_remote_worker_heartbeat_age_seconds(
         analysis_job_remote_worker_snapshot
@@ -1376,6 +1447,7 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
         "media_storage_enabled": media_storage_enabled,
         "analysis_job_store": analysis_job_store_ready,
         "analysis_nutrition_service": analysis_nutrition_service_ready,
+        "analysis_job_embedded_worker_enabled": analysis_job_embedded_worker_enabled,
         "analysis_job_workers": analysis_job_workers_ready,
         "analysis_job_remote_worker": analysis_job_remote_worker_ready,
         "retention_store": retention_store_ready,
@@ -1405,7 +1477,14 @@ def _build_readiness_report() -> tuple[dict[str, Any], int]:
     if process_role == PROCESS_ROLE_WEB:
         if not export_mode:
             required_checks.append("core_services")
-        if _is_analysis_job_remote_worker_required():
+        if analysis_job_embedded_worker_enabled:
+            required_checks.extend(
+                [
+                    "analysis_job_workers",
+                    "deletion_queue_task",
+                ]
+            )
+        elif _is_analysis_job_remote_worker_required():
             required_checks.append("analysis_job_remote_worker")
     elif process_role == PROCESS_ROLE_WORKER:
         required_checks.extend(
@@ -3080,6 +3159,9 @@ def _analysis_job_remote_worker_http_exception(
 
 
 def _assert_analysis_job_remote_worker_available(*, request_id: str) -> None:
+    if _is_analysis_job_embedded_worker_enabled() and _analysis_job_local_workers_ready():
+        return
+
     worker_ready, heartbeat_snapshot = _analysis_job_remote_worker_readiness()
     if worker_ready:
         return
@@ -3245,12 +3327,31 @@ def _normalize_auth_rate_limit_email(email: str) -> str:
     return normalized_email or "unknown"
 
 
+def _auth_rate_limit_subject_hash_secret() -> str:
+    explicit_secret = (os.environ.get("AUTH_RATE_LIMIT_HASH_SECRET") or "").strip()
+    if explicit_secret:
+        return explicit_secret
+
+    database_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if database_url:
+        return database_url
+
+    auth_state_key = (os.environ.get("AUTH_STATE_KEY") or "").strip()
+    if auth_state_key and auth_state_key != "default":
+        return auth_state_key
+
+    return "foodlens-auth-rate-limit-local"
+
+
+def _auth_rate_limit_subject(scope: str, value: str) -> str:
+    secret = _auth_rate_limit_subject_hash_secret().encode("utf-8")
+    payload = f"{scope}:{value}".encode("utf-8")
+    digest = hmac.new(secret, payload, hashlib.sha256).hexdigest()
+    return f"{scope}:{digest}"
+
+
 def _auth_rate_limit_client_ip(request: Request) -> str:
-    if request.client and request.client.host:
-        normalized_host = request.client.host.strip()
-        if normalized_host:
-            return normalized_host
-    return "unknown"
+    return extract_client_ip(request)
 
 
 def _resolve_auth_rate_limit_subjects(
@@ -3262,25 +3363,69 @@ def _resolve_auth_rate_limit_subjects(
     normalized_email = _normalize_auth_rate_limit_email(email)
     normalized_device_id = (device_id or _device_id(request) or "").strip() or None
     client_ip = _auth_rate_limit_client_ip(request)
-    ip_subject = build_rate_limit_subject(
-        user_id=None,
-        device_id=None,
-        client_ip=client_ip,
-    )
+    ip_subject = _auth_rate_limit_subject("ip", client_ip)
     subjects: list[tuple[str, str]] = [
         ("ip", ip_subject),
-        ("email", f"email:{normalized_email}"),
+        ("email", _auth_rate_limit_subject("email", normalized_email)),
     ]
     if normalized_device_id is not None:
-        device_subject = build_rate_limit_subject(
-            user_id=None,
-            device_id=normalized_device_id,
-            client_ip=client_ip,
-        )
+        device_subject = _auth_rate_limit_subject("device", normalized_device_id)
         subjects.append(("device", device_subject))
 
     client_scope = "ip+device" if normalized_device_id else "ip"
     return tuple(subjects), _mask_email(normalized_email), client_scope
+
+
+def _evaluate_auth_rate_limit_subjects(
+    *,
+    limiter: Any,
+    endpoint: str,
+    subjects: AuthRateLimitSubjects,
+) -> AuthRateLimitBlockedDecision | None:
+    evaluate_many = getattr(limiter, "evaluate_many", None)
+    if callable(evaluate_many):
+        return evaluate_many(endpoint=endpoint, subjects=subjects, now=None)
+
+    for scope, subject in subjects:
+        decision = limiter.evaluate(endpoint=endpoint, subject=subject)
+        if not decision.allowed:
+            return scope, decision
+    return None
+
+
+def _auth_rate_limit_slow_log_ms() -> int:
+    return 250
+
+
+def _raise_auth_rate_limit_storage_error(
+    *,
+    error: RateLimitStorageError,
+    request_id: str,
+    endpoint: str | None,
+) -> None:
+    retry_after_seconds = 5
+    retry_scope = endpoint or "auth_rate_limit_storage"
+    logger.error(
+        "[AuthRateLimit] storage unavailable",
+        extra={
+            "request_id": request_id,
+            "auth_rate_limit_endpoint": retry_scope,
+            "retry_after_seconds": retry_after_seconds,
+            "error_type": type(error).__name__,
+        },
+    )
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+            "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+            "request_id": request_id,
+            "retry_after_seconds": retry_after_seconds,
+            "retry_scope": retry_scope,
+            "retryable_by_client": True,
+        },
+        headers={"Retry-After": str(retry_after_seconds)},
+    ) from error
 
 
 def _apply_auth_rate_limit(
@@ -3300,27 +3445,42 @@ def _apply_auth_rate_limit(
         email=email,
         device_id=device_id,
     )
-    blocked_retry_after_seconds: int | None = None
-    blocked_scope: str | None = None
-    for scope, subject in subjects:
-        decision = limiter.evaluate(endpoint=endpoint, subject=subject)
-        if decision.allowed:
-            continue
-        blocked_retry_after_seconds = decision.retry_after_seconds
-        blocked_scope = scope
-        break
+    started_at = time.time()
+    blocked = _evaluate_auth_rate_limit_subjects(
+        limiter=limiter,
+        endpoint=endpoint,
+        subjects=subjects,
+    )
+    duration_ms = int((time.time() - started_at) * 1000)
+    if duration_ms >= _auth_rate_limit_slow_log_ms():
+        logger.warning(
+            "[AuthRateLimit] slow evaluation",
+            extra={
+                "request_id": request_id,
+                "auth_rate_limit_endpoint": endpoint,
+                "masked_email": masked_email,
+                "client_scope": client_scope,
+                "subject_count": len(subjects),
+                "duration_ms": duration_ms,
+            },
+        )
 
-    if blocked_retry_after_seconds is None:
+    if blocked is None:
         return
 
+    blocked_scope, blocked_decision = blocked
+    blocked_retry_after_seconds = blocked_decision.retry_after_seconds
     logger.warning(
-        "[AuthRateLimit] blocked request_id=%s endpoint=%s email=%s blocked_scope=%s client_scope=%s retry_after_seconds=%d",
-        request_id,
-        endpoint,
-        masked_email,
-        blocked_scope or "unknown",
-        client_scope,
-        blocked_retry_after_seconds,
+        "[AuthRateLimit] blocked",
+        extra={
+            "request_id": request_id,
+            "auth_rate_limit_endpoint": endpoint,
+            "masked_email": masked_email,
+            "blocked_scope": blocked_scope,
+            "client_scope": client_scope,
+            "retry_after_seconds": blocked_retry_after_seconds,
+            "duration_ms": duration_ms,
+        },
     )
     raise _build_scoped_rate_limit_http_exception(
         request_id=request_id,
@@ -3355,7 +3515,8 @@ async def _run_auth_route(
     auth_service = _service("auth_service")
     try:
         if rate_limit_endpoint is not None and rate_limit_email is not None:
-            _apply_auth_rate_limit(
+            await run_in_threadpool(
+                _apply_auth_rate_limit,
                 request=request,
                 endpoint=rate_limit_endpoint,
                 email=rate_limit_email,
@@ -3371,6 +3532,12 @@ async def _run_auth_route(
             error=error,
             request_id=request_id,
             provider=provider,
+        )
+    except RateLimitStorageError as error:
+        _raise_auth_rate_limit_storage_error(
+            error=error,
+            request_id=request_id,
+            endpoint=rate_limit_endpoint,
         )
 
 
@@ -3815,11 +3982,8 @@ async def debug_models():
 
 @app.post(
     "/auth/email/signup",
-    responses=_auth_429_openapi_responses(
-        code="AUTH_RATE_LIMITED",
-        message="Too many authentication attempts. Please retry shortly.",
+    responses=_auth_rate_limited_openapi_responses(
         retry_scope="/auth/email/signup",
-        retryable_by_client=True,
     ),
 )
 async def auth_email_signup(payload: EmailSignupRequest, request: Request):
@@ -3848,11 +4012,8 @@ async def auth_email_signup(payload: EmailSignupRequest, request: Request):
 
 @app.post(
     "/auth/email/login",
-    responses=_auth_429_openapi_responses(
-        code="AUTH_RATE_LIMITED",
-        message="Too many authentication attempts. Please retry shortly.",
+    responses=_auth_rate_limited_openapi_responses(
         retry_scope="/auth/email/login",
-        retryable_by_client=True,
     ),
 )
 async def auth_email_login(payload: EmailLoginRequest, request: Request):
@@ -3893,11 +4054,8 @@ async def auth_email_verify(payload: EmailVerifyRequest, request: Request):
 
 @app.post(
     "/auth/email/verification/request",
-    responses=_auth_429_openapi_responses(
-        code="AUTH_RATE_LIMITED",
-        message="Too many authentication attempts. Please retry shortly.",
+    responses=_auth_rate_limited_openapi_responses(
         retry_scope="/auth/email/verification/request",
-        retryable_by_client=True,
     ),
 )
 async def auth_email_verification_request(payload: EmailVerificationRequest, request: Request):
@@ -3921,11 +4079,8 @@ async def auth_email_verification_request(payload: EmailVerificationRequest, req
 
 @app.post(
     "/auth/email/password/reset/request",
-    responses=_auth_429_openapi_responses(
-        code="AUTH_RATE_LIMITED",
-        message="Too many authentication attempts. Please retry shortly.",
+    responses=_auth_rate_limited_openapi_responses(
         retry_scope="/auth/email/password/reset/request",
-        retryable_by_client=True,
     ),
 )
 async def auth_email_password_reset_request(payload: PasswordResetRequest, request: Request):
