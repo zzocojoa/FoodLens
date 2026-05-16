@@ -1,4 +1,4 @@
-# Render DB 저장 데이터 인벤토리 (Auth Runtime State 기준)
+# Render DB 저장 데이터 인벤토리 (Auth/Auth Rate Limit 기준)
 
 ## 1) 목적
 
@@ -8,10 +8,13 @@
 ## 2) 적용 범위
 
 - 백엔드 Auth/Session 런타임 상태 저장 경로
+- 인증 rate limit 이벤트 저장 경로
 - `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history` 쓰기 경로
 - `/auth/logout` 세션/토큰 상태 변경 경로
 
 ## 3) 저장 테이블 구조
+
+### Auth runtime state
 
 - 기본 테이블: `auth_runtime_state`
 - 컬럼:
@@ -21,6 +24,22 @@
 - 저장 방식:
   - `state_key` 기준 upsert (`INSERT ... ON CONFLICT ... DO UPDATE`)
   - 즉, 다수 정규화 테이블이 아니라 단일 JSONB 스냅샷 저장 방식
+
+### Auth rate limit events
+
+- 기본 테이블: `auth_rate_limit_events`
+- 컬럼:
+  - `id` (`BIGSERIAL`, PK)
+  - `endpoint` (`TEXT`, NOT NULL)
+  - `subject` (`TEXT`, NOT NULL)
+  - `event_ts` (`TIMESTAMPTZ`, NOT NULL)
+- 인덱스:
+  - `auth_rate_limit_events_endpoint_subject_ts_idx` (`endpoint`, `subject`, `event_ts`)
+  - `auth_rate_limit_events_event_ts_idx` (`event_ts`)
+- 저장 방식:
+  - 인증 요청 평가 시 `endpoint`와 hashed `subject` 기준으로 sliding window 이벤트를 insert한다.
+  - `subject`는 `<scope>:<sha256(scope:value)>` 형식이다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
+  - 평가마다 `DELETE FROM auth_rate_limit_events WHERE event_ts <= ...`로 window 밖 이벤트를 제거한다.
 
 ## 4) `state_json` 내부 저장 항목(payload 키)
 
@@ -79,6 +98,7 @@
 - `/analyze` 응답 자체는 DB에 자동 저장되지 않습니다.
 - 분석 결과가 DB에 남으려면 클라이언트가 `POST /me/history`로 `entry`를 별도 전송해야 합니다.
 - Render Live Logs는 DB 저장 데이터가 아니라 로그 스트림입니다.
+- 인증 rate limit 테이블에는 원본 client IP, 이메일, device id, access token, refresh token, 인증 코드가 저장되지 않습니다.
 
 ## 8) 근거 코드
 
@@ -88,6 +108,8 @@
   - `backend/modules/auth/service.py`
 - API 요청 스키마 및 `/me/*`, `/auth/logout`, `/analyze` 라우트:
   - `backend/server.py`
+- Auth rate limit backend:
+  - `backend/modules/ops/api_edge_guard.py`
 
 ## 9) 운영 확인 포인트
 
@@ -96,4 +118,21 @@
 - 환경변수:
   - `DATABASE_URL` 설정
   - `AUTH_STATE_BACKEND=postgres` (명시 권장)
+  - `AUTH_RATE_LIMIT_BACKEND=postgres`
+  - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
+- 권한:
+  - 자동 테이블 생성 운영이면 앱 DB 계정에 schema `CREATE`, table/index 생성, sequence 사용 권한이 필요합니다.
+  - 사전 생성 후 least-privilege 운영이면 앱 DB 계정에 `auth_rate_limit_events` `SELECT`, `INSERT`, `DELETE`와 sequence `USAGE` 권한이 필요합니다.
+- 장기 cleanup:
+  - 정상 auth traffic이 있으면 요청 평가 경로가 만료 이벤트를 제거합니다.
+  - 장시간 traffic이 없으면 만료 이벤트가 다음 auth 요청까지 남을 수 있으므로, 운영 점검에서 아래 SQL로 잔여분을 확인합니다.
+  - `INTERVAL`은 운영 `AUTH_RATE_LIMIT_WINDOW_SECONDS`보다 짧게 잡지 않습니다. 아래 예시는 기본 60초 window보다 긴 10분 기준입니다.
 
+```sql
+SELECT count(*) AS expired_auth_rate_limit_events
+FROM auth_rate_limit_events
+WHERE event_ts <= NOW() - INTERVAL '10 minutes';
+
+DELETE FROM auth_rate_limit_events
+WHERE event_ts <= NOW() - INTERVAL '10 minutes';
+```

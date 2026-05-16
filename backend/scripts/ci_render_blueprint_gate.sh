@@ -174,6 +174,14 @@ def main() -> None:
         "ANALYSIS_RATE_LIMIT_JOBS_PER_MIN",
         "ANALYSIS_RATE_LIMIT_JOB_STATUS_PER_MIN",
         "ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN",
+        "AUTH_RATE_LIMIT_ENABLED",
+        "AUTH_RATE_LIMIT_BACKEND",
+        "AUTH_RATE_LIMIT_TABLE",
+        "AUTH_RATE_LIMIT_WINDOW_SECONDS",
+        "AUTH_RATE_LIMIT_LOGIN_PER_MIN",
+        "AUTH_RATE_LIMIT_SIGNUP_PER_MIN",
+        "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN",
+        "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN",
         "ANALYSIS_INFLIGHT_GUARD_ENABLED",
         "ANALYSIS_INFLIGHT_MAX_ANALYZE",
         "ANALYSIS_INFLIGHT_MAX_LABEL",
@@ -398,6 +406,14 @@ def main() -> None:
         "LABEL_ROLLOUT_PERCENTAGE": "100",
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
+        "AUTH_RATE_LIMIT_ENABLED": "1",
+        "AUTH_RATE_LIMIT_BACKEND": "postgres",
+        "AUTH_RATE_LIMIT_TABLE": "auth_rate_limit_events",
+        "AUTH_RATE_LIMIT_WINDOW_SECONDS": "60",
+        "AUTH_RATE_LIMIT_LOGIN_PER_MIN": "5",
+        "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "3",
+        "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "3",
+        "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "3",
     }
     for service in (web, worker, cron):
         for key, value in fixed_env_expected_values.items():
@@ -436,6 +452,14 @@ def main() -> None:
         "BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST": "0.001",
         "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
         "AUTH_GOOGLE_OAUTH_PROMPT": "select_account",
+        "AUTH_RATE_LIMIT_ENABLED": "1",
+        "AUTH_RATE_LIMIT_BACKEND": "auto",
+        "AUTH_RATE_LIMIT_TABLE": "auth_rate_limit_events",
+        "AUTH_RATE_LIMIT_WINDOW_SECONDS": "60",
+        "AUTH_RATE_LIMIT_LOGIN_PER_MIN": "5",
+        "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "3",
+        "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "3",
+        "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "3",
     }
     for key, value in env_example_expected_values.items():
         require_example_env_value(env_example_vars, key, value)

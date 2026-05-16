@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
@@ -19,7 +20,21 @@ sys.modules.setdefault("sentry_sdk", types.SimpleNamespace(init=lambda **_kwargs
 from backend import server as server_module  # noqa: E402
 from backend.server import app  # noqa: E402
 from backend.modules.auth import AuthServiceError, InMemoryAuthSessionService  # noqa: E402
-from backend.modules.ops.api_edge_guard import InMemorySlidingWindowRateLimiter  # noqa: E402
+from backend.modules.ops.api_edge_guard import (  # noqa: E402
+    InMemorySlidingWindowRateLimiter,
+    RateLimitStorageError,
+)
+
+
+class _FailingAuthRateLimiter:
+    def evaluate_many(
+        self,
+        *,
+        endpoint: str,
+        subjects: tuple[tuple[str, str], ...],
+        now: float | None,
+    ) -> None:
+        raise RateLimitStorageError("postgres auth rate limit unavailable")
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -284,6 +299,95 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         finally:
             app_state.clear()
             app_state.update(previous_state)
+
+    def test_auth_rate_limit_subjects_do_not_store_raw_email_or_device(self):
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("203.0.113.10", 12345),
+            }
+        )
+
+        subjects, masked_email, client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=request,
+            email="Owner@Example.com",
+            device_id="ios-device-123",
+        )
+
+        joined_subjects = " ".join(subject for _scope, subject in subjects)
+        self.assertEqual(masked_email, "ow***@example.com")
+        self.assertEqual(client_scope, "ip+device")
+        self.assertNotIn("owner@example.com", joined_subjects)
+        self.assertNotIn("ios-device-123", joined_subjects)
+        for scope, subject in subjects:
+            self.assertTrue(subject.startswith(f"{scope}:"))
+            self.assertEqual(len(subject.split(":", 1)[1]), 64)
+
+    def test_auth_rate_limit_ip_subject_normalizes_equivalent_ipv6_hosts(self):
+        first_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("2001:0db8:0000:0000:0000:0000:0000:0001", 12345),
+            }
+        )
+        second_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/email/login",
+                "headers": [],
+                "client": ("2001:db8::1", 12345),
+            }
+        )
+
+        first_subjects, _first_masked_email, _first_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=first_request,
+            email="ipv6@example.com",
+            device_id=None,
+        )
+        second_subjects, _second_masked_email, _second_client_scope = server_module._resolve_auth_rate_limit_subjects(
+            request=second_request,
+            email="ipv6@example.com",
+            device_id=None,
+        )
+
+        first_ip_subject = dict(first_subjects)["ip"]
+        second_ip_subject = dict(second_subjects)["ip"]
+        self.assertEqual(first_ip_subject, second_ip_subject)
+        self.assertNotIn("2001:0db8", first_ip_subject)
+        self.assertNotIn("2001:db8::1", first_ip_subject)
+
+    def test_email_login_rate_limit_storage_outage_returns_retryable_503(self):
+        with TestClient(app) as client:
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = _FailingAuthRateLimiter()
+            try:
+                response = client.post(
+                    "/auth/email/login",
+                    json={
+                        "email": "storage-outage@example.com",
+                        "password": "Passw0rd!",
+                    },
+                    headers={"X-Request-Id": "req-auth-rate-storage-outage"},
+                )
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers.get("Retry-After"), "5")
+        body = response.json()["detail"]
+        self.assertEqual(body["code"], "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE")
+        self.assertEqual(body["request_id"], "req-auth-rate-storage-outage")
+        self.assertEqual(body["retry_after_seconds"], 5)
+        self.assertEqual(body["retry_scope"], "/auth/email/login")
+        self.assertTrue(body["retryable_by_client"])
+        self.assertNotIn("postgres auth rate limit unavailable", str(body))
 
     def test_email_signup_rate_limit_blocks_repeated_same_email_and_device(self):
         with TestClient(app) as client:

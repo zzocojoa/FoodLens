@@ -167,15 +167,18 @@
   - `BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST=500`
   - Render live env parity check:
     - `python .github/scripts/validate_render_live_env.py --blueprint render.yaml`
-    - 기본 검증 범위는 Google OAuth prompt, AI 모델명, label fallback, Pro fallback guardrail key로 제한한다.
+    - 기본 검증 범위는 Google OAuth prompt, AI 모델명, label fallback, Pro fallback guardrail key, auth rate limit policy key로 제한한다.
     - 전체 `render.yaml` env drift audit가 필요할 때만 `--all-blueprint-env`를 추가한다.
     - 값 자체는 출력하지 않고 서비스명, key 이름, 존재 여부, blueprint 일치 여부만 확인한다.
     - Pro fallback 운영 key는 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 있어야 한다.
     - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`을 유지하고, Pro fallback 비용 예약 key(`LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK`, `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER`)가 세 서비스 live env에 모두 존재해야 한다.
+    - `AUTH_RATE_LIMIT_ENABLED=1`, `AUTH_RATE_LIMIT_BACKEND=postgres`, `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`, endpoint별 auth limit 값이 세 서비스 live env에 모두 존재해야 한다.
+    - 미검증 리스크: branch 배포, live env checker, staging auth 429 smoke 전까지는 Render Dashboard 적용과 API 인스턴스 간 counter 공유를 완료 증적으로 보지 않는다.
 - Observability 메타
   - `/analyze`, `/analyze/label`, `/analyze/smart`: `request_id`, `used_model`, `prompt_version`, `latency_ms`
   - `/analyze/jobs/{job_id}`: `request_id`, `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
   - `/lookup/barcode`: `request_id`, `latency_ms`, 그리고 알러지 분석 수행 시 `used_model`, `prompt_version`
+  - Auth rate limit: 429 차단은 `[AuthRateLimit] blocked`, Postgres 지연은 `[AuthRateLimit] slow evaluation`, 저장소 장애는 `[AuthRateLimit] storage unavailable` 로그로 추적한다.
 
 ## 10) Phase 4 완료 증적 체크
 

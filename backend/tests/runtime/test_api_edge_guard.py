@@ -19,6 +19,10 @@ from backend.modules.ops.api_edge_guard import (
 )
 
 
+def _hashed_subject(scope: str, digest_char: str) -> str:
+    return f"{scope}:{digest_char * 64}"
+
+
 class ApiEdgeGuardTests(unittest.TestCase):
     def test_build_cors_config_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -124,6 +128,10 @@ class ApiEdgeGuardTests(unittest.TestCase):
             with self.assertRaises(RateLimitStorageError):
                 build_auth_rate_limit_settings_from_env()
 
+        with patch.dict(os.environ, {"AUTH_RATE_LIMIT_TABLE": "a" * 40}, clear=True):
+            with self.assertRaises(RateLimitStorageError):
+                build_auth_rate_limit_settings_from_env()
+
         with patch.dict(os.environ, {"AUTH_RATE_LIMIT_TABLE": "a" * 41}, clear=True):
             with self.assertRaises(RateLimitStorageError):
                 build_auth_rate_limit_settings_from_env()
@@ -193,12 +201,12 @@ class ApiEdgeGuardTests(unittest.TestCase):
 
             first = first_limiter.evaluate(
                 endpoint="/auth/email/login",
-                subject="email:a@example.com",
+                subject=_hashed_subject("email", "a"),
                 now=100.0,
             )
             second = second_limiter.evaluate(
                 endpoint="/auth/email/login",
-                subject="email:a@example.com",
+                subject=_hashed_subject("email", "a"),
                 now=101.0,
             )
 
@@ -233,7 +241,7 @@ class ApiEdgeGuardTests(unittest.TestCase):
 
             decision = limiter.evaluate(
                 endpoint="/auth/email/login",
-                subject="email:a@example.com",
+                subject=_hashed_subject("email", "a"),
             )
 
         self.assertTrue(decision.allowed)
@@ -268,23 +276,196 @@ class ApiEdgeGuardTests(unittest.TestCase):
             self.assertTrue(
                 first_limiter.evaluate(
                     endpoint="/auth/email/login",
-                    subject="email:a@example.com",
+                    subject=_hashed_subject("email", "a"),
                     now=100.0,
                 ).allowed
             )
             self.assertTrue(
                 second_limiter.evaluate(
                     endpoint="/auth/email/login",
-                    subject="email:b@example.com",
+                    subject=_hashed_subject("email", "b"),
                     now=101.0,
                 ).allowed
             )
             self.assertTrue(
                 second_limiter.evaluate(
                     endpoint="/auth/email/login",
-                    subject="email:a@example.com",
+                    subject=_hashed_subject("email", "a"),
                     now=161.0,
                 ).allowed
+            )
+
+    def test_postgres_sliding_window_limiter_evaluates_subject_batch_with_one_connection(self):
+        fake_postgres = _FakePostgres()
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={"/auth/email/login": 1},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+
+            allowed = limiter.evaluate_many(
+                endpoint="/auth/email/login",
+                subjects=(
+                    ("ip", _hashed_subject("ip", "1")),
+                    ("email", _hashed_subject("email", "2")),
+                    ("device", _hashed_subject("device", "3")),
+                ),
+                now=100.0,
+            )
+            blocked = limiter.evaluate_many(
+                endpoint="/auth/email/login",
+                subjects=(
+                    ("ip", _hashed_subject("ip", "1")),
+                    ("email", _hashed_subject("email", "2")),
+                    ("device", _hashed_subject("device", "3")),
+                ),
+                now=101.0,
+            )
+
+        self.assertIsNone(allowed)
+        self.assertIsNotNone(blocked)
+        if blocked is None:
+            raise AssertionError("blocked decision must exist")
+        self.assertEqual(blocked[0], "ip")
+        self.assertFalse(blocked[1].allowed)
+        self.assertEqual(len(fake_postgres.events), 3)
+        self.assertEqual(fake_postgres.connection_autocommit_values, [True, False, False])
+        delete_count = sum(1 for statement in fake_postgres.statements if statement.startswith("DELETE"))
+        self.assertEqual(delete_count, 2)
+
+    def test_postgres_sliding_window_limiter_does_not_insert_partial_batch_when_blocked(self):
+        endpoint = "/auth/email/login"
+        ip_subject = _hashed_subject("ip", "1")
+        email_subject = _hashed_subject("email", "2")
+        device_subject = _hashed_subject("device", "3")
+        existing_event = (endpoint, email_subject, 100.0)
+        fake_postgres = _FakePostgres()
+        fake_postgres.events.append(existing_event)
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={endpoint: 1},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+
+            blocked = limiter.evaluate_many(
+                endpoint=endpoint,
+                subjects=(
+                    ("ip", ip_subject),
+                    ("email", email_subject),
+                    ("device", device_subject),
+                ),
+                now=101.0,
+            )
+
+        self.assertIsNotNone(blocked)
+        if blocked is None:
+            raise AssertionError("blocked decision must exist")
+        self.assertEqual(blocked[0], "email")
+        self.assertEqual(fake_postgres.events, [existing_event])
+
+    def test_postgres_sliding_window_limiter_locks_batch_subjects_in_stable_order(self):
+        endpoint = "/auth/email/login"
+        device_subject = _hashed_subject("device", "3")
+        ip_subject = _hashed_subject("ip", "1")
+        email_subject = _hashed_subject("email", "2")
+        fake_postgres = _FakePostgres()
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={endpoint: 2},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+
+            decision = limiter.evaluate_many(
+                endpoint=endpoint,
+                subjects=(
+                    ("device", device_subject),
+                    ("ip", ip_subject),
+                    ("email", email_subject),
+                ),
+                now=100.0,
+            )
+
+        first_count_index = next(
+            index
+            for index, statement in enumerate(fake_postgres.statements)
+            if statement.startswith("SELECT COUNT")
+        )
+        last_lock_index = max(
+            index
+            for index, statement in enumerate(fake_postgres.statements)
+            if statement.startswith("SELECT pg_advisory_xact_lock")
+        )
+        self.assertIsNone(decision)
+        self.assertLess(last_lock_index, first_count_index)
+        self.assertEqual(
+            fake_postgres.lock_subjects,
+            sorted((device_subject, ip_subject, email_subject)),
+        )
+
+    def test_postgres_sliding_window_limiter_filters_expired_events_when_cleanup_lags(self):
+        endpoint = "/auth/email/login"
+        email_subject = _hashed_subject("email", "a")
+        fake_postgres = _FakePostgres()
+        fake_postgres.delete_events = False
+        fake_postgres.events.append((endpoint, email_subject, 100.0))
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={endpoint: 1},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+
+            decision = limiter.evaluate(
+                endpoint=endpoint,
+                subject=email_subject,
+                now=161.0,
+            )
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(
+            fake_postgres.events,
+            [
+                (endpoint, email_subject, 100.0),
+                (endpoint, email_subject, 161.0),
+            ],
+        )
+
+    def test_postgres_sliding_window_limiter_rejects_raw_subjects_before_storage(self):
+        limiter = PostgresSlidingWindowRateLimiter(
+            database_url="postgresql://foodlens:test@db/foodlens",
+            endpoint_limits_per_minute={"/auth/email/login": 1},
+            table_name="auth_rate_limit_events",
+            window_seconds=60,
+        )
+
+        with self.assertRaises(RateLimitStorageError):
+            limiter.evaluate_many(
+                endpoint="/auth/email/login",
+                subjects=(("email", "email:owner@example.com"),),
+                now=100.0,
             )
 
     def test_inflight_admission_settings_defaults(self):
@@ -331,8 +512,12 @@ class _FakePostgres:
         self.current_ts = current_ts
         self.events: list[tuple[str, str, float]] = []
         self.statements: list[str] = []
+        self.lock_subjects: list[str] = []
+        self.connection_autocommit_values: list[bool] = []
+        self.delete_events: bool = True
 
     def connect(self, _database_url: str, autocommit: bool = False) -> "_FakePostgresConnection":
+        self.connection_autocommit_values.append(bool(autocommit))
         return _FakePostgresConnection(store=self)
 
 
@@ -368,19 +553,26 @@ class _FakePostgresCursor:
         if upper_statement.startswith("SELECT EXTRACT(EPOCH FROM CLOCK_TIMESTAMP())"):
             self._next_row = (self.store.current_ts,)
             return
+        if upper_statement.startswith("SELECT PG_ADVISORY_XACT_LOCK"):
+            self.store.lock_subjects.append(str((params or ("", ""))[1]))
+            return
         if upper_statement.startswith("DELETE"):
+            if not self.store.delete_events:
+                return
             cutoff = float((params or (0.0,))[0])
             self.store.events = [
                 event for event in self.store.events if event[2] > cutoff
             ]
             return
         if upper_statement.startswith("SELECT COUNT"):
-            endpoint = str((params or ("", ""))[0])
-            subject = str((params or ("", ""))[1])
+            query_params = params or ("", "", float("-inf"))
+            endpoint = str(query_params[0])
+            subject = str(query_params[1])
+            cutoff = float(query_params[2]) if len(query_params) > 2 else float("-inf")
             matching_events = [
                 event_ts
                 for event_endpoint, event_subject, event_ts in self.store.events
-                if event_endpoint == endpoint and event_subject == subject
+                if event_endpoint == endpoint and event_subject == subject and event_ts > cutoff
             ]
             self._next_row = (
                 len(matching_events),

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 
@@ -456,6 +457,117 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_deploy"]["id"], "dep-test")
         self.assertEqual(summary["render_deploy"]["status"], "live")
 
+    def test_render_deploy_ready_gate_filters_candidates_by_expected_commit(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        responses = iter(
+            (
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-main",
+                            "createdAt": "2026-05-01T00:02:00Z",
+                            "finishedAt": "2026-05-01T00:03:00Z",
+                            "status": "live",
+                            "commit": {"id": "main000000000000000000000000000000000000000"},
+                        }
+                    ]
+                },
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-branch",
+                            "createdAt": "2026-05-01T00:04:00Z",
+                            "finishedAt": "2026-05-01T00:05:00Z",
+                            "status": "live",
+                            "commit": {"id": "54dc45d4a4364bb234e2d26cfb44de492c413e02"},
+                        },
+                        {
+                            "id": "dep-main",
+                            "createdAt": "2026-05-01T00:02:00Z",
+                            "finishedAt": "2026-05-01T00:03:00Z",
+                            "status": "live",
+                            "commit": {"id": "main000000000000000000000000000000000000000"},
+                        },
+                    ]
+                },
+            )
+        )
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            return next(responses)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_EXPECTED_COMMIT": "54dc45d",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-branch")
+        self.assertEqual(summary["render_deploy"]["commit"], "54dc45d4a4364bb234e2d26cfb44de492c413e02")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_deploy_ready_gate_timeout_reports_latest_observed_commit_mismatch(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        clock_values = iter((0.0, 1.0))
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            return {
+                "deploys": [
+                    {
+                        "id": "dep-main",
+                        "createdAt": "2026-05-01T00:02:00Z",
+                        "finishedAt": "2026-05-01T00:03:00Z",
+                        "status": "live",
+                        "commit": {"id": "main000000000000000000000000000000000000000"},
+                    }
+                ]
+            }
+
+        def clock() -> float:
+            return next(clock_values)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_EXPECTED_COMMIT": "54dc45d",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "1",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, clock)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 1)
+        self.assertEqual(summary["passed"], False)
+        self.assertEqual(summary["error"], "expected_commit_deploy_not_found")
+        self.assertEqual(summary["expected_commit"], "54dc45d")
+        self.assertIsNone(summary["render_deploy"]["commit"])
+        self.assertEqual(summary["latest_observed_deploy"]["id"], "dep-main")
+        self.assertEqual(summary["latest_observed_deploy"]["status"], "live")
+        self.assertEqual(
+            summary["latest_observed_deploy"]["commit"],
+            "main000000000000000000000000000000000000000",
+        )
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
     def test_render_deploy_ready_gate_rejects_forbidden_service_before_waiting(self) -> None:
         gate = _load_render_deploy_gate_module()
         calls: list[tuple[str, str]] = []
@@ -646,6 +758,77 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["smoke_checks"]["postgres_queue_crash_rehearsal"], "pass")
         self.assertIn("[StagingSmoke] media_delete: PASS", log_content)
         self.assertIn("[StagingSmoke] retention_retry: PASS", log_content)
+        self.assertIn("[StagingSmoke] postgres_queue_crash_rehearsal: PASS", log_content)
+        log_urls = [url for method, url, payload in calls if method == "GET" and payload is None and "/logs?" in url]
+        self.assertEqual(len(log_urls), 1)
+        log_query = parse_qs(urlparse(log_urls[0]).query)
+        self.assertEqual(log_query["resource"], ["job-test"])
+        self.assertEqual(log_query["startTime"], ["2026-04-30T23:55:00Z"])
+        self.assertEqual(log_query["endTime"], ["2026-05-01T00:06:00Z"])
+
+    def test_render_one_off_job_gate_collects_paginated_job_logs(self) -> None:
+        gate = _load_render_job_gate_module()
+        log_urls: list[str] = []
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            if method == "POST":
+                return {"id": "job-test", "status": "created", "createdAt": "2026-05-01T00:00:00Z"}
+            if "/jobs/job-test" in url:
+                return {
+                    "id": "job-test",
+                    "status": "succeeded",
+                    "startedAt": "2026-05-01T00:00:10Z",
+                    "finishedAt": "2026-05-01T00:01:00Z",
+                }
+            if "/services/srv-test" in url:
+                return {"ownerId": "owner-test", "name": "foodlens-api-staging"}
+            if "/logs?" in url:
+                log_urls.append(url)
+                if len(log_urls) == 1:
+                    return {
+                        "hasMore": True,
+                        "nextStartTime": "2026-05-01T00:00:30Z",
+                        "nextEndTime": "2026-05-01T00:06:00Z",
+                        "logs": [{"message": "[StagingSmoke] startup: PASS"}],
+                    }
+                return {
+                    "hasMore": False,
+                    "logs": [
+                        {"message": "[StagingSmoke] media_delete: PASS"},
+                        {"message": "[StagingSmoke] retention_retry: PASS"},
+                        {"message": "[StagingSmoke] postgres_queue_crash_rehearsal: PASS"},
+                    ],
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            log_path = Path(temp_dir) / "render.log"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_START_COMMAND": "python backend/scripts/staging_integration_smoke.py",
+                "RENDER_JOB_SUMMARY_PATH": str(summary_path),
+                "RENDER_JOB_LOG_PATH": str(log_path),
+                "RENDER_JOB_POLL_SECONDS": "1",
+                "RENDER_JOB_TIMEOUT_SECONDS": "30",
+                "RENDER_JOB_LOG_WAIT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            log_content = log_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(len(log_urls), 2)
+        first_query = parse_qs(urlparse(log_urls[0]).query)
+        second_query = parse_qs(urlparse(log_urls[1]).query)
+        self.assertEqual(first_query["startTime"], ["2026-04-30T23:55:00Z"])
+        self.assertEqual(first_query["endTime"], ["2026-05-01T00:06:00Z"])
+        self.assertEqual(second_query["startTime"], ["2026-05-01T00:00:30Z"])
+        self.assertEqual(second_query["endTime"], ["2026-05-01T00:06:00Z"])
+        self.assertIn("[StagingSmoke] startup: PASS", log_content)
         self.assertIn("[StagingSmoke] postgres_queue_crash_rehearsal: PASS", log_content)
 
     def test_render_one_off_job_gate_rejects_forbidden_service_before_job_creation(self) -> None:

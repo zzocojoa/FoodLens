@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode
@@ -27,6 +28,8 @@ EXPECTED_SMOKE_CHECK_NAMES: tuple[str, ...] = (
 DEFAULT_TIMEOUT_SECONDS = 900
 DEFAULT_POLL_SECONDS = 10
 DEFAULT_LOG_WAIT_SECONDS = 60
+LOG_WINDOW_PADDING_SECONDS = 300
+LOG_MAX_PAGES = 25
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job-summary.json"
 DEFAULT_LOG_PATH = "artifacts/phase6/staging-integration-smoke/render-one-off-job.log"
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
@@ -73,6 +76,49 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 def _write_text(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _parse_render_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise RuntimeError(f"Render timestamp was invalid: {value}") from error
+    if parsed.tzinfo is None:
+        raise RuntimeError("Render timestamp must include timezone.")
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_render_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _job_log_window(job: dict[str, object]) -> tuple[str | None, str | None]:
+    start_candidates = [
+        timestamp
+        for timestamp in (
+            _parse_render_timestamp(job.get("createdAt")),
+            _parse_render_timestamp(job.get("startedAt")),
+        )
+        if timestamp is not None
+    ]
+    end_candidates = [
+        timestamp
+        for timestamp in (
+            _parse_render_timestamp(job.get("finishedAt")),
+            _parse_render_timestamp(job.get("updatedAt")),
+        )
+        if timestamp is not None
+    ]
+    if not start_candidates:
+        return (None, None)
+    start_time = min(start_candidates) - timedelta(seconds=LOG_WINDOW_PADDING_SECONDS)
+    end_time = max(end_candidates) + timedelta(seconds=LOG_WINDOW_PADDING_SECONDS) if end_candidates else None
+    return (_format_render_timestamp(start_time), _format_render_timestamp(end_time) if end_time is not None else None)
 
 
 def _split_csv(value: str) -> frozenset[str]:
@@ -157,17 +203,66 @@ def _extract_owner_id(service: dict[str, object]) -> str:
     raise RuntimeError("Render service owner id was missing.")
 
 
-def _list_job_logs(api_key: str, owner_id: str, job_id: str, request_json: JsonRequester) -> dict[str, object]:
-    query = urlencode(
-        {
-            "ownerId": owner_id,
-            "resource": job_id,
-            "limit": "100",
-            "direction": "forward",
-        }
-    )
+def _list_job_logs(
+    api_key: str,
+    owner_id: str,
+    job_id: str,
+    start_time: str | None,
+    end_time: str | None,
+    request_json: JsonRequester,
+) -> dict[str, object]:
+    query_params: dict[str, str] = {
+        "ownerId": owner_id,
+        "resource": job_id,
+        "limit": "100",
+        "direction": "forward",
+    }
+    if start_time is not None:
+        query_params["startTime"] = start_time
+    if end_time is not None:
+        query_params["endTime"] = end_time
+    query = urlencode(query_params)
     url = f"{RENDER_API_BASE_URL}/logs?{query}"
     return request_json("GET", url, api_key, None)
+
+
+def _next_log_window(
+    response: dict[str, object],
+    previous_start_time: str | None,
+    previous_end_time: str | None,
+) -> tuple[str, str]:
+    next_start_time = response.get("nextStartTime")
+    next_end_time = response.get("nextEndTime")
+    if not isinstance(next_start_time, str) or not next_start_time.strip():
+        raise RuntimeError("Render log response hasMore=true without nextStartTime.")
+    if not isinstance(next_end_time, str) or not next_end_time.strip():
+        raise RuntimeError("Render log response hasMore=true without nextEndTime.")
+    if next_start_time == previous_start_time and next_end_time == previous_end_time:
+        raise RuntimeError("Render log pagination returned the same time window twice.")
+    return (next_start_time, next_end_time)
+
+
+def _collect_job_log_pages(
+    api_key: str,
+    owner_id: str,
+    job_id: str,
+    start_time: str | None,
+    end_time: str | None,
+    request_json: JsonRequester,
+) -> list[str]:
+    all_lines: list[str] = []
+    page_start_time = start_time
+    page_end_time = end_time
+    page_count = 0
+    while True:
+        page_count += 1
+        if page_count > LOG_MAX_PAGES:
+            raise RuntimeError(f"Render log pagination exceeded {LOG_MAX_PAGES} pages for job_id={job_id}.")
+        response = _list_job_logs(api_key, owner_id, job_id, page_start_time, page_end_time, request_json)
+        all_lines.extend(_log_lines(response))
+        if response.get("hasMore") is not True:
+            return all_lines
+        page_start_time, page_end_time = _next_log_window(response, page_start_time, page_end_time)
 
 
 def _sanitize_log_line(line: str) -> str:
@@ -227,6 +322,7 @@ def _collect_job_logs(
     api_key: str,
     service_id: str,
     job_id: str,
+    job: dict[str, object],
     wait_seconds: int,
     request_json: JsonRequester,
     sleeper: Sleeper,
@@ -234,12 +330,13 @@ def _collect_job_logs(
 ) -> list[str]:
     service = _retrieve_service(api_key, service_id, request_json)
     owner_id = _extract_owner_id(service)
+    start_time, end_time = _job_log_window(job)
     deadline = clock() + wait_seconds
     latest_lines: list[str] = []
     latest_error: str | None = None
     while True:
         try:
-            latest_lines = _log_lines(_list_job_logs(api_key, owner_id, job_id, request_json))
+            latest_lines = _collect_job_log_pages(api_key, owner_id, job_id, start_time, end_time, request_json)
             latest_error = None
             if _expected_checks_observed(_parse_smoke_checks(latest_lines)):
                 return latest_lines
@@ -343,11 +440,13 @@ def run_gate(
 
     log_lines: list[str] = []
     log_collection_error: str | None = None
+    log_job: dict[str, object] = {**created, **latest_job}
     try:
         log_lines = _collect_job_logs(
             api_key,
             service_id,
             job_id,
+            log_job,
             log_wait_seconds,
             request_json,
             sleeper,
@@ -360,7 +459,7 @@ def run_gate(
 
     smoke_checks = _parse_smoke_checks(log_lines)
     passed = status == "succeeded" and _expected_checks_passed(smoke_checks)
-    _write_json(summary_path, _job_summary(latest_job, status, passed, smoke_checks, log_path, log_collection_error, len(log_lines)))
+    _write_json(summary_path, _job_summary(log_job, status, passed, smoke_checks, log_path, log_collection_error, len(log_lines)))
     if passed:
         print("[RenderOneOffJobGate] Render one-off staging smoke passed.")
         return 0
