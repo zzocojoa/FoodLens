@@ -99,6 +99,10 @@ def _validate_auth_rate_limit_subjects(*, subjects: RateLimitSubjects) -> None:
         _validate_auth_rate_limit_subject(subject=subject)
 
 
+def _retry_after_seconds(*, oldest_ts: float, window_seconds: int, current_ts: float) -> int:
+    return max(1, int(math.ceil(oldest_ts + window_seconds - current_ts)))
+
+
 def _parse_csv(raw: str | None) -> list[str]:
     if not raw:
         return []
@@ -375,7 +379,11 @@ class InMemorySlidingWindowRateLimiter:
                 bucket.append(current_ts)
                 return RateLimitDecision(allowed=True, retry_after_seconds=0)
 
-            retry_after_seconds = max(1, int(bucket[0] + self._window_seconds - current_ts))
+            retry_after_seconds = _retry_after_seconds(
+                oldest_ts=bucket[0],
+                window_seconds=self._window_seconds,
+                current_ts=current_ts,
+            )
             return RateLimitDecision(allowed=False, retry_after_seconds=retry_after_seconds)
 
     def evaluate_many(
@@ -399,9 +407,10 @@ class InMemorySlidingWindowRateLimiter:
                 while bucket and bucket[0] <= cutoff:
                     bucket.popleft()
                 if len(bucket) >= limit:
-                    retry_after_seconds = max(
-                        1,
-                        int(bucket[0] + self._window_seconds - current_ts),
+                    retry_after_seconds = _retry_after_seconds(
+                        oldest_ts=bucket[0],
+                        window_seconds=self._window_seconds,
+                        current_ts=current_ts,
                     )
                     return scope, RateLimitDecision(
                         allowed=False,
@@ -507,9 +516,10 @@ class PostgresSlidingWindowRateLimiter:
                         oldest_ts = float(row[1]) if row is not None and row[1] is not None else current_ts
                         if event_count < limit:
                             continue
-                        retry_after_seconds = max(
-                            1,
-                            int(math.ceil(oldest_ts + self._window_seconds - current_ts)),
+                        retry_after_seconds = _retry_after_seconds(
+                            oldest_ts=oldest_ts,
+                            window_seconds=self._window_seconds,
+                            current_ts=current_ts,
                         )
                         return scope, RateLimitDecision(
                             allowed=False,

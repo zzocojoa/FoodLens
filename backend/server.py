@@ -527,6 +527,13 @@ def _build_scoped_rate_limit_http_exception(
     return error
 
 
+def _auth_retry_after_openapi_header() -> dict[str, Any]:
+    return {
+        "description": "Seconds to wait before retrying the authentication request.",
+        "schema": {"type": "string"},
+    }
+
+
 def _auth_429_openapi_responses(
     *,
     code: str,
@@ -537,6 +544,7 @@ def _auth_429_openapi_responses(
     return {
         429: {
             "description": "Authentication rate limit or code lockout.",
+            "headers": {"Retry-After": _auth_retry_after_openapi_header()},
             "content": {
                 "application/json": {
                     "example": {
@@ -567,6 +575,7 @@ def _auth_rate_limited_openapi_responses(
     )
     responses[503] = {
         "description": "Authentication rate limit storage is unavailable.",
+        "headers": {"Retry-After": _auth_retry_after_openapi_header()},
         "content": {
             "application/json": {
                 "example": {

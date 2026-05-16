@@ -179,6 +179,58 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertFalse(third.allowed)
         self.assertGreaterEqual(third.retry_after_seconds, 1)
 
+    def test_sliding_window_limiters_round_fractional_retry_after_up(self):
+        endpoint = "/auth/email/login"
+        subject = _hashed_subject("email", "a")
+        in_memory_limiter = InMemorySlidingWindowRateLimiter(
+            endpoint_limits_per_minute={endpoint: 1},
+            window_seconds=60,
+        )
+        self.assertIsNone(
+            in_memory_limiter.evaluate_many(
+                endpoint=endpoint,
+                subjects=(("email", subject),),
+                now=100.0,
+            )
+        )
+        in_memory_blocked = in_memory_limiter.evaluate_many(
+            endpoint=endpoint,
+            subjects=(("email", subject),),
+            now=101.1,
+        )
+
+        fake_postgres = _FakePostgres()
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            postgres_limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={endpoint: 1},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+            self.assertIsNone(
+                postgres_limiter.evaluate_many(
+                    endpoint=endpoint,
+                    subjects=(("email", subject),),
+                    now=100.0,
+                )
+            )
+            postgres_blocked = postgres_limiter.evaluate_many(
+                endpoint=endpoint,
+                subjects=(("email", subject),),
+                now=101.1,
+            )
+
+        self.assertIsNotNone(in_memory_blocked)
+        self.assertIsNotNone(postgres_blocked)
+        if in_memory_blocked is None or postgres_blocked is None:
+            raise AssertionError("blocked decisions must exist")
+        self.assertEqual(in_memory_blocked[1].retry_after_seconds, 59)
+        self.assertEqual(postgres_blocked[1].retry_after_seconds, 59)
+
     def test_postgres_sliding_window_limiter_shares_state_across_instances(self):
         fake_postgres = _FakePostgres()
         with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
@@ -338,6 +390,35 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertEqual(fake_postgres.connection_autocommit_values, [True, False, False])
         delete_count = sum(1 for statement in fake_postgres.statements if statement.startswith("DELETE"))
         self.assertEqual(delete_count, 2)
+
+    def test_postgres_sliding_window_limiter_deduplicates_subject_batch(self):
+        endpoint = "/auth/email/login"
+        email_subject = _hashed_subject("email", "a")
+        fake_postgres = _FakePostgres()
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={endpoint: 2},
+                table_name="auth_rate_limit_events",
+                window_seconds=60,
+            )
+
+            decision = limiter.evaluate_many(
+                endpoint=endpoint,
+                subjects=(
+                    ("email", email_subject),
+                    ("email", email_subject),
+                ),
+                now=100.0,
+            )
+
+        self.assertIsNone(decision)
+        self.assertEqual(fake_postgres.events, [(endpoint, email_subject, 100.0)])
+        self.assertEqual(fake_postgres.lock_subjects, [email_subject])
 
     def test_postgres_sliding_window_limiter_does_not_insert_partial_batch_when_blocked(self):
         endpoint = "/auth/email/login"

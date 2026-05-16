@@ -19,6 +19,7 @@ REQUIRED_ENV_NAMES: tuple[str, ...] = (
     "RENDER_DEPLOY_MIN_CREATED_AT",
 )
 EXPECTED_COMMIT_ENV = "RENDER_DEPLOY_EXPECTED_COMMIT"
+GITHUB_SHA_ENV = "GITHUB_SHA"
 LIVE_STATUS = "live"
 FAILED_STATUSES: frozenset[str] = frozenset(("build_failed", "update_failed", "canceled", "cancelled"))
 DEFAULT_TIMEOUT_SECONDS = 900
@@ -171,11 +172,26 @@ def _deploy_created_at(deploy: dict[str, object]) -> datetime | None:
 
 
 def _candidate_deploys(deploys: list[dict[str, object]], min_created_at: datetime) -> list[dict[str, object]]:
-    return [
-        deploy
-        for deploy in deploys
-        if (created_at := _deploy_created_at(deploy)) is not None and created_at >= min_created_at
-    ]
+    candidates: list[tuple[datetime, str, dict[str, object]]] = []
+    for deploy in deploys:
+        created_at = _deploy_created_at(deploy)
+        if created_at is None or created_at < min_created_at:
+            continue
+        deploy_id = deploy.get("id")
+        deploy_id_sort_value = deploy_id if isinstance(deploy_id, str) else ""
+        candidates.append((created_at, deploy_id_sort_value, deploy))
+    sorted_candidates = sorted(candidates, key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
+    return [deploy for _created_at, _deploy_id, deploy in sorted_candidates]
+
+
+def _expected_commit(env: dict[str, str]) -> str | None:
+    explicit_commit = (env.get(EXPECTED_COMMIT_ENV) or "").strip()
+    if explicit_commit:
+        return explicit_commit
+    github_sha = (env.get(GITHUB_SHA_ENV) or "").strip()
+    if github_sha:
+        return github_sha
+    return None
 
 
 def _deploy_commit_id(deploy: dict[str, object]) -> str | None:
@@ -275,7 +291,7 @@ def run_gate(
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
     allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
-    expected_commit = (env.get(EXPECTED_COMMIT_ENV) or "").strip() or None
+    expected_commit = _expected_commit(env)
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds

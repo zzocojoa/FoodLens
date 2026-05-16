@@ -457,6 +457,47 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_deploy"]["id"], "dep-test")
         self.assertEqual(summary["render_deploy"]["status"], "live")
 
+    def test_render_deploy_ready_gate_selects_latest_candidate_by_created_at(self) -> None:
+        gate = _load_render_deploy_gate_module()
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            return {
+                "deploys": [
+                    {
+                        "id": "dep-older",
+                        "createdAt": "2026-05-01T00:01:00Z",
+                        "finishedAt": "2026-05-01T00:02:00Z",
+                        "status": "live",
+                    },
+                    {
+                        "id": "dep-newer",
+                        "createdAt": "2026-05-01T00:03:00Z",
+                        "finishedAt": "2026-05-01T00:04:00Z",
+                        "status": "live",
+                    },
+                ]
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-newer")
+        self.assertEqual(summary["render_deploy"]["status"], "live")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
     def test_render_deploy_ready_gate_filters_candidates_by_expected_commit(self) -> None:
         gate = _load_render_deploy_gate_module()
         responses = iter(
@@ -518,6 +559,64 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["passed"], True)
         self.assertEqual(summary["render_deploy"]["id"], "dep-branch")
         self.assertEqual(summary["render_deploy"]["commit"], "54dc45d4a4364bb234e2d26cfb44de492c413e02")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_deploy_ready_gate_uses_github_sha_as_expected_commit(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        expected_commit = "54dc45d4a4364bb234e2d26cfb44de492c413e02"
+        responses = iter(
+            (
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-main",
+                            "createdAt": "2026-05-01T00:02:00Z",
+                            "finishedAt": "2026-05-01T00:03:00Z",
+                            "status": "live",
+                            "commit": {"id": "main000000000000000000000000000000000000000"},
+                        }
+                    ]
+                },
+                {
+                    "deploys": [
+                        {
+                            "id": "dep-branch",
+                            "createdAt": "2026-05-01T00:04:00Z",
+                            "finishedAt": "2026-05-01T00:05:00Z",
+                            "status": "live",
+                            "commit": {"id": expected_commit},
+                        },
+                    ]
+                },
+            )
+        )
+        calls: list[tuple[str, str]] = []
+
+        def request_json(method: str, url: str, api_key: str) -> dict[str, object]:
+            calls.append((method, url))
+            return next(responses)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
+                "GITHUB_SHA": expected_commit,
+                "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
+                "RENDER_DEPLOY_POLL_SECONDS": "1",
+                "RENDER_DEPLOY_TIMEOUT_SECONDS": "30",
+            }
+
+            status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["expected_commit"], expected_commit)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-branch")
+        self.assertEqual(summary["render_deploy"]["commit"], expected_commit)
         self.assertNotIn("render-secret-key", json.dumps(summary))
 
     def test_render_deploy_ready_gate_timeout_reports_latest_observed_commit_mismatch(self) -> None:

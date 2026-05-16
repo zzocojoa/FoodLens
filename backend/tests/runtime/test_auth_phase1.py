@@ -300,6 +300,26 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             app_state.clear()
             app_state.update(previous_state)
 
+    def test_auth_rate_limit_openapi_responses_document_retry_after_header(self):
+        rate_limit_responses = server_module._auth_rate_limited_openapi_responses(
+            retry_scope="/auth/email/login",
+        )
+        lockout_responses = server_module._auth_429_openapi_responses(
+            code="AUTH_EMAIL_VERIFICATION_LOCKED",
+            message="Too many invalid verification attempts.",
+            retry_scope="AUTH_EMAIL_VERIFICATION_LOCKED",
+            retryable_by_client=False,
+        )
+
+        for response in (
+            rate_limit_responses[429],
+            rate_limit_responses[503],
+            lockout_responses[429],
+        ):
+            retry_after_header = response["headers"]["Retry-After"]
+            self.assertEqual(retry_after_header["schema"]["type"], "string")
+            self.assertIn("retrying", retry_after_header["description"])
+
     def test_auth_rate_limit_subjects_do_not_store_raw_email_or_device(self):
         request = Request(
             {

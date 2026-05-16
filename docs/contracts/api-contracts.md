@@ -193,7 +193,8 @@
 - Render 운영 기본값:
   - `AUTH_RATE_LIMIT_BACKEND=postgres`
   - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
-  - Postgres backend는 `DATABASE_URL`을 사용하고 API 인스턴스 간 카운터를 공유한다.
+  - Postgres backend는 `DATABASE_URL`을 사용해 같은 DB 이벤트 테이블 기준으로 제한을 평가한다.
+  - 이 항목은 저장/계약 기준이며, Render branch 배포 또는 scale-out counter 공유 검증 완료 증적은 아니다.
 - 저장 데이터:
   - `auth_rate_limit_events.subject`에는 `<scope>:<sha256(scope:value)>` 형식만 저장한다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
   - 이벤트는 sliding window 계산용 단기 운영 데이터이며, 요청 평가마다 `DELETE FROM auth_rate_limit_events WHERE event_ts <= ...`로 만료분을 제거한다.

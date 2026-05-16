@@ -2862,7 +2862,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -2879,7 +2887,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit storage is unavailable."
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Login"
@@ -2932,7 +2948,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Password Reset Confirm"
@@ -2985,7 +3009,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -3002,7 +3034,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit storage is unavailable."
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Password Reset Request"
@@ -3055,7 +3095,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -3072,7 +3120,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit storage is unavailable."
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Signup"
@@ -3125,7 +3181,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -3142,7 +3206,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit storage is unavailable."
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Verification Request"
@@ -3195,7 +3267,15 @@
                 }
               }
             },
-            "description": "Authentication rate limit or code lockout."
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Email Verify"
