@@ -119,6 +119,9 @@
 - 운영 루프:
   - retention cleanup loop가 TTL 만료 데이터를 정리
   - deletion queue loop가 사용자 삭제 요청을 처리
+- 비동기 분석 작업:
+  - `analysis_jobs`에는 작업 처리를 위해 이미지/알러지/분석 결과 필드가 남을 수 있다.
+  - 기존 잔존 데이터 또는 오래된 anonymous/device/ip scoped 작업은 [Analysis Jobs Privacy Backfill Runbook](../ops/analysis-jobs-privacy-backfill-runbook.md)에 따라 dry-run 검토 후 scrub한다.
 
 ## 6-2) 현재 최소수집·제3자 연동 증적
 

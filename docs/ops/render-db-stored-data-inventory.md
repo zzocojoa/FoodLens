@@ -1,14 +1,15 @@
-# Render DB 저장 데이터 인벤토리 (Auth/Auth Rate Limit 기준)
+# Render DB 저장 데이터 인벤토리
 
 ## 1) 목적
 
 - Render PostgreSQL에 현재 실제로 저장되는 데이터를 코드 기준으로 명확히 정리합니다.
-- Phase 2 증적/운영 점검 시 "어떤 데이터가 DB에 남는지"를 빠르게 확인하기 위한 문서입니다.
+- Phase 2/5 증적 및 운영 점검 시 "어떤 데이터가 DB에 남는지"를 빠르게 확인하기 위한 문서입니다.
 
 ## 2) 적용 범위
 
 - 백엔드 Auth/Session 런타임 상태 저장 경로
 - 인증 rate limit 이벤트 저장 경로
+- 비동기 분석 작업 `analysis_jobs` 저장 경로
 - `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history` 쓰기 경로
 - `/auth/logout` 세션/토큰 상태 변경 경로
 
@@ -40,6 +41,22 @@
   - 인증 요청 평가 시 `endpoint`와 hashed `subject` 기준으로 sliding window 이벤트를 insert한다.
   - `subject`는 `<scope>:<hmac_sha256(scope:value)>` 형식이다. HMAC key는 `AUTH_RATE_LIMIT_HASH_SECRET`, `DATABASE_URL`, non-default `AUTH_STATE_KEY` 순서로 선택한다. `scope`는 `ip`, `email`, `device` 중 하나이며 원본 client IP, 이메일, device id는 저장하지 않는다.
   - 평가마다 `DELETE FROM auth_rate_limit_events WHERE event_ts <= ...`로 window 밖 이벤트를 제거한다.
+
+### Analysis jobs
+
+- 기본 테이블: `analysis_jobs`
+- 저장 목적:
+  - `/analyze/jobs` 비동기 분석 작업의 접수, 처리, polling 상태를 보존한다.
+  - embedded worker가 꺼져 있고 별도 worker가 켜진 운영 환경에서 web/worker 간 작업 전달 저장소로 사용한다.
+- 민감 가능 컬럼:
+  - `user_id`, `idempotency_key`
+  - `allergy_info`
+  - `image_base64`, `image_sha256`
+  - `result_json`
+- 삭제/정리 정책:
+  - 계정 삭제 또는 데이터 삭제 시 해당 사용자 `analysis_jobs`는 `USER_DATA_DELETED`로 scrub되어야 한다.
+  - 오래된 anonymous/device/ip scoped 작업은 [analysis jobs privacy backfill runbook](./analysis-jobs-privacy-backfill-runbook.md)에 따라 dry-run 검토 후 scrub한다.
+  - scrub은 행 삭제가 아니라 복구 가능한 민감 필드를 비우고 `error_code=USER_DATA_DELETED`로 표시하는 방식이다.
 
 ## 4) `state_json` 내부 저장 항목(payload 키)
 
@@ -93,10 +110,11 @@
   - refresh token 상태 변경(`active` -> `revoked` 등)
 - 위 변경은 동일하게 `state_json` 스냅샷에 영속화됩니다.
 
-## 7) 현재 저장되지 않는 항목(중요)
+## 7) 현재 저장되지 않는 항목 및 주의점(중요)
 
-- `/analyze` 응답 자체는 DB에 자동 저장되지 않습니다.
+- 동기 `/analyze` 응답 자체는 DB에 자동 저장되지 않습니다.
 - 분석 결과가 DB에 남으려면 클라이언트가 `POST /me/history`로 `entry`를 별도 전송해야 합니다.
+- 단, 비동기 `/analyze/jobs` 경로는 운영 작업 처리를 위해 `analysis_jobs`에 이미지/알러지/결과 필드를 저장할 수 있으므로 위 삭제/정리 정책 대상입니다.
 - Render Live Logs는 DB 저장 데이터가 아니라 로그 스트림입니다.
 - 인증 rate limit 테이블에는 원본 client IP, 이메일, device id, access token, refresh token, 인증 코드가 저장되지 않습니다.
 
@@ -110,6 +128,10 @@
   - `backend/server.py`
 - Auth rate limit backend:
   - `backend/modules/ops/api_edge_guard.py`
+- Analysis jobs store:
+  - `backend/modules/analysis_jobs.py`
+- Analysis jobs privacy backfill:
+  - `backend/scripts/backfill_analysis_jobs_privacy.py`
 
 ## 9) 운영 확인 포인트
 
@@ -120,6 +142,8 @@
   - `AUTH_STATE_BACKEND=postgres` (명시 권장)
   - `AUTH_RATE_LIMIT_BACKEND=postgres`
   - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
+  - `ANALYSIS_JOB_BACKEND=postgres`
+  - `ANALYSIS_JOB_TABLE=analysis_jobs`
 - 권한:
   - 자동 테이블 생성 운영이면 앱 DB 계정에 schema `CREATE`, table/index 생성, sequence 사용 권한이 필요합니다.
   - 사전 생성 후 least-privilege 운영이면 앱 DB 계정에 `auth_rate_limit_events` `SELECT`, `INSERT`, `DELETE`와 sequence `USAGE` 권한이 필요합니다.

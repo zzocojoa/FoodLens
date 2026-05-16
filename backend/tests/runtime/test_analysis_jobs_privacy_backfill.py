@@ -45,6 +45,11 @@ class _FakeCursor:
         self.calls: list[_SqlCall] = []
 
     def execute(self, statement: str, params: Sequence[object]) -> object:
+        placeholder_count = statement.count("%s")
+        if placeholder_count != len(params):
+            raise AssertionError(
+                f"Placeholder count mismatch: expected {placeholder_count} params, received {len(params)}."
+            )
         self.calls.append(_SqlCall(statement=statement, params=tuple(params)))
         return None
 
@@ -118,6 +123,12 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
 
         statements = "\n".join(call.statement for call in cursor.calls)
         self.assertEqual(result.counts["total"], {"target": 3, "scrubbed": 0, "skipped": 7})
+        self.assertEqual(
+            result.counts["deleted_missing_user_id"]["target_reasons"],
+            {"deleted_user_request": 1, "missing_user_id": 1},
+        )
+        self.assertEqual(result.counts["deleted_missing_user_id"]["skipped_reasons"], {"active_user_id": 1})
+        self.assertFalse(result.criteria["deleted_missing_user_id"]["allow_empty_auth_state"])
         self.assertEqual(connection.commit_count, 0)
         self.assertEqual(connection.rollback_count, 1)
         self.assertNotIn("UPDATE analysis_jobs", statements)
@@ -125,7 +136,7 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
 
     def test_execute_scrubs_deleted_missing_and_old_anonymous_rows(self) -> None:
         cursor = _FakeCursor(
-            fetchone_results=[_auth_state_row(("usr_active",)), (1,), (2,), (0,)],
+            fetchone_results=[(True,), _auth_state_row(("usr_active",)), (1,), (2,), (0,)],
             fetchall_results=[
                 [
                     ("usr_deleted_private", "deleted_user_request", 1),
@@ -147,8 +158,15 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         anonymous_update = _single_statement_containing(cursor=cursor, text="UPDATE analysis_jobs\nSET user_id = NULL")
         deleted_missing_params = _single_params_for_statement(cursor=cursor, text="UPDATE analysis_jobs jobs")
         self.assertEqual(result.counts["total"], {"target": 3, "scrubbed": 3, "skipped": 3})
+        self.assertEqual(
+            result.counts["deleted_missing_user_id"]["target_reasons"],
+            {"deleted_user_request": 1, "missing_user_id": 1},
+        )
+        self.assertEqual(result.counts["deleted_missing_user_id"]["skipped_reasons"], {"active_user_id": 1})
         self.assertEqual(connection.commit_count, 1)
         self.assertEqual(connection.rollback_count, 0)
+        self.assertTrue(any("pg_try_advisory_xact_lock" in call.statement for call in cursor.calls))
+        self.assertTrue(any("set_config" in call.statement for call in cursor.calls))
         for statement in (deleted_missing_update, anonymous_update):
             self.assertIn("user_id = NULL", statement)
             self.assertIn("idempotency_key = NULL", statement)
@@ -208,6 +226,57 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         self.assertEqual(result.counts["already_user_data_deleted"], {"target": 0, "scrubbed": 0, "skipped": 3})
         self.assertEqual(result.counts["total"], {"target": 0, "scrubbed": 0, "skipped": 3})
 
+    def test_allow_empty_auth_state_override_targets_non_device_user_rows(self) -> None:
+        cursor = _FakeCursor(
+            fetchone_results=[_auth_state_row(()), (0,), (0,), (0,)],
+            fetchall_results=[[("usr_orphan_private", "missing_user_id", 2)]],
+        )
+
+        result = run_dry_run(
+            config=_config(mode="dry-run", allow_empty_auth_state=True),
+            connect_factory=_FakeConnectFactory(connection=_FakeConnection(cursor=cursor)),
+        )
+
+        self.assertEqual(result.counts["deleted_missing_user_id"]["target"], 2)
+        self.assertEqual(result.counts["deleted_missing_user_id"]["target_reasons"], {"missing_user_id": 2})
+        self.assertTrue(result.criteria["deleted_missing_user_id"]["allow_empty_auth_state"])
+
+    def test_execute_rolls_back_when_scrubbed_count_mismatches_plan(self) -> None:
+        cursor = _FakeCursor(
+            fetchone_results=[(True,), _auth_state_row(("usr_active",)), (1,), (0,), (0,)],
+            fetchall_results=[
+                [],
+                [],
+                [],
+            ],
+        )
+        connection = _FakeConnection(cursor=cursor)
+
+        with self.assertRaises(AnalysisJobStoreError):
+            run_execute(
+                config=_config(mode="execute", allow_empty_auth_state=False),
+                connect_factory=_FakeConnectFactory(connection=connection),
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        self.assertEqual(connection.rollback_count, 1)
+
+    def test_execute_rolls_back_when_advisory_lock_is_unavailable(self) -> None:
+        cursor = _FakeCursor(
+            fetchone_results=[(False,)],
+            fetchall_results=[],
+        )
+        connection = _FakeConnection(cursor=cursor)
+
+        with self.assertRaises(AnalysisJobStoreError):
+            run_execute(
+                config=_config(mode="execute", allow_empty_auth_state=False),
+                connect_factory=_FakeConnectFactory(connection=connection),
+            )
+
+        self.assertEqual(connection.commit_count, 0)
+        self.assertEqual(connection.rollback_count, 1)
+
     def test_execute_cli_requires_confirmation_flag(self) -> None:
         with patch("sys.argv", ["backfill_analysis_jobs_privacy.py", "--execute", "--anonymous-older-than-days", "30"]):
             with patch.object(backfill, "_load_backend_env", return_value=None):
@@ -234,7 +303,10 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
     def test_error_payload_redacts_user_id_shapes(self) -> None:
         error = RuntimeError(
             'failed user_id=usr_private_one {"user_id":"usr_private_two"} '
-            "'user_id': 'usr_private_three' user_id: usr_private_four"
+            "'user_id': 'usr_private_three' user_id: usr_private_four "
+            "password=private-password token=private-token "
+            'DETAIL: Key (user_id, idempotency_key)=(usr_private_five, private-idempotency) already exists '
+            '{"database_url":"postgresql://private-user:private-pass@private-host/private-db"}'
         )
 
         payload = backfill._error_payload(error=error)
@@ -244,6 +316,12 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         self.assertNotIn("usr_private_two", serialized)
         self.assertNotIn("usr_private_three", serialized)
         self.assertNotIn("usr_private_four", serialized)
+        self.assertNotIn("usr_private_five", serialized)
+        self.assertNotIn("private-idempotency", serialized)
+        self.assertNotIn("private-password", serialized)
+        self.assertNotIn("private-token", serialized)
+        self.assertNotIn("private-pass", serialized)
+        self.assertNotIn("private-host", serialized)
         self.assertIn("[REDACTED]", serialized)
 
 
@@ -257,6 +335,9 @@ def _config(*, mode: Mode, allow_empty_auth_state: bool) -> AnalysisJobsPrivacyB
         deletion_status_table="deletion_statuses",
         anonymous_cutoff=datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc),
         allow_empty_auth_state=allow_empty_auth_state,
+        execute_lock_timeout_ms=backfill.DEFAULT_EXECUTE_LOCK_TIMEOUT_MS,
+        execute_statement_timeout_ms=backfill.DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS,
+        advisory_lock_key=backfill.DEFAULT_ADVISORY_LOCK_KEY,
     )
 
 
