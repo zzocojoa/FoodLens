@@ -173,10 +173,13 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
         )
 
         statements = "\n".join(call.statement for call in cursor.calls)
-        self.assertIn("btrim(jobs.user_id) NOT LIKE 'device:%'", statements)
-        self.assertIn("btrim(jobs.user_id) NOT LIKE 'ip:%'", statements)
-        self.assertIn("btrim(user_id) LIKE 'device:%'", statements)
-        self.assertIn("btrim(user_id) LIKE 'ip:%'", statements)
+        all_params = tuple(param for call in cursor.calls for param in call.params)
+        self.assertNotIn("'device:%'", statements)
+        self.assertNotIn("'ip:%'", statements)
+        self.assertIn("btrim(jobs.user_id) NOT LIKE %s", statements)
+        self.assertIn("btrim(user_id) LIKE %s", statements)
+        self.assertIn(backfill.DEVICE_SCOPED_USER_ID_PATTERN, all_params)
+        self.assertIn(backfill.IP_SCOPED_USER_ID_PATTERN, all_params)
         self.assertIn("accepted_at < %s::timestamptz", statements)
 
     def test_user_scoped_rows_fail_closed_when_auth_state_is_empty(self) -> None:
