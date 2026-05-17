@@ -5,14 +5,25 @@ import { AuthApiError } from './authApi';
 type OAuthProvider = 'google' | 'kakao';
 const GOOGLE_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL';
 const KAKAO_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL';
+const KAKAO_BROWSER_LOGOUT_ENABLED_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED';
 const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
 const DEFAULT_APP_LOGOUT_REDIRECT_URI = 'foodlens://oauth/logout-complete';
-const PROVIDER_BROWSER_LOGOUT_ENABLED: Record<OAuthProvider, boolean> = {
-  google: false,
-  kakao: true,
-};
 
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
+
+const isEnabledEnvValue = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true';
+};
+
+const getExpoPublicKakaoBrowserLogoutEnabled = (): string => {
+  const runtime = readRuntimeEnv(KAKAO_BROWSER_LOGOUT_ENABLED_ENV);
+  if (runtime) {
+    return runtime;
+  }
+
+  return process.env.EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED ?? '';
+};
 
 const resolveAppLogoutRedirectUri = (): string => {
   try {
@@ -67,9 +78,13 @@ const buildLogoutStartUrl = (provider: OAuthProvider, appRedirectUri: string): s
   return `${startUrl}${delimiter}redirect_uri=${encodeURIComponent(appRedirectUri)}`;
 };
 
-const shouldOpenProviderBrowserLogout = (provider: OAuthProvider): boolean => (
-  PROVIDER_BROWSER_LOGOUT_ENABLED[provider]
-);
+const shouldOpenProviderBrowserLogout = (provider: OAuthProvider): boolean => {
+  if (provider === 'google') {
+    return false;
+  }
+
+  return isEnabledEnvValue(getExpoPublicKakaoBrowserLogoutEnabled());
+};
 
 export const logoutFromOAuthProvider = async (provider: string | undefined): Promise<void> => {
   const normalizedProvider = (provider ?? '').trim().toLowerCase();

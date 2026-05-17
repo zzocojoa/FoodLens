@@ -255,7 +255,7 @@ services:
       - key: AUTH_KAKAO_CODE_VERIFY_ENABLED
         value: "1"
       - key: AUTH_KAKAO_OAUTH_SCOPE
-        value: "account_email profile_nickname"
+        value: ""
       - key: AUTH_EMAIL_VERIFICATION_REQUIRED
         value: "1"
       - key: AUTH_EMAIL_VERIFICATION_DELIVERY_MODE
@@ -627,7 +627,7 @@ services:
       - key: AUTH_KAKAO_CODE_VERIFY_ENABLED
         value: "1"
       - key: AUTH_KAKAO_OAUTH_SCOPE
-        value: "account_email profile_nickname"
+        value: ""
       - key: AUTH_EMAIL_VERIFICATION_REQUIRED
         value: "1"
       - key: AUTH_EMAIL_VERIFICATION_DELIVERY_MODE
@@ -999,7 +999,7 @@ services:
       - key: AUTH_KAKAO_CODE_VERIFY_ENABLED
         value: "1"
       - key: AUTH_KAKAO_OAUTH_SCOPE
-        value: "account_email profile_nickname"
+        value: ""
       - key: AUTH_EMAIL_VERIFICATION_REQUIRED
         value: "1"
       - key: AUTH_EMAIL_VERIFICATION_DELIVERY_MODE

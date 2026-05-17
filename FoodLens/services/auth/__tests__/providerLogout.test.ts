@@ -42,6 +42,7 @@ beforeEach(() => {
   process.env = { ...ORIGINAL_ENV };
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'];
+  delete process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'];
   mockedLinking.createURL.mockReturnValue('foodlens://oauth/logout-complete');
 });
 
@@ -63,10 +64,19 @@ describe('providerLogout', () => {
     expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
   });
 
-  it('falls back to analysis server URL when kakao logout start URL is missing', async () => {
+  it('skips browser logout for kakao providers by default', async () => {
+    process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] = 'https://api.foodlens.example.com/';
+
+    await logoutFromOAuthProvider('kakao');
+
+    expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
+  });
+
+  it('falls back to analysis server URL when kakao browser logout is enabled', async () => {
     process.env = {
       ...process.env,
       EXPO_PUBLIC_ANALYSIS_SERVER_URL: 'https://api.foodlens.example.com/',
+      EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED: '1',
     };
     mockedWebBrowser.openBrowserAsync.mockResolvedValue({
       type: 'opened',
@@ -79,7 +89,8 @@ describe('providerLogout', () => {
     );
   });
 
-  it('opens kakao logout bridge in browser', async () => {
+  it('opens kakao logout bridge in browser when explicitly enabled', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
     process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
       `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
     mockedWebBrowser.openBrowserAsync.mockResolvedValue({
@@ -95,6 +106,7 @@ describe('providerLogout', () => {
 
   it('prefers provider-specific logout start URL over analysis server fallback', async () => {
     process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] = 'https://api.foodlens.example.com/';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = '1';
     process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
       `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
     mockedWebBrowser.openBrowserAsync.mockResolvedValue({
@@ -109,6 +121,7 @@ describe('providerLogout', () => {
   });
 
   it('throws cancelled when browser is dismissed', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = '1';
     process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
       `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
     mockedWebBrowser.openBrowserAsync.mockResolvedValue({
@@ -121,6 +134,8 @@ describe('providerLogout', () => {
   });
 
   it('throws when neither provider-specific nor analysis server logout URL is configured', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = '1';
+
     await expect(logoutFromOAuthProvider('kakao')).rejects.toMatchObject({
       code: 'AUTH_PROVIDER_MISCONFIGURED',
     });

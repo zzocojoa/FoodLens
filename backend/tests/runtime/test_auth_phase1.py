@@ -22,8 +22,13 @@ sys.modules.setdefault(
     types.SimpleNamespace(
         init=lambda **_kwargs: None,
         push_scope=lambda: contextlib.nullcontext(
-            types.SimpleNamespace(set_tag=lambda *_args, **_kwargs: None, set_extra=lambda *_args, **_kwargs: None)
+            types.SimpleNamespace(
+                set_tag=lambda *_args, **_kwargs: None,
+                set_extra=lambda *_args, **_kwargs: None,
+                set_user=lambda *_args, **_kwargs: None,
+            )
         ),
+        capture_exception=lambda *_args, **_kwargs: None,
     ),
 )
 from backend import server as server_module  # noqa: E402
@@ -1565,6 +1570,58 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(callback_query["code"][0], "google-code-bridge")
             self.assertEqual(callback_query["state"][0], packed_state)
             self.assertIn("request_id", callback_query)
+
+    def test_kakao_oauth_web_bridge_omits_scope_by_default(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
+                    "AUTH_KAKAO_OAUTH_SCOPE": "",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/kakao/start",
+                params={"redirect_uri": "foodlens://oauth/kakao-callback", "state": "state-web-kakao"},
+                follow_redirects=False,
+            )
+            self.assertEqual(start.status_code, 302)
+
+            parsed = urlparse(start.headers["location"])
+            self.assertEqual(parsed.netloc, "kauth.kakao.com")
+            query = parse_qs(parsed.query)
+            self.assertEqual(query["client_id"][0], "kakao-client-id-test")
+            self.assertEqual(query["redirect_uri"][0], f"{self.AUTH_PUBLIC_BASE_URL}/auth/kakao/callback")
+            self.assertNotIn("scope", query)
+
+    def test_kakao_oauth_web_bridge_includes_scope_only_when_configured(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
+                    "AUTH_KAKAO_OAUTH_SCOPE": "account_email",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/kakao/start",
+                params={"redirect_uri": "foodlens://oauth/kakao-callback", "state": "state-web-kakao"},
+                follow_redirects=False,
+            )
+            self.assertEqual(start.status_code, 302)
+
+            query = parse_qs(urlparse(start.headers["location"]).query)
+            self.assertEqual(query["scope"], ["account_email"])
 
     def test_kakao_oauth_web_bridge_rejects_unapproved_app_redirect(self):
         with (

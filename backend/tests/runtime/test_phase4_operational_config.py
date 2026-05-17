@@ -137,6 +137,7 @@ class Phase4OperationalConfigTests(unittest.TestCase):
         )
         for key, value in required_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
+        self.assertEqual(render_blueprint.count('- key: AUTH_KAKAO_OAUTH_SCOPE\n        value: ""'), 3)
 
     def test_render_blueprint_keeps_sensitive_envs_dashboard_managed(self) -> None:
         render_blueprint = RENDER_BLUEPRINT_PATH.read_text(encoding="utf-8")
