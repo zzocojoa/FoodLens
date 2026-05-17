@@ -5,9 +5,13 @@ myenv/
 __pycache__/
 *.pyc
 .DS_Store
+.lazyweb/
 FoodLens/node_modules/
+FoodLens/artifacts/android-smoke/
+FoodLens/artifacts/ios-smoke/
 artifacts/phase2/
 artifacts/phase6/
+artifacts/privacy-analysis-jobs-backfill/
 FoodLens/artifacts/phase2-*.log
 FoodLens/artifacts/phase2/
 FoodLens/artifacts/phase6/

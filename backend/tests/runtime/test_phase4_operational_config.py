@@ -286,6 +286,10 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN",
             "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN",
             "AUTH_GOOGLE_OAUTH_PROMPT",
+            "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
+            "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
+            "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
+            "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE",
         )
         for service_env in live_env_by_service.values():
             for missing_key in missing_keys:
@@ -306,6 +310,10 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
+        self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", output)
+        self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
+        self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DAYS", output)
+        self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE", output)
         self.assertIn("present=false", output)
         self.assertIn("action=update Render Dashboard env keys or render.yaml", output)
         self.assertNotIn("0.12", output)
