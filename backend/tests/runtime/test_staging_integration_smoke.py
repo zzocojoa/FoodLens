@@ -321,16 +321,18 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         deploy_job = _workflow_job_body("staging-integration-smoke")
         pr_check_job = _workflow_job_body("staging-integration-smoke-pr-check")
 
-        self.assertIn("environment: staging", workflow)
-        self.assertIn("STAGING_RENDER_API_KEY", workflow)
-        self.assertIn("STAGING_RENDER_SERVICE_ID", workflow)
-        self.assertIn("RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api", workflow)
-        self.assertIn("RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging", workflow)
-        self.assertIn("RENDER_ALLOWED_SERVICE_PLANS: free", workflow)
-        self.assertIn("RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}", workflow)
+        self.assertIn("environment: staging", deploy_job)
+        self.assertIn("STAGING_RENDER_API_KEY", deploy_job)
+        self.assertIn("STAGING_RENDER_SERVICE_ID", deploy_job)
+        self.assertIn("RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api", deploy_job)
+        self.assertIn("RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging", deploy_job)
+        self.assertIn("RENDER_ALLOWED_SERVICE_PLANS: free", deploy_job)
+        self.assertIn("RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}", deploy_job)
         self.assertIn("render_staging_deploy_trigger.py", pr_check_job)
         self.assertIn("Trigger Render staging deploy", pr_check_job)
         self.assertIn("def job_body", pr_check_job)
+        self.assertIn("deploy_job_markers", pr_check_job)
+        self.assertIn("missing_deploy_job_markers", pr_check_job)
         self.assertIn('deploy_job = job_body("staging-integration-smoke")', pr_check_job)
         self.assertIn('deploy_job.index("Trigger Render staging deploy")', pr_check_job)
         self.assertIn('deploy_job.index("Scan staging smoke artifacts for secret leaks")', pr_check_job)
@@ -667,39 +669,17 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         responses = iter(
             (
                 {
-                    "deploys": [
-                        {
-                            "id": "dep-target",
-                            "createdAt": "2026-05-01T00:04:00Z",
-                            "status": "build_in_progress",
-                            "commit": {"id": expected_commit},
-                        },
-                        {
-                            "id": "dep-old",
-                            "createdAt": "2026-05-01T00:03:00Z",
-                            "finishedAt": "2026-05-01T00:03:30Z",
-                            "status": "live",
-                            "commit": {"id": expected_commit},
-                        },
-                    ]
+                    "id": "dep-target",
+                    "createdAt": "2026-05-01T00:04:00Z",
+                    "status": "build_in_progress",
+                    "commit": {"id": expected_commit},
                 },
                 {
-                    "deploys": [
-                        {
-                            "id": "dep-target",
-                            "createdAt": "2026-05-01T00:04:00Z",
-                            "finishedAt": "2026-05-01T00:05:00Z",
-                            "status": "live",
-                            "commit": {"id": expected_commit},
-                        },
-                        {
-                            "id": "dep-old",
-                            "createdAt": "2026-05-01T00:03:00Z",
-                            "finishedAt": "2026-05-01T00:03:30Z",
-                            "status": "live",
-                            "commit": {"id": expected_commit},
-                        },
-                    ]
+                    "id": "dep-target",
+                    "createdAt": "2026-05-01T00:04:00Z",
+                    "finishedAt": "2026-05-01T00:05:00Z",
+                    "status": "live",
+                    "commit": {"id": expected_commit},
                 },
             )
         )
@@ -727,11 +707,33 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(len(calls), 2)
+        self.assertTrue(all(url.endswith("/services/srv-test/deploys/dep-target") for _method, url in calls))
         self.assertEqual(summary["passed"], True)
         self.assertEqual(summary["expected_deploy_id"], "dep-target")
         self.assertEqual(summary["render_deploy"]["id"], "dep-target")
         self.assertEqual(summary["render_deploy"]["status"], "live")
         self.assertNotIn("render-secret-key", json.dumps(summary))
+
+    def test_render_deploy_ready_gate_request_errors_do_not_expose_secret_inputs(self) -> None:
+        gate = _load_render_deploy_gate_module()
+        service_id = "srv-secret"
+        api_key = "render-secret-key"
+        url = f"https://api.render.com/v1/services/{service_id}/deploys/dep-test"
+
+        with patch.object(
+            gate,
+            "urlopen",
+            side_effect=gate.URLError(f"service {service_id} failed with {api_key}"),
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                gate._request_json("GET", url, api_key)
+
+        message = str(raised.exception)
+        self.assertIn("Render API GET request failed", message)
+        self.assertIn("[redacted-service]", message)
+        self.assertNotIn(service_id, message)
+        self.assertNotIn(api_key, message)
+        self.assertNotIn("/services/", message)
 
     def test_render_deploy_ready_gate_timeout_reports_latest_observed_commit_mismatch(self) -> None:
         gate = _load_render_deploy_gate_module()
@@ -992,7 +994,11 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
             github_env_content = (Path(temp_dir) / "github.env").read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
-        self.assertEqual(calls[0][0], "GET")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            calls[0],
+            ("GET", "https://api.render.com/v1/services/srv-test", None),
+        )
         self.assertEqual(
             calls[1],
             ("POST", "https://api.render.com/v1/services/srv-test/deploys", {"commitId": expected_commit}),
@@ -1003,6 +1009,71 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_service"]["name"], "foodlens-api-staging")
         self.assertEqual(summary["render_service"]["plan"], "free")
         self.assertEqual(github_env_content, "RENDER_DEPLOY_EXPECTED_DEPLOY_ID=dep-test\n")
+        self.assertNotIn("render-secret-key", json.dumps(summary))
+        self.assertNotIn("render-secret-key", stdout.getvalue())
+        self.assertNotIn("render-secret-key", stderr.getvalue())
+
+    def test_render_staging_deploy_trigger_resolves_queued_deploy_without_post_body(self) -> None:
+        trigger = _load_render_deploy_trigger_module()
+        expected_commit = "c89681b530d7dbcd28d23ae44025f6faaeae27fe"
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def request_json(method: str, url: str, api_key: str, payload: dict[str, object] | None) -> dict[str, object]:
+            calls.append((method, url, payload))
+            if method == "GET" and "/services/srv-test" in url and "/deploys" not in url:
+                return {
+                    "name": "foodlens-api-staging",
+                    "type": "web_service",
+                    "branch": "main",
+                    "repo": "https://github.com/zzocojoa/FoodLens",
+                    "serviceDetails": {"plan": "free"},
+                }
+            if method == "POST" and url.endswith("/services/srv-test/deploys"):
+                return {}
+            if method == "GET" and "/services/srv-test/deploys?" in url:
+                return {
+                    "deploys": [
+                        {
+                            "id": "dep-queued",
+                            "createdAt": "2999-05-01T00:01:00Z",
+                            "status": "queued",
+                            "commit": {"id": expected_commit},
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected request: {method} {url}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.json"
+            env = {
+                "RENDER_API_KEY": "render-secret-key",
+                "RENDER_SERVICE_ID": "srv-test",
+                "GITHUB_SHA": expected_commit,
+                "RENDER_DEPLOY_TRIGGER_SUMMARY_PATH": str(summary_path),
+                "RENDER_FORBIDDEN_SERVICE_NAMES": "foodlens-api",
+                "RENDER_ALLOWED_SERVICE_NAMES": "foodlens-api-staging",
+                "RENDER_ALLOWED_SERVICE_PLANS": "free",
+                "GITHUB_ENV": str(Path(temp_dir) / "github.env"),
+            }
+
+            with (
+                patch("sys.stdout", new_callable=io.StringIO) as stdout,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                status = trigger.run_trigger(env, request_json)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            github_env_content = (Path(temp_dir) / "github.env").read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            calls[1],
+            ("POST", "https://api.render.com/v1/services/srv-test/deploys", {"commitId": expected_commit}),
+        )
+        self.assertIn("createdAfter=", calls[2][1])
+        self.assertEqual(summary["passed"], True)
+        self.assertEqual(summary["render_deploy"]["id"], "dep-queued")
+        self.assertEqual(github_env_content, "RENDER_DEPLOY_EXPECTED_DEPLOY_ID=dep-queued\n")
         self.assertNotIn("render-secret-key", json.dumps(summary))
         self.assertNotIn("render-secret-key", stdout.getvalue())
         self.assertNotIn("render-secret-key", stderr.getvalue())

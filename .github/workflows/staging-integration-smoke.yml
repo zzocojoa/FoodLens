@@ -55,8 +55,9 @@ jobs:
           deploy_job = job_body("staging-integration-smoke")
           required_markers = [
               "pull_request:",
+          ]
+          deploy_job_markers = [
               "environment: staging",
-              "permissions:\n  contents: read",
               "secrets.STAGING_RENDER_API_KEY",
               "secrets.STAGING_RENDER_SERVICE_ID",
               "RENDER_FORBIDDEN_SERVICE_NAMES",
@@ -69,6 +70,10 @@ jobs:
               "Upload staging smoke artifacts",
           ]
           missing_markers = [marker for marker in required_markers if marker not in workflow]
+          missing_deploy_job_markers = [marker for marker in deploy_job_markers if marker not in deploy_job]
+          if "permissions:\n  contents: read" not in workflow:
+              missing_markers.append("permissions: contents read")
+          missing_markers.extend(missing_deploy_job_markers)
           if missing_markers:
               raise SystemExit(f"Missing staging smoke workflow markers: {missing_markers}")
           forbidden_markers = [

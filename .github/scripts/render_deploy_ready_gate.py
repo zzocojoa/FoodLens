@@ -71,6 +71,23 @@ def _split_csv(value: str) -> frozenset[str]:
     return frozenset(item.strip() for item in value.split(",") if item.strip())
 
 
+def _service_id_from_url(url: str) -> str | None:
+    if "/services/" not in url:
+        return None
+    candidate = url.split("/services/", 1)[1].split("/", 1)[0].strip()
+    if not candidate:
+        return None
+    return candidate.split("?", 1)[0]
+
+
+def _redact_render_api_detail(detail: str, url: str, api_key: str) -> str:
+    redacted = detail.replace(api_key, "[redacted]")
+    service_id = _service_id_from_url(url)
+    if service_id is not None:
+        redacted = redacted.replace(service_id, "[redacted-service]")
+    return redacted
+
+
 def _request_json(method: str, url: str, api_key: str) -> dict[str, object]:
     request = Request(
         url,
@@ -85,9 +102,15 @@ def _request_json(method: str, url: str, api_key: str) -> dict[str, object]:
             response_body = response.read().decode("utf-8")
     except HTTPError as error:
         error_body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Render API {method} failed with status {error.code}: {error_body[:300]}") from error
+        safe_body = _redact_render_api_detail(error_body[:300], url, api_key)
+        raise RuntimeError(f"Render API {method} request failed with status {error.code}: {safe_body}") from error
+    except TimeoutError as error:
+        raise RuntimeError(f"Render API {method} request timed out.") from error
     except URLError as error:
-        raise RuntimeError(f"Render API {method} failed: {error.reason}") from error
+        safe_reason = _redact_render_api_detail(str(error.reason), url, api_key)
+        raise RuntimeError(f"Render API {method} request failed: {safe_reason}") from error
+    if not response_body.strip():
+        return {}
     decoded = json.loads(response_body)
     if isinstance(decoded, list):
         return {"deploys": decoded}
@@ -110,10 +133,22 @@ def _extract_deploys(response: dict[str, object]) -> list[dict[str, object]]:
     return deploys
 
 
+def _deploy_payload(response: dict[str, object]) -> dict[str, object]:
+    deploy = response.get("deploy")
+    if isinstance(deploy, dict):
+        return deploy
+    return response
+
+
 def _list_deploys(api_key: str, service_id: str, request_json: JsonRequester) -> list[dict[str, object]]:
     query = urlencode({"limit": "20"})
     url = f"https://api.render.com/v1/services/{service_id}/deploys?{query}"
     return _extract_deploys(request_json("GET", url, api_key))
+
+
+def _retrieve_deploy(api_key: str, service_id: str, deploy_id: str, request_json: JsonRequester) -> dict[str, object]:
+    url = f"https://api.render.com/v1/services/{service_id}/deploys/{deploy_id}"
+    return _deploy_payload(request_json("GET", url, api_key))
 
 
 def _retrieve_service(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, object]:
@@ -350,7 +385,10 @@ def run_gate(
     latest_candidate: dict[str, object] | None = None
     latest_observed_candidate: dict[str, object] | None = None
     while True:
-        deploys = _list_deploys(api_key, service_id, request_json)
+        if expected_deploy_id is None:
+            deploys = _list_deploys(api_key, service_id, request_json)
+        else:
+            deploys = [_retrieve_deploy(api_key, service_id, expected_deploy_id, request_json)]
         observed_candidates = _candidate_deploys(deploys, min_created_at)
         if observed_candidates:
             latest_observed_candidate = observed_candidates[0]

@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
@@ -23,6 +26,10 @@ FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
 ALLOWED_SERVICE_NAMES_ENV = "RENDER_ALLOWED_SERVICE_NAMES"
 ALLOWED_SERVICE_PLANS_ENV = "RENDER_ALLOWED_SERVICE_PLANS"
 EXPECTED_DEPLOY_ID_ENV = "RENDER_DEPLOY_EXPECTED_DEPLOY_ID"
+LOOKUP_TIMEOUT_SECONDS_ENV = "RENDER_DEPLOY_TRIGGER_LOOKUP_TIMEOUT_SECONDS"
+LOOKUP_POLL_SECONDS_ENV = "RENDER_DEPLOY_TRIGGER_LOOKUP_POLL_SECONDS"
+DEFAULT_LOOKUP_TIMEOUT_SECONDS = 120
+DEFAULT_LOOKUP_POLL_SECONDS = 5
 COMMIT_UNSUPPORTED_SERVICE_TYPES: frozenset[str] = frozenset(("cron", "cron_job"))
 
 
@@ -40,6 +47,35 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 
 def _split_csv(value: str) -> frozenset[str]:
     return frozenset(item.strip() for item in value.split(",") if item.strip())
+
+
+def _positive_int_env(env: dict[str, str], name: str, fallback: int) -> int:
+    raw_value = (env.get(name) or "").strip()
+    if not raw_value:
+        return fallback
+    value = int(raw_value)
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than 0.")
+    return value
+
+
+def _parse_timestamp(value: str) -> datetime | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _service_id_from_url(url: str) -> str | None:
@@ -109,6 +145,31 @@ def _create_deploy(
         payload["commitId"] = expected_commit
     url = f"{RENDER_API_BASE_URL}/services/{service_id}/deploys"
     return request_json("POST", url, api_key, payload)
+
+
+def _extract_deploys(response: dict[str, object]) -> list[dict[str, object]]:
+    raw_deploys = response.get("deploys")
+    if raw_deploys is None:
+        raw_deploys = response.get("data")
+    if not isinstance(raw_deploys, list):
+        return []
+    deploys: list[dict[str, object]] = []
+    for item in raw_deploys:
+        candidate = item.get("deploy") if isinstance(item, dict) and isinstance(item.get("deploy"), dict) else item
+        if isinstance(candidate, dict):
+            deploys.append(candidate)
+    return deploys
+
+
+def _list_deploys_after(
+    api_key: str,
+    service_id: str,
+    created_after: datetime,
+    request_json: JsonRequester,
+) -> list[dict[str, object]]:
+    query = urlencode({"limit": "100", "createdAfter": _format_timestamp(created_after)})
+    url = f"{RENDER_API_BASE_URL}/services/{service_id}/deploys?{query}"
+    return _extract_deploys(request_json("GET", url, api_key, None))
 
 
 def _service_plan(service: dict[str, object]) -> str | None:
@@ -194,6 +255,47 @@ def _deploy_payload(response: dict[str, object]) -> dict[str, object]:
     return response
 
 
+def _deploy_created_at(deploy: dict[str, object]) -> datetime | None:
+    created_at = deploy.get("createdAt")
+    if not isinstance(created_at, str):
+        return None
+    return _parse_timestamp(created_at)
+
+
+def _matches_expected_commit(deploy: dict[str, object], expected_commit: str | None) -> bool:
+    if expected_commit is None:
+        return True
+    commit_id = _deploy_commit_id(deploy)
+    if commit_id is None:
+        return False
+    normalized_commit_id = commit_id.lower()
+    normalized_expected = expected_commit.lower()
+    return (
+        normalized_commit_id == normalized_expected
+        or (len(normalized_expected) >= 7 and normalized_commit_id.startswith(normalized_expected))
+        or (len(normalized_commit_id) >= 7 and normalized_expected.startswith(normalized_commit_id))
+    )
+
+
+def _trigger_candidates(
+    deploys: list[dict[str, object]],
+    expected_commit: str | None,
+    triggered_at: datetime,
+) -> list[dict[str, object]]:
+    candidates: list[tuple[datetime, str, dict[str, object]]] = []
+    for deploy in deploys:
+        created_at = _deploy_created_at(deploy)
+        if created_at is None or created_at < triggered_at:
+            continue
+        if not _matches_expected_commit(deploy, expected_commit):
+            continue
+        deploy_id = deploy.get("id")
+        deploy_id_sort_value = deploy_id if isinstance(deploy_id, str) else ""
+        candidates.append((created_at, deploy_id_sort_value, deploy))
+    sorted_candidates = sorted(candidates, key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
+    return [deploy for _created_at, _deploy_id, deploy in sorted_candidates]
+
+
 def _deploy_summary(deploy: dict[str, object]) -> dict[str, object]:
     return {
         "commit": _deploy_commit_id(deploy),
@@ -219,6 +321,27 @@ def _base_summary(service: dict[str, object], expected_commit: str | None) -> di
     if expected_commit is not None:
         summary["expected_commit"] = expected_commit
     return summary
+
+
+def _lookup_triggered_deploy(
+    api_key: str,
+    service_id: str,
+    expected_commit: str | None,
+    triggered_at: datetime,
+    env: dict[str, str],
+    request_json: JsonRequester,
+) -> dict[str, object] | None:
+    timeout_seconds = _positive_int_env(env, LOOKUP_TIMEOUT_SECONDS_ENV, DEFAULT_LOOKUP_TIMEOUT_SECONDS)
+    poll_seconds = _positive_int_env(env, LOOKUP_POLL_SECONDS_ENV, DEFAULT_LOOKUP_POLL_SECONDS)
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        deploys = _list_deploys_after(api_key, service_id, triggered_at, request_json)
+        candidates = _trigger_candidates(deploys, expected_commit, triggered_at)
+        if candidates:
+            return candidates[0]
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(poll_seconds)
 
 
 def run_trigger(env: dict[str, str], request_json: JsonRequester) -> int:
@@ -256,8 +379,14 @@ def run_trigger(env: dict[str, str], request_json: JsonRequester) -> int:
         print("[RenderStagingDeployTrigger] Refusing to trigger deploy because commit pinning is unsupported.", file=sys.stderr)
         return 1
 
+    triggered_at = datetime.now(timezone.utc)
     created = _deploy_payload(_create_deploy(api_key, service_id, expected_commit, request_json))
     deploy_id = created.get("id")
+    if not isinstance(deploy_id, str) or not deploy_id.strip():
+        resolved = _lookup_triggered_deploy(api_key, service_id, expected_commit, triggered_at, env, request_json)
+        if resolved is not None:
+            created = resolved
+            deploy_id = resolved.get("id")
     if not isinstance(deploy_id, str) or not deploy_id.strip():
         summary = _base_summary(service, expected_commit)
         summary.update(
