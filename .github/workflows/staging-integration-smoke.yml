@@ -52,7 +52,7 @@ jobs:
               "RENDER_FORBIDDEN_SERVICE_NAMES",
               "RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging",
               "RENDER_ALLOWED_SERVICE_PLANS: free",
-              "RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}",
+              "RENDER_DEPLOY_EXPECTED_COMMIT: $" + "{{ github.sha }}",
               "render_staging_deploy_trigger.py",
               "render_deploy_ready_gate.py",
               "Scan staging smoke artifacts for secret leaks",
