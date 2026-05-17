@@ -87,6 +87,10 @@
   - `job_id`, `request_id`, `status`, `accepted_at`, `updated_at`, `poll_after_ms`
   - 완료 시 결과 payload
   - 가능하면 `used_model`, `prompt_version`, `latency_ms_by_stage`, `fallback_reason`
+- 개인정보 삭제 또는 보존 기간 만료로 작업 payload가 scrub된 경우:
+  - HTTP `410`
+  - `detail.code="ANALYSIS_JOB_GONE"`
+  - 클라이언트는 해당 job을 더 이상 poll 하지 않고 로컬 pending 상태를 종료해야 합니다.
 
 비개발자 설명:
 

@@ -23,6 +23,7 @@ if REPO_ROOT_VALUE not in sys.path:
 from backend.modules.analysis_jobs import (
     AnalysisJobStoreError,
     PostgresAnalysisJobStore,
+    SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
     USER_DATA_DELETED_ERROR_CODE,
 )
 
@@ -34,6 +35,7 @@ IP_SCOPED_USER_ID_PATTERN = "ip:%"
 DEFAULT_EXECUTE_LOCK_TIMEOUT_MS = 5000
 DEFAULT_EXECUTE_STATEMENT_TIMEOUT_MS = 60000
 DEFAULT_ADVISORY_LOCK_KEY = "analysis_jobs_privacy_backfill"
+PRIVACY_TOMBSTONE_ERROR_CODES = (USER_DATA_DELETED_ERROR_CODE, SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE)
 
 
 class DatabaseCursor(Protocol):
@@ -352,7 +354,7 @@ WITH deleted_users AS (
       AND btrim(jobs.user_id) <> ''
       AND btrim(jobs.user_id) NOT LIKE %s
       AND btrim(jobs.user_id) NOT LIKE %s
-      AND COALESCE(jobs.error_code, '') <> %s
+      AND COALESCE(jobs.error_code, '') NOT IN (%s, %s)
       AND (
           (deleted_users.user_id IS NOT NULL AND jobs.accepted_at <= deleted_users.deleted_at)
           OR btrim(jobs.user_id) = ANY(%s::text[])
@@ -379,7 +381,7 @@ RETURNING jobs.job_id
             (
                 DEVICE_SCOPED_USER_ID_PATTERN,
                 IP_SCOPED_USER_ID_PATTERN,
-                USER_DATA_DELETED_ERROR_CODE,
+                *PRIVACY_TOMBSTONE_ERROR_CODES,
                 list(plan.missing_user_ids),
                 _to_iso(datetime.now(timezone.utc)),
                 USER_DATA_DELETED_ERROR_CODE,
@@ -412,7 +414,7 @@ SET user_id = NULL,
     error_message = NULL
 WHERE {_anonymous_or_device_scoped_predicate()}
   AND accepted_at < %s::timestamptz
-  AND COALESCE(error_code, '') <> %s
+  AND COALESCE(error_code, '') NOT IN (%s, %s)
 RETURNING job_id
 """.strip(),
             (
@@ -421,7 +423,7 @@ RETURNING job_id
                 DEVICE_SCOPED_USER_ID_PATTERN,
                 IP_SCOPED_USER_ID_PATTERN,
                 _to_iso(config.anonymous_cutoff),
-                USER_DATA_DELETED_ERROR_CODE,
+                *PRIVACY_TOMBSTONE_ERROR_CODES,
             ),
         )
         return len(cursor.fetchall())
@@ -476,14 +478,14 @@ WITH deleted_users AS (
       AND btrim(jobs.user_id) <> ''
       AND btrim(jobs.user_id) NOT LIKE %s
       AND btrim(jobs.user_id) NOT LIKE %s
-      AND COALESCE(jobs.error_code, '') <> %s
+      AND COALESCE(jobs.error_code, '') NOT IN (%s, %s)
 )
 SELECT user_id, reason, COUNT(*)
 FROM classified
 GROUP BY user_id, reason
 ORDER BY MIN(user_id), reason
 """.strip(),
-        (DEVICE_SCOPED_USER_ID_PATTERN, IP_SCOPED_USER_ID_PATTERN, USER_DATA_DELETED_ERROR_CODE),
+        (DEVICE_SCOPED_USER_ID_PATTERN, IP_SCOPED_USER_ID_PATTERN, *PRIVACY_TOMBSTONE_ERROR_CODES),
     )
     rows = cursor.fetchall()
     parsed_rows: list[tuple[str, Reason, int]] = []
@@ -508,13 +510,13 @@ def _fetch_old_anonymous_device_scoped_count(
             f"SELECT COUNT(*) FROM {config.analysis_job_table} "
             f"WHERE {_anonymous_or_device_scoped_predicate()} "
             "AND accepted_at < %s::timestamptz "
-            "AND COALESCE(error_code, '') <> %s"
+            "AND COALESCE(error_code, '') NOT IN (%s, %s)"
         ),
         params=(
             DEVICE_SCOPED_USER_ID_PATTERN,
             IP_SCOPED_USER_ID_PATTERN,
             _to_iso(config.anonymous_cutoff),
-            USER_DATA_DELETED_ERROR_CODE,
+            *PRIVACY_TOMBSTONE_ERROR_CODES,
         ),
         label="old anonymous/device-scoped analysis jobs",
     )
@@ -531,13 +533,13 @@ def _fetch_newer_anonymous_device_scoped_count(
             f"SELECT COUNT(*) FROM {config.analysis_job_table} "
             f"WHERE {_anonymous_or_device_scoped_predicate()} "
             "AND accepted_at >= %s::timestamptz "
-            "AND COALESCE(error_code, '') <> %s"
+            "AND COALESCE(error_code, '') NOT IN (%s, %s)"
         ),
         params=(
             DEVICE_SCOPED_USER_ID_PATTERN,
             IP_SCOPED_USER_ID_PATTERN,
             _to_iso(config.anonymous_cutoff),
-            USER_DATA_DELETED_ERROR_CODE,
+            *PRIVACY_TOMBSTONE_ERROR_CODES,
         ),
         label="newer anonymous/device-scoped analysis jobs",
     )
@@ -550,9 +552,9 @@ def _fetch_already_user_data_deleted_count(
 ) -> int:
     return _fetch_count(
         cursor=cursor,
-        query=f"SELECT COUNT(*) FROM {config.analysis_job_table} WHERE COALESCE(error_code, '') = %s",
-        params=(USER_DATA_DELETED_ERROR_CODE,),
-        label="already USER_DATA_DELETED analysis jobs",
+        query=f"SELECT COUNT(*) FROM {config.analysis_job_table} WHERE COALESCE(error_code, '') IN (%s, %s)",
+        params=PRIVACY_TOMBSTONE_ERROR_CODES,
+        label="already privacy-scrubbed analysis jobs",
     )
 
 
@@ -610,7 +612,7 @@ def _cleanup_result(
             "user_id_scope": "NULL, device:*, or ip:*",
         },
         "already_user_data_deleted": {
-            "error_code": USER_DATA_DELETED_ERROR_CODE,
+            "error_codes": list(PRIVACY_TOMBSTONE_ERROR_CODES),
         },
         "execute_safety": {
             "advisory_lock_key": config.advisory_lock_key,

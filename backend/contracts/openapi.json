@@ -2723,6 +2723,20 @@
             },
             "description": "Successful Response"
           },
+          "410": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "ANALYSIS_JOB_GONE",
+                    "message": "Analysis job is no longer available.",
+                    "request_id": "req_123"
+                  }
+                }
+              }
+            },
+            "description": "Analysis job data was removed by privacy deletion or TTL retention."
+          },
           "422": {
             "content": {
               "application/json": {

@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Literal, TypeAlias, TypeVar
 import requests
@@ -33,6 +33,7 @@ from backend.modules.ops.cost_guardrail import (
     PostgresMonthlyUsageStorage,
 )
 from backend.modules.ops.data_retention import (
+    AnalysisJobsSensitivePayloadRetentionConfig,
     CallbackRetentionCleanupAdapter,
     InMemoryRetentionStore,
     JsonFileRetentionStore,
@@ -102,6 +103,7 @@ from backend.modules.auth.state_store import AuthStateStoreError, PostgresAuthSt
 from backend.modules.analysis_jobs import (
     AnalysisJobStoreError,
     AnalysisJobWorker,
+    PRIVACY_TOMBSTONE_ERROR_CODES,
     build_analysis_job_store_from_env,
     build_nutrition_cache_store_from_env,
     create_analysis_job_payload,
@@ -972,6 +974,8 @@ def _reset_runtime_state() -> None:
         "analysis_job_worker_heartbeat_task": None,
         "analysis_job_worker_started_at": None,
         "analysis_job_remote_worker_heartbeat_override": None,
+        "analysis_jobs_sensitive_payload_retention_config": None,
+        "analysis_jobs_ttl_scrub_store": None,
         "retention_policy": None,
         "retention_store": None,
         "retention_cleanup_job": None,
@@ -1162,6 +1166,23 @@ def _initialize_retention_runtime() -> None:
     )
 
 
+def _initialize_analysis_jobs_ttl_scrub_runtime() -> None:
+    retention_policy = getattr(app.state, "retention_policy", None)
+    if retention_policy is None:
+        raise RuntimeError("retention_policy must be initialized before analysis job TTL scrub runtime.")
+    config = AnalysisJobsSensitivePayloadRetentionConfig.from_env(os.environ.get, retention_policy)
+    app.state.analysis_jobs_sensitive_payload_retention_config = config
+    if not config.enabled:
+        app.state.analysis_jobs_ttl_scrub_store = None
+        return
+    existing_store = getattr(app.state, "analysis_job_store", None)
+    store = existing_store if existing_store is not None else build_analysis_job_store_from_env(os.environ.get)
+    initialize_schema = getattr(store, "initialize_schema", None)
+    if callable(initialize_schema):
+        initialize_schema()
+    app.state.analysis_jobs_ttl_scrub_store = store
+
+
 def _initialize_deletion_queue_runtime() -> None:
     database_url = _env_str("DATABASE_URL", "")
     deletion_queue_backend = _env_str("DELETION_QUEUE_BACKEND", "memory").lower()
@@ -1301,6 +1322,7 @@ async def _startup_runtime(process_role: str) -> None:
         _initialize_analysis_runtime()
 
     _initialize_retention_runtime()
+    _initialize_analysis_jobs_ttl_scrub_runtime()
 
     if normalized_role in {PROCESS_ROLE_WEB, PROCESS_ROLE_WORKER}:
         _initialize_deletion_queue_runtime()
@@ -3048,6 +3070,38 @@ async def _run_retention_cleanup_once() -> None:
             result.expired_count,
             result.deleted_count,
         )
+    await _run_analysis_jobs_ttl_scrub_once()
+
+
+async def _run_analysis_jobs_ttl_scrub_once() -> None:
+    config = getattr(app.state, "analysis_jobs_sensitive_payload_retention_config", None)
+    if config is None or not config.enabled:
+        return
+    store = getattr(app.state, "analysis_jobs_ttl_scrub_store", None)
+    if store is None:
+        raise RuntimeError("Analysis jobs TTL scrub store is unavailable.")
+    now = datetime.now(timezone.utc)
+    cutoff_at = now - timedelta(days=config.ttl_days)
+    started_at = time.perf_counter()
+    result = await run_in_threadpool(
+        store.scrub_expired_sensitive_payloads,
+        cutoff_at=cutoff_at,
+        scrubbed_at=now,
+        limit=config.batch_size,
+        dry_run=config.dry_run,
+    )
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "[Retention] analysis_jobs_ttl_scrub enabled=%s dry_run=%s days=%s batch_size=%s cutoff_at=%s target_count=%s scrubbed_count=%s duration_ms=%s",
+        True,
+        result.dry_run,
+        config.ttl_days,
+        config.batch_size,
+        result.cutoff_at.isoformat(),
+        result.target_count,
+        result.scrubbed_count,
+        duration_ms,
+    )
 
 
 async def _retention_cleanup_loop() -> None:
@@ -3956,6 +4010,20 @@ def _require_analysis_job_status_access(*, request: Request, request_id: str, re
         detail={
             "message": "Analysis job access is forbidden.",
             "code": "ANALYSIS_JOB_FORBIDDEN",
+            "request_id": request_id,
+        },
+    )
+
+
+def _raise_if_analysis_job_privacy_scrubbed(*, request_id: str, record: dict[str, Any]) -> None:
+    error_code = str(record.get("error_code") or "")
+    if error_code not in PRIVACY_TOMBSTONE_ERROR_CODES:
+        return
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "message": "Analysis job is no longer available.",
+            "code": "ANALYSIS_JOB_GONE",
             "request_id": request_id,
         },
     )
@@ -5249,7 +5317,26 @@ async def submit_analysis_job(
             _release_analysis_slot(endpoint="/analyze/jobs")
 
 
-@app.get("/analyze/jobs/{job_id}", response_model=AnalysisJobStatusResponseContract)
+@app.get(
+    "/analyze/jobs/{job_id}",
+    response_model=AnalysisJobStatusResponseContract,
+    responses={
+        410: {
+            "description": "Analysis job data was removed by privacy deletion or TTL retention.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": {
+                            "message": "Analysis job is no longer available.",
+                            "code": "ANALYSIS_JOB_GONE",
+                            "request_id": "req_123",
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_analysis_job_status(request: Request, job_id: str):
     request_id = _request_id(request)
     _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs/status", request_id=request_id)
@@ -5274,6 +5361,7 @@ async def get_analysis_job_status(request: Request, job_id: str):
                 "request_id": request_id,
             },
         )
+    _raise_if_analysis_job_privacy_scrubbed(request_id=request_id, record=record)
     _require_analysis_job_status_access(request=request, request_id=request_id, record=record)
     payload = _analysis_job_status_payload(record=record)
     logger.info(

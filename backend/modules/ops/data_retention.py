@@ -51,6 +51,34 @@ class RetentionPolicyConfig:
 
 
 @dataclass(frozen=True)
+class AnalysisJobsSensitivePayloadRetentionConfig:
+    enabled: bool
+    dry_run: bool
+    ttl_days: int
+    batch_size: int
+
+    @classmethod
+    def from_env(
+        cls,
+        env_getter: Callable[[str], str | None],
+        retention_policy: RetentionPolicyConfig,
+    ) -> "AnalysisJobsSensitivePayloadRetentionConfig":
+        return cls(
+            enabled=_env_bool(env_getter, "ANALYSIS_JOBS_TTL_SCRUB_ENABLED", False),
+            dry_run=_env_bool(env_getter, "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", True),
+            ttl_days=max(
+                1,
+                _env_int(
+                    env_getter,
+                    "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
+                    retention_policy.original_ttl_days,
+                ),
+            ),
+            batch_size=max(1, _env_int(env_getter, "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE", 100)),
+        )
+
+
+@dataclass(frozen=True)
 class RetentionRecord:
     record_id: str
     data_class: RetentionDataClass
@@ -400,6 +428,23 @@ def _coerce_optional_int(value: object) -> int | None:
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return None
+
+
+def _env_int(env_getter: Callable[[str], str | None], name: str, default: int) -> int:
+    raw = env_getter(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_bool(env_getter: Callable[[str], str | None], name: str, default: bool) -> bool:
+    raw = env_getter(name)
+    if raw is None:
+        return default
+    return raw.strip() == "1"
 
 
 def _load_connect():

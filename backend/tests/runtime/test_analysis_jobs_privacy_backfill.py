@@ -220,7 +220,7 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
                 connect_factory=_FakeConnectFactory(connection=_FakeConnection(cursor=cursor)),
             )
 
-    def test_user_data_deleted_rows_are_counted_as_skipped_for_rerun(self) -> None:
+    def test_privacy_tombstone_rows_are_counted_as_skipped_for_rerun(self) -> None:
         cursor = _FakeCursor(
             fetchone_results=[_auth_state_row(("usr_active",)), (0,), (0,), (3,)],
             fetchall_results=[[]],
@@ -233,6 +233,16 @@ class AnalysisJobsPrivacyBackfillTests(unittest.TestCase):
 
         self.assertEqual(result.counts["already_user_data_deleted"], {"target": 0, "scrubbed": 0, "skipped": 3})
         self.assertEqual(result.counts["total"], {"target": 0, "scrubbed": 0, "skipped": 3})
+        self.assertEqual(
+            result.criteria["already_user_data_deleted"]["error_codes"],
+            [
+                backfill.USER_DATA_DELETED_ERROR_CODE,
+                backfill.SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+            ],
+        )
+        all_params = tuple(param for call in cursor.calls for param in call.params)
+        self.assertIn(backfill.USER_DATA_DELETED_ERROR_CODE, all_params)
+        self.assertIn(backfill.SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE, all_params)
 
     def test_allow_empty_auth_state_override_targets_non_device_user_rows(self) -> None:
         cursor = _FakeCursor(

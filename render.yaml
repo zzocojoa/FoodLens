@@ -334,6 +334,14 @@ services:
         value: "90"
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
+        value: "0"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
+        value: "30"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
+        value: "100"
       - key: DELETION_QUEUE_BACKEND
         value: postgres
       - key: DELETION_QUEUE_TABLE
@@ -686,6 +694,14 @@ services:
         value: "90"
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
+        value: "0"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
+        value: "30"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
+        value: "100"
       - key: DELETION_QUEUE_BACKEND
         value: postgres
       - key: DELETION_QUEUE_TABLE
@@ -1038,6 +1054,14 @@ services:
         value: "90"
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
+        value: "0"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
+        value: "30"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
+        value: "100"
       - key: DELETION_QUEUE_BACKEND
         value: postgres
       - key: DELETION_QUEUE_TABLE
