@@ -69,7 +69,7 @@ jobs:
               "RENDER_ALLOWED_SERVICE_TYPES: web_service",
               "RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens",
               "RENDER_ALLOWED_SERVICE_BRANCHES: main",
-              "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: no",
+              'RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: "no"',
               "RENDER_DEPLOY_EXPECTED_COMMIT: $" + "{{ github.sha }}",
               "render_staging_deploy_trigger.py",
               "render_deploy_ready_gate.py",
