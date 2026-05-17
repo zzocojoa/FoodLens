@@ -27,6 +27,12 @@ DEFAULT_POLL_SECONDS = 10
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json"
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
 ALLOWED_SERVICE_PLANS_ENV = "RENDER_ALLOWED_SERVICE_PLANS"
+ALLOWED_SERVICE_NAMES_ENV = "RENDER_ALLOWED_SERVICE_NAMES"
+ALLOWED_SERVICE_TYPES_ENV = "RENDER_ALLOWED_SERVICE_TYPES"
+ALLOWED_SERVICE_REPOS_ENV = "RENDER_ALLOWED_SERVICE_REPOS"
+ALLOWED_SERVICE_BRANCHES_ENV = "RENDER_ALLOWED_SERVICE_BRANCHES"
+ALLOWED_SERVICE_AUTO_DEPLOY_ENV = "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY"
+EXPECTED_DEPLOY_ID_ENV = "RENDER_DEPLOY_EXPECTED_DEPLOY_ID"
 
 
 JsonRequester = Callable[[str, str, str], dict[str, object]]
@@ -69,6 +75,23 @@ def _split_csv(value: str) -> frozenset[str]:
     return frozenset(item.strip() for item in value.split(",") if item.strip())
 
 
+def _service_id_from_url(url: str) -> str | None:
+    if "/services/" not in url:
+        return None
+    candidate = url.split("/services/", 1)[1].split("/", 1)[0].strip()
+    if not candidate:
+        return None
+    return candidate.split("?", 1)[0]
+
+
+def _redact_render_api_detail(detail: str, url: str, api_key: str) -> str:
+    redacted = detail.replace(api_key, "[redacted]")
+    service_id = _service_id_from_url(url)
+    if service_id is not None:
+        redacted = redacted.replace(service_id, "[redacted-service]")
+    return redacted
+
+
 def _request_json(method: str, url: str, api_key: str) -> dict[str, object]:
     request = Request(
         url,
@@ -83,9 +106,15 @@ def _request_json(method: str, url: str, api_key: str) -> dict[str, object]:
             response_body = response.read().decode("utf-8")
     except HTTPError as error:
         error_body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Render API {method} failed with status {error.code}: {error_body[:300]}") from error
+        safe_body = _redact_render_api_detail(error_body[:300], url, api_key)
+        raise RuntimeError(f"Render API {method} request failed with status {error.code}: {safe_body}") from error
+    except TimeoutError as error:
+        raise RuntimeError(f"Render API {method} request timed out.") from error
     except URLError as error:
-        raise RuntimeError(f"Render API {method} failed: {error.reason}") from error
+        safe_reason = _redact_render_api_detail(str(error.reason), url, api_key)
+        raise RuntimeError(f"Render API {method} request failed: {safe_reason}") from error
+    if not response_body.strip():
+        return {}
     decoded = json.loads(response_body)
     if isinstance(decoded, list):
         return {"deploys": decoded}
@@ -108,10 +137,22 @@ def _extract_deploys(response: dict[str, object]) -> list[dict[str, object]]:
     return deploys
 
 
+def _deploy_payload(response: dict[str, object]) -> dict[str, object]:
+    deploy = response.get("deploy")
+    if isinstance(deploy, dict):
+        return deploy
+    return response
+
+
 def _list_deploys(api_key: str, service_id: str, request_json: JsonRequester) -> list[dict[str, object]]:
     query = urlencode({"limit": "20"})
     url = f"https://api.render.com/v1/services/{service_id}/deploys?{query}"
     return _extract_deploys(request_json("GET", url, api_key))
+
+
+def _retrieve_deploy(api_key: str, service_id: str, deploy_id: str, request_json: JsonRequester) -> dict[str, object]:
+    url = f"https://api.render.com/v1/services/{service_id}/deploys/{deploy_id}"
+    return _deploy_payload(request_json("GET", url, api_key))
 
 
 def _retrieve_service(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, object]:
@@ -121,11 +162,12 @@ def _retrieve_service(api_key: str, service_id: str, request_json: JsonRequester
 
 def _service_summary(service: dict[str, object]) -> dict[str, object]:
     return {
-        "name": service.get("name"),
-        "type": service.get("type"),
+        "auto_deploy": _service_auto_deploy(service),
         "branch": service.get("branch"),
-        "repo": service.get("repo"),
+        "name": service.get("name"),
         "plan": _service_plan(service),
+        "repo": service.get("repo"),
+        "type": service.get("type"),
     }
 
 
@@ -136,6 +178,15 @@ def _service_plan(service: dict[str, object]) -> str | None:
     plan = service.get("plan")
     if isinstance(plan, str):
         return plan
+    return None
+
+
+def _service_auto_deploy(service: dict[str, object]) -> str | None:
+    auto_deploy = service.get("autoDeploy")
+    if isinstance(auto_deploy, bool):
+        return "yes" if auto_deploy else "no"
+    if isinstance(auto_deploy, str) and auto_deploy.strip():
+        return auto_deploy.strip().lower()
     return None
 
 
@@ -150,6 +201,17 @@ def _forbidden_service_error(service: dict[str, object], forbidden_names: frozen
     return None
 
 
+def _allowed_service_error(service: dict[str, object], allowed_names: frozenset[str]) -> str | None:
+    if not allowed_names:
+        return None
+    service_name = service.get("name")
+    if not isinstance(service_name, str):
+        return "render_service_name_missing"
+    if service_name not in allowed_names:
+        return "disallowed_render_service"
+    return None
+
+
 def _service_plan_error(service: dict[str, object], allowed_plans: frozenset[str]) -> str | None:
     if not allowed_plans:
         return None
@@ -158,6 +220,50 @@ def _service_plan_error(service: dict[str, object], allowed_plans: frozenset[str
         return "render_service_plan_missing"
     if service_plan not in allowed_plans:
         return "disallowed_render_service_plan"
+    return None
+
+
+def _service_type_error(service: dict[str, object], allowed_types: frozenset[str]) -> str | None:
+    if not allowed_types:
+        return None
+    service_type = service.get("type")
+    if not isinstance(service_type, str):
+        return "render_service_type_missing"
+    if service_type not in allowed_types:
+        return "disallowed_render_service_type"
+    return None
+
+
+def _service_repo_error(service: dict[str, object], allowed_repos: frozenset[str]) -> str | None:
+    if not allowed_repos:
+        return None
+    service_repo = service.get("repo")
+    if not isinstance(service_repo, str):
+        return "render_service_repo_missing"
+    if service_repo not in allowed_repos:
+        return "disallowed_render_service_repo"
+    return None
+
+
+def _service_branch_error(service: dict[str, object], allowed_branches: frozenset[str]) -> str | None:
+    if not allowed_branches:
+        return None
+    service_branch = service.get("branch")
+    if not isinstance(service_branch, str):
+        return "render_service_branch_missing"
+    if service_branch not in allowed_branches:
+        return "disallowed_render_service_branch"
+    return None
+
+
+def _service_auto_deploy_error(service: dict[str, object], allowed_auto_deploy: frozenset[str]) -> str | None:
+    if not allowed_auto_deploy:
+        return None
+    service_auto_deploy = _service_auto_deploy(service)
+    if service_auto_deploy is None:
+        return "render_service_auto_deploy_missing"
+    if service_auto_deploy not in allowed_auto_deploy:
+        return "disallowed_render_service_auto_deploy"
     return None
 
 
@@ -222,6 +328,15 @@ def _matches_expected_commit(deploy: dict[str, object], expected_commit: str | N
     )
 
 
+def _matches_expected_deploy_id(deploy: dict[str, object], expected_deploy_id: str | None) -> bool:
+    if expected_deploy_id is None:
+        return True
+    deploy_id = deploy.get("id")
+    if not isinstance(deploy_id, str):
+        return False
+    return deploy_id == expected_deploy_id
+
+
 def _deploy_observation(deploy: dict[str, object]) -> dict[str, object]:
     return {
         "commit": _deploy_commit_id(deploy),
@@ -235,9 +350,14 @@ def _deploy_observation(deploy: dict[str, object]) -> dict[str, object]:
 
 def _deploy_timeout_error(
     expected_commit: str | None,
+    expected_deploy_id: str | None,
     latest_matching_deploy: dict[str, object] | None,
     latest_observed_deploy: dict[str, object] | None,
 ) -> str:
+    if expected_deploy_id is not None:
+        if latest_matching_deploy is not None:
+            return "expected_deploy_not_ready"
+        return "expected_deploy_not_found"
     if expected_commit is None:
         return "render_deploy_timed_out"
     if latest_matching_deploy is not None:
@@ -252,6 +372,7 @@ def _deploy_summary(
     status: str,
     passed: bool,
     expected_commit: str | None,
+    expected_deploy_id: str | None,
     latest_observed_deploy: dict[str, object] | None,
 ) -> dict[str, object]:
     selected = deploy or {}
@@ -268,6 +389,8 @@ def _deploy_summary(
     }
     if expected_commit is not None:
         summary["expected_commit"] = expected_commit
+    if expected_deploy_id is not None:
+        summary["expected_deploy_id"] = expected_deploy_id
     if latest_observed_deploy is not None and latest_observed_deploy is not deploy:
         summary["latest_observed_deploy"] = _deploy_observation(latest_observed_deploy)
     return summary
@@ -289,16 +412,30 @@ def run_gate(
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
+    allowed_names = _split_csv(env.get(ALLOWED_SERVICE_NAMES_ENV, ""))
     allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
+    allowed_types = _split_csv(env.get(ALLOWED_SERVICE_TYPES_ENV, ""))
+    allowed_repos = _split_csv(env.get(ALLOWED_SERVICE_REPOS_ENV, ""))
+    allowed_branches = _split_csv(env.get(ALLOWED_SERVICE_BRANCHES_ENV, ""))
+    allowed_auto_deploy = _split_csv(env.get(ALLOWED_SERVICE_AUTO_DEPLOY_ENV, "").lower())
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
     expected_commit = _expected_commit(env)
+    expected_deploy_id = (env.get(EXPECTED_DEPLOY_ID_ENV) or "").strip() or None
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds
 
-    if forbidden_names or allowed_plans:
+    if forbidden_names or allowed_names or allowed_plans or allowed_types or allowed_repos or allowed_branches or allowed_auto_deploy:
         service = _retrieve_service(api_key, service_id, request_json)
-        service_error = _forbidden_service_error(service, forbidden_names) or _service_plan_error(service, allowed_plans)
+        service_error = (
+            _forbidden_service_error(service, forbidden_names)
+            or _allowed_service_error(service, allowed_names)
+            or _service_plan_error(service, allowed_plans)
+            or _service_type_error(service, allowed_types)
+            or _service_repo_error(service, allowed_repos)
+            or _service_branch_error(service, allowed_branches)
+            or _service_auto_deploy_error(service, allowed_auto_deploy)
+        )
         if service_error is not None:
             _write_json(
                 summary_path,
@@ -314,11 +451,19 @@ def run_gate(
     latest_candidate: dict[str, object] | None = None
     latest_observed_candidate: dict[str, object] | None = None
     while True:
-        deploys = _list_deploys(api_key, service_id, request_json)
+        if expected_deploy_id is None:
+            deploys = _list_deploys(api_key, service_id, request_json)
+        else:
+            deploys = [_retrieve_deploy(api_key, service_id, expected_deploy_id, request_json)]
         observed_candidates = _candidate_deploys(deploys, min_created_at)
         if observed_candidates:
             latest_observed_candidate = observed_candidates[0]
-        candidates = [deploy for deploy in observed_candidates if _matches_expected_commit(deploy, expected_commit)]
+        candidates = [
+            deploy
+            for deploy in observed_candidates
+            if _matches_expected_deploy_id(deploy, expected_deploy_id)
+            and _matches_expected_commit(deploy, expected_commit)
+        ]
         if candidates:
             latest_candidate = candidates[0]
             status = str(latest_candidate.get("status") or "unknown")
@@ -327,26 +472,54 @@ def run_gate(
             if status == LIVE_STATUS:
                 _write_json(
                     summary_path,
-                    _deploy_summary(latest_candidate, status, True, expected_commit, latest_observed_candidate),
+                    _deploy_summary(
+                        latest_candidate,
+                        status,
+                        True,
+                        expected_commit,
+                        expected_deploy_id,
+                        latest_observed_candidate,
+                    ),
                 )
                 print("[RenderDeployReadyGate] Render deploy is live.")
                 return 0
             if status in FAILED_STATUSES:
                 _write_json(
                     summary_path,
-                    _deploy_summary(latest_candidate, status, False, expected_commit, latest_observed_candidate),
+                    _deploy_summary(
+                        latest_candidate,
+                        status,
+                        False,
+                        expected_commit,
+                        expected_deploy_id,
+                        latest_observed_candidate,
+                    ),
                 )
                 print(f"[RenderDeployReadyGate] Render deploy failed with status: {status}", file=sys.stderr)
                 return 1
         else:
-            if expected_commit is None:
+            if expected_deploy_id is not None:
+                print("[RenderDeployReadyGate] Waiting for the triggered Render deploy.")
+            elif expected_commit is None:
                 print("[RenderDeployReadyGate] Waiting for a Render deploy created after the workflow commit timestamp.")
             else:
                 print("[RenderDeployReadyGate] Waiting for a Render deploy matching the expected commit.")
 
         if clock() >= deadline:
-            summary = _deploy_summary(latest_candidate, "timed_out", False, expected_commit, latest_observed_candidate)
-            summary["error"] = _deploy_timeout_error(expected_commit, latest_candidate, latest_observed_candidate)
+            summary = _deploy_summary(
+                latest_candidate,
+                "timed_out",
+                False,
+                expected_commit,
+                expected_deploy_id,
+                latest_observed_candidate,
+            )
+            summary["error"] = _deploy_timeout_error(
+                expected_commit,
+                expected_deploy_id,
+                latest_candidate,
+                latest_observed_candidate,
+            )
             _write_json(summary_path, summary)
             print("[RenderDeployReadyGate] Timed out waiting for Render deploy readiness.", file=sys.stderr)
             return 1

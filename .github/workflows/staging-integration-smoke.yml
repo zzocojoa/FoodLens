@@ -5,13 +5,13 @@ on:
     branches:
       - main
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - "release/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: staging-integration-smoke-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   staging-integration-smoke-ref-guard:
@@ -40,22 +40,47 @@ jobs:
       - name: Validate staging smoke automation
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
           workflow = Path(".github/workflows/staging-integration-smoke.yml").read_text(encoding="utf-8")
+          def job_body(job_name):
+              marker = f"  {job_name}:\n"
+              start = workflow.index(marker) + len(marker)
+              next_job = re.search(r"\n  [A-Za-z0-9_-]+:\n", workflow[start:])
+              if next_job is None:
+                  return workflow[start:]
+              return workflow[start:start + next_job.start()]
+
+          deploy_job = job_body("staging-integration-smoke")
           required_markers = [
               "pull_request:",
+              "workflow_dispatch:",
+              "concurrency:",
+              "cancel-in-progress: true",
+          ]
+          deploy_job_markers = [
               "environment: staging",
-              "permissions:\n  contents: read",
               "secrets.STAGING_RENDER_API_KEY",
               "secrets.STAGING_RENDER_SERVICE_ID",
               "RENDER_FORBIDDEN_SERVICE_NAMES",
+              "RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging",
               "RENDER_ALLOWED_SERVICE_PLANS: free",
+              "RENDER_ALLOWED_SERVICE_TYPES: web_service",
+              "RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens",
+              "RENDER_ALLOWED_SERVICE_BRANCHES: main",
+              'RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: "no"',
+              "RENDER_DEPLOY_EXPECTED_COMMIT: $" + "{{ github.sha }}",
+              "render_staging_deploy_trigger.py",
               "render_deploy_ready_gate.py",
               "Scan staging smoke artifacts for secret leaks",
               "Upload staging smoke artifacts",
           ]
           missing_markers = [marker for marker in required_markers if marker not in workflow]
+          missing_deploy_job_markers = [marker for marker in deploy_job_markers if marker not in deploy_job]
+          if "permissions:\n  contents: read" not in workflow:
+              missing_markers.append("permissions: contents read")
+          missing_markers.extend(missing_deploy_job_markers)
           if missing_markers:
               raise SystemExit(f"Missing staging smoke workflow markers: {missing_markers}")
           forbidden_markers = [
@@ -64,16 +89,19 @@ jobs:
               "RENDER_" + "START_COMMAND",
               "RENDER_" + "JOB_LOG_PATH",
               "RENDER_" + "JOB_SUMMARY_PATH",
+              "\n  push:",
           ]
           present_forbidden_markers = [marker for marker in forbidden_markers if marker in workflow]
           if present_forbidden_markers:
               raise SystemExit(f"Forbidden paid staging smoke markers: {present_forbidden_markers}")
-          if workflow.index("Scan staging smoke artifacts for secret leaks") > workflow.index("Upload staging smoke artifacts"):
+          if deploy_job.index("Scan staging smoke artifacts for secret leaks") > deploy_job.index("Upload staging smoke artifacts"):
               raise SystemExit("Artifact upload must run after the secret scan.")
+          if deploy_job.index("Trigger Render staging deploy") > deploy_job.index("Wait for Render deploy readiness"):
+              raise SystemExit("Staging deploy must be triggered before readiness wait.")
           PY
 
   staging-integration-smoke:
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging
@@ -81,10 +109,17 @@ jobs:
       RENDER_API_KEY: ${{ secrets.STAGING_RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.STAGING_RENDER_SERVICE_ID }}
       RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api
+      RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging
       RENDER_ALLOWED_SERVICE_PLANS: free
+      RENDER_ALLOWED_SERVICE_TYPES: web_service
+      RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens
+      RENDER_ALLOWED_SERVICE_BRANCHES: main
+      RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: "no"
+      RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"
       RENDER_DEPLOY_POLL_SECONDS: "10"
+      RENDER_DEPLOY_TRIGGER_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-trigger-summary.json
       RENDER_DEPLOY_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json
 
     steps:
@@ -95,6 +130,9 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Trigger Render staging deploy
+        run: python .github/scripts/render_staging_deploy_trigger.py
 
       - name: Wait for Render deploy readiness
         run: python .github/scripts/render_deploy_ready_gate.py

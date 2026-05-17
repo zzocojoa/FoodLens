@@ -7,7 +7,7 @@
 - 기능을 빨리 넣는 것보다 "안정적으로 배포"하는 체계를 고정하는 단계입니다.
 - 한 번 정하면 계속 반복 사용할 운영 습관(게이트)을 만드는 것이 목표입니다.
 
-## 2) 현재 상태 (2026-04-30 기준)
+## 2) 현재 상태 (2026-05-17 기준)
 
 - Android release gate: **Go 승인 완료**
 - Android: Play Console 내부 테스트 수동 업로드 단계
@@ -102,8 +102,9 @@
     - workflow: `.github/workflows/staging-integration-smoke.yml`
     - PR 필수 컨텍스트: `staging-integration-smoke-pr-check`
     - PR에서는 workflow 구조, staging environment, Render secret 참조, artifact secret scan 순서를 검증
-    - main/release push에서는 Render deploy readiness 대기 후 one-off staging smoke 실행
-    - one-off smoke summary는 `media_delete`, `retention_retry`, `postgres_queue_crash_rehearsal` 로그 증적이 없으면 실패
+    - 실제 staging deploy는 main/release에서 수동 실행한 workflow_dispatch에서만 직접 트리거한다
+    - 수동 실행도 Render free build minutes를 사용하므로, 필요한 경우에만 실행하고 같은 ref의 중복 실행은 concurrency로 취소한다
+    - staging deploy trigger/readiness summary는 production service name, non-free plan, unexpected service name, service type/repo/branch/autoDeploy drift이면 실패
     - 증적 아티팩트: `artifacts/phase6/staging-integration-smoke/`
   - `release/**` 브랜치 ruleset을 적용:
     - 스크립트: `docs/scripts/apply_release_branch_ruleset.py`
@@ -157,7 +158,7 @@
   - [ ] mobile bundle/image/runtime performance gate 통과
   - [ ] mobile E2E release gate 통과 및 iOS/Android 실디바이스 증적 첨부
   - [ ] backend media performance regression baseline 비교 통과
-  - [ ] staging integration smoke PR 컨텍스트와 main/release push 증적 통과
+  - [ ] staging integration smoke PR 컨텍스트와 수동 workflow_dispatch 증적 통과
   - [ ] `release/**` branch ruleset 적용 및 필수 체크 목록 확인
   - [ ] 배포 후 smoke workflow 실행 경로 확정
   - [ ] rollout 단계값과 kill switch 값이 `render.yaml` / 런북 / smoke 증적에 일치
@@ -235,6 +236,6 @@
 
 ---
 
-문서 버전: v1.2
+문서 버전: v1.3
 연결 문서: [Master Plan](./master-plan.md), [API 계약 기준서](../contracts/api-contracts.md), [아키텍처 요약](../architecture-overview.md)
-최종 수정: 2026-04-30
+최종 수정: 2026-05-17
