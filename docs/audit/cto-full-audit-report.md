@@ -119,8 +119,8 @@
 
 | 항목     | 현재 상태                                                                       |
 | -------- | ------------------------------------------------------------------------------- |
-| **문제** | `/analyze`, `/analyze/label`, `/analyze/smart`에 per-user rate limit 없음       |
-| **조치** | `slowapi` 또는 Cloudflare Rate Limiting. IP + deviceId 기준 분당 10회 제한 권장 |
+| **문제** | 분석 API rate limit 우회 가능성. 비인증 요청에서 device id만 신뢰하면 rotation/spoofing으로 우회 가능 |
+| **조치** | `ANALYSIS_RATE_LIMIT_BACKEND=postgres` 기반 shared limiter를 사용하고, 비인증 요청은 IP + device, 인증 요청은 user + IP + device subject를 함께 평가 |
 
 ---
 

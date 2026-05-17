@@ -248,6 +248,43 @@
   - `detail.retry_scope`: 잠금 에러 코드
   - `detail.retryable_by_client`: `false`
 
+### F. 분석 API Rate Limit 계약
+
+- 대상:
+  - `POST /analyze`
+  - `POST /analyze/label`
+  - `POST /analyze/smart`
+  - `POST /analyze/jobs`
+  - `GET /analyze/jobs/{job_id}`
+  - `POST /lookup/barcode`
+- 운영 환경 변수:
+  - `ANALYSIS_RATE_LIMIT_ENABLED`
+  - `ANALYSIS_RATE_LIMIT_BACKEND`: `auto`, `memory`, `postgres`
+  - `ANALYSIS_RATE_LIMIT_TABLE`: Postgres backend table name
+  - endpoint별 `ANALYSIS_RATE_LIMIT_*_PER_MIN`
+- Render 운영 기본값:
+  - `ANALYSIS_RATE_LIMIT_BACKEND=postgres`
+  - `ANALYSIS_RATE_LIMIT_TABLE=analysis_rate_limit_events`
+- 저장 데이터:
+  - `analysis_rate_limit_events.subject`에는 `<scope>:<hmac_sha256(scope:value)>` 형식만 저장한다.
+  - 비인증 요청은 `ip`와 선택적 `device` subject를 함께 평가한다.
+  - 인증 요청은 `user` subject를 우선 포함하고 `ip`, 선택적 `device` subject도 함께 평가한다.
+  - 원본 client IP, device id, user id, access token은 저장하지 않는다.
+- 제한 초과 응답:
+  - HTTP Status: `429`
+  - Header: `Retry-After: <seconds>`
+  - `detail.code`: `API_RATE_LIMITED`
+  - `detail.retry_after_seconds`
+  - `detail.retry_scope`: 제한이 걸린 분석 endpoint
+  - `detail.retryable_by_client`: `true`
+- Postgres backend 장애 응답:
+  - HTTP Status: `503`
+  - Header: `Retry-After: 5`
+  - `detail.code`: `API_RATE_LIMIT_STORAGE_UNAVAILABLE`
+  - `detail.retry_after_seconds`: `5`
+  - `detail.retry_scope`: 제한 평가 대상 분석 endpoint
+  - `detail.retryable_by_client`: `true`
+
 ## 5) 사용자 데이터 API
 
 ### A. Profile / Allergies / Settings
