@@ -50,7 +50,10 @@ jobs:
               "secrets.STAGING_RENDER_API_KEY",
               "secrets.STAGING_RENDER_SERVICE_ID",
               "RENDER_FORBIDDEN_SERVICE_NAMES",
+              "RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging",
               "RENDER_ALLOWED_SERVICE_PLANS: free",
+              "RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}",
+              "render_staging_deploy_trigger.py",
               "render_deploy_ready_gate.py",
               "Scan staging smoke artifacts for secret leaks",
               "Upload staging smoke artifacts",
@@ -70,6 +73,8 @@ jobs:
               raise SystemExit(f"Forbidden paid staging smoke markers: {present_forbidden_markers}")
           if workflow.index("Scan staging smoke artifacts for secret leaks") > workflow.index("Upload staging smoke artifacts"):
               raise SystemExit("Artifact upload must run after the secret scan.")
+          if workflow.index("Trigger Render staging deploy") > workflow.index("Wait for Render deploy readiness"):
+              raise SystemExit("Staging deploy must be triggered before readiness wait.")
           PY
 
   staging-integration-smoke:
@@ -81,10 +86,13 @@ jobs:
       RENDER_API_KEY: ${{ secrets.STAGING_RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.STAGING_RENDER_SERVICE_ID }}
       RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api
+      RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging
       RENDER_ALLOWED_SERVICE_PLANS: free
+      RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"
       RENDER_DEPLOY_POLL_SECONDS: "10"
+      RENDER_DEPLOY_TRIGGER_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-trigger-summary.json
       RENDER_DEPLOY_SUMMARY_PATH: artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json
 
     steps:
@@ -95,6 +103,9 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Trigger Render staging deploy
+        run: python .github/scripts/render_staging_deploy_trigger.py
 
       - name: Wait for Render deploy readiness
         run: python .github/scripts/render_deploy_ready_gate.py

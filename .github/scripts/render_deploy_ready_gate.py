@@ -27,6 +27,8 @@ DEFAULT_POLL_SECONDS = 10
 DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-deploy-ready-summary.json"
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
 ALLOWED_SERVICE_PLANS_ENV = "RENDER_ALLOWED_SERVICE_PLANS"
+ALLOWED_SERVICE_NAMES_ENV = "RENDER_ALLOWED_SERVICE_NAMES"
+EXPECTED_DEPLOY_ID_ENV = "RENDER_DEPLOY_EXPECTED_DEPLOY_ID"
 
 
 JsonRequester = Callable[[str, str, str], dict[str, object]]
@@ -150,6 +152,17 @@ def _forbidden_service_error(service: dict[str, object], forbidden_names: frozen
     return None
 
 
+def _allowed_service_error(service: dict[str, object], allowed_names: frozenset[str]) -> str | None:
+    if not allowed_names:
+        return None
+    service_name = service.get("name")
+    if not isinstance(service_name, str):
+        return "render_service_name_missing"
+    if service_name not in allowed_names:
+        return "disallowed_render_service"
+    return None
+
+
 def _service_plan_error(service: dict[str, object], allowed_plans: frozenset[str]) -> str | None:
     if not allowed_plans:
         return None
@@ -222,6 +235,15 @@ def _matches_expected_commit(deploy: dict[str, object], expected_commit: str | N
     )
 
 
+def _matches_expected_deploy_id(deploy: dict[str, object], expected_deploy_id: str | None) -> bool:
+    if expected_deploy_id is None:
+        return True
+    deploy_id = deploy.get("id")
+    if not isinstance(deploy_id, str):
+        return False
+    return deploy_id == expected_deploy_id
+
+
 def _deploy_observation(deploy: dict[str, object]) -> dict[str, object]:
     return {
         "commit": _deploy_commit_id(deploy),
@@ -235,9 +257,14 @@ def _deploy_observation(deploy: dict[str, object]) -> dict[str, object]:
 
 def _deploy_timeout_error(
     expected_commit: str | None,
+    expected_deploy_id: str | None,
     latest_matching_deploy: dict[str, object] | None,
     latest_observed_deploy: dict[str, object] | None,
 ) -> str:
+    if expected_deploy_id is not None:
+        if latest_matching_deploy is not None:
+            return "expected_deploy_not_ready"
+        return "expected_deploy_not_found"
     if expected_commit is None:
         return "render_deploy_timed_out"
     if latest_matching_deploy is not None:
@@ -252,6 +279,7 @@ def _deploy_summary(
     status: str,
     passed: bool,
     expected_commit: str | None,
+    expected_deploy_id: str | None,
     latest_observed_deploy: dict[str, object] | None,
 ) -> dict[str, object]:
     selected = deploy or {}
@@ -268,6 +296,8 @@ def _deploy_summary(
     }
     if expected_commit is not None:
         summary["expected_commit"] = expected_commit
+    if expected_deploy_id is not None:
+        summary["expected_deploy_id"] = expected_deploy_id
     if latest_observed_deploy is not None and latest_observed_deploy is not deploy:
         summary["latest_observed_deploy"] = _deploy_observation(latest_observed_deploy)
     return summary
@@ -289,16 +319,22 @@ def run_gate(
     api_key = env["RENDER_API_KEY"]
     service_id = env["RENDER_SERVICE_ID"]
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
+    allowed_names = _split_csv(env.get(ALLOWED_SERVICE_NAMES_ENV, ""))
     allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
     min_created_at = _parse_timestamp(env["RENDER_DEPLOY_MIN_CREATED_AT"])
     expected_commit = _expected_commit(env)
+    expected_deploy_id = (env.get(EXPECTED_DEPLOY_ID_ENV) or "").strip() or None
     timeout_seconds = _positive_int_env(env, "RENDER_DEPLOY_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     poll_seconds = _positive_int_env(env, "RENDER_DEPLOY_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     deadline = clock() + timeout_seconds
 
-    if forbidden_names or allowed_plans:
+    if forbidden_names or allowed_names or allowed_plans:
         service = _retrieve_service(api_key, service_id, request_json)
-        service_error = _forbidden_service_error(service, forbidden_names) or _service_plan_error(service, allowed_plans)
+        service_error = (
+            _forbidden_service_error(service, forbidden_names)
+            or _allowed_service_error(service, allowed_names)
+            or _service_plan_error(service, allowed_plans)
+        )
         if service_error is not None:
             _write_json(
                 summary_path,
@@ -318,7 +354,12 @@ def run_gate(
         observed_candidates = _candidate_deploys(deploys, min_created_at)
         if observed_candidates:
             latest_observed_candidate = observed_candidates[0]
-        candidates = [deploy for deploy in observed_candidates if _matches_expected_commit(deploy, expected_commit)]
+        candidates = [
+            deploy
+            for deploy in observed_candidates
+            if _matches_expected_deploy_id(deploy, expected_deploy_id)
+            and _matches_expected_commit(deploy, expected_commit)
+        ]
         if candidates:
             latest_candidate = candidates[0]
             status = str(latest_candidate.get("status") or "unknown")
@@ -327,26 +368,54 @@ def run_gate(
             if status == LIVE_STATUS:
                 _write_json(
                     summary_path,
-                    _deploy_summary(latest_candidate, status, True, expected_commit, latest_observed_candidate),
+                    _deploy_summary(
+                        latest_candidate,
+                        status,
+                        True,
+                        expected_commit,
+                        expected_deploy_id,
+                        latest_observed_candidate,
+                    ),
                 )
                 print("[RenderDeployReadyGate] Render deploy is live.")
                 return 0
             if status in FAILED_STATUSES:
                 _write_json(
                     summary_path,
-                    _deploy_summary(latest_candidate, status, False, expected_commit, latest_observed_candidate),
+                    _deploy_summary(
+                        latest_candidate,
+                        status,
+                        False,
+                        expected_commit,
+                        expected_deploy_id,
+                        latest_observed_candidate,
+                    ),
                 )
                 print(f"[RenderDeployReadyGate] Render deploy failed with status: {status}", file=sys.stderr)
                 return 1
         else:
-            if expected_commit is None:
+            if expected_deploy_id is not None:
+                print("[RenderDeployReadyGate] Waiting for the triggered Render deploy.")
+            elif expected_commit is None:
                 print("[RenderDeployReadyGate] Waiting for a Render deploy created after the workflow commit timestamp.")
             else:
                 print("[RenderDeployReadyGate] Waiting for a Render deploy matching the expected commit.")
 
         if clock() >= deadline:
-            summary = _deploy_summary(latest_candidate, "timed_out", False, expected_commit, latest_observed_candidate)
-            summary["error"] = _deploy_timeout_error(expected_commit, latest_candidate, latest_observed_candidate)
+            summary = _deploy_summary(
+                latest_candidate,
+                "timed_out",
+                False,
+                expected_commit,
+                expected_deploy_id,
+                latest_observed_candidate,
+            )
+            summary["error"] = _deploy_timeout_error(
+                expected_commit,
+                expected_deploy_id,
+                latest_candidate,
+                latest_observed_candidate,
+            )
             _write_json(summary_path, summary)
             print("[RenderDeployReadyGate] Timed out waiting for Render deploy readiness.", file=sys.stderr)
             return 1

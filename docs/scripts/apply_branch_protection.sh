@@ -42,7 +42,7 @@ if ! curl --fail-with-body -L \
   exit 1
 fi
 
-# staging smoke는 PR에서는 설정/secret 누락을 검증하고, main/release push에서는 실제 Render one-off smoke를 실행한다.
+# staging smoke는 PR에서는 설정/secret 누락을 검증하고, main/release push에서는 free staging deploy readiness를 검증한다.
 echo "Checking default-branch workflow exists for required context: ${STAGING_SMOKE_PR_CONTEXT}"
 if ! curl --fail-with-body -L \
   -H "Accept: application/vnd.github+json" \
