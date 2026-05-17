@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from backend.modules.ops.data_retention import (
+    AnalysisJobsSensitivePayloadRetentionConfig,
     CallbackRetentionCleanupAdapter,
     InMemoryRetentionStore,
     JsonFileRetentionStore,
@@ -52,6 +53,34 @@ class DataRetentionTests(unittest.TestCase):
 
         self.assertEqual([item.record_id for item in expired_original], ["old-original"])
         self.assertEqual([item.record_id for item in expired_log], ["old-log"])
+
+    def test_analysis_jobs_ttl_scrub_config_defaults_to_disabled_dry_run(self) -> None:
+        config = AnalysisJobsSensitivePayloadRetentionConfig.from_env(
+            lambda _name: None,
+            RetentionPolicyConfig(original_ttl_days=45, derived_ttl_days=90, log_ttl_days=14),
+        )
+
+        self.assertFalse(config.enabled)
+        self.assertTrue(config.dry_run)
+        self.assertEqual(config.ttl_days, 45)
+        self.assertEqual(config.batch_size, 100)
+
+    def test_analysis_jobs_ttl_scrub_config_uses_env_with_minimums(self) -> None:
+        values = {
+            "ANALYSIS_JOBS_TTL_SCRUB_ENABLED": "1",
+            "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN": "0",
+            "ANALYSIS_JOBS_TTL_SCRUB_DAYS": "0",
+            "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE": "-5",
+        }
+        config = AnalysisJobsSensitivePayloadRetentionConfig.from_env(
+            values.get,
+            RetentionPolicyConfig(original_ttl_days=30, derived_ttl_days=90, log_ttl_days=14),
+        )
+
+        self.assertTrue(config.enabled)
+        self.assertFalse(config.dry_run)
+        self.assertEqual(config.ttl_days, 1)
+        self.assertEqual(config.batch_size, 1)
 
     def test_cleanup_run_once_deletes_only_expired(self) -> None:
         now = datetime(2026, 2, 14, tzinfo=timezone.utc)

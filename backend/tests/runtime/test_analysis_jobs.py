@@ -20,9 +20,13 @@ from backend.modules.analysis_jobs import (
     InMemoryNutritionCacheStore,
     PostgresAnalysisJobStore,
     NutritionEnrichmentService,
+    SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
     create_analysis_job_payload,
 )
 from backend.modules.ops.cost_guardrail import CostGuardrailService, InMemoryMonthlyUsageStorage
+from backend.modules.ops.data_retention import AnalysisJobsSensitivePayloadRetentionConfig
+from backend.modules.ops.data_retention import CleanupJobResult
+from backend.modules.ops.data_retention import RetentionDataClass
 from backend.modules.ops.rollout_control import KpiThresholds
 from backend.modules.server_bootstrap import decode_upload_to_image
 
@@ -34,6 +38,7 @@ os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
 from backend.server import app, resolve_prompt_country_code  # noqa: E402
 from backend.server import _analyze_food_job_image_with_policy  # noqa: E402
 from backend.server import _analyze_label_image_with_policy  # noqa: E402
+from backend.server import _run_retention_cleanup_once  # noqa: E402
 
 
 def _build_image_bytes() -> bytes:
@@ -102,6 +107,11 @@ class _RecordingCursor:
             return self.connection.fetch_rows.pop(0)
         return self.connection.row
 
+    def fetchall(self) -> list[tuple[object, ...]]:
+        if self.connection.fetchall_rows is not None:
+            return list(self.connection.fetchall_rows)
+        return [("job-postgres-ttl",)] * self.connection.rowcount
+
     @property
     def rowcount(self) -> int:
         return self.connection.rowcount
@@ -118,6 +128,7 @@ class _RecordingConnection:
         self.row = row
         self.rowcount = rowcount
         self.fetch_rows: list[tuple[object, ...] | None] = []
+        self.fetchall_rows: list[tuple[object, ...]] | None = None
         self.executed_sql: list[str] = []
         self.executed_params: list[tuple[object, ...] | None] = []
         self.commit_count = 0
@@ -324,7 +335,132 @@ class _IdempotencyRecordingJobStore:
         return dict(record)
 
 
+class _TtlScrubRecordingStore:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def scrub_expired_sensitive_payloads(
+        self,
+        *,
+        cutoff_at: datetime,
+        scrubbed_at: datetime,
+        limit: int,
+        dry_run: bool,
+    ) -> analysis_jobs.AnalysisJobsSensitivePayloadScrubResult:
+        self.calls.append(
+            {
+                "cutoff_at": cutoff_at,
+                "scrubbed_at": scrubbed_at,
+                "limit": limit,
+                "dry_run": dry_run,
+            }
+        )
+        return analysis_jobs.AnalysisJobsSensitivePayloadScrubResult(
+            target_count=3,
+            scrubbed_count=0 if dry_run else 3,
+            dry_run=dry_run,
+            cutoff_at=cutoff_at,
+            scrubbed_at=scrubbed_at,
+        )
+
+
+class _RetentionCleanupRecordingJob:
+    def __init__(self) -> None:
+        self.data_classes: list[RetentionDataClass] = []
+
+    def run_once(
+        self,
+        *,
+        data_class: RetentionDataClass,
+        now: datetime,
+        limit: int,
+    ) -> CleanupJobResult:
+        self.data_classes.append(data_class)
+        return CleanupJobResult(
+            scanned_count=0,
+            expired_count=0,
+            deleted_count=0,
+            data_class=data_class,
+        )
+
+
 class AnalysisJobRuntimeTests(unittest.TestCase):
+    def test_retention_pass_invokes_analysis_jobs_ttl_scrub_without_pii_logs(self) -> None:
+        store = _TtlScrubRecordingStore()
+        retention_job = _RetentionCleanupRecordingJob()
+        app.state.retention_cleanup_job = retention_job
+        app.state.analysis_jobs_ttl_scrub_store = store
+        app.state.analysis_jobs_sensitive_payload_retention_config = AnalysisJobsSensitivePayloadRetentionConfig(
+            enabled=True,
+            dry_run=True,
+            ttl_days=30,
+            batch_size=77,
+        )
+
+        with self.assertLogs("foodlens.api", level="INFO") as captured:
+            asyncio.run(_run_retention_cleanup_once())
+
+        self.assertEqual(
+            retention_job.data_classes,
+            [RetentionDataClass.ORIGINAL, RetentionDataClass.DERIVED, RetentionDataClass.LOG],
+        )
+        self.assertEqual(len(store.calls), 1)
+        self.assertEqual(store.calls[0]["limit"], 77)
+        self.assertTrue(store.calls[0]["dry_run"])
+        self.assertGreaterEqual((store.calls[0]["scrubbed_at"] - store.calls[0]["cutoff_at"]).days, 30)
+        log_output = "\n".join(captured.output)
+        self.assertIn("target_count=3", log_output)
+        self.assertIn("scrubbed_count=0", log_output)
+        self.assertNotIn("user-", log_output)
+        self.assertNotIn("image_base64", log_output)
+        self.assertNotIn("peanut", log_output)
+
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_poll_ttl_scrubbed_job_returns_gone(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        accepted_at = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        with TestClient(app) as client:
+            store = app.state.analysis_job_store
+            store.submit_job(
+                job_id="job-ttl-gone",
+                user_id="user-ttl-gone",
+                idempotency_key="ttl-gone-key",
+                request_id="req-ttl-gone",
+                mode="food",
+                allergy_info="peanut",
+                iso_country_code="US",
+                locale="en-US",
+                content_type="image/jpeg",
+                image_base64="Z29uZQ==",
+                image_sha256="gone-sha256",
+                accepted_at=accepted_at,
+                poll_after_ms=1000,
+            )
+            store.scrub_expired_sensitive_payloads(
+                cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+                scrubbed_at=datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc),
+                limit=100,
+                dry_run=False,
+            )
+
+            response = client.get("/analyze/jobs/job-ttl-gone", headers={"X-Request-Id": "req-ttl-gone-poll"})
+
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.json()["detail"]["code"], "ANALYSIS_JOB_GONE")
+
+    def test_analysis_job_poll_openapi_documents_privacy_gone_response(self) -> None:
+        route = app.openapi()["paths"]["/analyze/jobs/{job_id}"]["get"]
+
+        self.assertIn("410", route["responses"])
+        self.assertEqual(
+            route["responses"]["410"]["content"]["application/json"]["example"]["detail"]["code"],
+            "ANALYSIS_JOB_GONE",
+        )
+
     def _build_worker(self) -> AnalysisJobWorker:
         return AnalysisJobWorker(
             store=app.state.analysis_job_store,
@@ -966,6 +1102,212 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(retained_after_scrub["image_sha256"], retained_record["image_sha256"])
         self.assertEqual(deleted_record["allergy_info"], "peanut, shellfish")
 
+    def test_in_memory_job_store_ttl_scrubs_expired_sensitive_payloads(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        now = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+        old_at = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fresh_at = datetime(2026, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        old_record = store.submit_job(
+            job_id="job-old-sensitive",
+            user_id="user-old",
+            idempotency_key="old-key",
+            request_id="req-old-sensitive",
+            mode="food",
+            allergy_info="peanut",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="b2xkLWltYWdl",
+            image_sha256="old-sha256",
+            accepted_at=old_at,
+            poll_after_ms=1000,
+        )
+        fresh_record = store.submit_job(
+            job_id="job-fresh-sensitive",
+            user_id="user-fresh",
+            idempotency_key="fresh-key",
+            request_id="req-fresh-sensitive",
+            mode="food",
+            allergy_info="shellfish",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="ZnJlc2gtaW1hZ2U=",
+            image_sha256="fresh-sha256",
+            accepted_at=fresh_at,
+            poll_after_ms=1000,
+        )
+        store.update_job(
+            job_id="job-old-sensitive",
+            updates={
+                "status": "completed",
+                "result_json": {"foodName": "Private Old Meal"},
+                "updated_at": old_at,
+            },
+        )
+        store.update_job(
+            job_id="job-fresh-sensitive",
+            updates={
+                "status": "completed",
+                "result_json": {"foodName": "Private Fresh Meal"},
+                "updated_at": fresh_at,
+            },
+        )
+
+        result = store.scrub_expired_sensitive_payloads(
+            cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+            scrubbed_at=now,
+            limit=100,
+            dry_run=False,
+        )
+
+        scrubbed_record = store.get_job(job_id="job-old-sensitive")
+        retained_record = store.get_job(job_id="job-fresh-sensitive")
+        self.assertEqual(result.target_count, 1)
+        self.assertEqual(result.scrubbed_count, 1)
+        assert scrubbed_record is not None
+        assert retained_record is not None
+        self.assertIsNone(scrubbed_record["user_id"])
+        self.assertIsNone(scrubbed_record["idempotency_key"])
+        self.assertEqual(scrubbed_record["status"], "failed")
+        self.assertEqual(scrubbed_record["allergy_info"], "")
+        self.assertEqual(scrubbed_record["image_base64"], "")
+        self.assertEqual(scrubbed_record["image_sha256"], "")
+        self.assertIsNone(scrubbed_record["result_json"])
+        self.assertEqual(scrubbed_record["error_code"], SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE)
+        self.assertEqual(scrubbed_record["updated_at"], now)
+        self.assertEqual(retained_record["user_id"], fresh_record["user_id"])
+        self.assertEqual(retained_record["idempotency_key"], fresh_record["idempotency_key"])
+        self.assertEqual(retained_record["allergy_info"], fresh_record["allergy_info"])
+        self.assertEqual(retained_record["image_base64"], fresh_record["image_base64"])
+        self.assertEqual(retained_record["image_sha256"], fresh_record["image_sha256"])
+        self.assertEqual(retained_record["result_json"], {"foodName": "Private Fresh Meal"})
+        self.assertEqual(old_record["allergy_info"], "peanut")
+
+    def test_in_memory_job_store_ttl_skips_active_worker_lease(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        accepted_at = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+        store.submit_job(
+            job_id="job-active-ttl-sensitive",
+            user_id="user-active",
+            idempotency_key="active-key",
+            request_id="req-active-ttl-sensitive",
+            mode="food",
+            allergy_info="peanut",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="YWN0aXZlLWltYWdl",
+            image_sha256="active-sha256",
+            accepted_at=accepted_at,
+            poll_after_ms=1000,
+        )
+        claimed = store.claim_next_job(
+            worker_id="worker-active",
+            lease_seconds=120,
+            now=scrubbed_at,
+        )
+
+        result = store.scrub_expired_sensitive_payloads(
+            cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+            scrubbed_at=scrubbed_at,
+            limit=100,
+            dry_run=False,
+        )
+
+        retained_record = store.get_job(job_id="job-active-ttl-sensitive")
+        self.assertEqual(result.target_count, 0)
+        self.assertEqual(result.scrubbed_count, 0)
+        assert claimed is not None
+        assert retained_record is not None
+        self.assertEqual(retained_record["worker_id"], "worker-active")
+        self.assertEqual(retained_record["allergy_info"], "peanut")
+        self.assertEqual(retained_record["image_base64"], "YWN0aXZlLWltYWdl")
+        self.assertIsNone(retained_record["error_code"])
+
+    def test_in_memory_job_store_ttl_dry_run_does_not_mutate_jobs(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        accepted_at = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        store.submit_job(
+            job_id="job-ttl-dry-run",
+            user_id="user-dry-run",
+            idempotency_key="dry-run-key",
+            request_id="req-ttl-dry-run",
+            mode="food",
+            allergy_info="milk",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="ZHJ5LXJ1bg==",
+            image_sha256="dry-run-sha256",
+            accepted_at=accepted_at,
+            poll_after_ms=1000,
+        )
+        store.update_job(
+            job_id="job-ttl-dry-run",
+            updates={
+                "status": "completed",
+                "result_json": {"foodName": "Private Dry Run Meal"},
+                "updated_at": accepted_at,
+            },
+        )
+        before = store.get_job(job_id="job-ttl-dry-run")
+
+        result = store.scrub_expired_sensitive_payloads(
+            cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+            scrubbed_at=datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc),
+            limit=100,
+            dry_run=True,
+        )
+        after = store.get_job(job_id="job-ttl-dry-run")
+
+        self.assertEqual(result.target_count, 1)
+        self.assertEqual(result.scrubbed_count, 0)
+        self.assertEqual(after, before)
+
+    def test_in_memory_job_store_rejects_resurrecting_ttl_scrubbed_payloads(self) -> None:
+        store = InMemoryAnalysisJobStore()
+        accepted_at = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+        store.submit_job(
+            job_id="job-ttl-race",
+            user_id="user-ttl-race",
+            idempotency_key="ttl-race-key",
+            request_id="req-ttl-race",
+            mode="food",
+            allergy_info="peanut",
+            iso_country_code="US",
+            locale="en-US",
+            content_type="image/jpeg",
+            image_base64="cmFjZQ==",
+            image_sha256="race-sha256",
+            accepted_at=accepted_at,
+            poll_after_ms=1000,
+        )
+        store.scrub_expired_sensitive_payloads(
+            cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+            scrubbed_at=scrubbed_at,
+            limit=100,
+            dry_run=False,
+        )
+
+        update_result = store.update_job(
+            job_id="job-ttl-race",
+            updates={
+                "status": "completed",
+                "result_json": {"foodName": "Private Race Meal"},
+                "allergy_info": "peanut",
+                "image_base64": "cmVzdXJyZWN0ZWQ=",
+            },
+        )
+
+        self.assertEqual(update_result["status"], "failed")
+        self.assertEqual(update_result["error_code"], SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE)
+        self.assertEqual(update_result["allergy_info"], "")
+        self.assertEqual(update_result["image_base64"], "")
+        self.assertIsNone(update_result["result_json"])
+
     def test_in_memory_job_store_rejects_resurrecting_scrubbed_user_data(self) -> None:
         store = InMemoryAnalysisJobStore()
         scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
@@ -1039,6 +1381,82 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
             ("2026-05-16T12:00:00Z", "USER_DATA_DELETED", "user-postgres"),
         )
 
+    def test_postgres_analysis_job_store_ttl_scrubs_expired_sensitive_payloads(self) -> None:
+        row = _analysis_job_row("job_postgres_ttl_scrub")
+        connection = _RecordingConnection(row=row, rowcount=2)
+        connection.fetchall_rows = [("job-postgres-ttl-1",), ("job-postgres-ttl-2",)]
+        connect = _RecordingConnect(connection)
+        cutoff_at = datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc)
+        scrubbed_at = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+        with patch.object(analysis_jobs, "_load_connect", return_value=connect):
+            store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
+            result = store.scrub_expired_sensitive_payloads(
+                cutoff_at=cutoff_at,
+                scrubbed_at=scrubbed_at,
+                limit=50,
+                dry_run=False,
+            )
+
+        ttl_statements = [
+            sql for sql in connection.executed_sql if sql.startswith("WITH candidate AS")
+        ]
+        self.assertEqual(result.target_count, 2)
+        self.assertEqual(result.scrubbed_count, 2)
+        self.assertEqual(len(ttl_statements), 1)
+        self.assertIn("accepted_at <= %s::timestamptz", ttl_statements[0])
+        self.assertIn(
+            "worker_id IS NULL OR lease_expires_at IS NULL OR lease_expires_at <= %s::timestamptz",
+            ttl_statements[0],
+        )
+        self.assertIn("COALESCE(error_code, '') NOT IN (%s, %s)", ttl_statements[0])
+        self.assertIn("FOR UPDATE SKIP LOCKED", ttl_statements[0])
+        self.assertIn("LIMIT %s", ttl_statements[0])
+        self.assertIn("user_id = NULL", ttl_statements[0])
+        self.assertIn("idempotency_key = NULL", ttl_statements[0])
+        self.assertIn("allergy_info = ''", ttl_statements[0])
+        self.assertIn("image_base64 = ''", ttl_statements[0])
+        self.assertIn("image_sha256 = ''", ttl_statements[0])
+        self.assertIn("result_json = NULL", ttl_statements[0])
+        self.assertEqual(
+            connection.executed_params[-1],
+            (
+                "2026-04-16T12:00:00Z",
+                "2026-05-16T12:00:00Z",
+                "USER_DATA_DELETED",
+                SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+                50,
+                "2026-05-16T12:00:00Z",
+                SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+            ),
+        )
+
+    def test_postgres_analysis_job_store_ttl_dry_run_uses_select_without_update(self) -> None:
+        row = _analysis_job_row("job_postgres_ttl_dry_run")
+        connection = _RecordingConnection(row=row, rowcount=1)
+        connection.fetchall_rows = [("job-postgres-ttl-dry-run",)]
+        connect = _RecordingConnect(connection)
+
+        with patch.object(analysis_jobs, "_load_connect", return_value=connect):
+            store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
+            result = store.scrub_expired_sensitive_payloads(
+                cutoff_at=datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc),
+                scrubbed_at=datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc),
+                limit=25,
+                dry_run=True,
+            )
+
+        self.assertEqual(result.target_count, 1)
+        self.assertEqual(result.scrubbed_count, 0)
+        dry_run_statements = [sql for sql in connection.executed_sql if sql.startswith("SELECT job_id FROM analysis_jobs")]
+        self.assertEqual(len(dry_run_statements), 1)
+        self.assertIn(
+            "worker_id IS NULL OR lease_expires_at IS NULL OR lease_expires_at <= %s::timestamptz",
+            dry_run_statements[0],
+        )
+        self.assertFalse(any(sql.startswith("WITH candidate AS") for sql in connection.executed_sql))
+        self.assertFalse(any(sql.startswith("UPDATE analysis_jobs") for sql in connection.executed_sql))
+
     def test_postgres_analysis_job_store_rejects_invalid_update_column(self) -> None:
         with patch.object(analysis_jobs, "_load_connect") as load_connect:
             store = PostgresAnalysisJobStore(database_url="postgresql://example", table_name="analysis_jobs")
@@ -1084,7 +1502,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(update_result["allergy_info"], "")
         self.assertEqual(update_result["image_base64"], "")
         self.assertIsNone(update_result["result_json"])
-        self.assertTrue(any("COALESCE(error_code, '') <> %s" in sql for sql in connection.executed_sql))
+        self.assertTrue(any("COALESCE(error_code, '') NOT IN (%s, %s)" in sql for sql in connection.executed_sql))
 
     def test_postgres_analysis_job_store_initializes_schema_once(self) -> None:
         row = _analysis_job_row("job_postgres_1")
@@ -1144,7 +1562,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertTrue(any(sql.startswith("SELECT job_id") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("WITH candidate AS") for sql in connection.executed_sql))
         self.assertTrue(any(sql.startswith("UPDATE analysis_jobs SET") for sql in connection.executed_sql))
-        self.assertTrue(any("COALESCE(error_code, '') <> %s" in sql for sql in connection.executed_sql))
+        self.assertTrue(any("COALESCE(error_code, '') NOT IN (%s, %s)" in sql for sql in connection.executed_sql))
 
 
 if __name__ == "__main__":

@@ -238,6 +238,7 @@ class ProcessRoleRuntimeTests(unittest.TestCase):
             patch("backend.server._initialize_auth_and_media_runtime"),
             patch("backend.server._initialize_analysis_runtime"),
             patch("backend.server._initialize_retention_runtime"),
+            patch("backend.server._initialize_analysis_jobs_ttl_scrub_runtime"),
             patch("backend.server._initialize_deletion_queue_runtime"),
             patch("backend.server._initialize_core_runtime_services"),
             patch("backend.server._initialize_api_runtime_controls"),

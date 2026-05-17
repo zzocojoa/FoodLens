@@ -22,6 +22,10 @@ logger = logging.getLogger("foodlens.analysis_jobs")
 
 TERMINAL_JOB_STATUSES = {"completed", "fallback_completed", "failed"}
 USER_DATA_DELETED_ERROR_CODE = "USER_DATA_DELETED"
+SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE = "ANALYSIS_JOB_TTL_SCRUBBED"
+PRIVACY_TOMBSTONE_ERROR_CODES: frozenset[str] = frozenset(
+    (USER_DATA_DELETED_ERROR_CODE, SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE)
+)
 PROGRESS_HINTS = {
     "queued": "queued",
     "preprocessing": "preprocessing_image",
@@ -124,6 +128,16 @@ class AnalysisJobStore(Protocol):
     def scrub_jobs_for_user(self, *, user_id: str, scrubbed_at: datetime) -> int:
         ...
 
+    def scrub_expired_sensitive_payloads(
+        self,
+        *,
+        cutoff_at: datetime,
+        scrubbed_at: datetime,
+        limit: int,
+        dry_run: bool,
+    ) -> "AnalysisJobsSensitivePayloadScrubResult":
+        ...
+
 
 class NutritionCacheStore(Protocol):
     def get(self, *, cache_key: str) -> dict[str, Any] | None:
@@ -154,6 +168,15 @@ class NutritionEnrichmentOutcome:
     cache_hit_count: int
     live_hit_count: int
     fallback_reason: str | None
+
+
+@dataclass(frozen=True)
+class AnalysisJobsSensitivePayloadScrubResult:
+    target_count: int
+    scrubbed_count: int
+    dry_run: bool
+    cutoff_at: datetime
+    scrubbed_at: datetime
 
 
 @dataclass
@@ -645,7 +668,7 @@ class InMemoryAnalysisJobStore:
             existing = self._jobs.get(job_id)
             if existing is None:
                 raise AnalysisJobStoreError(f"Job not found: {job_id}")
-            if _is_user_data_deleted_record(record=existing):
+            if _is_privacy_tombstone_record(record=existing):
                 return _copy_job_record(existing)
             merged = dict(existing)
             merged.update(updates)
@@ -666,6 +689,39 @@ class InMemoryAnalysisJobStore:
                     scrubbed_at=scrubbed_at,
                 )
             return len(matching_job_ids)
+
+    def scrub_expired_sensitive_payloads(
+        self,
+        *,
+        cutoff_at: datetime,
+        scrubbed_at: datetime,
+        limit: int,
+        dry_run: bool,
+    ) -> AnalysisJobsSensitivePayloadScrubResult:
+        effective_limit = max(0, limit)
+        with self._lock:
+            eligible_job_ids = [
+                job_id
+                for job_id, record in sorted(self._jobs.items(), key=lambda item: item[1]["accepted_at"])
+                if _is_analysis_job_sensitive_payload_ttl_eligible(
+                    record=record,
+                    cutoff_at=cutoff_at,
+                    scrubbed_at=scrubbed_at,
+                )
+            ][:effective_limit]
+            if not dry_run:
+                for job_id in eligible_job_ids:
+                    self._jobs[job_id] = _scrub_analysis_job_sensitive_payload_record(
+                        record=self._jobs[job_id],
+                        scrubbed_at=scrubbed_at,
+                    )
+            return AnalysisJobsSensitivePayloadScrubResult(
+                target_count=len(eligible_job_ids),
+                scrubbed_count=0 if dry_run else len(eligible_job_ids),
+                dry_run=dry_run,
+                cutoff_at=cutoff_at,
+                scrubbed_at=scrubbed_at,
+            )
 
 
 @dataclass(slots=True)
@@ -904,13 +960,14 @@ class PostgresAnalysisJobStore:
 
         values.append(job_id)
         values.append(USER_DATA_DELETED_ERROR_CODE)
+        values.append(SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE)
         try:
             with connect(self.database_url, autocommit=True) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
                             f"UPDATE {self.table_name} SET {', '.join(fields)} "
-                            "WHERE job_id = %s AND COALESCE(error_code, '') <> %s "
+                            "WHERE job_id = %s AND COALESCE(error_code, '') NOT IN (%s, %s) "
                             f"RETURNING {ANALYSIS_JOB_ROW_COLUMNS_SQL}"
                         ),
                         tuple(values),
@@ -918,7 +975,7 @@ class PostgresAnalysisJobStore:
                     row = cursor.fetchone()
                     if row is None:
                         existing = self.get_job(job_id=job_id)
-                        if existing is not None and _is_user_data_deleted_record(record=existing):
+                        if existing is not None and _is_privacy_tombstone_record(record=existing):
                             return existing
                         raise AnalysisJobStoreError(f"Job not found: {job_id}")
                     return _record_from_row(row)
@@ -957,6 +1014,114 @@ class PostgresAnalysisJobStore:
             raise AnalysisJobStoreError(
                 f"Failed to scrub analysis jobs for user_id={normalized_user_id}: {error}"
             ) from error
+
+    def scrub_expired_sensitive_payloads(
+        self,
+        *,
+        cutoff_at: datetime,
+        scrubbed_at: datetime,
+        limit: int,
+        dry_run: bool,
+    ) -> AnalysisJobsSensitivePayloadScrubResult:
+        self.initialize_schema()
+        effective_limit = max(0, limit)
+        if effective_limit == 0:
+            return AnalysisJobsSensitivePayloadScrubResult(
+                target_count=0,
+                scrubbed_count=0,
+                dry_run=dry_run,
+                cutoff_at=cutoff_at,
+                scrubbed_at=scrubbed_at,
+            )
+        connect = _load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                with conn.cursor() as cursor:
+                    if dry_run:
+                        cursor.execute(
+                            (
+                                f"SELECT job_id FROM {self.table_name} "
+                                "WHERE accepted_at <= %s::timestamptz "
+                                "AND (worker_id IS NULL OR lease_expires_at IS NULL OR lease_expires_at <= %s::timestamptz) "
+                                "AND COALESCE(error_code, '') NOT IN (%s, %s) "
+                                "AND ("
+                                "user_id IS NOT NULL OR "
+                                "idempotency_key IS NOT NULL OR "
+                                "allergy_info <> '' OR "
+                                "image_base64 <> '' OR "
+                                "image_sha256 <> '' OR "
+                                "result_json IS NOT NULL"
+                                ") "
+                                "ORDER BY accepted_at ASC "
+                                "LIMIT %s"
+                            ),
+                            (
+                                _to_iso(cutoff_at),
+                                _to_iso(scrubbed_at),
+                                USER_DATA_DELETED_ERROR_CODE,
+                                SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+                                effective_limit,
+                            ),
+                        )
+                    else:
+                        cursor.execute(
+                            (
+                                "WITH candidate AS ("
+                                f" SELECT job_id FROM {self.table_name} "
+                                " WHERE accepted_at <= %s::timestamptz "
+                                " AND (worker_id IS NULL OR lease_expires_at IS NULL OR lease_expires_at <= %s::timestamptz) "
+                                " AND COALESCE(error_code, '') NOT IN (%s, %s) "
+                                " AND ("
+                                " user_id IS NOT NULL OR "
+                                " idempotency_key IS NOT NULL OR "
+                                " allergy_info <> '' OR "
+                                " image_base64 <> '' OR "
+                                " image_sha256 <> '' OR "
+                                " result_json IS NOT NULL"
+                                " ) "
+                                " ORDER BY accepted_at ASC "
+                                " LIMIT %s "
+                                " FOR UPDATE SKIP LOCKED"
+                                ") "
+                                f"UPDATE {self.table_name} AS jobs SET "
+                                "user_id = NULL, "
+                                "idempotency_key = NULL, "
+                                "status = 'failed', "
+                                "allergy_info = '', "
+                                "image_base64 = '', "
+                                "image_sha256 = '', "
+                                "result_json = NULL, "
+                                "lease_expires_at = NULL, "
+                                "worker_id = NULL, "
+                                "updated_at = %s::timestamptz, "
+                                "fallback_reason = NULL, "
+                                "error_code = %s, "
+                                "error_message = NULL "
+                                "FROM candidate "
+                                "WHERE jobs.job_id = candidate.job_id "
+                                "RETURNING jobs.job_id"
+                            ),
+                            (
+                                _to_iso(cutoff_at),
+                                _to_iso(scrubbed_at),
+                                USER_DATA_DELETED_ERROR_CODE,
+                                SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+                                effective_limit,
+                                _to_iso(scrubbed_at),
+                                SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+                            ),
+                        )
+                    rows = cursor.fetchall()
+                    target_count = len(rows)
+            return AnalysisJobsSensitivePayloadScrubResult(
+                target_count=target_count,
+                scrubbed_count=0 if dry_run else target_count,
+                dry_run=dry_run,
+                cutoff_at=cutoff_at,
+                scrubbed_at=scrubbed_at,
+            )
+        except Exception as error:
+            raise AnalysisJobStoreError(f"Failed to scrub expired analysis job sensitive payloads: {error}") from error
 
     def _ensure_table(self, conn: object) -> None:
         with conn.cursor() as cursor:
@@ -1457,8 +1622,67 @@ def _scrub_analysis_job_record(*, record: dict[str, Any], scrubbed_at: datetime)
     return scrubbed
 
 
-def _is_user_data_deleted_record(*, record: dict[str, Any]) -> bool:
-    return str(record.get("error_code") or "") == USER_DATA_DELETED_ERROR_CODE
+def _scrub_analysis_job_sensitive_payload_record(*, record: dict[str, Any], scrubbed_at: datetime) -> dict[str, Any]:
+    scrubbed = _copy_job_record(record)
+    scrubbed.update(
+        {
+            "user_id": None,
+            "idempotency_key": None,
+            "status": "failed",
+            "allergy_info": "",
+            "image_base64": "",
+            "image_sha256": "",
+            "result_json": None,
+            "lease_expires_at": None,
+            "worker_id": None,
+            "updated_at": scrubbed_at,
+            "fallback_reason": None,
+            "error_code": SENSITIVE_PAYLOAD_TTL_SCRUBBED_ERROR_CODE,
+            "error_message": None,
+            "idempotency_reused": False,
+        }
+    )
+    return scrubbed
+
+
+def _is_analysis_job_sensitive_payload_ttl_eligible(
+    *,
+    record: dict[str, Any],
+    cutoff_at: datetime,
+    scrubbed_at: datetime,
+) -> bool:
+    accepted_at = _coerce_analysis_job_datetime(record.get("accepted_at"))
+    if accepted_at > cutoff_at:
+        return False
+    if _is_privacy_tombstone_record(record=record):
+        return False
+    lease_expires_at = record.get("lease_expires_at")
+    if record.get("worker_id") and lease_expires_at is not None:
+        if _coerce_analysis_job_datetime(lease_expires_at) > scrubbed_at:
+            return False
+    return (
+        record.get("user_id") is not None
+        or record.get("idempotency_key") is not None
+        or str(record.get("allergy_info") or "") != ""
+        or str(record.get("image_base64") or "") != ""
+        or str(record.get("image_sha256") or "") != ""
+        or record.get("result_json") is not None
+    )
+
+
+def _is_privacy_tombstone_record(*, record: dict[str, Any]) -> bool:
+    return str(record.get("error_code") or "") in PRIVACY_TOMBSTONE_ERROR_CODES
+
+
+def _coerce_analysis_job_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _load_connect():

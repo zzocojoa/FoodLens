@@ -322,6 +322,10 @@ def main() -> None:
         "RETENTION_ORIGINAL_TTL_DAYS",
         "RETENTION_DERIVED_TTL_DAYS",
         "RETENTION_LOG_TTL_DAYS",
+        "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
+        "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
+        "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
+        "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE",
         "DELETION_QUEUE_BACKEND",
         "DELETION_QUEUE_TABLE",
         "DELETION_STATUS_TABLE",
@@ -416,6 +420,10 @@ def main() -> None:
         "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "3",
         "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "3",
         "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "3",
+        "ANALYSIS_JOBS_TTL_SCRUB_ENABLED": "0",
+        "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN": "1",
+        "ANALYSIS_JOBS_TTL_SCRUB_DAYS": "30",
+        "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE": "100",
     }
     for service in (web, worker, cron):
         for key, value in fixed_env_expected_values.items():
@@ -466,6 +474,10 @@ def main() -> None:
         "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "3",
         "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "3",
         "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "3",
+        "ANALYSIS_JOBS_TTL_SCRUB_ENABLED": "0",
+        "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN": "1",
+        "ANALYSIS_JOBS_TTL_SCRUB_DAYS": "30",
+        "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE": "100",
     }
     for key, value in env_example_expected_values.items():
         require_example_env_value(env_example_vars, key, value)
