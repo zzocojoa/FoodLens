@@ -40,9 +40,19 @@ jobs:
       - name: Validate staging smoke automation
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
           workflow = Path(".github/workflows/staging-integration-smoke.yml").read_text(encoding="utf-8")
+          def job_body(job_name):
+              marker = f"  {job_name}:\n"
+              start = workflow.index(marker) + len(marker)
+              next_job = re.search(r"\n  [A-Za-z0-9_-]+:\n", workflow[start:])
+              if next_job is None:
+                  return workflow[start:]
+              return workflow[start:start + next_job.start()]
+
+          deploy_job = job_body("staging-integration-smoke")
           required_markers = [
               "pull_request:",
               "environment: staging",
@@ -71,9 +81,9 @@ jobs:
           present_forbidden_markers = [marker for marker in forbidden_markers if marker in workflow]
           if present_forbidden_markers:
               raise SystemExit(f"Forbidden paid staging smoke markers: {present_forbidden_markers}")
-          if workflow.index("Scan staging smoke artifacts for secret leaks") > workflow.index("Upload staging smoke artifacts"):
+          if deploy_job.index("Scan staging smoke artifacts for secret leaks") > deploy_job.index("Upload staging smoke artifacts"):
               raise SystemExit("Artifact upload must run after the secret scan.")
-          if workflow.index("Trigger Render staging deploy") > workflow.index("Wait for Render deploy readiness"):
+          if deploy_job.index("Trigger Render staging deploy") > deploy_job.index("Wait for Render deploy readiness"):
               raise SystemExit("Staging deploy must be triggered before readiness wait.")
           PY
 
