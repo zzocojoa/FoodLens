@@ -22,8 +22,13 @@ sys.modules.setdefault(
     types.SimpleNamespace(
         init=lambda **_kwargs: None,
         push_scope=lambda: contextlib.nullcontext(
-            types.SimpleNamespace(set_tag=lambda *_args, **_kwargs: None, set_extra=lambda *_args, **_kwargs: None)
+            types.SimpleNamespace(
+                set_tag=lambda *_args, **_kwargs: None,
+                set_extra=lambda *_args, **_kwargs: None,
+                set_user=lambda *_args, **_kwargs: None,
+            )
         ),
+        capture_exception=lambda *_args, **_kwargs: None,
     ),
 )
 from backend import server as server_module  # noqa: E402
@@ -101,6 +106,22 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             device_id=device_id,
         )
         return signup_body, session_body
+
+    def _assert_auth_rate_limited_response(
+        self,
+        response,
+        *,
+        request_id: str,
+        retry_scope: str,
+    ) -> None:
+        self.assertEqual(response.status_code, 429)
+        body = response.json()["detail"]
+        self.assertEqual(response.headers.get("Retry-After"), str(body["retry_after_seconds"]))
+        self.assertEqual(body["code"], "AUTH_RATE_LIMITED")
+        self.assertEqual(body["request_id"], request_id)
+        self.assertEqual(body["retry_scope"], retry_scope)
+        self.assertTrue(body["retryable_by_client"])
+        self.assertGreaterEqual(body["retry_after_seconds"], 1)
 
     def test_email_signup_refresh_and_profile_roundtrip(self):
         with TestClient(app) as client:
@@ -355,6 +376,31 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         for scope, subject in subjects:
             self.assertTrue(subject.startswith(f"{scope}:"))
             self.assertEqual(len(subject.split(":", 1)[1]), 64)
+
+    def test_oauth_rate_limit_public_subjects_do_not_create_unknown_email_bucket(self):
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/google",
+                "headers": [(b"x-device-id", b"ios-oauth-public-subject")],
+                "client": ("203.0.113.20", 12345),
+            }
+        )
+
+        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://unit:secret@localhost/foodlens"}, clear=False):
+            subjects, client_scope = server_module._resolve_auth_rate_limit_public_subjects(
+                request=request,
+                device_id=None,
+            )
+
+        scopes = [scope for scope, _subject in subjects]
+        joined_subjects = " ".join(subject for _scope, subject in subjects)
+        self.assertEqual(scopes, ["ip", "device"])
+        self.assertEqual(client_scope, "ip+device")
+        self.assertNotIn("email:", joined_subjects)
+        self.assertNotIn("unknown", joined_subjects)
+        self.assertNotIn("ios-oauth-public-subject", joined_subjects)
 
     def test_auth_rate_limit_subject_hash_uses_runtime_secret(self):
         with patch.dict(
@@ -1045,6 +1091,220 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.json()["detail"]["code"], "AUTH_PROVIDER_IDENTITY_MISSING")
 
+    def test_oauth_post_rate_limit_blocks_same_device_across_ip_rotation_per_provider(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={
+                    "/auth/google": 1,
+                    "/auth/kakao": 1,
+                },
+                window_seconds=60,
+            )
+            try:
+                first_google = client.post(
+                    "/auth/google",
+                    json={
+                        "code": "google-device-limit-1",
+                        "state": "state-google-device-limit-1",
+                        "redirect_uri": "foodlens://oauth/google-callback",
+                        "provider_user_id": "google-device-limit-1",
+                        "device_id": "ios-oauth-provider-limit",
+                    },
+                    headers={
+                        "X-Forwarded-For": "8.8.8.8",
+                        "X-Request-Id": "req-oauth-google-device-limit-1",
+                    },
+                )
+                self.assertEqual(first_google.status_code, 200)
+
+                blocked_google = client.post(
+                    "/auth/google",
+                    json={
+                        "code": "google-device-limit-2",
+                        "state": "state-google-device-limit-2",
+                        "redirect_uri": "foodlens://oauth/google-callback",
+                        "provider_user_id": "google-device-limit-2",
+                        "device_id": "ios-oauth-provider-limit",
+                    },
+                    headers={
+                        "X-Forwarded-For": "1.1.1.1",
+                        "X-Request-Id": "req-oauth-google-device-limit-blocked",
+                    },
+                )
+                self._assert_auth_rate_limited_response(
+                    blocked_google,
+                    request_id="req-oauth-google-device-limit-blocked",
+                    retry_scope="/auth/google",
+                )
+
+                kakao_same_device = client.post(
+                    "/auth/kakao",
+                    json={
+                        "code": "kakao-device-limit-1",
+                        "state": "state-kakao-device-limit-1",
+                        "provider_user_id": "kakao-device-limit-1",
+                        "device_id": "ios-oauth-provider-limit",
+                    },
+                    headers={
+                        "X-Forwarded-For": "1.1.1.1",
+                        "X-Request-Id": "req-oauth-kakao-device-limit-1",
+                    },
+                )
+                self.assertEqual(kakao_same_device.status_code, 200)
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+    def test_oauth_start_rate_limit_blocks_same_forwarded_client(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={"/auth/google/start": 1},
+                window_seconds=60,
+            )
+            try:
+                first_start = client.get(
+                    "/auth/google/start",
+                    params={"redirect_uri": "foodlens://oauth/google-callback", "state": "state-web-google"},
+                    headers={
+                        "X-Forwarded-For": "8.8.4.4",
+                        "X-Request-Id": "req-oauth-google-start-limit-1",
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(first_start.status_code, 302)
+
+                blocked_start = client.get(
+                    "/auth/google/start",
+                    params={"redirect_uri": "foodlens://oauth/google-callback", "state": "state-web-google-2"},
+                    headers={
+                        "X-Forwarded-For": "8.8.4.4",
+                        "X-Request-Id": "req-oauth-google-start-limit-blocked",
+                    },
+                    follow_redirects=False,
+                )
+                self._assert_auth_rate_limited_response(
+                    blocked_start,
+                    request_id="req-oauth-google-start-limit-blocked",
+                    retry_scope="/auth/google/start",
+                )
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
+    def test_oauth_callback_rate_limit_blocks_same_forwarded_client(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            previous_limiter = getattr(app.state, "auth_rate_limiter", None)
+            app.state.auth_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute={
+                    "/auth/google/callback": 1,
+                    "/auth/kakao/callback": 1,
+                },
+                window_seconds=60,
+            )
+            try:
+                google_state = server_module._pack_oauth_state(
+                    state="state-callback-limit-1",
+                    app_redirect_uri="foodlens://oauth/google-callback",
+                )
+                first_callback = client.get(
+                    "/auth/google/callback",
+                    params={"code": "google-callback-limit-1", "state": google_state},
+                    headers={
+                        "X-Forwarded-For": "9.9.9.9",
+                        "X-Request-Id": "req-oauth-google-callback-limit-1",
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(first_callback.status_code, 302)
+
+                blocked_callback = client.get(
+                    "/auth/google/callback",
+                    params={"code": "google-callback-limit-2", "state": google_state},
+                    headers={
+                        "X-Forwarded-For": "9.9.9.9",
+                        "X-Request-Id": "req-oauth-google-callback-limit-blocked",
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(blocked_callback.status_code, 302)
+                blocked_location = blocked_callback.headers["location"]
+                blocked_query = parse_qs(urlparse(blocked_location).query)
+                self.assertEqual(blocked_query["error"], ["AUTH_RATE_LIMITED"])
+                self.assertEqual(blocked_query["request_id"], ["req-oauth-google-callback-limit-blocked"])
+                self.assertEqual(blocked_query["state"], [google_state])
+                self.assertIn("retry_after_seconds", blocked_query)
+                self.assertEqual(
+                    blocked_callback.headers.get("Retry-After"),
+                    blocked_query["retry_after_seconds"][0],
+                )
+
+                kakao_state = server_module._pack_oauth_state(
+                    state="state-kakao-callback-limit-1",
+                    app_redirect_uri="foodlens://oauth/kakao-callback",
+                )
+                first_kakao_callback = client.get(
+                    "/auth/kakao/callback",
+                    params={"code": "kakao-callback-limit-1", "state": kakao_state},
+                    headers={
+                        "X-Forwarded-For": "9.9.9.9",
+                        "X-Request-Id": "req-oauth-kakao-callback-limit-1",
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(first_kakao_callback.status_code, 302)
+
+                blocked_kakao_callback = client.get(
+                    "/auth/kakao/callback",
+                    params={"code": "kakao-callback-limit-2", "state": kakao_state},
+                    headers={
+                        "X-Forwarded-For": "9.9.9.9",
+                        "X-Request-Id": "req-oauth-kakao-callback-limit-blocked",
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(blocked_kakao_callback.status_code, 302)
+                blocked_kakao_location = blocked_kakao_callback.headers["location"]
+                blocked_kakao_query = parse_qs(urlparse(blocked_kakao_location).query)
+                self.assertEqual(blocked_kakao_query["error"], ["AUTH_RATE_LIMITED"])
+                self.assertEqual(
+                    blocked_kakao_query["request_id"],
+                    ["req-oauth-kakao-callback-limit-blocked"],
+                )
+            finally:
+                app.state.auth_rate_limiter = previous_limiter
+
     def test_kakao_oauth_live_verification_uses_client_secret(self):
         mocked_token_response = Mock()
         mocked_token_response.status_code = 200
@@ -1310,6 +1570,58 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(callback_query["code"][0], "google-code-bridge")
             self.assertEqual(callback_query["state"][0], packed_state)
             self.assertIn("request_id", callback_query)
+
+    def test_kakao_oauth_web_bridge_omits_scope_by_default(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
+                    "AUTH_KAKAO_OAUTH_SCOPE": "",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/kakao/start",
+                params={"redirect_uri": "foodlens://oauth/kakao-callback", "state": "state-web-kakao"},
+                follow_redirects=False,
+            )
+            self.assertEqual(start.status_code, 302)
+
+            parsed = urlparse(start.headers["location"])
+            self.assertEqual(parsed.netloc, "kauth.kakao.com")
+            query = parse_qs(parsed.query)
+            self.assertEqual(query["client_id"][0], "kakao-client-id-test")
+            self.assertEqual(query["redirect_uri"][0], f"{self.AUTH_PUBLIC_BASE_URL}/auth/kakao/callback")
+            self.assertNotIn("scope", query)
+
+    def test_kakao_oauth_web_bridge_includes_scope_only_when_configured(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_KAKAO_CLIENT_ID": "kakao-client-id-test",
+                    "AUTH_KAKAO_OAUTH_SCOPE": "account_email",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/kakao/start",
+                params={"redirect_uri": "foodlens://oauth/kakao-callback", "state": "state-web-kakao"},
+                follow_redirects=False,
+            )
+            self.assertEqual(start.status_code, 302)
+
+            query = parse_qs(urlparse(start.headers["location"]).query)
+            self.assertEqual(query["scope"], ["account_email"])
 
     def test_kakao_oauth_web_bridge_rejects_unapproved_app_redirect(self):
         with (

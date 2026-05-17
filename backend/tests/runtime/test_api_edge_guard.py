@@ -81,6 +81,12 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/signup"], 3)
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/verification/request"], 3)
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/password/reset/request"], 3)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google"], 10)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao"], 10)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google/start"], 30)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao/start"], 30)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google/callback"], 30)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao/callback"], 30)
 
     def test_auth_rate_limit_settings_from_env(self):
         with patch.dict(
@@ -94,6 +100,9 @@ class ApiEdgeGuardTests(unittest.TestCase):
                 "AUTH_RATE_LIMIT_SIGNUP_PER_MIN": "1",
                 "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN": "4",
                 "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN": "6",
+                "AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN": "7",
+                "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN": "8",
+                "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN": "9",
             },
             clear=True,
         ):
@@ -106,6 +115,12 @@ class ApiEdgeGuardTests(unittest.TestCase):
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/signup"], 1)
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/verification/request"], 4)
         self.assertEqual(settings.endpoint_limits_per_minute["/auth/email/password/reset/request"], 6)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google"], 7)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao"], 7)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google/start"], 8)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao/start"], 8)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/google/callback"], 9)
+        self.assertEqual(settings.endpoint_limits_per_minute["/auth/kakao/callback"], 9)
 
     def test_auth_rate_limit_settings_auto_selects_postgres_when_database_url_exists(self):
         with patch.dict(

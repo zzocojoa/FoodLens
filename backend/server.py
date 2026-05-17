@@ -3477,6 +3477,23 @@ def _resolve_auth_rate_limit_subjects(
     return tuple(subjects), _mask_email(normalized_email), client_scope
 
 
+def _resolve_auth_rate_limit_public_subjects(
+    *,
+    request: Request,
+    device_id: str | None,
+) -> tuple[tuple[tuple[str, str], ...], str]:
+    normalized_device_id = (device_id or _device_id(request) or "").strip() or None
+    client_ip = _auth_rate_limit_client_ip(request)
+    subjects: list[tuple[str, str]] = [
+        ("ip", _auth_rate_limit_subject("ip", client_ip)),
+    ]
+    if normalized_device_id is not None:
+        subjects.append(("device", _auth_rate_limit_subject("device", normalized_device_id)))
+
+    client_scope = "ip+device" if normalized_device_id else "ip"
+    return tuple(subjects), client_scope
+
+
 def _evaluate_auth_rate_limit_subjects(
     *,
     limiter: Any,
@@ -3533,7 +3550,7 @@ def _apply_auth_rate_limit(
     *,
     request: Request,
     endpoint: str,
-    email: str,
+    email: str | None,
     device_id: str | None,
     request_id: str,
 ) -> None:
@@ -3541,11 +3558,18 @@ def _apply_auth_rate_limit(
     if limiter is None:
         return
 
-    subjects, masked_email, client_scope = _resolve_auth_rate_limit_subjects(
-        request=request,
-        email=email,
-        device_id=device_id,
-    )
+    if email is None or not email.strip():
+        subjects, client_scope = _resolve_auth_rate_limit_public_subjects(
+            request=request,
+            device_id=device_id,
+        )
+        masked_email = "none"
+    else:
+        subjects, masked_email, client_scope = _resolve_auth_rate_limit_subjects(
+            request=request,
+            email=email,
+            device_id=device_id,
+        )
     started_at = time.time()
     blocked = _evaluate_auth_rate_limit_subjects(
         limiter=limiter,
@@ -3615,7 +3639,7 @@ async def _run_auth_route(
     request_id = _request_id(request)
     auth_service = _service("auth_service")
     try:
-        if rate_limit_endpoint is not None and rate_limit_email is not None:
+        if rate_limit_endpoint is not None:
             await run_in_threadpool(
                 _apply_auth_rate_limit,
                 request=request,
@@ -3639,6 +3663,29 @@ async def _run_auth_route(
             error=error,
             request_id=request_id,
             endpoint=rate_limit_endpoint,
+        )
+
+
+async def _apply_public_auth_rate_limit(
+    *,
+    request: Request,
+    endpoint: str,
+) -> None:
+    request_id = _request_id(request)
+    try:
+        await run_in_threadpool(
+            _apply_auth_rate_limit,
+            request=request,
+            endpoint=endpoint,
+            email=None,
+            device_id=None,
+            request_id=request_id,
+        )
+    except RateLimitStorageError as error:
+        _raise_auth_rate_limit_storage_error(
+            error=error,
+            request_id=request_id,
+            endpoint=endpoint,
         )
 
 
@@ -3746,6 +3793,42 @@ def _build_provider_callback_redirect(
         if error_description:
             params["error_description"] = error_description
         return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
+    except AuthServiceError as auth_error:
+        _raise_auth_route_error(
+            error=auth_error,
+            request_id=request_id,
+            provider=provider,
+        )
+
+
+def _build_provider_callback_rate_limited_redirect(
+    *,
+    request: Request,
+    provider: str,
+    state: str | None,
+    redirect_uri: str | None,
+    error: HTTPException,
+) -> RedirectResponse:
+    request_id = _request_id(request)
+    try:
+        detail = error.detail if isinstance(error.detail, dict) else {}
+        retry_after_raw = detail.get("retry_after_seconds")
+        if retry_after_raw is None and error.headers is not None:
+            retry_after_raw = error.headers.get("Retry-After")
+        retry_after_seconds = max(1, int(retry_after_raw or 1))
+        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
+        app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=requested_redirect)
+        params: dict[str, str] = {
+            "request_id": request_id,
+            "error": "AUTH_RATE_LIMITED",
+            "error_description": str(detail.get("message") or "Too many OAuth callback attempts. Try again later."),
+            "retry_after_seconds": str(retry_after_seconds),
+        }
+        if state:
+            params["state"] = state
+        response = RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
+        response.headers["Retry-After"] = str(retry_after_seconds)
+        return response
     except AuthServiceError as auth_error:
         _raise_auth_route_error(
             error=auth_error,
@@ -4233,12 +4316,21 @@ async def auth_email_password_reset_confirm(payload: PasswordResetConfirmRequest
     )
 
 
-@app.get("/auth/google/start")
+@app.get(
+    "/auth/google/start",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/google/start",
+    ),
+)
 async def auth_google_start(
     request: Request,
     redirect_uri: str | None = None,
     state: str | None = None,
 ):
+    await _apply_public_auth_rate_limit(
+        request=request,
+        endpoint="/auth/google/start",
+    )
     return _build_provider_start_redirect(
         request=request,
         provider="google",
@@ -4247,7 +4339,12 @@ async def auth_google_start(
     )
 
 
-@app.get("/auth/google/callback")
+@app.get(
+    "/auth/google/callback",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/google/callback",
+    ),
+)
 async def auth_google_callback(
     request: Request,
     code: str | None = None,
@@ -4256,6 +4353,21 @@ async def auth_google_callback(
     error_description: str | None = None,
     redirect_uri: str | None = None,
 ):
+    try:
+        await _apply_public_auth_rate_limit(
+            request=request,
+            endpoint="/auth/google/callback",
+        )
+    except HTTPException as rate_limit_error:
+        if rate_limit_error.status_code != 429:
+            raise
+        return _build_provider_callback_rate_limited_redirect(
+            request=request,
+            provider="google",
+            state=state,
+            redirect_uri=redirect_uri,
+            error=rate_limit_error,
+        )
     return _build_provider_callback_redirect(
         request=request,
         provider="google",
@@ -4267,12 +4379,21 @@ async def auth_google_callback(
     )
 
 
-@app.get("/auth/kakao/start")
+@app.get(
+    "/auth/kakao/start",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/kakao/start",
+    ),
+)
 async def auth_kakao_start(
     request: Request,
     redirect_uri: str | None = None,
     state: str | None = None,
 ):
+    await _apply_public_auth_rate_limit(
+        request=request,
+        endpoint="/auth/kakao/start",
+    )
     return _build_provider_start_redirect(
         request=request,
         provider="kakao",
@@ -4281,7 +4402,12 @@ async def auth_kakao_start(
     )
 
 
-@app.get("/auth/kakao/callback")
+@app.get(
+    "/auth/kakao/callback",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/kakao/callback",
+    ),
+)
 async def auth_kakao_callback(
     request: Request,
     code: str | None = None,
@@ -4290,6 +4416,21 @@ async def auth_kakao_callback(
     error_description: str | None = None,
     redirect_uri: str | None = None,
 ):
+    try:
+        await _apply_public_auth_rate_limit(
+            request=request,
+            endpoint="/auth/kakao/callback",
+        )
+    except HTTPException as rate_limit_error:
+        if rate_limit_error.status_code != 429:
+            raise
+        return _build_provider_callback_rate_limited_redirect(
+            request=request,
+            provider="kakao",
+            state=state,
+            redirect_uri=redirect_uri,
+            error=rate_limit_error,
+        )
     return _build_provider_callback_redirect(
         request=request,
         provider="kakao",
@@ -4353,11 +4494,19 @@ async def auth_kakao_logout_callback(
     )
 
 
-@app.post("/auth/google")
+@app.post(
+    "/auth/google",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/google",
+    ),
+)
 async def auth_google(payload: OAuthProviderRequest, request: Request):
     return await _run_auth_route(
         request=request,
         provider="google",
+        rate_limit_endpoint="/auth/google",
+        rate_limit_email=payload.email,
+        rate_limit_device_id=payload.device_id,
         action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
             auth_service=auth_service,
             provider="google",
@@ -4367,11 +4516,19 @@ async def auth_google(payload: OAuthProviderRequest, request: Request):
     )
 
 
-@app.post("/auth/kakao")
+@app.post(
+    "/auth/kakao",
+    responses=_auth_rate_limited_openapi_responses(
+        retry_scope="/auth/kakao",
+    ),
+)
 async def auth_kakao(payload: OAuthProviderRequest, request: Request):
     return await _run_auth_route(
         request=request,
         provider="kakao",
+        rate_limit_endpoint="/auth/kakao",
+        rate_limit_email=payload.email,
+        rate_limit_device_id=payload.device_id,
         action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
             auth_service=auth_service,
             provider="kakao",

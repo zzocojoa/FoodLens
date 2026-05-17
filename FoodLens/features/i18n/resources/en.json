@@ -83,6 +83,7 @@
   "login.error.providerInvalidState": "Provider sign-in state is invalid. Please try again.",
   "login.error.providerRejected": "Provider login failed. Please try again.",
   "login.error.providerCancelled": "Provider login was cancelled.",
+  "login.error.providerRateLimited": "Too many login attempts. Please wait a moment and try again.",
   "login.error.providerTimeout": "Login request timed out. Please try again.",
   "login.error.providerUnavailable": "Login provider is temporarily unavailable. Please try again later.",
   "login.error.providerRedirectMismatch": "Login redirect mismatch detected. Please update the app and try again.",

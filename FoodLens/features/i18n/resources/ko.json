@@ -83,6 +83,7 @@
   "login.error.providerInvalidState": "로그인 상태 검증에 실패했습니다. 다시 시도해주세요.",
   "login.error.providerRejected": "제공자 로그인에 실패했습니다. 다시 시도해주세요.",
   "login.error.providerCancelled": "제공자 로그인이 취소되었습니다.",
+  "login.error.providerRateLimited": "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
   "login.error.providerTimeout": "로그인 요청 시간이 초과되었습니다. 다시 시도해주세요.",
   "login.error.providerUnavailable": "로그인 제공자를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.",
   "login.error.providerRedirectMismatch": "로그인 리디렉션 검증에 실패했습니다. 앱을 업데이트한 뒤 다시 시도해주세요.",
