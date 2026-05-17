@@ -47,10 +47,12 @@ from backend.modules.ops.data_retention import (
 )
 from backend.modules.ops.data_retention import RetentionPolicyConfig
 from backend.modules.ops.deletion_queue import (
+    DEFAULT_DELETION_RETRY_POLICY,
     DeletionStatusSnapshot,
     DeletionTarget,
     DeletionQueueConsumer,
     DeletionQueueProducer,
+    DeletionRetryPolicy,
     InMemoryDeletionQueueStorage,
     JsonFileDeletionQueueStorage,
     NoOpDeletionHandler,
@@ -819,6 +821,23 @@ def _deletion_queue_lease_seconds() -> int:
     return max(30, _env_int("DELETION_QUEUE_LEASE_SECONDS", 300))
 
 
+def _deletion_queue_retry_policy() -> DeletionRetryPolicy:
+    max_attempts = max(1, _env_int("DELETION_QUEUE_RETRY_MAX_ATTEMPTS", DEFAULT_DELETION_RETRY_POLICY.max_attempts))
+    base_delay_seconds = max(
+        1,
+        _env_int("DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS", DEFAULT_DELETION_RETRY_POLICY.base_delay_seconds),
+    )
+    max_delay_seconds = max(
+        base_delay_seconds,
+        _env_int("DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS", DEFAULT_DELETION_RETRY_POLICY.max_delay_seconds),
+    )
+    return DeletionRetryPolicy(
+        max_attempts=max_attempts,
+        base_delay_seconds=base_delay_seconds,
+        max_delay_seconds=max_delay_seconds,
+    )
+
+
 PROCESS_ROLE_WEB = "web"
 PROCESS_ROLE_WORKER = "worker"
 PROCESS_ROLE_CRON = "cron"
@@ -1209,7 +1228,11 @@ def _initialize_deletion_queue_runtime() -> None:
             media_storage=app.state.media_storage,
             retention_store=app.state.retention_store,
         )
-    app.state.deletion_queue_consumer = DeletionQueueConsumer(deletion_storage, deletion_handler)
+    app.state.deletion_queue_consumer = DeletionQueueConsumer(
+        deletion_storage,
+        deletion_handler,
+        retry_policy=_deletion_queue_retry_policy(),
+    )
 
 
 def _initialize_core_runtime_services() -> None:
@@ -2659,6 +2682,24 @@ class DeletionRequestCreateRequest(BaseModel):
     target: Literal["account", "data"]
 
 
+class DeletionStatusPayload(BaseModel):
+    queue_id: str
+    request_id: str | None = None
+    target: Literal["account", "data", "request"]
+    status: Literal["pending", "in_progress", "done", "failed"]
+    created_at: str
+    updated_at: str
+    reason: str
+    error: str | None = None
+    retry_count: int
+    next_attempt_at: str | None = None
+
+
+class DeletionRequestStatusResponse(BaseModel):
+    deletion_request: DeletionStatusPayload | None
+    request_id: str
+
+
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id") or os.urandom(6).hex()
 
@@ -2683,6 +2724,12 @@ def _serialize_deletion_status(snapshot: DeletionStatusSnapshot | None) -> dict[
         "updated_at": snapshot.updated_at.isoformat().replace("+00:00", "Z"),
         "reason": snapshot.reason,
         "error": snapshot.error,
+        "retry_count": snapshot.retry_count,
+        "next_attempt_at": (
+            snapshot.next_attempt_at.isoformat().replace("+00:00", "Z")
+            if snapshot.next_attempt_at is not None
+            else None
+        ),
     }
 
 
@@ -5184,7 +5231,7 @@ async def delete_me_history(history_item_id: str, request: Request):
     )
 
 
-@app.get("/me/deletion-requests/latest")
+@app.get("/me/deletion-requests/latest", response_model=DeletionRequestStatusResponse)
 async def get_me_latest_deletion_request(request: Request):
     def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
         storage = getattr(app.state, "deletion_queue_storage", None)
@@ -5197,7 +5244,7 @@ async def get_me_latest_deletion_request(request: Request):
     )
 
 
-@app.post("/me/deletion-requests")
+@app.post("/me/deletion-requests", response_model=DeletionRequestStatusResponse)
 async def post_me_deletion_request(payload: DeletionRequestCreateRequest, request: Request):
     def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
         producer = getattr(app.state, "deletion_queue_producer", None)

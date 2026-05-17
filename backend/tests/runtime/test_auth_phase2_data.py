@@ -756,6 +756,8 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertIn("request_id", deletion_body)
             self.assertEqual(deletion_body["deletion_request"]["target"], "data")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+            self.assertEqual(deletion_body["deletion_request"]["retry_count"], 0)
+            self.assertIsNone(deletion_body["deletion_request"]["next_attempt_at"])
             self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)
 
             latest = client.get("/me/deletion-requests/latest", headers=headers)

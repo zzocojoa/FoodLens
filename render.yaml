@@ -354,6 +354,12 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
+      - key: DELETION_QUEUE_RETRY_MAX_ATTEMPTS
+        value: "5"
+      - key: DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS
+        value: "60"
+      - key: DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS
+        value: "3600"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
@@ -714,6 +720,12 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
+      - key: DELETION_QUEUE_RETRY_MAX_ATTEMPTS
+        value: "5"
+      - key: DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS
+        value: "60"
+      - key: DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS
+        value: "3600"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
@@ -1074,6 +1086,12 @@ services:
         value: "30"
       - key: DELETION_QUEUE_MAX_BATCH
         value: "20"
+      - key: DELETION_QUEUE_RETRY_MAX_ATTEMPTS
+        value: "5"
+      - key: DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS
+        value: "60"
+      - key: DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS
+        value: "3600"
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

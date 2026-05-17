@@ -114,7 +114,7 @@
 - 삭제 요청 API:
   - `POST /me/deletion-requests`
     - 요청 본문: `target` (`account` | `data`)
-    - 응답 본문: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error }`, `request_id`
+    - 응답 본문: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error, retry_count, next_attempt_at }`, `request_id`
   - `GET /me/deletion-requests/latest`
     - 최근 삭제 요청 상태를 조회하며, 요청이 없으면 `deletion_request: null`, `request_id`
 - 삭제 의미:

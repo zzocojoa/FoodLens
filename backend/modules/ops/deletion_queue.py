@@ -49,6 +49,8 @@ class DeletionStatusSnapshot:
     request_id: str | None = None
     reason: str = "user_requested"
     error: str | None = None
+    retry_count: int = 0
+    next_attempt_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,20 @@ class DeletionResult:
     status: DeletionStatus
     target: DeletionTarget
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class DeletionRetryPolicy:
+    max_attempts: int
+    base_delay_seconds: int
+    max_delay_seconds: int
+
+
+DEFAULT_DELETION_RETRY_POLICY = DeletionRetryPolicy(
+    max_attempts=5,
+    base_delay_seconds=60,
+    max_delay_seconds=3600,
+)
 
 
 class DeletionQueueStorage(Protocol):
@@ -164,21 +180,10 @@ class InMemoryDeletionQueueStorage:
 
     def _is_claimable(self, queue_id: str) -> bool:
         snapshot = self._statuses.get(queue_id)
-        return snapshot is None or snapshot.status in {DeletionStatus.PENDING}
+        return _snapshot_is_claimable(snapshot=snapshot, now=datetime.now(timezone.utc))
 
     def _claim(self, item: DeletionRequest) -> None:
-        self.save_status(
-            DeletionStatusSnapshot(
-                queue_id=item.queue_id,
-                created_at=item.created_at,
-                updated_at=datetime.now(timezone.utc),
-                status=DeletionStatus.IN_PROGRESS,
-                target=item.target,
-                user_id=item.user_id,
-                request_id=item.request_id,
-                reason=item.reason,
-            )
-        )
+        self.save_status(_in_progress_snapshot(item, self._statuses.get(item.queue_id)))
 
 
 class JsonFileDeletionQueueStorage:
@@ -234,6 +239,8 @@ class JsonFileDeletionQueueStorage:
                     request_id=item.get("request_id"),
                     reason=str(item.get("reason", "user_requested")),
                     error=item.get("error"),
+                    retry_count=_coerce_non_negative_int(item.get("retry_count")),
+                    next_attempt_at=_coerce_optional_datetime(item.get("next_attempt_at")),
                 )
                 loaded[snapshot.queue_id] = snapshot
             except Exception:
@@ -268,6 +275,8 @@ class JsonFileDeletionQueueStorage:
                     "request_id": item.request_id,
                     "reason": item.reason,
                     "error": item.error,
+                    "retry_count": item.retry_count,
+                    "next_attempt_at": item.next_attempt_at.isoformat() if item.next_attempt_at is not None else None,
                 }
                 for item in sorted(statuses.values(), key=lambda value: value.created_at)
             ],
@@ -296,7 +305,7 @@ class JsonFileDeletionQueueStorage:
         first = next((item for item in items if self._is_claimable(item=item, statuses=statuses)), None)
         if first is None:
             return None
-        statuses[first.queue_id] = _in_progress_snapshot(first)
+        statuses[first.queue_id] = _in_progress_snapshot(first, statuses.get(first.queue_id))
         self._save(items, statuses)
         return first
 
@@ -309,7 +318,7 @@ class JsonFileDeletionQueueStorage:
         )
         if first is None:
             return None
-        statuses[first.queue_id] = _in_progress_snapshot(first)
+        statuses[first.queue_id] = _in_progress_snapshot(first, statuses.get(first.queue_id))
         self._save(items, statuses)
         return first
 
@@ -336,6 +345,8 @@ class JsonFileDeletionQueueStorage:
                 request_id=snapshot.request_id,
                 reason=snapshot.reason,
                 error="stale lease requeued",
+                retry_count=snapshot.retry_count,
+                next_attempt_at=None,
             )
             recovered += 1
         if recovered > 0:
@@ -369,7 +380,7 @@ class JsonFileDeletionQueueStorage:
         statuses: dict[str, DeletionStatusSnapshot],
     ) -> bool:
         snapshot = statuses.get(item.queue_id)
-        return snapshot is None or snapshot.status == DeletionStatus.PENDING
+        return _snapshot_is_claimable(snapshot=snapshot, now=datetime.now(timezone.utc))
 
 
 @dataclass(slots=True)
@@ -434,6 +445,7 @@ class PostgresDeletionQueueStorage:
                             f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
                             "WHERE q.dequeued_at IS NULL "
                             "AND COALESCE(s.status, 'pending') = 'pending' "
+                            "AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= NOW()) "
                             "ORDER BY q.created_at ASC "
                             "LIMIT 1 "
                             "FOR UPDATE OF q SKIP LOCKED"
@@ -465,6 +477,7 @@ class PostgresDeletionQueueStorage:
                             f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
                             "WHERE q.queue_id = %s AND q.dequeued_at IS NULL "
                             "AND COALESCE(s.status, 'pending') = 'pending' "
+                            "AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= NOW()) "
                             "FOR UPDATE OF q SKIP LOCKED"
                         ),
                         (queue_id,),
@@ -518,7 +531,8 @@ class PostgresDeletionQueueStorage:
                             "RETURNING q.queue_id"
                             "), status_updates AS ("
                             f"UPDATE {self.status_table_name} s "
-                            "SET status = 'pending', updated_at = NOW(), error = 'stale lease requeued' "
+                            "SET status = 'pending', updated_at = NOW(), error = 'stale lease requeued', "
+                            "next_attempt_at = NULL "
                             "FROM stale "
                             "WHERE s.queue_id = stale.queue_id "
                             "AND s.status = 'in_progress' "
@@ -545,7 +559,8 @@ class PostgresDeletionQueueStorage:
                             f"SELECT COUNT(*) FROM {self.queue_table_name} q "
                             f"LEFT JOIN {self.status_table_name} s ON s.queue_id = q.queue_id "
                             "WHERE q.dequeued_at IS NULL "
-                            "AND COALESCE(s.status, 'pending') = 'pending'"
+                            "AND COALESCE(s.status, 'pending') = 'pending' "
+                            "AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= NOW())"
                         )
                     )
                     row = cursor.fetchone()
@@ -562,8 +577,9 @@ class PostgresDeletionQueueStorage:
                     cursor.execute(
                         (
                             f"INSERT INTO {self.status_table_name} "
-                            "(queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error) "
-                            "VALUES (%s,%s::timestamptz,%s::timestamptz,%s,%s,%s,%s,%s,%s) "
+                            "(queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error,"
+                            "retry_count,next_attempt_at) "
+                            "VALUES (%s,%s::timestamptz,%s::timestamptz,%s,%s,%s,%s,%s,%s,%s,%s::timestamptz) "
                             "ON CONFLICT (queue_id) DO UPDATE SET "
                             "updated_at=EXCLUDED.updated_at,"
                             "status=EXCLUDED.status,"
@@ -571,7 +587,9 @@ class PostgresDeletionQueueStorage:
                             "user_id=EXCLUDED.user_id,"
                             "request_id=EXCLUDED.request_id,"
                             "reason=EXCLUDED.reason,"
-                            "error=EXCLUDED.error"
+                            "error=EXCLUDED.error,"
+                            "retry_count=EXCLUDED.retry_count,"
+                            "next_attempt_at=EXCLUDED.next_attempt_at"
                         ),
                         (
                             snapshot.queue_id,
@@ -583,8 +601,15 @@ class PostgresDeletionQueueStorage:
                             snapshot.request_id,
                             snapshot.reason,
                             snapshot.error,
+                            snapshot.retry_count,
+                            snapshot.next_attempt_at.isoformat() if snapshot.next_attempt_at is not None else None,
                         ),
                     )
+                    if snapshot.status == DeletionStatus.PENDING:
+                        cursor.execute(
+                            f"UPDATE {self.queue_table_name} SET dequeued_at = NULL WHERE queue_id = %s",
+                            (snapshot.queue_id,),
+                        )
         except Exception as error:
             raise DeletionQueueStoreError(f"Failed to save deletion status in postgres: {error}") from error
 
@@ -596,7 +621,8 @@ class PostgresDeletionQueueStorage:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
-                            f"SELECT queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error "
+                            f"SELECT queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error,"
+                            "retry_count,next_attempt_at "
                             f"FROM {self.status_table_name} "
                             "WHERE queue_id = %s"
                         ),
@@ -617,7 +643,8 @@ class PostgresDeletionQueueStorage:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         (
-                            f"SELECT queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error "
+                            f"SELECT queue_id,created_at,updated_at,status,target,user_id,request_id,reason,error,"
+                            "retry_count,next_attempt_at "
                             f"FROM {self.status_table_name} "
                             "WHERE user_id = %s "
                             "ORDER BY created_at DESC "
@@ -660,9 +687,19 @@ class PostgresDeletionQueueStorage:
                     "user_id TEXT NULL,"
                     "request_id TEXT NULL,"
                     "reason TEXT NOT NULL,"
-                    "error TEXT NULL"
+                    "error TEXT NULL,"
+                    "retry_count INTEGER NOT NULL DEFAULT 0,"
+                    "next_attempt_at TIMESTAMPTZ NULL"
                     ")"
                 )
+            )
+            cursor.execute(
+                f"ALTER TABLE {self.status_table_name} "
+                "ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0"
+            )
+            cursor.execute(
+                f"ALTER TABLE {self.status_table_name} "
+                "ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NULL"
             )
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.queue_table_name}_created_idx "
@@ -757,9 +794,21 @@ class NoOpDeletionHandler:
 
 
 class DeletionQueueConsumer:
-    def __init__(self, storage: DeletionQueueStorage, handler: DeletionHandler) -> None:
+    def __init__(
+        self,
+        storage: DeletionQueueStorage,
+        handler: DeletionHandler,
+        retry_policy: DeletionRetryPolicy,
+    ) -> None:
+        if retry_policy.max_attempts < 1:
+            raise ValueError("Deletion retry max_attempts must be at least 1.")
+        if retry_policy.base_delay_seconds < 1:
+            raise ValueError("Deletion retry base_delay_seconds must be at least 1.")
+        if retry_policy.max_delay_seconds < retry_policy.base_delay_seconds:
+            raise ValueError("Deletion retry max_delay_seconds must be greater than or equal to base_delay_seconds.")
         self.storage = storage
         self.handler = handler
+        self.retry_policy = retry_policy
 
     def consume_once(self) -> DeletionResult | None:
         item = self.storage.dequeue()
@@ -774,34 +823,75 @@ class DeletionQueueConsumer:
         return self._process_item(item)
 
     def _process_item(self, item: DeletionRequest) -> DeletionResult:
-        self.storage.save_status(
-            DeletionStatusSnapshot(
-                queue_id=item.queue_id,
-                created_at=item.created_at,
-                updated_at=datetime.now(timezone.utc),
-                status=DeletionStatus.IN_PROGRESS,
-                target=item.target,
-                user_id=item.user_id,
-                request_id=item.request_id,
-                reason=item.reason,
-            )
-        )
+        previous_snapshot = self.storage.get_status(item.queue_id)
+        in_progress_snapshot = _in_progress_snapshot(item, previous_snapshot)
+        self.storage.save_status(in_progress_snapshot)
         result = self.handler.handle(item)
-        self.storage.save_status(
-            DeletionStatusSnapshot(
+        if result.status == DeletionStatus.DONE:
+            self.storage.save_status(
+                DeletionStatusSnapshot(
+                    queue_id=item.queue_id,
+                    created_at=item.created_at,
+                    updated_at=datetime.now(timezone.utc),
+                    status=DeletionStatus.DONE,
+                    target=item.target,
+                    user_id=item.user_id,
+                    request_id=item.request_id,
+                    reason=item.reason,
+                    error=result.error,
+                    retry_count=in_progress_snapshot.retry_count,
+                    next_attempt_at=None,
+                )
+            )
+            self.storage.complete(item.queue_id)
+            return result
+        if result.status == DeletionStatus.FAILED:
+            retry_count = in_progress_snapshot.retry_count + 1
+            now = datetime.now(timezone.utc)
+            if retry_count >= self.retry_policy.max_attempts:
+                self.storage.save_status(
+                    DeletionStatusSnapshot(
+                        queue_id=item.queue_id,
+                        created_at=item.created_at,
+                        updated_at=now,
+                        status=DeletionStatus.FAILED,
+                        target=item.target,
+                        user_id=item.user_id,
+                        request_id=item.request_id,
+                        reason=item.reason,
+                        error=result.error,
+                        retry_count=retry_count,
+                        next_attempt_at=None,
+                    )
+                )
+                self.storage.complete(item.queue_id)
+                return result
+            self.storage.save_status(
+                DeletionStatusSnapshot(
+                    queue_id=item.queue_id,
+                    created_at=item.created_at,
+                    updated_at=now,
+                    status=DeletionStatus.PENDING,
+                    target=item.target,
+                    user_id=item.user_id,
+                    request_id=item.request_id,
+                    reason=item.reason,
+                    error=result.error,
+                    retry_count=retry_count,
+                    next_attempt_at=_next_retry_attempt_at(
+                        now=now,
+                        retry_count=retry_count,
+                        retry_policy=self.retry_policy,
+                    ),
+                )
+            )
+            return DeletionResult(
                 queue_id=item.queue_id,
-                created_at=item.created_at,
-                updated_at=datetime.now(timezone.utc),
-                status=result.status,
+                status=DeletionStatus.PENDING,
                 target=item.target,
-                user_id=item.user_id,
-                request_id=item.request_id,
-                reason=item.reason,
                 error=result.error,
             )
-        )
-        self.storage.complete(item.queue_id)
-        return result
+        raise ValueError(f"Unsupported deletion handler status: {result.status.value}")
 
     def requeue_stale(self, *, lease_seconds: int) -> int:
         return self.storage.requeue_stale(lease_seconds=lease_seconds)
@@ -818,7 +908,10 @@ def _row_to_request(row: tuple[object, ...]) -> DeletionRequest:
     )
 
 
-def _in_progress_snapshot(item: DeletionRequest) -> DeletionStatusSnapshot:
+def _in_progress_snapshot(
+    item: DeletionRequest,
+    previous_snapshot: DeletionStatusSnapshot | None,
+) -> DeletionStatusSnapshot:
     return DeletionStatusSnapshot(
         queue_id=item.queue_id,
         created_at=item.created_at,
@@ -828,6 +921,9 @@ def _in_progress_snapshot(item: DeletionRequest) -> DeletionStatusSnapshot:
         user_id=item.user_id,
         request_id=item.request_id,
         reason=item.reason,
+        error=previous_snapshot.error if previous_snapshot is not None else None,
+        retry_count=previous_snapshot.retry_count if previous_snapshot is not None else 0,
+        next_attempt_at=None,
     )
 
 
@@ -842,6 +938,8 @@ def _row_to_status(row: tuple[object, ...]) -> DeletionStatusSnapshot:
         request_id=str(row[6]) if row[6] is not None else None,
         reason=str(row[7]),
         error=str(row[8]) if row[8] is not None else None,
+        retry_count=_coerce_non_negative_int(row[9] if len(row) > 9 else None),
+        next_attempt_at=_coerce_optional_datetime(row[10] if len(row) > 10 else None),
     )
 
 
@@ -849,6 +947,46 @@ def _coerce_datetime(value: object) -> datetime:
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
     return datetime.fromisoformat(str(value))
+
+
+def _coerce_optional_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    return _coerce_datetime(value)
+
+
+def _coerce_non_negative_int(value: object) -> int:
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, str) and value.isdigit():
+        return max(0, int(value))
+    return 0
+
+
+def _snapshot_is_claimable(
+    *,
+    snapshot: DeletionStatusSnapshot | None,
+    now: datetime,
+) -> bool:
+    if snapshot is None:
+        return True
+    if snapshot.status != DeletionStatus.PENDING:
+        return False
+    return snapshot.next_attempt_at is None or snapshot.next_attempt_at <= now
+
+
+def _next_retry_attempt_at(
+    *,
+    now: datetime,
+    retry_count: int,
+    retry_policy: DeletionRetryPolicy,
+) -> datetime:
+    exponent = max(0, retry_count - 1)
+    delay_seconds = min(
+        retry_policy.max_delay_seconds,
+        retry_policy.base_delay_seconds * (2**exponent),
+    )
+    return now + timedelta(seconds=delay_seconds)
 
 
 def _load_connect():
