@@ -222,6 +222,9 @@ def build_auth_rate_limit_settings_from_env() -> AuthRateLimitSettings:
     signup_limit = _env_int("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", 3)
     verification_request_limit = _env_int("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", 3)
     password_reset_request_limit = _env_int("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", 3)
+    oauth_login_limit = _env_int("AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN", 10)
+    oauth_start_limit = _env_int("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", 30)
+    oauth_callback_limit = _env_int("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", 30)
     return AuthRateLimitSettings(
         enabled=enabled,
         backend=backend,
@@ -232,6 +235,12 @@ def build_auth_rate_limit_settings_from_env() -> AuthRateLimitSettings:
             "/auth/email/signup": signup_limit,
             "/auth/email/verification/request": verification_request_limit,
             "/auth/email/password/reset/request": password_reset_request_limit,
+            "/auth/google": oauth_login_limit,
+            "/auth/kakao": oauth_login_limit,
+            "/auth/google/start": oauth_start_limit,
+            "/auth/kakao/start": oauth_start_limit,
+            "/auth/google/callback": oauth_callback_limit,
+            "/auth/kakao/callback": oauth_callback_limit,
         },
     )
 

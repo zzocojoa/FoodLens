@@ -93,6 +93,9 @@ const resolveAuthErrorMessage = (error: unknown, copy: LoginCopy = LOGIN_COPY): 
     if (error.code === 'AUTH_PROVIDER_CANCELLED') {
       return copy.providerCancelled;
     }
+    if (error.code === 'AUTH_RATE_LIMITED') {
+      return copy.providerRateLimited;
+    }
     if (error.code === 'AUTH_PROVIDER_UNSUPPORTED') {
       return copy.providerUnsupportedForEmail;
     }

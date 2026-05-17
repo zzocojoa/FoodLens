@@ -3437,6 +3437,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/google",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/google",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Google"
@@ -3545,6 +3595,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/google/callback",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/google/callback",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Google Callback"
@@ -3693,6 +3793,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/google/start",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/google/start",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Google Start"
@@ -3729,6 +3879,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/kakao",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/kakao",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Kakao"
@@ -3837,6 +4037,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/kakao/callback",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/kakao/callback",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Kakao Callback"
@@ -4017,6 +4267,56 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "Too many authentication attempts. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 60,
+                    "retry_scope": "/auth/kakao/start",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit or code lockout.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": {
+                    "code": "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
+                    "message": "Authentication rate limiting is temporarily unavailable. Please retry shortly.",
+                    "request_id": "req-example",
+                    "retry_after_seconds": 5,
+                    "retry_scope": "/auth/kakao/start",
+                    "retryable_by_client": true
+                  }
+                }
+              }
+            },
+            "description": "Authentication rate limit storage is unavailable.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying the authentication request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Auth Kakao Start"

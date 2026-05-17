@@ -1,6 +1,7 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
+import { SafeStorage } from '@/services/storage';
 
 export type OAuthProvider = 'google' | 'kakao';
 type OAuthMode = 'mock' | 'live';
@@ -15,6 +16,8 @@ type OAuthGrant = {
   email?: string;
   providerUserId?: string;
 };
+
+const DEVICE_ID_KEY = '@foodlens_device_id';
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
@@ -180,6 +183,14 @@ const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGran
     if (providerError === 'access_denied' || providerError === 'cancelled' || providerError === 'canceled') {
       throw new AuthApiError('Provider login was cancelled.', 'AUTH_PROVIDER_CANCELLED', 400);
     }
+    if (providerError === 'AUTH_RATE_LIMITED') {
+      throw new AuthApiError(
+        readParam('error_description') ?? 'Too many provider login attempts. Try again later.',
+        'AUTH_RATE_LIMITED',
+        429,
+        readParam('request_id')
+      );
+    }
 
     throw new AuthApiError(
       readParam('error_description') ?? 'Provider login failed.',
@@ -228,21 +239,30 @@ const requestGrant = async (provider: OAuthProvider): Promise<OAuthGrant> => {
   return requestLiveGrant(provider);
 };
 
+const resolveOAuthDeviceId = async (): Promise<string | undefined> => {
+  const stored = await SafeStorage.get<string | null>(DEVICE_ID_KEY, null);
+  const normalized = typeof stored === 'string' ? stored.trim() : '';
+  return normalized || undefined;
+};
+
 export const loginWithOAuthProvider = async (
   provider: OAuthProvider,
   options: OAuthLoginOptions = {},
 ): Promise<AuthSessionTokens> => {
   const grant = await requestGrant(provider);
+  const deviceId = await resolveOAuthDeviceId();
   if (provider === 'google') {
     return AuthApi.loginWithGoogle({
       ...grant,
       locale: options.locale,
+      deviceId,
     });
   }
 
   return AuthApi.loginWithKakao({
     ...grant,
     locale: options.locale,
+    deviceId,
   });
 };
 

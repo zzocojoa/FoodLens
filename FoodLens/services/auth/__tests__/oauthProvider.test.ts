@@ -3,6 +3,8 @@ import * as WebBrowser from 'expo-web-browser';
 import { AuthApi, AuthSessionTokens } from '../authApi';
 import { AuthOAuthProvider } from '../oauthProvider';
 
+const mockSafeStorageGet = jest.fn();
+
 jest.mock('../authApi', () => ({
   AuthApi: {
     loginWithGoogle: jest.fn(),
@@ -20,6 +22,12 @@ jest.mock('../authApi', () => ({
       this.status = status;
       this.requestId = requestId;
     }
+  },
+}));
+
+jest.mock('@/services/storage', () => ({
+  SafeStorage: {
+    get: (...args: unknown[]) => mockSafeStorageGet(...args),
   },
 }));
 
@@ -57,6 +65,7 @@ const ORIGINAL_DEV_FLAG = (global as { __DEV__?: boolean }).__DEV__;
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockSafeStorageGet.mockResolvedValue(null);
   process.env = { ...ORIGINAL_ENV };
   delete process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'];
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'];
@@ -94,6 +103,7 @@ describe('oauthProvider', () => {
         redirectUri: 'foodlens://oauth/google-callback',
         email: 'mock+google@foodlens.local',
         locale: 'ja-JP',
+        deviceId: undefined,
       })
     );
     expect(result.user.id).toBe('usr_google');
@@ -128,6 +138,33 @@ describe('oauthProvider', () => {
       expect.stringContaining('redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback'),
       'foodlens://oauth/google-callback'
     );
+  });
+
+  it('maps callback rate limit redirect to retryable auth error', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test';
+    mockedLinking.createURL.mockReturnValue('foodlens://oauth/google-callback');
+    mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({
+      type: 'success',
+      url: 'foodlens://oauth/google-callback?error=AUTH_RATE_LIMITED&error_description=Too%20many%20attempts&request_id=req-oauth-limited&retry_after_seconds=60',
+    });
+    mockedLinking.parse.mockReturnValue({
+      queryParams: {
+        error: 'AUTH_RATE_LIMITED',
+        error_description: 'Too many attempts',
+        request_id: 'req-oauth-limited',
+        retry_after_seconds: '60',
+      },
+    });
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_RATE_LIMITED',
+      status: 429,
+      requestId: 'req-oauth-limited',
+      message: 'Too many attempts',
+    });
+
+    expect(mockedAuthApi.loginWithGoogle).not.toHaveBeenCalled();
   });
 
   it('falls back to analysis server URL when provider start URL is missing', async () => {
@@ -167,6 +204,7 @@ describe('oauthProvider', () => {
   it('parses live callback and calls kakao auth API', async () => {
     process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
     process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] = 'https://kauth.kakao.com/oauth/authorize?client_id=test';
+    mockSafeStorageGet.mockResolvedValue('ios-oauth-device-1');
     mockedLinking.createURL.mockReturnValue('foodlens://oauth/kakao-callback');
     mockedWebBrowser.openAuthSessionAsync.mockResolvedValue({
       type: 'success',
@@ -191,6 +229,7 @@ describe('oauthProvider', () => {
         redirectUri: 'foodlens://oauth/kakao-callback',
         email: 'ka@example.com',
         providerUserId: 'kakao-user',
+        deviceId: 'ios-oauth-device-1',
       })
     );
     expect(result.user.id).toBe('usr_kakao');

@@ -131,6 +131,9 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             ("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", "3"),
             ("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", "3"),
             ("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", "3"),
+            ("AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN", "10"),
+            ("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", "30"),
+            ("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", "30"),
         )
         for key, value in required_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)
@@ -169,6 +172,9 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_SIGNUP_PER_MIN",
             "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN",
             "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN",
             "AUTH_RATE_LIMITED",
             "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE",
             "Retry-After: <seconds>",
@@ -285,6 +291,9 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_SIGNUP_PER_MIN",
             "AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN",
             "AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN",
+            "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN",
             "AUTH_GOOGLE_OAUTH_PROMPT",
             "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
             "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
@@ -312,6 +321,9 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("AUTH_RATE_LIMIT_SIGNUP_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_VERIFICATION_REQUEST_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_MIN", output)
+        self.assertIn("AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN", output)
+        self.assertIn("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", output)
+        self.assertIn("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
