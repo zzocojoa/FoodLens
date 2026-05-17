@@ -66,9 +66,61 @@ class ApiEdgeGuardTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             settings = build_rate_limit_settings_from_env()
         self.assertTrue(settings.enabled)
+        self.assertEqual(settings.backend, "memory")
+        self.assertEqual(settings.table_name, "analysis_rate_limit_events")
         self.assertEqual(settings.endpoint_limits_per_minute["/analyze"], 15)
         self.assertEqual(settings.endpoint_limits_per_minute["/analyze/label"], 15)
         self.assertEqual(settings.endpoint_limits_per_minute["/lookup/barcode"], 30)
+
+    def test_analysis_rate_limit_settings_auto_selects_postgres_when_database_url_exists(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://foodlens:test@db/foodlens",
+                "ANALYSIS_RATE_LIMIT_BACKEND": "auto",
+            },
+            clear=True,
+        ):
+            settings = build_rate_limit_settings_from_env()
+        self.assertEqual(settings.backend, "postgres")
+        self.assertEqual(settings.table_name, "analysis_rate_limit_events")
+
+    def test_analysis_rate_limit_settings_from_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "ANALYSIS_RATE_LIMIT_ENABLED": "1",
+                "ANALYSIS_RATE_LIMIT_BACKEND": "postgres",
+                "ANALYSIS_RATE_LIMIT_TABLE": "analysis_rate_limit_events_custom",
+                "ANALYSIS_RATE_LIMIT_WINDOW_SECONDS": "30",
+                "ANALYSIS_RATE_LIMIT_ANALYZE_PER_MIN": "2",
+                "ANALYSIS_RATE_LIMIT_LABEL_PER_MIN": "3",
+                "ANALYSIS_RATE_LIMIT_SMART_PER_MIN": "4",
+                "ANALYSIS_RATE_LIMIT_JOBS_PER_MIN": "5",
+                "ANALYSIS_RATE_LIMIT_JOB_STATUS_PER_MIN": "20",
+                "ANALYSIS_RATE_LIMIT_BARCODE_PER_MIN": "6",
+            },
+            clear=True,
+        ):
+            settings = build_rate_limit_settings_from_env()
+        self.assertEqual(settings.backend, "postgres")
+        self.assertEqual(settings.table_name, "analysis_rate_limit_events_custom")
+        self.assertEqual(settings.window_seconds, 30)
+        self.assertEqual(settings.endpoint_limits_per_minute["/analyze"], 2)
+        self.assertEqual(settings.endpoint_limits_per_minute["/analyze/label"], 3)
+        self.assertEqual(settings.endpoint_limits_per_minute["/analyze/smart"], 4)
+        self.assertEqual(settings.endpoint_limits_per_minute["/analyze/jobs"], 5)
+        self.assertEqual(settings.endpoint_limits_per_minute["/analyze/jobs/status"], 20)
+        self.assertEqual(settings.endpoint_limits_per_minute["/lookup/barcode"], 6)
+
+    def test_analysis_rate_limit_settings_rejects_invalid_backend_and_table(self):
+        with patch.dict(os.environ, {"ANALYSIS_RATE_LIMIT_BACKEND": "redis"}, clear=True):
+            with self.assertRaises(RateLimitStorageError):
+                build_rate_limit_settings_from_env()
+
+        with patch.dict(os.environ, {"ANALYSIS_RATE_LIMIT_TABLE": "bad-table-name"}, clear=True):
+            with self.assertRaises(RateLimitStorageError):
+                build_rate_limit_settings_from_env()
 
     def test_auth_rate_limit_settings_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -563,6 +615,38 @@ class ApiEdgeGuardTests(unittest.TestCase):
                 subjects=(("email", "email:owner@example.com"),),
                 now=100.0,
             )
+
+    def test_postgres_sliding_window_limiter_accepts_user_subject_scope(self):
+        fake_postgres = _FakePostgres()
+        with patch.object(api_edge_guard, "_load_connect", return_value=fake_postgres.connect), patch.object(
+            api_edge_guard,
+            "_load_database_error",
+            return_value=Exception,
+        ):
+            limiter = PostgresSlidingWindowRateLimiter(
+                database_url="postgresql://foodlens:test@db/foodlens",
+                endpoint_limits_per_minute={"/analyze": 1},
+                table_name="analysis_rate_limit_events",
+                window_seconds=60,
+            )
+
+            first = limiter.evaluate_many(
+                endpoint="/analyze",
+                subjects=(("user", _hashed_subject("user", "a")),),
+                now=100.0,
+            )
+            second = limiter.evaluate_many(
+                endpoint="/analyze",
+                subjects=(("user", _hashed_subject("user", "a")),),
+                now=101.0,
+            )
+
+        self.assertIsNone(first)
+        self.assertIsNotNone(second)
+        if second is None:
+            raise AssertionError("blocked decision must exist")
+        self.assertEqual(second[0], "user")
+        self.assertEqual(second[1].retry_after_seconds, 59)
 
     def test_inflight_admission_settings_defaults(self):
         with patch.dict(os.environ, {}, clear=True):

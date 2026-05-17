@@ -24,6 +24,10 @@ services:
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
         value: "1"
+      - key: ANALYSIS_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: ANALYSIS_RATE_LIMIT_TABLE
+        value: "analysis_rate_limit_events"
       - key: ANALYSIS_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: ANALYSIS_RATE_LIMIT_ANALYZE_PER_MIN
@@ -396,6 +400,10 @@ services:
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
         value: "1"
+      - key: ANALYSIS_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: ANALYSIS_RATE_LIMIT_TABLE
+        value: "analysis_rate_limit_events"
       - key: ANALYSIS_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: ANALYSIS_RATE_LIMIT_ANALYZE_PER_MIN
@@ -768,6 +776,10 @@ services:
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
         value: "1"
+      - key: ANALYSIS_RATE_LIMIT_BACKEND
+        value: "postgres"
+      - key: ANALYSIS_RATE_LIMIT_TABLE
+        value: "analysis_rate_limit_events"
       - key: ANALYSIS_RATE_LIMIT_WINDOW_SECONDS
         value: "60"
       - key: ANALYSIS_RATE_LIMIT_ANALYZE_PER_MIN

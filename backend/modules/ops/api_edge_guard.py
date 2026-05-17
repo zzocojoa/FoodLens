@@ -19,7 +19,7 @@ _AUTH_RATE_LIMIT_TABLE_MAX_LENGTH = _POSTGRES_IDENTIFIER_MAX_LENGTH - len(
 )
 _AUTH_RATE_LIMIT_SUBJECT_DIGEST_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
 _AUTH_RATE_LIMIT_PERSISTED_SUBJECT_SCOPES: frozenset[str] = frozenset(
-    {"ip", "email", "device"}
+    {"ip", "email", "device", "user"}
 )
 
 
@@ -32,6 +32,8 @@ class AnalysisCorsConfig:
 @dataclass(frozen=True)
 class RateLimitSettings:
     enabled: bool
+    backend: str
+    table_name: str
     window_seconds: int
     endpoint_limits_per_minute: dict[str, int]
 
@@ -86,7 +88,7 @@ def _validate_auth_rate_limit_subject(*, subject: str) -> None:
         )
     if subject_scope not in _AUTH_RATE_LIMIT_PERSISTED_SUBJECT_SCOPES:
         raise RateLimitStorageError(
-            "Invalid auth rate limit subject: persisted scope must be ip, email, or device."
+            "Invalid rate limit subject: persisted scope must be ip, email, device, or user."
         )
     if _AUTH_RATE_LIMIT_SUBJECT_DIGEST_PATTERN.fullmatch(digest) is None:
         raise RateLimitStorageError(
@@ -155,6 +157,17 @@ def _auth_rate_limit_backend() -> str:
     return raw_backend
 
 
+def _analysis_rate_limit_backend() -> str:
+    raw_backend = (os.environ.get("ANALYSIS_RATE_LIMIT_BACKEND") or "auto").strip().lower()
+    if raw_backend not in {"auto", "memory", "postgres"}:
+        raise RateLimitStorageError(
+            "ANALYSIS_RATE_LIMIT_BACKEND must be one of: auto, memory, postgres."
+        )
+    if raw_backend == "auto":
+        return "postgres" if (os.environ.get("DATABASE_URL") or "").strip() else "memory"
+    return raw_backend
+
+
 def _sanitize_identifier_name(raw: str, *, fallback: str, max_length: int) -> str:
     candidate = (raw or "").strip() or fallback
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", candidate):
@@ -185,6 +198,15 @@ def _sanitize_index_name(raw: str, *, fallback: str) -> str:
 
 def build_rate_limit_settings_from_env() -> RateLimitSettings:
     enabled = (os.environ.get("ANALYSIS_RATE_LIMIT_ENABLED", "1").strip() != "0")
+    if enabled:
+        backend = _analysis_rate_limit_backend()
+        table_name = _sanitize_table_name(
+            os.environ.get("ANALYSIS_RATE_LIMIT_TABLE", ""),
+            fallback="analysis_rate_limit_events",
+        )
+    else:
+        backend = "memory"
+        table_name = "analysis_rate_limit_events"
     window_seconds = _env_int("ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", 60)
     analyze_limit = _env_int("ANALYSIS_RATE_LIMIT_ANALYZE_PER_MIN", 15)
     label_limit = _env_int("ANALYSIS_RATE_LIMIT_LABEL_PER_MIN", 15)
@@ -194,6 +216,8 @@ def build_rate_limit_settings_from_env() -> RateLimitSettings:
     job_status_limit = _env_int("ANALYSIS_RATE_LIMIT_JOB_STATUS_PER_MIN", max(jobs_limit * 4, 60))
     return RateLimitSettings(
         enabled=enabled,
+        backend=backend,
+        table_name=table_name,
         window_seconds=window_seconds,
         endpoint_limits_per_minute={
             "/analyze": analyze_limit,
@@ -446,7 +470,7 @@ class PostgresSlidingWindowRateLimiter:
     ) -> None:
         normalized_database_url = database_url.strip()
         if not normalized_database_url:
-            raise RateLimitStorageError("DATABASE_URL is required for postgres auth rate limiting.")
+            raise RateLimitStorageError("DATABASE_URL is required for postgres rate limiting.")
         self._database_url = normalized_database_url
         self._endpoint_limits = dict(endpoint_limits_per_minute)
         self._table_name = _sanitize_table_name(table_name, fallback="auth_rate_limit_events")
@@ -545,7 +569,7 @@ class PostgresSlidingWindowRateLimiter:
                     return None
         except database_error as error:
             raise RateLimitStorageError(
-                f"Failed to evaluate postgres auth rate limit endpoint={endpoint}: {error}"
+                f"Failed to evaluate postgres rate limit endpoint={endpoint}: {error}"
             ) from error
 
     def _ensure_table(self, *, connect) -> None:
@@ -583,7 +607,7 @@ class PostgresSlidingWindowRateLimiter:
                 self._table_ensured = True
             except database_error as error:
                 raise RateLimitStorageError(
-                    f"Failed to initialize postgres auth rate limit table={self._table_name}: {error}"
+                    f"Failed to initialize postgres rate limit table={self._table_name}: {error}"
                 ) from error
 
 
@@ -654,7 +678,7 @@ def _load_connect():
         from psycopg import connect  # type: ignore
     except ImportError as error:
         raise RateLimitStorageError(
-            "psycopg is required for postgres auth rate limiting. Install backend/requirements.txt."
+            "psycopg is required for postgres rate limiting. Install backend/requirements.txt."
         ) from error
     return connect
 
@@ -664,6 +688,6 @@ def _load_database_error():
         from psycopg import Error  # type: ignore
     except ImportError as error:
         raise RateLimitStorageError(
-            "psycopg is required for postgres auth rate limiting. Install backend/requirements.txt."
+            "psycopg is required for postgres rate limiting. Install backend/requirements.txt."
         ) from error
     return Error

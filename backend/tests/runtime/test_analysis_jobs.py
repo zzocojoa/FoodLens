@@ -3,13 +3,17 @@ import io
 import os
 import time
 import unittest
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
+from starlette.requests import Request
 
 import backend.modules.analysis_jobs as analysis_jobs
 from backend.modules.analyst_runtime.router import SmartRouter
@@ -27,6 +31,8 @@ from backend.modules.ops.cost_guardrail import CostGuardrailService, InMemoryMon
 from backend.modules.ops.data_retention import AnalysisJobsSensitivePayloadRetentionConfig
 from backend.modules.ops.data_retention import CleanupJobResult
 from backend.modules.ops.data_retention import RetentionDataClass
+from backend.modules.ops.api_edge_guard import InMemorySlidingWindowRateLimiter
+from backend.modules.ops.api_edge_guard import RateLimitStorageError
 from backend.modules.ops.rollout_control import KpiThresholds
 from backend.modules.server_bootstrap import decode_upload_to_image
 
@@ -38,6 +44,8 @@ os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
 from backend.server import app, resolve_prompt_country_code  # noqa: E402
 from backend.server import _analyze_food_job_image_with_policy  # noqa: E402
 from backend.server import _analyze_label_image_with_policy  # noqa: E402
+from backend.server import _apply_analysis_rate_limit  # noqa: E402
+from backend.server import _apply_analysis_rate_limit_sync  # noqa: E402
 from backend.server import _run_retention_cleanup_once  # noqa: E402
 
 
@@ -92,6 +100,74 @@ def _analysis_job_row(job_id: str) -> tuple[object, ...]:
         None,
         None,
     )
+
+
+def _build_rate_limit_request(headers: dict[str, str], client_host: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/analyze",
+            "headers": [
+                (key.lower().encode("latin-1"), value.encode("latin-1"))
+                for key, value in headers.items()
+            ],
+            "client": (client_host, 12345),
+        }
+    )
+
+
+class _AnalysisRateLimitAuthService:
+    def authenticate_access_token(self, *, access_token: str) -> SimpleNamespace:
+        return SimpleNamespace(user_id=f"user-{access_token}")
+
+
+class _FailingAnalysisRateLimiter:
+    def evaluate_many(self, *, endpoint: str, subjects: tuple[tuple[str, str], ...], now: float | None) -> None:
+        del endpoint, subjects, now
+        raise RateLimitStorageError("rate limit store unavailable")
+
+
+@contextmanager
+def _patched_analysis_rate_limit_state(
+    *,
+    endpoint_limits_per_minute: dict[str, int],
+    auth_service: object | None,
+) -> Iterator[None]:
+    had_limiter = hasattr(app.state, "analysis_rate_limiter")
+    had_auth_service = hasattr(app.state, "auth_service")
+    original_limiter = getattr(app.state, "analysis_rate_limiter", None)
+    original_auth_service = getattr(app.state, "auth_service", None)
+    try:
+        app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
+            endpoint_limits_per_minute=endpoint_limits_per_minute,
+            window_seconds=60,
+        )
+        if auth_service is not None:
+            app.state.auth_service = auth_service
+        yield
+    finally:
+        if had_limiter:
+            app.state.analysis_rate_limiter = original_limiter
+        else:
+            app.state._state.pop("analysis_rate_limiter", None)
+        if had_auth_service:
+            app.state.auth_service = original_auth_service
+        else:
+            app.state._state.pop("auth_service", None)
+
+
+def _assert_analysis_rate_limit_contract(
+    test_case: unittest.TestCase,
+    exception: HTTPException,
+    endpoint: str,
+) -> None:
+    test_case.assertEqual(exception.status_code, 429)
+    test_case.assertEqual(exception.headers["Retry-After"], "60")
+    test_case.assertEqual(exception.detail["code"], "API_RATE_LIMITED")
+    test_case.assertEqual(exception.detail["retry_after_seconds"], 60)
+    test_case.assertEqual(exception.detail["retry_scope"], endpoint)
+    test_case.assertTrue(exception.detail["retryable_by_client"])
 
 
 class _RecordingCursor:
@@ -385,6 +461,270 @@ class _RetentionCleanupRecordingJob:
 
 
 class AnalysisJobRuntimeTests(unittest.TestCase):
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
+    @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
+    def test_submit_job_route_blocks_unauthenticated_device_rotation_by_ip(
+        self,
+        _worker_stop: object,
+        _worker_start: object,
+    ) -> None:
+        with TestClient(app) as client:
+            with _patched_analysis_rate_limit_state(
+                endpoint_limits_per_minute={"/analyze/jobs": 1},
+                auth_service=None,
+            ):
+                first = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR", "mode": "food"},
+                    headers={
+                        "X-Device-Id": "device-a",
+                        "X-Forwarded-For": "8.8.8.8",
+                        "X-Request-Id": "req-analysis-job-rate-route-1",
+                    },
+                )
+                second = client.post(
+                    "/analyze/jobs",
+                    files={"file": ("food.jpg", _build_image_bytes(), "image/jpeg")},
+                    data={"allergy_info": "None", "locale": "ko-KR", "mode": "food"},
+                    headers={
+                        "X-Device-Id": "device-b",
+                        "X-Forwarded-For": "8.8.8.8",
+                        "X-Request-Id": "req-analysis-job-rate-route-2",
+                    },
+                )
+
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(second.headers["Retry-After"], "60")
+        self.assertEqual(second.json()["detail"]["code"], "API_RATE_LIMITED")
+        self.assertEqual(second.json()["detail"]["retry_after_seconds"], 60)
+        self.assertEqual(second.json()["detail"]["retry_scope"], "/analyze/jobs")
+        self.assertTrue(second.json()["detail"]["retryable_by_client"])
+
+    def test_job_status_route_blocks_unauthenticated_device_rotation_by_ip(self) -> None:
+        with TestClient(app) as client:
+            with _patched_analysis_rate_limit_state(
+                endpoint_limits_per_minute={"/analyze/jobs/status": 1},
+                auth_service=None,
+            ):
+                first = client.get(
+                    "/analyze/jobs/missing-route-rate-job",
+                    headers={
+                        "X-Device-Id": "device-a",
+                        "X-Forwarded-For": "8.8.8.8",
+                        "X-Request-Id": "req-analysis-job-status-rate-route-1",
+                    },
+                )
+                second = client.get(
+                    "/analyze/jobs/another-missing-route-rate-job",
+                    headers={
+                        "X-Device-Id": "device-b",
+                        "X-Forwarded-For": "8.8.8.8",
+                        "X-Request-Id": "req-analysis-job-status-rate-route-2",
+                    },
+                )
+
+        self.assertNotEqual(first.status_code, 429)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(second.headers["Retry-After"], "60")
+        self.assertEqual(second.json()["detail"]["code"], "API_RATE_LIMITED")
+        self.assertEqual(second.json()["detail"]["retry_after_seconds"], 60)
+        self.assertEqual(second.json()["detail"]["retry_scope"], "/analyze/jobs/status")
+        self.assertTrue(second.json()["detail"]["retryable_by_client"])
+
+    def test_analysis_rate_limit_storage_error_maps_to_retryable_503(self) -> None:
+        had_limiter = hasattr(app.state, "analysis_rate_limiter")
+        original_limiter = getattr(app.state, "analysis_rate_limiter", None)
+        try:
+            app.state.analysis_rate_limiter = _FailingAnalysisRateLimiter()
+            request = _build_rate_limit_request(
+                headers={"X-Device-Id": "device-a", "X-Forwarded-For": "8.8.8.8"},
+                client_host="10.0.0.1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                asyncio.run(
+                    _apply_analysis_rate_limit(
+                        request=request,
+                        endpoint="/analyze",
+                        request_id="req-analysis-rate-storage-error",
+                    )
+                )
+        finally:
+            if had_limiter:
+                app.state.analysis_rate_limiter = original_limiter
+            else:
+                app.state._state.pop("analysis_rate_limiter", None)
+
+        self.assertEqual(captured.exception.status_code, 503)
+        self.assertEqual(captured.exception.headers["Retry-After"], "5")
+        self.assertEqual(
+            captured.exception.detail["code"],
+            "API_RATE_LIMIT_STORAGE_UNAVAILABLE",
+        )
+        self.assertEqual(captured.exception.detail["retry_after_seconds"], 5)
+        self.assertEqual(captured.exception.detail["retry_scope"], "/analyze")
+        self.assertTrue(captured.exception.detail["retryable_by_client"])
+
+    def test_analysis_rate_limit_blocks_unauthenticated_device_rotation_by_ip(self) -> None:
+        with _patched_analysis_rate_limit_state(
+            endpoint_limits_per_minute={"/analyze": 1},
+            auth_service=None,
+        ):
+            first_request = _build_rate_limit_request(
+                headers={"X-Device-Id": "device-a", "X-Forwarded-For": "8.8.8.8"},
+                client_host="10.0.0.1",
+            )
+            second_request = _build_rate_limit_request(
+                headers={"X-Device-Id": "device-b", "X-Forwarded-For": "8.8.8.8"},
+                client_host="10.0.0.1",
+            )
+
+            _apply_analysis_rate_limit_sync(
+                request=first_request,
+                endpoint="/analyze",
+                request_id="req-analysis-rate-ip-1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                _apply_analysis_rate_limit_sync(
+                    request=second_request,
+                    endpoint="/analyze",
+                    request_id="req-analysis-rate-ip-2",
+                )
+        _assert_analysis_rate_limit_contract(self, captured.exception, "/analyze")
+
+    def test_analysis_rate_limit_blocks_unauthenticated_ip_rotation_by_device(self) -> None:
+        with _patched_analysis_rate_limit_state(
+            endpoint_limits_per_minute={"/analyze": 1},
+            auth_service=None,
+        ):
+            first_request = _build_rate_limit_request(
+                headers={"X-Device-Id": "device-a", "X-Forwarded-For": "8.8.8.8"},
+                client_host="10.0.0.1",
+            )
+            second_request = _build_rate_limit_request(
+                headers={"X-Device-Id": "device-a", "X-Forwarded-For": "1.1.1.1"},
+                client_host="10.0.0.2",
+            )
+
+            _apply_analysis_rate_limit_sync(
+                request=first_request,
+                endpoint="/analyze",
+                request_id="req-analysis-rate-device-1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                _apply_analysis_rate_limit_sync(
+                    request=second_request,
+                    endpoint="/analyze",
+                    request_id="req-analysis-rate-device-2",
+                )
+        _assert_analysis_rate_limit_contract(self, captured.exception, "/analyze")
+
+    def test_analysis_rate_limit_blocks_authenticated_rotation_by_user(self) -> None:
+        with _patched_analysis_rate_limit_state(
+            endpoint_limits_per_minute={"/lookup/barcode": 1},
+            auth_service=_AnalysisRateLimitAuthService(),
+        ):
+            first_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token",
+                    "X-Device-Id": "device-a",
+                    "X-Forwarded-For": "8.8.8.8",
+                },
+                client_host="10.0.0.1",
+            )
+            second_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token",
+                    "X-Device-Id": "device-b",
+                    "X-Forwarded-For": "1.1.1.1",
+                },
+                client_host="10.0.0.2",
+            )
+
+            _apply_analysis_rate_limit_sync(
+                request=first_request,
+                endpoint="/lookup/barcode",
+                request_id="req-analysis-rate-user-1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                _apply_analysis_rate_limit_sync(
+                    request=second_request,
+                    endpoint="/lookup/barcode",
+                    request_id="req-analysis-rate-user-2",
+                )
+        _assert_analysis_rate_limit_contract(self, captured.exception, "/lookup/barcode")
+
+    def test_analysis_rate_limit_blocks_authenticated_ip_reuse_across_users(self) -> None:
+        with _patched_analysis_rate_limit_state(
+            endpoint_limits_per_minute={"/analyze/label": 1},
+            auth_service=_AnalysisRateLimitAuthService(),
+        ):
+            first_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token-a",
+                    "X-Device-Id": "device-a",
+                    "X-Forwarded-For": "8.8.8.8",
+                },
+                client_host="10.0.0.1",
+            )
+            second_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token-b",
+                    "X-Device-Id": "device-b",
+                    "X-Forwarded-For": "8.8.8.8",
+                },
+                client_host="10.0.0.1",
+            )
+
+            _apply_analysis_rate_limit_sync(
+                request=first_request,
+                endpoint="/analyze/label",
+                request_id="req-analysis-rate-auth-ip-1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                _apply_analysis_rate_limit_sync(
+                    request=second_request,
+                    endpoint="/analyze/label",
+                    request_id="req-analysis-rate-auth-ip-2",
+                )
+        _assert_analysis_rate_limit_contract(self, captured.exception, "/analyze/label")
+
+    def test_analysis_rate_limit_blocks_authenticated_device_reuse_across_users(self) -> None:
+        with _patched_analysis_rate_limit_state(
+            endpoint_limits_per_minute={"/analyze/smart": 1},
+            auth_service=_AnalysisRateLimitAuthService(),
+        ):
+            first_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token-a",
+                    "X-Device-Id": "device-a",
+                    "X-Forwarded-For": "8.8.8.8",
+                },
+                client_host="10.0.0.1",
+            )
+            second_request = _build_rate_limit_request(
+                headers={
+                    "Authorization": "Bearer analysis-token-b",
+                    "X-Device-Id": "device-a",
+                    "X-Forwarded-For": "1.1.1.1",
+                },
+                client_host="10.0.0.2",
+            )
+
+            _apply_analysis_rate_limit_sync(
+                request=first_request,
+                endpoint="/analyze/smart",
+                request_id="req-analysis-rate-auth-device-1",
+            )
+            with self.assertRaises(HTTPException) as captured:
+                _apply_analysis_rate_limit_sync(
+                    request=second_request,
+                    endpoint="/analyze/smart",
+                    request_id="req-analysis-rate-auth-device-2",
+                )
+        _assert_analysis_rate_limit_contract(self, captured.exception, "/analyze/smart")
+
     def test_retention_pass_invokes_analysis_jobs_ttl_scrub_without_pii_logs(self) -> None:
         store = _TtlScrubRecordingStore()
         retention_job = _RetentionCleanupRecordingJob()
