@@ -202,9 +202,16 @@
   - `AI_COST_GUARDRAIL_RESERVATION_TABLE=ai_monthly_usage_reservations`
   - `RETENTION_STORE_BACKEND=postgres`
   - `RETENTION_STORE_TABLE=retention_records`
+  - `ANALYSIS_JOBS_TTL_SCRUB_ENABLED`
+  - `ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN`
+  - `ANALYSIS_JOBS_TTL_SCRUB_DAYS`
+  - `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`
   - `DELETION_QUEUE_BACKEND=postgres`
   - `DELETION_QUEUE_TABLE=deletion_queue`
   - `DELETION_STATUS_TABLE=deletion_statuses`
+- TTL scrub rollout:
+  - [Analysis Jobs TTL Scrub Rollout](analysis-jobs-ttl-scrub-rollout.md)에 따라 `render.yaml`과 Render live env parity를 먼저 확인한다.
+  - live env 누락 확인에는 `python .github/scripts/validate_render_live_env.py --blueprint render.yaml --presence-only`를 사용한다.
 - 권한:
   - 자동 테이블 생성 운영이면 앱 DB 계정에 schema `CREATE`, table/index 생성, sequence 사용 권한이 필요합니다.
   - 사전 생성 후 least-privilege 운영이면 앱 DB 계정에 각 코드 경로가 실제 사용하는 `SELECT`, `INSERT`, `UPDATE`, `DELETE` 권한과 필요한 sequence `USAGE` 권한이 필요합니다.

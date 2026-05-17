@@ -130,6 +130,7 @@
 - 비동기 분석 작업:
   - `analysis_jobs`에는 작업 처리를 위해 이미지/알러지/분석 결과 필드가 남을 수 있다.
   - 기존 잔존 데이터 또는 오래된 anonymous/device/ip scoped 작업은 [Analysis Jobs Privacy Backfill Runbook](../ops/analysis-jobs-privacy-backfill-runbook.md)에 따라 dry-run 검토 후 scrub한다.
+  - TTL 만료 payload scrub 운영은 [Analysis Jobs TTL Scrub Rollout](../ops/analysis-jobs-ttl-scrub-rollout.md)에 따라 live env parity, dry-run count, execute 승인 기준을 확인한다.
 
 ## 6-2) 현재 최소수집·제3자 연동 증적
 
