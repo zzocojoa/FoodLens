@@ -321,8 +321,13 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             ), patch.object(server_module, "PostgresSlidingWindowRateLimiter") as limiter_class:
                 server_module._initialize_api_runtime_controls()
             self.assertIs(app.state.auth_rate_limiter, limiter_class.return_value)
-            limiter_class.assert_called_once()
-            call_kwargs = limiter_class.call_args.kwargs
+            auth_limiter_calls = [
+                call
+                for call in limiter_class.call_args_list
+                if call.kwargs.get("table_name") == "auth_rate_limit_events"
+            ]
+            self.assertEqual(len(auth_limiter_calls), 1)
+            call_kwargs = auth_limiter_calls[0].kwargs
             self.assertEqual(call_kwargs["database_url"], "postgresql://foodlens:test@db/foodlens")
             self.assertEqual(call_kwargs["table_name"], "auth_rate_limit_events")
             self.assertEqual(call_kwargs["endpoint_limits_per_minute"]["/auth/email/login"], 5)
