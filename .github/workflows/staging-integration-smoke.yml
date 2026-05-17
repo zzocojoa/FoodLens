@@ -5,13 +5,13 @@ on:
     branches:
       - main
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - "release/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: staging-integration-smoke-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   staging-integration-smoke-ref-guard:
@@ -55,6 +55,9 @@ jobs:
           deploy_job = job_body("staging-integration-smoke")
           required_markers = [
               "pull_request:",
+              "workflow_dispatch:",
+              "concurrency:",
+              "cancel-in-progress: true",
           ]
           deploy_job_markers = [
               "environment: staging",
@@ -63,6 +66,10 @@ jobs:
               "RENDER_FORBIDDEN_SERVICE_NAMES",
               "RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging",
               "RENDER_ALLOWED_SERVICE_PLANS: free",
+              "RENDER_ALLOWED_SERVICE_TYPES: web_service",
+              "RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens",
+              "RENDER_ALLOWED_SERVICE_BRANCHES: main",
+              "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: no",
               "RENDER_DEPLOY_EXPECTED_COMMIT: $" + "{{ github.sha }}",
               "render_staging_deploy_trigger.py",
               "render_deploy_ready_gate.py",
@@ -82,6 +89,7 @@ jobs:
               "RENDER_" + "START_COMMAND",
               "RENDER_" + "JOB_LOG_PATH",
               "RENDER_" + "JOB_SUMMARY_PATH",
+              "\n  push:",
           ]
           present_forbidden_markers = [marker for marker in forbidden_markers if marker in workflow]
           if present_forbidden_markers:
@@ -93,7 +101,7 @@ jobs:
           PY
 
   staging-integration-smoke:
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging
@@ -103,6 +111,10 @@ jobs:
       RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api
       RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging
       RENDER_ALLOWED_SERVICE_PLANS: free
+      RENDER_ALLOWED_SERVICE_TYPES: web_service
+      RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens
+      RENDER_ALLOWED_SERVICE_BRANCHES: main
+      RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: "no"
       RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}
       RENDER_DEPLOY_MIN_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
       RENDER_DEPLOY_TIMEOUT_SECONDS: "900"

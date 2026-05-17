@@ -321,12 +321,20 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         deploy_job = _workflow_job_body("staging-integration-smoke")
         pr_check_job = _workflow_job_body("staging-integration-smoke-pr-check")
 
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("concurrency:", workflow)
+        self.assertIn("cancel-in-progress: true", workflow)
+        self.assertNotIn("\n  push:", workflow)
         self.assertIn("environment: staging", deploy_job)
         self.assertIn("STAGING_RENDER_API_KEY", deploy_job)
         self.assertIn("STAGING_RENDER_SERVICE_ID", deploy_job)
         self.assertIn("RENDER_FORBIDDEN_SERVICE_NAMES: foodlens-api", deploy_job)
         self.assertIn("RENDER_ALLOWED_SERVICE_NAMES: foodlens-api-staging", deploy_job)
         self.assertIn("RENDER_ALLOWED_SERVICE_PLANS: free", deploy_job)
+        self.assertIn("RENDER_ALLOWED_SERVICE_TYPES: web_service", deploy_job)
+        self.assertIn("RENDER_ALLOWED_SERVICE_REPOS: https://github.com/zzocojoa/FoodLens", deploy_job)
+        self.assertIn("RENDER_ALLOWED_SERVICE_BRANCHES: main", deploy_job)
+        self.assertIn('RENDER_ALLOWED_SERVICE_AUTO_DEPLOY: "no"', deploy_job)
         self.assertIn("RENDER_DEPLOY_EXPECTED_COMMIT: ${{ github.sha }}", deploy_job)
         self.assertIn("render_staging_deploy_trigger.py", pr_check_job)
         self.assertIn("Trigger Render staging deploy", pr_check_job)
@@ -830,6 +838,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                     "type": "web_service",
                     "branch": "main",
                     "repo": "https://github.com/zzocojoa/FoodLens",
+                    "autoDeploy": "no",
                     "serviceDetails": {"plan": "free"},
                 }
             if "/deploys" in url:
@@ -853,6 +862,10 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                 "RENDER_DEPLOY_MIN_CREATED_AT": "2026-05-01T00:00:00Z",
                 "RENDER_DEPLOY_SUMMARY_PATH": str(summary_path),
                 "RENDER_ALLOWED_SERVICE_PLANS": "free",
+                "RENDER_ALLOWED_SERVICE_TYPES": "web_service",
+                "RENDER_ALLOWED_SERVICE_REPOS": "https://github.com/zzocojoa/FoodLens",
+                "RENDER_ALLOWED_SERVICE_BRANCHES": "main",
+                "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY": "no",
             }
 
             status = gate.run_gate(env, request_json, lambda seconds: None, lambda: 0.0)
@@ -961,6 +974,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                     "type": "web_service",
                     "branch": "main",
                     "repo": "https://github.com/zzocojoa/FoodLens",
+                    "autoDeploy": "no",
                     "serviceDetails": {"plan": "free"},
                 }
             if method == "POST" and url.endswith("/services/srv-test/deploys"):
@@ -982,6 +996,10 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                 "RENDER_FORBIDDEN_SERVICE_NAMES": "foodlens-api",
                 "RENDER_ALLOWED_SERVICE_NAMES": "foodlens-api-staging",
                 "RENDER_ALLOWED_SERVICE_PLANS": "free",
+                "RENDER_ALLOWED_SERVICE_TYPES": "web_service",
+                "RENDER_ALLOWED_SERVICE_REPOS": "https://github.com/zzocojoa/FoodLens",
+                "RENDER_ALLOWED_SERVICE_BRANCHES": "main",
+                "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY": "no",
                 "GITHUB_ENV": str(Path(temp_dir) / "github.env"),
             }
 
@@ -1008,6 +1026,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertEqual(summary["render_deploy"]["commit"], expected_commit)
         self.assertEqual(summary["render_service"]["name"], "foodlens-api-staging")
         self.assertEqual(summary["render_service"]["plan"], "free")
+        self.assertEqual(summary["render_service"]["auto_deploy"], "no")
         self.assertEqual(github_env_content, "RENDER_DEPLOY_EXPECTED_DEPLOY_ID=dep-test\n")
         self.assertNotIn("render-secret-key", json.dumps(summary))
         self.assertNotIn("render-secret-key", stdout.getvalue())
@@ -1026,6 +1045,7 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                     "type": "web_service",
                     "branch": "main",
                     "repo": "https://github.com/zzocojoa/FoodLens",
+                    "autoDeploy": "no",
                     "serviceDetails": {"plan": "free"},
                 }
             if method == "POST" and url.endswith("/services/srv-test/deploys"):
@@ -1053,6 +1073,10 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
                 "RENDER_FORBIDDEN_SERVICE_NAMES": "foodlens-api",
                 "RENDER_ALLOWED_SERVICE_NAMES": "foodlens-api-staging",
                 "RENDER_ALLOWED_SERVICE_PLANS": "free",
+                "RENDER_ALLOWED_SERVICE_TYPES": "web_service",
+                "RENDER_ALLOWED_SERVICE_REPOS": "https://github.com/zzocojoa/FoodLens",
+                "RENDER_ALLOWED_SERVICE_BRANCHES": "main",
+                "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY": "no",
                 "GITHUB_ENV": str(Path(temp_dir) / "github.env"),
             }
 
@@ -1201,6 +1225,68 @@ class StagingIntegrationSmokeTests(unittest.TestCase):
         self.assertNotIn("render-secret-key", json.dumps(summary))
         self.assertNotIn("render-secret-key", stdout.getvalue())
         self.assertNotIn("render-secret-key", stderr.getvalue())
+
+    def test_render_staging_deploy_trigger_rejects_staging_service_drift_before_post(self) -> None:
+        trigger = _load_render_deploy_trigger_module()
+        cases = (
+            ("type", "static_site", "disallowed_render_service_type"),
+            ("repo", "https://github.com/zzocojoa/Other", "disallowed_render_service_repo"),
+            ("branch", "release/candidate", "disallowed_render_service_branch"),
+            ("autoDeploy", "yes", "disallowed_render_service_auto_deploy"),
+        )
+
+        for field_name, drift_value, expected_error in cases:
+            with self.subTest(field_name=field_name):
+                calls: list[tuple[str, str]] = []
+                service = {
+                    "name": "foodlens-api-staging",
+                    "type": "web_service",
+                    "branch": "main",
+                    "repo": "https://github.com/zzocojoa/FoodLens",
+                    "autoDeploy": "no",
+                    "serviceDetails": {"plan": "free"},
+                }
+                service[field_name] = drift_value
+
+                def request_json(
+                    method: str,
+                    url: str,
+                    api_key: str,
+                    payload: dict[str, object] | None,
+                ) -> dict[str, object]:
+                    calls.append((method, url))
+                    if method == "GET" and "/services/srv-test" in url:
+                        return service
+                    raise AssertionError(f"unexpected request: {method} {url}")
+
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    summary_path = Path(temp_dir) / "summary.json"
+                    env = {
+                        "RENDER_API_KEY": "render-secret-key",
+                        "RENDER_SERVICE_ID": "srv-test",
+                        "RENDER_DEPLOY_TRIGGER_SUMMARY_PATH": str(summary_path),
+                        "RENDER_ALLOWED_SERVICE_NAMES": "foodlens-api-staging",
+                        "RENDER_ALLOWED_SERVICE_PLANS": "free",
+                        "RENDER_ALLOWED_SERVICE_TYPES": "web_service",
+                        "RENDER_ALLOWED_SERVICE_REPOS": "https://github.com/zzocojoa/FoodLens",
+                        "RENDER_ALLOWED_SERVICE_BRANCHES": "main",
+                        "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY": "no",
+                    }
+
+                    with (
+                        patch("sys.stdout", new_callable=io.StringIO) as stdout,
+                        patch("sys.stderr", new_callable=io.StringIO) as stderr,
+                    ):
+                        status = trigger.run_trigger(env, request_json)
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+                self.assertEqual(status, 1)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(summary["passed"], False)
+                self.assertEqual(summary["error"], expected_error)
+                self.assertNotIn("render-secret-key", json.dumps(summary))
+                self.assertNotIn("render-secret-key", stdout.getvalue())
+                self.assertNotIn("render-secret-key", stderr.getvalue())
 
     def test_render_one_off_job_gate_reports_missing_env_without_values(self) -> None:
         gate = _load_render_job_gate_module()

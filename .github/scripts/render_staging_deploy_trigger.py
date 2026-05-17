@@ -25,6 +25,10 @@ DEFAULT_SUMMARY_PATH = "artifacts/phase6/staging-integration-smoke/render-deploy
 FORBIDDEN_SERVICE_NAMES_ENV = "RENDER_FORBIDDEN_SERVICE_NAMES"
 ALLOWED_SERVICE_NAMES_ENV = "RENDER_ALLOWED_SERVICE_NAMES"
 ALLOWED_SERVICE_PLANS_ENV = "RENDER_ALLOWED_SERVICE_PLANS"
+ALLOWED_SERVICE_TYPES_ENV = "RENDER_ALLOWED_SERVICE_TYPES"
+ALLOWED_SERVICE_REPOS_ENV = "RENDER_ALLOWED_SERVICE_REPOS"
+ALLOWED_SERVICE_BRANCHES_ENV = "RENDER_ALLOWED_SERVICE_BRANCHES"
+ALLOWED_SERVICE_AUTO_DEPLOY_ENV = "RENDER_ALLOWED_SERVICE_AUTO_DEPLOY"
 EXPECTED_DEPLOY_ID_ENV = "RENDER_DEPLOY_EXPECTED_DEPLOY_ID"
 LOOKUP_TIMEOUT_SECONDS_ENV = "RENDER_DEPLOY_TRIGGER_LOOKUP_TIMEOUT_SECONDS"
 LOOKUP_POLL_SECONDS_ENV = "RENDER_DEPLOY_TRIGGER_LOOKUP_POLL_SECONDS"
@@ -182,13 +186,23 @@ def _service_plan(service: dict[str, object]) -> str | None:
     return None
 
 
+def _service_auto_deploy(service: dict[str, object]) -> str | None:
+    auto_deploy = service.get("autoDeploy")
+    if isinstance(auto_deploy, bool):
+        return "yes" if auto_deploy else "no"
+    if isinstance(auto_deploy, str) and auto_deploy.strip():
+        return auto_deploy.strip().lower()
+    return None
+
+
 def _service_summary(service: dict[str, object]) -> dict[str, object]:
     return {
-        "name": service.get("name"),
-        "type": service.get("type"),
+        "auto_deploy": _service_auto_deploy(service),
         "branch": service.get("branch"),
-        "repo": service.get("repo"),
+        "name": service.get("name"),
         "plan": _service_plan(service),
+        "repo": service.get("repo"),
+        "type": service.get("type"),
     }
 
 
@@ -222,6 +236,50 @@ def _service_plan_error(service: dict[str, object], allowed_plans: frozenset[str
         return "render_service_plan_missing"
     if service_plan not in allowed_plans:
         return "disallowed_render_service_plan"
+    return None
+
+
+def _service_type_error(service: dict[str, object], allowed_types: frozenset[str]) -> str | None:
+    if not allowed_types:
+        return None
+    service_type = service.get("type")
+    if not isinstance(service_type, str):
+        return "render_service_type_missing"
+    if service_type not in allowed_types:
+        return "disallowed_render_service_type"
+    return None
+
+
+def _service_repo_error(service: dict[str, object], allowed_repos: frozenset[str]) -> str | None:
+    if not allowed_repos:
+        return None
+    service_repo = service.get("repo")
+    if not isinstance(service_repo, str):
+        return "render_service_repo_missing"
+    if service_repo not in allowed_repos:
+        return "disallowed_render_service_repo"
+    return None
+
+
+def _service_branch_error(service: dict[str, object], allowed_branches: frozenset[str]) -> str | None:
+    if not allowed_branches:
+        return None
+    service_branch = service.get("branch")
+    if not isinstance(service_branch, str):
+        return "render_service_branch_missing"
+    if service_branch not in allowed_branches:
+        return "disallowed_render_service_branch"
+    return None
+
+
+def _service_auto_deploy_error(service: dict[str, object], allowed_auto_deploy: frozenset[str]) -> str | None:
+    if not allowed_auto_deploy:
+        return None
+    service_auto_deploy = _service_auto_deploy(service)
+    if service_auto_deploy is None:
+        return "render_service_auto_deploy_missing"
+    if service_auto_deploy not in allowed_auto_deploy:
+        return "disallowed_render_service_auto_deploy"
     return None
 
 
@@ -358,12 +416,20 @@ def run_trigger(env: dict[str, str], request_json: JsonRequester) -> int:
     forbidden_names = _split_csv(env.get(FORBIDDEN_SERVICE_NAMES_ENV, ""))
     allowed_names = _split_csv(env.get(ALLOWED_SERVICE_NAMES_ENV, ""))
     allowed_plans = _split_csv(env.get(ALLOWED_SERVICE_PLANS_ENV, ""))
+    allowed_types = _split_csv(env.get(ALLOWED_SERVICE_TYPES_ENV, ""))
+    allowed_repos = _split_csv(env.get(ALLOWED_SERVICE_REPOS_ENV, ""))
+    allowed_branches = _split_csv(env.get(ALLOWED_SERVICE_BRANCHES_ENV, ""))
+    allowed_auto_deploy = _split_csv(env.get(ALLOWED_SERVICE_AUTO_DEPLOY_ENV, "").lower())
 
     service = _retrieve_service(api_key, service_id, request_json)
     service_error = (
         _forbidden_service_error(service, forbidden_names)
         or _allowed_service_error(service, allowed_names)
         or _service_plan_error(service, allowed_plans)
+        or _service_type_error(service, allowed_types)
+        or _service_repo_error(service, allowed_repos)
+        or _service_branch_error(service, allowed_branches)
+        or _service_auto_deploy_error(service, allowed_auto_deploy)
     )
     if service_error is not None:
         summary = _base_summary(service, expected_commit)
