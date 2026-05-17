@@ -1281,12 +1281,22 @@ def _initialize_api_runtime_controls() -> None:
     _initialize_label_policy_controls()
     rate_limit_settings = build_rate_limit_settings_from_env()
     if rate_limit_settings.enabled:
-        app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
-            endpoint_limits_per_minute=rate_limit_settings.endpoint_limits_per_minute,
-            window_seconds=rate_limit_settings.window_seconds,
-        )
+        if rate_limit_settings.backend == "postgres":
+            app.state.analysis_rate_limiter = PostgresSlidingWindowRateLimiter(
+                database_url=_env_str("DATABASE_URL", ""),
+                endpoint_limits_per_minute=rate_limit_settings.endpoint_limits_per_minute,
+                table_name=rate_limit_settings.table_name,
+                window_seconds=rate_limit_settings.window_seconds,
+            )
+        else:
+            app.state.analysis_rate_limiter = InMemorySlidingWindowRateLimiter(
+                endpoint_limits_per_minute=rate_limit_settings.endpoint_limits_per_minute,
+                window_seconds=rate_limit_settings.window_seconds,
+            )
         logger.info(
-            "[RateLimit] enabled window_seconds=%d limits=%s",
+            "[RateLimit] enabled backend=%s table=%s window_seconds=%d limits=%s",
+            rate_limit_settings.backend,
+            rate_limit_settings.table_name,
             rate_limit_settings.window_seconds,
             rate_limit_settings.endpoint_limits_per_minute,
         )
@@ -3996,6 +4006,35 @@ def _extract_bearer_token(request: Request) -> str | None:
     return token or None
 
 
+def _resolve_analysis_rate_limit_subjects(
+    request: Request,
+) -> tuple[AuthRateLimitSubjects, str | None, str]:
+    access_token = _extract_bearer_token(request)
+    user_id: str | None = None
+    if access_token:
+        auth_service = getattr(app.state, "auth_service", None)
+        if auth_service is not None:
+            try:
+                user = auth_service.authenticate_access_token(access_token=access_token)
+                user_id = user.user_id
+            except AuthServiceError:
+                user_id = None
+
+    device_id = (request.headers.get("X-Device-Id") or "").strip() or None
+    client_ip = extract_client_ip(request)
+    subjects: list[AuthRateLimitSubject] = []
+    if user_id:
+        subjects.append(("user", _auth_rate_limit_subject("user", user_id)))
+    subjects.append(("ip", _auth_rate_limit_subject("ip", client_ip)))
+    if device_id is not None:
+        subjects.append(("device", _auth_rate_limit_subject("device", device_id)))
+    if user_id:
+        client_scope = "user+ip+device" if device_id else "user+ip"
+    else:
+        client_scope = "ip+device" if device_id else "ip"
+    return tuple(subjects), user_id, client_scope
+
+
 def _resolve_rate_limit_subject(request: Request) -> tuple[str, str | None]:
     access_token = _extract_bearer_token(request)
     user_id: str | None = None
@@ -4018,31 +4057,103 @@ def _resolve_rate_limit_subject(request: Request) -> tuple[str, str | None]:
     return subject, user_id
 
 
-def _apply_analysis_rate_limit(*, request: Request, endpoint: str, request_id: str) -> None:
+def _evaluate_analysis_rate_limit_subjects(
+    *,
+    limiter: Any,
+    endpoint: str,
+    subjects: AuthRateLimitSubjects,
+) -> AuthRateLimitBlockedDecision | None:
+    evaluate_many = getattr(limiter, "evaluate_many", None)
+    if callable(evaluate_many):
+        return evaluate_many(endpoint=endpoint, subjects=subjects, now=None)
+
+    for scope, subject in subjects:
+        decision = limiter.evaluate(endpoint=endpoint, subject=subject)
+        if not decision.allowed:
+            return scope, decision
+    return None
+
+
+def _raise_analysis_rate_limit_storage_error(
+    *,
+    error: RateLimitStorageError,
+    request_id: str,
+    endpoint: str,
+) -> None:
+    retry_after_seconds = 5
+    logger.error(
+        "[RateLimit] storage unavailable",
+        extra={
+            "request_id": request_id,
+            "rate_limit_endpoint": endpoint,
+            "retry_after_seconds": retry_after_seconds,
+            "error_type": type(error).__name__,
+        },
+    )
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "message": "Analysis rate limiting is temporarily unavailable. Please retry shortly.",
+            "code": "API_RATE_LIMIT_STORAGE_UNAVAILABLE",
+            "request_id": request_id,
+            "retry_after_seconds": retry_after_seconds,
+            "retry_scope": endpoint,
+            "retryable_by_client": True,
+        },
+        headers={"Retry-After": str(retry_after_seconds)},
+    ) from error
+
+
+def _apply_analysis_rate_limit_sync(*, request: Request, endpoint: str, request_id: str) -> None:
     limiter = getattr(app.state, "analysis_rate_limiter", None)
     if limiter is None:
         return
 
-    subject, user_id = _resolve_rate_limit_subject(request)
-    decision = limiter.evaluate(endpoint=endpoint, subject=subject)
-    if decision.allowed:
+    subjects, user_id, client_scope = _resolve_analysis_rate_limit_subjects(request)
+    try:
+        blocked = _evaluate_analysis_rate_limit_subjects(
+            limiter=limiter,
+            endpoint=endpoint,
+            subjects=subjects,
+        )
+    except RateLimitStorageError as error:
+        _raise_analysis_rate_limit_storage_error(
+            error=error,
+            request_id=request_id,
+            endpoint=endpoint,
+        )
+    if blocked is None:
         return
 
+    blocked_scope, blocked_decision = blocked
     logger.warning(
-        "[RateLimit] blocked request_id=%s endpoint=%s subject=%s user_id=%s retry_after_seconds=%d",
-        request_id,
-        endpoint,
-        subject,
-        user_id or "unknown",
-        decision.retry_after_seconds,
+        "[RateLimit] blocked",
+        extra={
+            "request_id": request_id,
+            "rate_limit_endpoint": endpoint,
+            "blocked_scope": blocked_scope,
+            "client_scope": client_scope,
+            "user_id": user_id or "unknown",
+            "subject_count": len(subjects),
+            "retry_after_seconds": blocked_decision.retry_after_seconds,
+        },
     )
     raise _build_scoped_rate_limit_http_exception(
         request_id=request_id,
-        retry_after_seconds=decision.retry_after_seconds,
+        retry_after_seconds=blocked_decision.retry_after_seconds,
         code="API_RATE_LIMITED",
         message="Too many requests. Please retry shortly.",
         retry_scope=endpoint,
         retryable_by_client=True,
+    )
+
+
+async def _apply_analysis_rate_limit(*, request: Request, endpoint: str, request_id: str) -> None:
+    await run_in_threadpool(
+        _apply_analysis_rate_limit_sync,
+        request=request,
+        endpoint=endpoint,
+        request_id=request_id,
     )
 
 
@@ -5455,7 +5566,7 @@ async def submit_analysis_job(
             },
         )
 
-    _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/jobs", request_id=request_id)
     _assert_analysis_job_remote_worker_available(request_id=request_id)
     started_at = time.perf_counter()
@@ -5543,7 +5654,7 @@ async def submit_analysis_job(
 )
 async def get_analysis_job_status(request: Request, job_id: str):
     request_id = _request_id(request)
-    _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs/status", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/analyze/jobs/status", request_id=request_id)
     store = _analysis_job_store()
     try:
         record = await run_in_threadpool(store.get_job, job_id=job_id)
@@ -5587,7 +5698,7 @@ async def analyze_food(
     locale: str | None = Form(None),
 ):
     request_id = _request_id(request)
-    _apply_analysis_rate_limit(request=request, endpoint="/analyze", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/analyze", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze", request_id=request_id)
     started_at = time.perf_counter()
 
@@ -6216,7 +6327,7 @@ async def analyze_label(
     Perform OCR nutrition analysis on a label image.
     """
     request_id = _request_id(request)
-    _apply_analysis_rate_limit(request=request, endpoint="/analyze/label", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/analyze/label", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/label", request_id=request_id)
     total_started_at = time.perf_counter()
 
@@ -6270,7 +6381,7 @@ async def analyze_smart(
     Classifies image (Food vs Label) and routes to specific analysis.
     """
     request_id = _request_id(request)
-    _apply_analysis_rate_limit(request=request, endpoint="/analyze/smart", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/analyze/smart", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/analyze/smart", request_id=request_id)
     started_at = time.perf_counter()
 
@@ -6460,7 +6571,7 @@ async def lookup_barcode(
     """
     request_id = _request_id(request)
     parent_request_id = _parent_request_id(request)
-    _apply_analysis_rate_limit(request=request, endpoint="/lookup/barcode", request_id=request_id)
+    await _apply_analysis_rate_limit(request=request, endpoint="/lookup/barcode", request_id=request_id)
     slot_acquired = _try_acquire_analysis_slot(endpoint="/lookup/barcode", request_id=request_id)
     started_at = time.perf_counter()
     try:
