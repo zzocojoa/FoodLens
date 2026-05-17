@@ -1531,6 +1531,117 @@
         "title": "DeletionRequestCreateRequest",
         "type": "object"
       },
+      "DeletionRequestStatusResponse": {
+        "properties": {
+          "deletion_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionStatusPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deletion_request",
+          "request_id"
+        ],
+        "title": "DeletionRequestStatusResponse",
+        "type": "object"
+      },
+      "DeletionStatusPayload": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "queue_id": {
+            "title": "Queue Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "retry_count": {
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "account",
+              "data",
+              "request"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue_id",
+          "target",
+          "status",
+          "created_at",
+          "updated_at",
+          "reason",
+          "retry_count"
+        ],
+        "title": "DeletionStatusPayload",
+        "type": "object"
+      },
       "EmailLoginRequest": {
         "properties": {
           "device_id": {
@@ -4122,7 +4233,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionRequestStatusResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -4148,7 +4261,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionRequestStatusResponse"
+                }
               }
             },
             "description": "Successful Response"

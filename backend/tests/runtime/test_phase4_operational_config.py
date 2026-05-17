@@ -290,6 +290,9 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
             "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
             "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE",
+            "DELETION_QUEUE_RETRY_MAX_ATTEMPTS",
+            "DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS",
+            "DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS",
         )
         for service_env in live_env_by_service.values():
             for missing_key in missing_keys:
@@ -314,6 +317,9 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DAYS", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE", output)
+        self.assertIn("DELETION_QUEUE_RETRY_MAX_ATTEMPTS", output)
+        self.assertIn("DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS", output)
+        self.assertIn("DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS", output)
         self.assertIn("present=false", output)
         self.assertIn("action=update Render Dashboard env keys or render.yaml", output)
         self.assertNotIn("0.12", output)

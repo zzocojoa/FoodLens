@@ -313,7 +313,7 @@
 
 출력:
 
-- `deletion_request { queue_id, request_id, target, status, created_at, updated_at, reason, error }`
+- `deletion_request { queue_id, request_id, target, status, created_at, updated_at, reason, error, retry_count, next_attempt_at }`
 
 상태값:
 

@@ -422,6 +422,7 @@ def _with_queue_cleanup_result(
 
 def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
     from backend.modules.ops.deletion_queue import (
+        DEFAULT_DELETION_RETRY_POLICY,
         DeletionQueueConsumer,
         DeletionRequest,
         DeletionStatus,
@@ -469,7 +470,11 @@ def _run_postgres_queue_crash_rehearsal() -> SmokeResult:
         )
         recovered = storage.requeue_stale(lease_seconds=300)
         status_after_requeue = storage.get_status(item.queue_id)
-        consumer = DeletionQueueConsumer(storage, NoOpDeletionHandler())
+        consumer = DeletionQueueConsumer(
+            storage,
+            NoOpDeletionHandler(),
+            retry_policy=DEFAULT_DELETION_RETRY_POLICY,
+        )
         consume_result = consumer.consume_queue_id(item.queue_id)
         final_status = storage.get_status(item.queue_id)
         final_size = storage.size()
