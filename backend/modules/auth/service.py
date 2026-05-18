@@ -1460,6 +1460,7 @@ class InMemoryAuthSessionService:
     def refresh(self, *, refresh_token: str) -> dict[str, object]:
         now = _utc_now()
         with self._lock:
+            self._purge_expired_refresh_grace_bundles_unlocked(now=now)
             refresh_token_digest = self._refresh_token_digest(refresh_token)
             record = self._refresh_tokens.get(refresh_token_digest)
             if record is None:
@@ -1530,7 +1531,8 @@ class InMemoryAuthSessionService:
             record.replaced_by = None
             record.replacement_access_token = None
             record.grace_redeemed = False
-            self._refresh_grace_bundles_by_digest[refresh_token_digest] = dict(bundle)
+            if self.refresh_reuse_grace_seconds > 0:
+                self._refresh_grace_bundles_by_digest[refresh_token_digest] = dict(bundle)
             self._persist_state_unlocked()
             return bundle
 
@@ -2517,6 +2519,26 @@ class InMemoryAuthSessionService:
             "expires_in": expires_in,
             "user": self._serialize_user(user),
         }
+
+    def _purge_expired_refresh_grace_bundles_unlocked(self, *, now: datetime) -> None:
+        if not self._refresh_grace_bundles_by_digest:
+            return
+        if self.refresh_reuse_grace_seconds <= 0:
+            self._refresh_grace_bundles_by_digest.clear()
+            return
+
+        expired_digests: list[str] = []
+        for refresh_token_digest in self._refresh_grace_bundles_by_digest:
+            record = self._refresh_tokens.get(refresh_token_digest)
+            if record is None or record.used_at is None:
+                expired_digests.append(refresh_token_digest)
+                continue
+            expires_at = record.used_at + timedelta(seconds=self.refresh_reuse_grace_seconds)
+            if now > expires_at:
+                expired_digests.append(refresh_token_digest)
+
+        for refresh_token_digest in expired_digests:
+            self._refresh_grace_bundles_by_digest.pop(refresh_token_digest, None)
 
     def _refresh_retry_is_within_grace_window(self, *, record: RefreshTokenRecord, now: datetime) -> bool:
         if record.status != "used":

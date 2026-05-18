@@ -120,6 +120,43 @@ class AuthServiceRotationTests(unittest.TestCase):
             service.refresh(refresh_token=first['refresh_token'])
         self.assertEqual(family_revoked.exception.code, 'AUTH_SESSION_REVOKED')
 
+    def test_refresh_does_not_cache_raw_grace_bundle_when_grace_disabled(self):
+        bundle = self.service.signup_email(
+            email='no-grace-cache@example.com',
+            password='Passw0rd!',
+            display_name='No Grace Cache',
+            locale='ko-KR',
+            device_id='ios-no-grace-cache',
+        )
+
+        self.service.refresh(refresh_token=bundle['refresh_token'])
+
+        self.assertEqual(self.service._refresh_grace_bundles_by_digest, {})
+
+    def test_refresh_grace_bundle_is_purged_after_window(self):
+        service = InMemoryAuthSessionService(
+            email_verification_required=False,
+            refresh_reuse_grace_seconds=1,
+        )
+        bundle = service.signup_email(
+            email='expired-grace-cache@example.com',
+            password='Passw0rd!',
+            display_name='Expired Grace Cache',
+            locale='ko-KR',
+            device_id='ios-expired-grace-cache',
+        )
+
+        service.refresh(refresh_token=bundle['refresh_token'])
+        refresh_token_digest = service._refresh_token_digest(str(bundle['refresh_token']))
+        record = service._refresh_tokens[refresh_token_digest]
+        record.used_at = _utc_now() - timedelta(seconds=5)
+
+        with self.assertRaises(AuthServiceError) as reused:
+            service.refresh(refresh_token=bundle['refresh_token'])
+
+        self.assertEqual(reused.exception.code, 'AUTH_REFRESH_REUSED')
+        self.assertNotIn(refresh_token_digest, service._refresh_grace_bundles_by_digest)
+
     def test_refresh_grace_restore_does_not_revoke_replacement_session(self):
         state_store = MemoryAuthStateStore(None)
         service = InMemoryAuthSessionService(

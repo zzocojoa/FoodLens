@@ -132,10 +132,10 @@
 - 세션/토큰:
   - `_sessions`
   - `_session_ids_by_family`
-  - `_access_tokens`
-  - `_refresh_tokens`
-  - `_access_tokens_by_session`
-  - `_refresh_tokens_by_session`
+  - `_access_tokens`: access token 원문이 아니라 `AUTH_TOKEN_HASH_SECRET` 기반 HMAC digest와 세션 메타데이터만 저장한다.
+  - `_refresh_tokens`: refresh token 원문이 아니라 `AUTH_TOKEN_HASH_SECRET` 기반 HMAC digest, rotation 상태, replacement digest만 저장한다.
+  - `_access_tokens_by_session`: 세션별 access token digest index
+  - `_refresh_tokens_by_session`: 세션별 refresh token digest index
 - 인증 보조:
   - `_email_verifications_by_user_id`
   - `_password_resets_by_user_id`
@@ -205,6 +205,7 @@
 - 환경변수:
   - `DATABASE_URL` 설정
   - `AUTH_STATE_BACKEND=postgres` (명시 권장)
+  - `AUTH_TOKEN_HASH_SECRET` (Render Dashboard 관리 secret, 빈 값 불가)
   - `AUTH_RATE_LIMIT_BACKEND=postgres`
   - `AUTH_RATE_LIMIT_TABLE=auth_rate_limit_events`
   - `ANALYSIS_RATE_LIMIT_BACKEND=postgres`

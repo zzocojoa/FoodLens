@@ -259,6 +259,16 @@ def _service_ids_by_name(
     service_names: tuple[str, ...],
     request_json: JsonRequester,
 ) -> dict[str, str]:
+    services_by_name: dict[str, str] = {}
+    service_names_by_id: dict[str, str] = {}
+    for item in _paginated_get(api_key, "/services", request_json):
+        service = _service_payload(item)
+        name = service.get("name")
+        service_id = service.get("id")
+        if isinstance(name, str) and isinstance(service_id, str):
+            services_by_name[name] = service_id
+            service_names_by_id[service_id] = name
+
     service_ids: dict[str, str] = {}
     unresolved_names: list[str] = []
     for service_name in service_names:
@@ -266,16 +276,20 @@ def _service_ids_by_name(
         if env_service_id is None:
             unresolved_names.append(service_name)
             continue
+        actual_name = service_names_by_id.get(env_service_id)
+        if actual_name != service_name:
+            raise RuntimeError(
+                f"{_service_id_env_name(service_name)} points to service_id={env_service_id} "
+                f"for service={actual_name or 'unknown'}, expected {service_name}."
+            )
         service_ids[service_name] = env_service_id
     if not unresolved_names:
         return service_ids
 
-    for item in _paginated_get(api_key, "/services", request_json):
-        service = _service_payload(item)
-        name = service.get("name")
-        service_id = service.get("id")
-        if isinstance(name, str) and isinstance(service_id, str) and name in unresolved_names:
-            service_ids[name] = service_id
+    for service_name in unresolved_names:
+        service_id = services_by_name.get(service_name)
+        if service_id is not None:
+            service_ids[service_name] = service_id
     return service_ids
 
 

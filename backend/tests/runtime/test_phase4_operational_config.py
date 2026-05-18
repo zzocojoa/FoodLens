@@ -380,6 +380,21 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("services_checked=3", output)
 
+    def test_render_live_env_check_rejects_scoped_service_id_name_mismatch(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        fake_api = _FakeRenderApi(live_env_by_service, 100)
+        env = {
+            "RENDER_API_KEY": "test-render-api-key",
+            "RENDER_SERVICE_ID_FOODLENS_WORKER": fake_api.service_ids_by_name["foodlens-api"],
+        }
+
+        with self.assertRaises(RuntimeError) as context:
+            module.run_gate(env, RENDER_BLUEPRINT_PATH, False, False, fake_api.request_json)
+
+        self.assertIn("RENDER_SERVICE_ID_FOODLENS_WORKER", str(context.exception))
+        self.assertIn("expected foodlens-worker", str(context.exception))
+
     def test_render_live_env_value_check_does_not_print_actual_values(self) -> None:
         module = _load_render_live_env_module()
         live_env_by_service = self._live_env_from_blueprint(module, False)
