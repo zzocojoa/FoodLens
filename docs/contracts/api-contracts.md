@@ -15,6 +15,10 @@
   - `latency_ms`: 동기 API 전체 지연시간
   - `latency_ms_by_stage`: 비동기 분석 단계별 지연시간
 - 실패 응답은 사람이 이해 가능한 메시지와 코드(`detail.message`, `detail.code`)를 제공합니다.
+- 업로드 크기 초과는 모델 분석이나 저장 작업 전에 HTTP `413`으로 차단합니다.
+  - 분석 이미지 업로드: `detail.code="IMAGE_DECODE_FAILED"`
+  - 미디어 업로드: `detail.code="MEDIA_FILE_TOO_LARGE"`
+  - 응답에는 가능한 경우 `request_id`를 포함합니다.
 - 하위 호환 원칙:
   - 기존 필드 삭제 금지
   - 신규 필드 추가 허용
