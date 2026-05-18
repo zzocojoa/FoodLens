@@ -75,6 +75,7 @@ class ServiceEnvCheck:
     service_name: str
     key: str
     present: bool
+    empty: bool
     matches_blueprint: bool | None
 
 
@@ -335,6 +336,12 @@ def _check_service_env(
     checks: list[ServiceEnvCheck] = []
     for key, blueprint_var in blueprint_env.items():
         present = key in live_env
+        empty = (
+            present
+            and key in DEFAULT_LIVE_MANAGED_ENV_KEYS
+            and blueprint_var.sync == "false"
+            and not (live_env.get(key) or "").strip()
+        )
         matches_blueprint: bool | None = None
         if check_values and present and blueprint_var.value is not None and blueprint_var.sync != "false":
             matches_blueprint = live_env[key] == blueprint_var.value
@@ -343,6 +350,7 @@ def _check_service_env(
                 service_name=service_name,
                 key=key,
                 present=present,
+                empty=empty,
                 matches_blueprint=matches_blueprint,
             )
         )
@@ -357,7 +365,8 @@ def _print_check(check: ServiceEnvCheck) -> None:
     print(
         "[RenderLiveEnvGate] "
         f"service={check.service_name} key={check.key} "
-        f"present={str(check.present).lower()} matches_blueprint={match_status}"
+        f"present={str(check.present).lower()} empty={str(check.empty).lower()} "
+        f"matches_blueprint={match_status}"
     )
 
 
@@ -394,12 +403,14 @@ def run_gate(
         _print_check(check)
 
     missing_count = sum(1 for check in checks if not check.present)
+    empty_count = sum(1 for check in checks if check.empty)
     mismatch_count = sum(1 for check in checks if check.matches_blueprint is False)
-    if missing_services or missing_count > 0 or mismatch_count > 0:
+    if missing_services or missing_count > 0 or empty_count > 0 or mismatch_count > 0:
         print(
             "[RenderLiveEnvGate] live env contract failed: "
             f"services_checked={len(contract) - len(missing_services)} "
             f"missing_services={len(missing_services)} missing_keys={missing_count} "
+            f"empty_keys={empty_count} "
             f"mismatched_values={mismatch_count} action=update Render Dashboard env keys or render.yaml",
             file=sys.stderr,
         )

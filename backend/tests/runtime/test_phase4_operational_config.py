@@ -351,6 +351,20 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("live env contract checks passed", output)
         self.assertNotIn("PORT", output)
 
+    def test_render_live_env_check_rejects_empty_live_managed_secret(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        service_env = live_env_by_service["foodlens-api"]
+        service_env["AUTH_TOKEN_HASH_SECRET"] = ""
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key=AUTH_TOKEN_HASH_SECRET", output)
+        self.assertIn("empty=true", output)
+        self.assertIn("empty_keys=1", output)
+        self.assertNotIn("present-without-value", output)
+
     def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:
         module = _load_render_live_env_module()
         exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module, False), False, True, 100)
