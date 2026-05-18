@@ -230,32 +230,28 @@ _log_safe_environment_debug()
 
 app = FastAPI()
 _cors_config = build_cors_config_from_env()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_config.allow_origins,
-    allow_origin_regex=_cors_config.allow_origin_regex,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-Id", "X-Device-Id"],
-    expose_headers=[
-        "Retry-After",
-        "X-Request-Id",
-        "X-Media-Render-Cache",
-        "X-Media-Render-Duration-Ms",
-        "X-Media-Render-Stage-Ms",
-    ],
-)
 
 MediaRenderResult = tuple[bytes, str, str, str, dict[str, int]]
 MediaRenderValue = TypeVar("MediaRenderValue")
 AuthRateLimitSubject: TypeAlias = tuple[str, str]
 AuthRateLimitSubjects: TypeAlias = tuple[AuthRateLimitSubject, ...]
 AuthRateLimitBlockedDecision: TypeAlias = tuple[str, RateLimitDecision]
+UploadTooLargeExceptionFactory: TypeAlias = Callable[[int, str], HTTPException]
+ReceiveCallable: TypeAlias = Callable[[], Awaitable[dict[str, Any]]]
 
 logger = logging.getLogger("foodlens.api")
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+UPLOAD_READ_CHUNK_BYTES = 64 * 1024
+UPLOAD_CONTENT_LENGTH_OVERHEAD_BYTES = 16 * 1024
+
+
+class UploadBodyTooLargeError(Exception):
+    def __init__(self, http_exception: HTTPException) -> None:
+        super().__init__("Upload body exceeded configured limit.")
+        self.http_exception = http_exception
 
 
 def _is_openapi_export_mode() -> bool:
@@ -320,6 +316,203 @@ def _env_str(name: str, default: str) -> str:
     if raw is None:
         return default
     return raw.strip() or default
+
+
+def _media_upload_max_bytes_from_env() -> int:
+    max_upload_mb = _env_float("MEDIA_MAX_UPLOAD_MB", 10.0)
+    return int(max(1.0, max_upload_mb) * 1024 * 1024)
+
+
+def _media_upload_max_bytes(media_storage: Any) -> int:
+    raw_value = getattr(media_storage, "max_upload_bytes", None)
+    if isinstance(raw_value, int) and raw_value > 0:
+        return raw_value
+    return _media_upload_max_bytes_from_env()
+
+
+def _media_upload_max_bytes_for_request() -> int:
+    return _media_upload_max_bytes(getattr(app.state, "media_storage", None))
+
+
+def _upload_content_length_limit(max_upload_bytes: int) -> int:
+    return max_upload_bytes + max(UPLOAD_CONTENT_LENGTH_OVERHEAD_BYTES, max_upload_bytes // 50)
+
+
+def _request_content_length(request: Request) -> int | None:
+    raw_value = request.headers.get("content-length")
+    if raw_value is None:
+        return None
+    try:
+        parsed_value = int(raw_value)
+    except ValueError:
+        return None
+    if parsed_value < 0:
+        return None
+    return parsed_value
+
+
+def _analysis_upload_too_large_http_exception(max_bytes: int, request_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=413,
+        detail={
+            "message": f"Uploaded image exceeds server limit ({max_bytes} bytes).",
+            "code": ErrorCode.IMAGE_DECODE_FAILED,
+            "request_id": request_id,
+        },
+    )
+
+
+def _media_upload_too_large_http_exception(max_bytes: int, request_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=413,
+        detail={
+            "message": f"Uploaded media payload is too large ({max_bytes} bytes).",
+            "code": "MEDIA_FILE_TOO_LARGE",
+            "request_id": request_id,
+        },
+    )
+
+
+def _raise_if_upload_content_length_too_large(
+    *,
+    request: Request,
+    max_upload_bytes: int,
+    request_id: str,
+    too_large_exception_factory: UploadTooLargeExceptionFactory,
+) -> None:
+    content_length = _request_content_length(request)
+    if content_length is None:
+        return
+    if content_length <= _upload_content_length_limit(max_upload_bytes):
+        return
+    raise too_large_exception_factory(max_upload_bytes, request_id)
+
+
+def _upload_too_large_json_response(error: HTTPException) -> JSONResponse:
+    return JSONResponse(status_code=error.status_code, content={"detail": error.detail}, headers=error.headers)
+
+
+def _wrap_receive_with_upload_limit(
+    *,
+    receive: ReceiveCallable,
+    max_body_bytes: int,
+    too_large_exception: HTTPException,
+) -> ReceiveCallable:
+    total_bytes = 0
+
+    async def _receive() -> dict[str, Any]:
+        nonlocal total_bytes
+        message = await receive()
+        if message.get("type") != "http.request":
+            return message
+        body = message.get("body", b"")
+        if isinstance(body, bytes):
+            total_bytes += len(body)
+            if total_bytes > max_body_bytes:
+                raise UploadBodyTooLargeError(too_large_exception)
+        return message
+
+    return _receive
+
+
+async def _read_upload_bytes_with_limit(
+    *,
+    file: UploadFile,
+    max_upload_bytes: int,
+    too_large_exception: HTTPException,
+) -> bytes:
+    file_size = getattr(file, "size", None)
+    if isinstance(file_size, int) and file_size > max_upload_bytes:
+        raise too_large_exception
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        chunk = await file.read(UPLOAD_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        next_total = total_bytes + len(chunk)
+        if next_total > max_upload_bytes:
+            raise too_large_exception
+        chunks.append(chunk)
+        total_bytes = next_total
+    return b"".join(chunks)
+
+
+async def _read_analysis_upload_bytes(
+    *,
+    request: Request,
+    file: UploadFile,
+    request_id: str,
+) -> bytes:
+    max_bytes = _analysis_job_max_upload_bytes()
+    _raise_if_upload_content_length_too_large(
+        request=request,
+        max_upload_bytes=max_bytes,
+        request_id=request_id,
+        too_large_exception_factory=_analysis_upload_too_large_http_exception,
+    )
+    return await _read_upload_bytes_with_limit(
+        file=file,
+        max_upload_bytes=max_bytes,
+        too_large_exception=_analysis_upload_too_large_http_exception(max_bytes, request_id),
+    )
+
+
+def _upload_limit_for_request_path(path: str) -> tuple[int, UploadTooLargeExceptionFactory] | None:
+    if path in {"/analyze", "/analyze/jobs", "/analyze/label", "/analyze/smart"}:
+        return _analysis_job_max_upload_bytes(), _analysis_upload_too_large_http_exception
+    if path == "/me/media/upload":
+        return _media_upload_max_bytes_for_request(), _media_upload_too_large_http_exception
+    return None
+
+
+@app.middleware("http")
+async def _reject_oversized_upload_by_content_length(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    upload_limit = _upload_limit_for_request_path(request.url.path)
+    if upload_limit is not None:
+        max_upload_bytes, exception_factory = upload_limit
+        request_id = _request_id(request)
+        try:
+            _raise_if_upload_content_length_too_large(
+                request=request,
+                max_upload_bytes=max_upload_bytes,
+                request_id=request_id,
+                too_large_exception_factory=exception_factory,
+            )
+        except HTTPException as error:
+            return _upload_too_large_json_response(error)
+        too_large_exception = exception_factory(max_upload_bytes, request_id)
+        request._receive = _wrap_receive_with_upload_limit(
+            receive=request.receive,
+            max_body_bytes=_upload_content_length_limit(max_upload_bytes),
+            too_large_exception=too_large_exception,
+        )
+        try:
+            return await call_next(request)
+        except UploadBodyTooLargeError as error:
+            return _upload_too_large_json_response(error.http_exception)
+    return await call_next(request)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_config.allow_origins,
+    allow_origin_regex=_cors_config.allow_origin_regex,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-Id", "X-Device-Id"],
+    expose_headers=[
+        "Retry-After",
+        "X-Request-Id",
+        "X-Media-Render-Cache",
+        "X-Media-Render-Duration-Ms",
+        "X-Media-Render-Stage-Ms",
+    ],
+)
 
 
 def _call_with_supported_kwargs(callable_value: Callable[..., Any], kwargs: dict[str, Any]) -> Any:
@@ -3292,7 +3485,7 @@ def _analysis_job_status_payload(record: dict[str, Any]) -> dict[str, Any]:
     return serialize_job_status_response(record=record)
 
 
-async def _read_analysis_job_upload(*, file: UploadFile, request_id: str) -> tuple[bytes, str]:
+async def _read_analysis_job_upload(*, request: Request, file: UploadFile, request_id: str) -> tuple[bytes, str]:
     content_type = (file.content_type or "").strip().lower()
     allowed_content_types = _analysis_job_allowed_content_types()
     if content_type not in allowed_content_types:
@@ -3305,23 +3498,12 @@ async def _read_analysis_job_upload(*, file: UploadFile, request_id: str) -> tup
             },
         )
 
-    contents = await file.read()
+    contents = await _read_analysis_upload_bytes(request=request, file=file, request_id=request_id)
     if len(contents) == 0:
         raise HTTPException(
             status_code=400,
             detail={
                 "message": "Uploaded image is empty.",
-                "code": ErrorCode.IMAGE_DECODE_FAILED,
-                "request_id": request_id,
-            },
-        )
-
-    max_bytes = _analysis_job_max_upload_bytes()
-    if len(contents) > max_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail={
-                "message": f"Uploaded image exceeds server limit ({max_bytes} bytes).",
                 "code": ErrorCode.IMAGE_DECODE_FAILED,
                 "request_id": request_id,
             },
@@ -4732,7 +4914,18 @@ async def post_me_media_upload(
         )
 
     try:
-        payload = await file.read()
+        max_upload_bytes = _media_upload_max_bytes(media_storage)
+        _raise_if_upload_content_length_too_large(
+            request=request,
+            max_upload_bytes=max_upload_bytes,
+            request_id=request_id,
+            too_large_exception_factory=_media_upload_too_large_http_exception,
+        )
+        payload = await _read_upload_bytes_with_limit(
+            file=file,
+            max_upload_bytes=max_upload_bytes,
+            too_large_exception=_media_upload_too_large_http_exception(max_upload_bytes, request_id),
+        )
 
         def _store_media_upload() -> tuple[MediaUploadResult, dict[str, object]]:
             upload_result = media_storage.upload_original(
@@ -5572,7 +5765,7 @@ async def submit_analysis_job(
     started_at = time.perf_counter()
 
     try:
-        contents, content_type = await _read_analysis_job_upload(file=file, request_id=request_id)
+        contents, content_type = await _read_analysis_job_upload(request=request, file=file, request_id=request_id)
         job_payload = _call_with_supported_kwargs(
             create_analysis_job_payload,
             {
@@ -5705,7 +5898,7 @@ async def analyze_food(
     try:
         async def _operation():
             preprocess_started_at = time.perf_counter()
-            contents = await file.read()
+            contents = await _read_analysis_upload_bytes(request=request, file=file, request_id=request_id)
             image = await run_in_threadpool(decode_upload_to_image, contents)
             preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
@@ -6338,7 +6531,7 @@ async def analyze_label(
             locale,
         )
         preprocess_started_at = time.perf_counter()
-        contents = await file.read()
+        contents = await _read_analysis_upload_bytes(request=request, file=file, request_id=request_id)
         image = await run_in_threadpool(decode_upload_to_image, contents)
         preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
         prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
@@ -6387,13 +6580,13 @@ async def analyze_smart(
 
     try:
         async def _operation():
-            smart_router = _service("smart_router")
             logger.info("[Server] Smart analysis request received request_id=%s.", request_id)
             preprocess_started_at = time.perf_counter()
-            contents = await file.read()
+            contents = await _read_analysis_upload_bytes(request=request, file=file, request_id=request_id)
             image = await run_in_threadpool(decode_upload_to_image, contents)
             preprocess_elapsed_ms = int((time.perf_counter() - preprocess_started_at) * 1000)
 
+            smart_router = _service("smart_router")
             prompt_country_code = resolve_prompt_country_code(iso_country_code, locale)
             analyst = _service("analyst")
             smart_cost_guardrail = getattr(app.state, "analysis_cost_guardrail", None) or getattr(app.state, "label_cost_guardrail", None)
