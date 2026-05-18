@@ -49,6 +49,9 @@ DEFAULT_LIVE_ENV_KEYS: tuple[str, ...] = (
     "DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS",
     "DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS",
 )
+DEFAULT_LIVE_MANAGED_ENV_KEYS: tuple[str, ...] = (
+    "AUTH_TOKEN_HASH_SECRET",
+)
 
 
 JsonRequester = Callable[[str, str, str], object]
@@ -72,6 +75,7 @@ class ServiceEnvCheck:
     service_name: str
     key: str
     present: bool
+    empty: bool
     matches_blueprint: bool | None
 
 
@@ -255,6 +259,16 @@ def _service_ids_by_name(
     service_names: tuple[str, ...],
     request_json: JsonRequester,
 ) -> dict[str, str]:
+    services_by_name: dict[str, str] = {}
+    service_names_by_id: dict[str, str] = {}
+    for item in _paginated_get(api_key, "/services", request_json):
+        service = _service_payload(item)
+        name = service.get("name")
+        service_id = service.get("id")
+        if isinstance(name, str) and isinstance(service_id, str):
+            services_by_name[name] = service_id
+            service_names_by_id[service_id] = name
+
     service_ids: dict[str, str] = {}
     unresolved_names: list[str] = []
     for service_name in service_names:
@@ -262,16 +276,20 @@ def _service_ids_by_name(
         if env_service_id is None:
             unresolved_names.append(service_name)
             continue
+        actual_name = service_names_by_id.get(env_service_id)
+        if actual_name != service_name:
+            raise RuntimeError(
+                f"{_service_id_env_name(service_name)} points to service_id={env_service_id} "
+                f"for service={actual_name or 'unknown'}, expected {service_name}."
+            )
         service_ids[service_name] = env_service_id
     if not unresolved_names:
         return service_ids
 
-    for item in _paginated_get(api_key, "/services", request_json):
-        service = _service_payload(item)
-        name = service.get("name")
-        service_id = service.get("id")
-        if isinstance(name, str) and isinstance(service_id, str) and name in unresolved_names:
-            service_ids[name] = service_id
+    for service_name in unresolved_names:
+        service_id = services_by_name.get(service_name)
+        if service_id is not None:
+            service_ids[service_name] = service_id
     return service_ids
 
 
@@ -303,6 +321,13 @@ def _required_scoped_env_vars(service: BlueprintService) -> dict[str, BlueprintE
         if env_var.sync == "false":
             raise RuntimeError(f"render.yaml service {service.name} key {key} must define a literal value.")
         service_contract[key] = env_var
+    for key in DEFAULT_LIVE_MANAGED_ENV_KEYS:
+        env_var = service.env_vars.get(key)
+        if env_var is None:
+            raise RuntimeError(f"render.yaml service {service.name} is missing required live env key {key}.")
+        if env_var.sync != "false":
+            raise RuntimeError(f"render.yaml service {service.name} key {key} must use sync:false.")
+        service_contract[key] = env_var
     return service_contract
 
 
@@ -325,6 +350,12 @@ def _check_service_env(
     checks: list[ServiceEnvCheck] = []
     for key, blueprint_var in blueprint_env.items():
         present = key in live_env
+        empty = (
+            present
+            and key in DEFAULT_LIVE_MANAGED_ENV_KEYS
+            and blueprint_var.sync == "false"
+            and not (live_env.get(key) or "").strip()
+        )
         matches_blueprint: bool | None = None
         if check_values and present and blueprint_var.value is not None and blueprint_var.sync != "false":
             matches_blueprint = live_env[key] == blueprint_var.value
@@ -333,6 +364,7 @@ def _check_service_env(
                 service_name=service_name,
                 key=key,
                 present=present,
+                empty=empty,
                 matches_blueprint=matches_blueprint,
             )
         )
@@ -347,7 +379,8 @@ def _print_check(check: ServiceEnvCheck) -> None:
     print(
         "[RenderLiveEnvGate] "
         f"service={check.service_name} key={check.key} "
-        f"present={str(check.present).lower()} matches_blueprint={match_status}"
+        f"present={str(check.present).lower()} empty={str(check.empty).lower()} "
+        f"matches_blueprint={match_status}"
     )
 
 
@@ -384,12 +417,14 @@ def run_gate(
         _print_check(check)
 
     missing_count = sum(1 for check in checks if not check.present)
+    empty_count = sum(1 for check in checks if check.empty)
     mismatch_count = sum(1 for check in checks if check.matches_blueprint is False)
-    if missing_services or missing_count > 0 or mismatch_count > 0:
+    if missing_services or missing_count > 0 or empty_count > 0 or mismatch_count > 0:
         print(
             "[RenderLiveEnvGate] live env contract failed: "
             f"services_checked={len(contract) - len(missing_services)} "
             f"missing_services={len(missing_services)} missing_keys={missing_count} "
+            f"empty_keys={empty_count} "
             f"mismatched_values={mismatch_count} action=update Render Dashboard env keys or render.yaml",
             file=sys.stderr,
         )

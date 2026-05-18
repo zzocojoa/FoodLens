@@ -148,6 +148,7 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "MEDIA_RENDER_SIGNING_SECRET",
             "AUTH_GOOGLE_CLIENT_SECRET",
             "AUTH_KAKAO_CLIENT_SECRET",
+            "AUTH_TOKEN_HASH_SECRET",
             "AUTH_EMAIL_SMTP_PASSWORD",
             "DATAGO_API_KEY",
             "DATAGO_I2790_API_KEY",
@@ -295,6 +296,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN",
             "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN",
             "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN",
+            "AUTH_TOKEN_HASH_SECRET",
             "AUTH_GOOGLE_OAUTH_PROMPT",
             "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
             "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
@@ -325,6 +327,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", output)
+        self.assertIn("AUTH_TOKEN_HASH_SECRET", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
@@ -348,6 +351,20 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("live env contract checks passed", output)
         self.assertNotIn("PORT", output)
 
+    def test_render_live_env_check_rejects_empty_live_managed_secret(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        service_env = live_env_by_service["foodlens-api"]
+        service_env["AUTH_TOKEN_HASH_SECRET"] = ""
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key=AUTH_TOKEN_HASH_SECRET", output)
+        self.assertIn("empty=true", output)
+        self.assertIn("empty_keys=1", output)
+        self.assertNotIn("present-without-value", output)
+
     def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:
         module = _load_render_live_env_module()
         exit_code, output = self._run_gate(module, self._live_env_from_blueprint(module, False), False, True, 100)
@@ -362,6 +379,21 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("services_checked=3", output)
+
+    def test_render_live_env_check_rejects_scoped_service_id_name_mismatch(self) -> None:
+        module = _load_render_live_env_module()
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        fake_api = _FakeRenderApi(live_env_by_service, 100)
+        env = {
+            "RENDER_API_KEY": "test-render-api-key",
+            "RENDER_SERVICE_ID_FOODLENS_WORKER": fake_api.service_ids_by_name["foodlens-api"],
+        }
+
+        with self.assertRaises(RuntimeError) as context:
+            module.run_gate(env, RENDER_BLUEPRINT_PATH, False, False, fake_api.request_json)
+
+        self.assertIn("RENDER_SERVICE_ID_FOODLENS_WORKER", str(context.exception))
+        self.assertIn("expected foodlens-worker", str(context.exception))
 
     def test_render_live_env_value_check_does_not_print_actual_values(self) -> None:
         module = _load_render_live_env_module()

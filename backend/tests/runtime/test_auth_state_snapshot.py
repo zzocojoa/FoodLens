@@ -5,6 +5,9 @@ from unittest.mock import patch
 from backend.modules.auth.service import InMemoryAuthSessionService
 
 
+_TEST_TOKEN_HASH_SECRET = "test-auth-state-token-hash-secret"
+
+
 class _MemoryStateStore:
     def __init__(self) -> None:
         self.payload: dict[str, object] | None = None
@@ -23,6 +26,7 @@ class AuthStateSnapshotTests(unittest.TestCase):
         service_a = InMemoryAuthSessionService(
             email_verification_required=False,
             state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
         )
         session = service_a.signup_email(
             email="snapshot@example.com",
@@ -54,6 +58,7 @@ class AuthStateSnapshotTests(unittest.TestCase):
         service_b = InMemoryAuthSessionService(
             email_verification_required=False,
             state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
         )
 
         login = service_b.login_email(
@@ -83,16 +88,29 @@ class AuthStateSnapshotTests(unittest.TestCase):
             service = InMemoryAuthSessionService.from_env(
                 lambda key, default=None: {
                     "DATABASE_URL": "postgresql://foodlens:foodlens@127.0.0.1:5432/foodlens",
+                    "AUTH_TOKEN_HASH_SECRET": _TEST_TOKEN_HASH_SECRET,
                 }.get(key, default)
             )
             self.assertEqual(service.state_backend, "postgres")
             mocked_store.assert_called_once()
+
+    def test_from_env_requires_token_hash_secret_for_postgres_backend(self):
+        with patch("backend.modules.auth.service.PostgresAuthStateStore") as mocked_store:
+            mocked_store.return_value = _MemoryStateStore()
+            with self.assertRaises(ValueError) as context:
+                InMemoryAuthSessionService.from_env(
+                    lambda key, default=None: {
+                        "DATABASE_URL": "postgresql://foodlens:foodlens@127.0.0.1:5432/foodlens",
+                    }.get(key, default)
+                )
+            self.assertIn("AUTH_TOKEN_HASH_SECRET", str(context.exception))
 
     def test_state_snapshot_restores_legacy_media_asset_without_object_generation(self):
         state_store = _MemoryStateStore()
         service_a = InMemoryAuthSessionService(
             email_verification_required=False,
             state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
         )
         session = service_a.signup_email(
             email="legacy-media@example.com",
@@ -125,6 +143,7 @@ class AuthStateSnapshotTests(unittest.TestCase):
         service_b = InMemoryAuthSessionService(
             email_verification_required=False,
             state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
         )
         restored = service_b.get_media_asset(asset_id="asset_legacy", user_id=user_id)
         self.assertIsNone(restored["object_generation"])

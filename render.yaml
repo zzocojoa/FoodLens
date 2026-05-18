@@ -20,6 +20,8 @@ services:
         value: auth_runtime_state
       - key: AUTH_STATE_KEY
         value: default
+      - key: AUTH_TOKEN_HASH_SECRET
+        sync: false
       - key: OPENAPI_EXPORT_ONLY
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
@@ -396,6 +398,8 @@ services:
         value: auth_runtime_state
       - key: AUTH_STATE_KEY
         value: default
+      - key: AUTH_TOKEN_HASH_SECRET
+        sync: false
       - key: OPENAPI_EXPORT_ONLY
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
@@ -772,6 +776,8 @@ services:
         value: auth_runtime_state
       - key: AUTH_STATE_KEY
         value: default
+      - key: AUTH_TOKEN_HASH_SECRET
+        sync: false
       - key: OPENAPI_EXPORT_ONLY
         value: "0"
       - key: ANALYSIS_RATE_LIMIT_ENABLED
