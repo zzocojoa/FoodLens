@@ -397,6 +397,7 @@ def _wrap_receive_with_upload_limit(
     receive: ReceiveCallable,
     max_body_bytes: int,
     too_large_exception: HTTPException,
+    on_too_large: Callable[[HTTPException], None],
 ) -> ReceiveCallable:
     total_bytes = 0
 
@@ -409,10 +410,15 @@ def _wrap_receive_with_upload_limit(
         if isinstance(body, bytes):
             total_bytes += len(body)
             if total_bytes > max_body_bytes:
+                on_too_large(too_large_exception)
                 raise UploadBodyTooLargeError(too_large_exception)
         return message
 
     return _receive
+
+
+def _remember_upload_body_too_large(request: Request, error: HTTPException) -> None:
+    request.state.upload_body_too_large_http_exception = error
 
 
 async def _read_upload_bytes_with_limit(
@@ -486,15 +492,21 @@ async def _reject_oversized_upload_by_content_length(
         except HTTPException as error:
             return _upload_too_large_json_response(error)
         too_large_exception = exception_factory(max_upload_bytes, request_id)
+        request.state.upload_body_too_large_http_exception = None
         request._receive = _wrap_receive_with_upload_limit(
             receive=request.receive,
             max_body_bytes=_upload_content_length_limit(max_upload_bytes),
             too_large_exception=too_large_exception,
+            on_too_large=lambda error: _remember_upload_body_too_large(request, error),
         )
         try:
-            return await call_next(request)
+            response = await call_next(request)
         except UploadBodyTooLargeError as error:
             return _upload_too_large_json_response(error.http_exception)
+        state_error = getattr(request.state, "upload_body_too_large_http_exception", None)
+        if isinstance(state_error, HTTPException):
+            return _upload_too_large_json_response(state_error)
+        return response
     return await call_next(request)
 
 

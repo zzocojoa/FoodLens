@@ -606,6 +606,53 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
         self.assertEqual(body["detail"]["request_id"], "req-upload-chunked-too-large")
         self.assertEqual(len(messages), 1)
 
+    def test_upload_middleware_preserves_413_when_parser_converts_chunked_error_to_400(self) -> None:
+        messages = [
+            {"type": "http.request", "body": b"a" * 10_000, "more_body": True},
+            {"type": "http.request", "body": b"b" * 7_000, "more_body": True},
+            {"type": "http.request", "body": b"", "more_body": False},
+        ]
+
+        async def receive() -> dict[str, Any]:
+            return messages.pop(0)
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/analyze/jobs",
+                "headers": [(b"x-request-id", b"req-upload-parser-too-large")],
+                "client": ("127.0.0.1", 12345),
+            },
+            receive=receive,
+        )
+
+        async def parser_error_response(next_request: Request) -> Response:
+            try:
+                async for _chunk in next_request.stream():
+                    pass
+            except server.UploadBodyTooLargeError:
+                return Response(
+                    content='{"detail":"There was an error parsing the body"}',
+                    media_type="application/json",
+                    status_code=400,
+                )
+            return Response(status_code=204)
+
+        with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+            response = asyncio.run(
+                server._reject_oversized_upload_by_content_length(
+                    request,
+                    parser_error_response,
+                )
+            )
+
+        body = json.loads(response.body)
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(body["detail"]["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(body["detail"]["request_id"], "req-upload-parser-too-large")
+
     def test_upload_content_length_middleware_keeps_cors_headers(self) -> None:
         origin = "https://client.example.com"
         cors_app = FastAPI()
@@ -655,6 +702,7 @@ class AnalysisJobRuntimeTests(unittest.TestCase):
                 10,
                 "req-analysis-upload-chunked-boundary",
             ),
+            on_too_large=lambda _error: None,
         )
 
         first_message = asyncio.run(wrapped_receive())
