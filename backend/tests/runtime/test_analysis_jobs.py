@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import os
 import time
 import unittest
@@ -10,10 +11,12 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 from starlette.requests import Request
+from starlette.responses import Response
 
 import backend.modules.analysis_jobs as analysis_jobs
 from backend.modules.analyst_runtime.router import SmartRouter
@@ -41,6 +44,7 @@ os.environ["OPENAPI_EXPORT_ONLY"] = "1"
 os.environ["AUTH_STATE_BACKEND"] = "memory"
 os.environ["ANALYSIS_JOB_BACKEND"] = "memory"
 os.environ["ANALYSIS_NUTRITION_CACHE_BACKEND"] = "memory"
+import backend.server as server  # noqa: E402
 from backend.server import app, resolve_prompt_country_code  # noqa: E402
 from backend.server import _analyze_food_job_image_with_policy  # noqa: E402
 from backend.server import _analyze_label_image_with_policy  # noqa: E402
@@ -117,6 +121,21 @@ def _build_rate_limit_request(headers: dict[str, str], client_host: str) -> Requ
     )
 
 
+def _build_upload_limit_request(*, headers: dict[str, str], client_host: str, path: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": path,
+            "headers": [
+                (key.lower().encode("latin-1"), value.encode("latin-1"))
+                for key, value in headers.items()
+            ],
+            "client": (client_host, 12345),
+        }
+    )
+
+
 class _AnalysisRateLimitAuthService:
     def authenticate_access_token(self, *, access_token: str) -> SimpleNamespace:
         return SimpleNamespace(user_id=f"user-{access_token}")
@@ -126,6 +145,31 @@ class _FailingAnalysisRateLimiter:
     def evaluate_many(self, *, endpoint: str, subjects: tuple[tuple[str, str], ...], now: float | None) -> None:
         del endpoint, subjects, now
         raise RateLimitStorageError("rate limit store unavailable")
+
+
+class _ChunkedUploadFile:
+    def __init__(self, *, chunks: list[bytes], size: int | None) -> None:
+        self._chunks = list(chunks)
+        self.size = size
+        self.read_calls = 0
+        self.read_sizes: list[int] = []
+        self.bytes_returned = 0
+
+    async def read(self, size: int) -> bytes:
+        self.read_calls += 1
+        self.read_sizes.append(size)
+        if not self._chunks:
+            return b""
+        chunk = self._chunks.pop(0)
+        if size < 0 or len(chunk) <= size:
+            self.bytes_returned += len(chunk)
+            return chunk
+        self._chunks.insert(0, chunk[size:])
+        self.bytes_returned += len(chunk[:size])
+        return chunk[:size]
+
+    def remaining_bytes(self) -> int:
+        return sum(len(chunk) for chunk in self._chunks)
 
 
 @contextmanager
@@ -461,6 +505,328 @@ class _RetentionCleanupRecordingJob:
 
 
 class AnalysisJobRuntimeTests(unittest.TestCase):
+    def test_upload_content_length_precheck_rejects_before_read(self) -> None:
+        max_upload_bytes = 128 * 1024
+        request = _build_rate_limit_request(
+            headers={
+                "content-length": str(server._upload_content_length_limit(max_upload_bytes) + 1),
+                "x-request-id": "req-analysis-upload-content-length",
+            },
+            client_host="127.0.0.1",
+        )
+
+        with self.assertRaises(HTTPException) as captured:
+            server._raise_if_upload_content_length_too_large(
+                request=request,
+                max_upload_bytes=max_upload_bytes,
+                request_id="req-analysis-upload-content-length",
+                too_large_exception_factory=server._analysis_upload_too_large_http_exception,
+            )
+
+        self.assertEqual(captured.exception.status_code, 413)
+        self.assertEqual(captured.exception.detail["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(captured.exception.detail["request_id"], "req-analysis-upload-content-length")
+
+    def test_upload_content_length_middleware_rejects_before_call_next(self) -> None:
+        async def raise_if_called(_request: Request) -> Response:
+            raise AssertionError("call_next should not be called for oversized uploads")
+
+        cases = (
+            ("/analyze", "IMAGE_DECODE_FAILED"),
+            ("/analyze/jobs", "IMAGE_DECODE_FAILED"),
+            ("/analyze/label", "IMAGE_DECODE_FAILED"),
+            ("/analyze/smart", "IMAGE_DECODE_FAILED"),
+            ("/me/media/upload", "MEDIA_FILE_TOO_LARGE"),
+        )
+
+        for path, expected_code in cases:
+            with self.subTest(path=path):
+                upload_limit = server._upload_limit_for_request_path(path)
+                self.assertIsNotNone(upload_limit)
+                assert upload_limit is not None
+                max_upload_bytes = upload_limit[0]
+                request = _build_upload_limit_request(
+                    path=path,
+                    headers={
+                        "content-length": str(server._upload_content_length_limit(max_upload_bytes) + 1),
+                        "x-request-id": f"req-upload-content-length-{path.strip('/').replace('/', '-')}",
+                    },
+                    client_host="127.0.0.1",
+                )
+
+                response = asyncio.run(
+                    server._reject_oversized_upload_by_content_length(
+                        request,
+                        raise_if_called,
+                    )
+                )
+                body = json.loads(response.body)
+
+                self.assertEqual(response.status_code, 413)
+                self.assertEqual(body["detail"]["code"], expected_code)
+
+    def test_upload_middleware_rejects_missing_content_length_chunked_body(self) -> None:
+        messages = [
+            {"type": "http.request", "body": b"a" * 10_000, "more_body": True},
+            {"type": "http.request", "body": b"b" * 7_000, "more_body": True},
+            {"type": "http.request", "body": b"", "more_body": False},
+        ]
+
+        async def receive() -> dict[str, Any]:
+            return messages.pop(0)
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/analyze",
+                "headers": [(b"x-request-id", b"req-upload-chunked-too-large")],
+                "client": ("127.0.0.1", 12345),
+            },
+            receive=receive,
+        )
+
+        async def consume_request_body(next_request: Request) -> Response:
+            async for _chunk in next_request.stream():
+                pass
+            return Response(status_code=204)
+
+        with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+            response = asyncio.run(
+                server._reject_oversized_upload_by_content_length(
+                    request,
+                    consume_request_body,
+                )
+            )
+
+        body = json.loads(response.body)
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(body["detail"]["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(body["detail"]["request_id"], "req-upload-chunked-too-large")
+        self.assertEqual(len(messages), 1)
+
+    def test_upload_middleware_preserves_413_when_parser_converts_chunked_error_to_400(self) -> None:
+        messages = [
+            {"type": "http.request", "body": b"a" * 10_000, "more_body": True},
+            {"type": "http.request", "body": b"b" * 7_000, "more_body": True},
+            {"type": "http.request", "body": b"", "more_body": False},
+        ]
+
+        async def receive() -> dict[str, Any]:
+            return messages.pop(0)
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/analyze/jobs",
+                "headers": [(b"x-request-id", b"req-upload-parser-too-large")],
+                "client": ("127.0.0.1", 12345),
+            },
+            receive=receive,
+        )
+
+        async def parser_error_response(next_request: Request) -> Response:
+            try:
+                async for _chunk in next_request.stream():
+                    pass
+            except server.UploadBodyTooLargeError:
+                return Response(
+                    content='{"detail":"There was an error parsing the body"}',
+                    media_type="application/json",
+                    status_code=400,
+                )
+            return Response(status_code=204)
+
+        with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+            response = asyncio.run(
+                server._reject_oversized_upload_by_content_length(
+                    request,
+                    parser_error_response,
+                )
+            )
+
+        body = json.loads(response.body)
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(body["detail"]["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(body["detail"]["request_id"], "req-upload-parser-too-large")
+
+    def test_upload_content_length_middleware_keeps_cors_headers(self) -> None:
+        origin = "https://client.example.com"
+        cors_app = FastAPI()
+        cors_app.middleware("http")(server._reject_oversized_upload_by_content_length)
+
+        @cors_app.post("/analyze")
+        async def _unreachable_analyze_route() -> dict[str, str]:
+            raise AssertionError("route should not run for oversized uploads")
+
+        cors_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[origin],
+            allow_credentials=True,
+            allow_methods=["POST"],
+            allow_headers=["Content-Type", "X-Request-Id"],
+        )
+
+        with TestClient(cors_app) as client:
+            with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+                response = client.post(
+                    "/analyze",
+                    content=b"x" * (server.UPLOAD_CONTENT_LENGTH_OVERHEAD_BYTES + 64),
+                    headers={
+                        "Content-Type": "application/octet-stream",
+                        "Origin": origin,
+                        "X-Request-Id": "req-upload-cors-too-large",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.headers.get("access-control-allow-origin"), origin)
+        self.assertEqual(response.json()["detail"]["code"], "IMAGE_DECODE_FAILED")
+
+    def test_receive_wrapper_rejects_chunked_body_at_boundary(self) -> None:
+        messages = [
+            {"type": "http.request", "body": b"a" * 5, "more_body": True},
+            {"type": "http.request", "body": b"b" * 6, "more_body": True},
+        ]
+
+        async def receive() -> dict[str, Any]:
+            return messages.pop(0)
+
+        wrapped_receive = server._wrap_receive_with_upload_limit(
+            receive=receive,
+            max_body_bytes=10,
+            too_large_exception=server._analysis_upload_too_large_http_exception(
+                10,
+                "req-analysis-upload-chunked-boundary",
+            ),
+            on_too_large=lambda _error: None,
+        )
+
+        first_message = asyncio.run(wrapped_receive())
+        self.assertEqual(first_message["body"], b"a" * 5)
+        with self.assertRaises(server.UploadBodyTooLargeError) as captured:
+            asyncio.run(wrapped_receive())
+
+        self.assertEqual(captured.exception.http_exception.status_code, 413)
+        self.assertEqual(captured.exception.http_exception.detail["code"], "IMAGE_DECODE_FAILED")
+
+    def test_chunked_upload_read_stops_when_limit_is_exceeded(self) -> None:
+        file = _ChunkedUploadFile(
+            chunks=[
+                b"a" * server.UPLOAD_READ_CHUNK_BYTES,
+                b"b" * server.UPLOAD_READ_CHUNK_BYTES,
+                b"c" * server.UPLOAD_READ_CHUNK_BYTES,
+            ],
+            size=None,
+        )
+        max_upload_bytes = server.UPLOAD_READ_CHUNK_BYTES + 8
+
+        with self.assertRaises(HTTPException) as captured:
+            asyncio.run(
+                server._read_upload_bytes_with_limit(
+                    file=file,
+                    max_upload_bytes=max_upload_bytes,
+                    too_large_exception=server._analysis_upload_too_large_http_exception(
+                        max_upload_bytes,
+                        "req-analysis-upload-chunked",
+                    ),
+                )
+            )
+
+        self.assertEqual(captured.exception.status_code, 413)
+        self.assertEqual(captured.exception.detail["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(file.read_calls, 2)
+        self.assertEqual(file.read_sizes, [server.UPLOAD_READ_CHUNK_BYTES, server.UPLOAD_READ_CHUNK_BYTES])
+        self.assertEqual(file.bytes_returned, server.UPLOAD_READ_CHUNK_BYTES * 2)
+        self.assertGreater(file.remaining_bytes(), 0)
+
+    def test_chunked_upload_read_accepts_exact_limit(self) -> None:
+        file = _ChunkedUploadFile(chunks=[b"a" * 5, b"b" * 5], size=10)
+
+        contents = asyncio.run(
+            server._read_upload_bytes_with_limit(
+                file=file,
+                max_upload_bytes=10,
+                too_large_exception=server._analysis_upload_too_large_http_exception(
+                    10,
+                    "req-analysis-upload-exact-limit",
+                ),
+            )
+        )
+
+        self.assertEqual(contents, b"aaaaabbbbb")
+        self.assertEqual(file.read_calls, 3)
+
+    def test_chunked_upload_read_rejects_known_oversize_without_reading(self) -> None:
+        file = _ChunkedUploadFile(chunks=[b"a" * 5], size=11)
+
+        with self.assertRaises(HTTPException) as captured:
+            asyncio.run(
+                server._read_upload_bytes_with_limit(
+                    file=file,
+                    max_upload_bytes=10,
+                    too_large_exception=server._analysis_upload_too_large_http_exception(
+                        10,
+                        "req-analysis-upload-known-size",
+                    ),
+                )
+            )
+
+        self.assertEqual(captured.exception.status_code, 413)
+        self.assertEqual(captured.exception.detail["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(file.read_calls, 0)
+
+    def test_submit_job_rejects_oversize_upload_before_store_submit(self) -> None:
+        def raise_if_called(**_kwargs: object) -> None:
+            raise AssertionError("submit_job should not be called for oversized uploads")
+
+        with TestClient(app) as client:
+            original_store = app.state.analysis_job_store
+            app.state.analysis_job_store = SimpleNamespace(submit_job=raise_if_called)
+            try:
+                with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+                    response = client.post(
+                        "/analyze/jobs",
+                        files={"file": ("large.jpg", b"x" * 9, "image/jpeg")},
+                        data={"allergy_info": "None", "locale": "ko-KR", "mode": "food"},
+                        headers={"X-Request-Id": "req-analysis-job-upload-too-large"},
+                    )
+            finally:
+                app.state.analysis_job_store = original_store
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"]["code"], "IMAGE_DECODE_FAILED")
+        self.assertEqual(response.json()["detail"]["request_id"], "req-analysis-job-upload-too-large")
+
+    def test_analysis_routes_reject_oversize_uploads(self) -> None:
+        endpoints = (
+            ("/analyze", "req-analysis-upload-too-large"),
+            ("/analyze/label", "req-analysis-label-upload-too-large"),
+            ("/analyze/smart", "req-analysis-smart-upload-too-large"),
+        )
+
+        with TestClient(app) as client:
+            with patch("backend.server._analysis_job_max_upload_bytes", return_value=8):
+                with patch(
+                    "backend.server.decode_upload_to_image",
+                    side_effect=AssertionError("decode should not run for oversized uploads"),
+                ):
+                    for endpoint, request_id in endpoints:
+                        with self.subTest(endpoint=endpoint):
+                            response = client.post(
+                                endpoint,
+                                files={"file": ("large.jpg", b"x" * 9, "image/jpeg")},
+                                data={"allergy_info": "None", "locale": "ko-KR"},
+                                headers={"X-Request-Id": request_id},
+                            )
+
+                        self.assertEqual(response.status_code, 413)
+                        self.assertEqual(response.json()["detail"]["code"], "IMAGE_DECODE_FAILED")
+                        self.assertEqual(response.json()["detail"]["request_id"], request_id)
+
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.start", return_value=None)
     @patch("backend.modules.analysis_jobs.AnalysisJobWorker.stop", return_value=None)
     def test_submit_job_route_blocks_unauthenticated_device_rotation_by_ip(

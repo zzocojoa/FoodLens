@@ -58,6 +58,7 @@ class _RecordingMediaStorage:
 
     def __init__(self, *, delete_error: MediaStorageError | None) -> None:
         self.delete_error = delete_error
+        self.max_upload_bytes = 10 * 1024 * 1024
         self.deleted_object_keys: list[str] = []
         self.deleted_generations: list[int | None] = []
         self.uploaded_asset_ids: list[str] = []
@@ -287,6 +288,49 @@ class MediaAssetCleanupTests(unittest.TestCase):
             response = client.delete("/me/media/asset_missing")
 
         self.assertEqual(response.status_code, 401)
+
+    def test_upload_rejects_oversize_payload_before_storage_upload(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+        media_storage.max_upload_bytes = 8
+
+        with TestClient(server.app) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = InMemoryRetentionStore()
+            self._prime_media_render_runtime()
+            session = self._signup_and_verify(client, email=self._unique_email("cleanup-upload-too-large"))
+            headers = _auth_headers(str(session["access_token"]))
+            response = client.post(
+                "/me/media/upload",
+                files={"file": ("cleanup.png", _create_png_bytes(), "image/png")},
+                data={"scope": "history"},
+                headers={**headers, "X-Request-Id": "req-media-upload-too-large"},
+            )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"]["code"], "MEDIA_FILE_TOO_LARGE")
+        self.assertEqual(response.json()["detail"]["request_id"], "req-media-upload-too-large")
+        self.assertEqual(media_storage.uploaded_asset_ids, [])
+        self.assertEqual(media_storage._upload_count, 0)
+
+    def test_unauthenticated_oversize_media_upload_rejects_before_auth(self) -> None:
+        media_storage = _RecordingMediaStorage(delete_error=None)
+        media_storage.max_upload_bytes = 8
+
+        with TestClient(server.app) as client:
+            server.app.state.media_storage = media_storage
+            server.app.state.retention_store = InMemoryRetentionStore()
+            self._prime_media_render_runtime()
+            response = client.post(
+                "/me/media/upload",
+                files={"file": ("cleanup.png", b"x" * (server.UPLOAD_CONTENT_LENGTH_OVERHEAD_BYTES + 64), "image/png")},
+                data={"scope": "history"},
+                headers={"X-Request-Id": "req-media-upload-unauth-too-large"},
+            )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"]["code"], "MEDIA_FILE_TOO_LARGE")
+        self.assertEqual(response.json()["detail"]["request_id"], "req-media-upload-unauth-too-large")
+        self.assertEqual(media_storage.uploaded_asset_ids, [])
 
     def test_delete_media_asset_deletes_owned_uploaded_asset(self) -> None:
         media_storage = _RecordingMediaStorage(delete_error=None)
