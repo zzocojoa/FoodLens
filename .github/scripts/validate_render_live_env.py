@@ -49,6 +49,9 @@ DEFAULT_LIVE_ENV_KEYS: tuple[str, ...] = (
     "DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS",
     "DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS",
 )
+DEFAULT_LIVE_MANAGED_ENV_KEYS: tuple[str, ...] = (
+    "AUTH_TOKEN_HASH_SECRET",
+)
 
 
 JsonRequester = Callable[[str, str, str], object]
@@ -302,6 +305,13 @@ def _required_scoped_env_vars(service: BlueprintService) -> dict[str, BlueprintE
             raise RuntimeError(f"render.yaml service {service.name} is missing required live env key {key}.")
         if env_var.sync == "false":
             raise RuntimeError(f"render.yaml service {service.name} key {key} must define a literal value.")
+        service_contract[key] = env_var
+    for key in DEFAULT_LIVE_MANAGED_ENV_KEYS:
+        env_var = service.env_vars.get(key)
+        if env_var is None:
+            raise RuntimeError(f"render.yaml service {service.name} is missing required live env key {key}.")
+        if env_var.sync != "false":
+            raise RuntimeError(f"render.yaml service {service.name} key {key} must use sync:false.")
         service_contract[key] = env_var
     return service_contract
 

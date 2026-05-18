@@ -48,6 +48,10 @@ def _random_token(prefix: str) -> str:
     return f"{prefix}_{secrets.token_urlsafe(32)}"
 
 
+def _is_token_digest(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
 def _parse_csv(raw: str | None) -> set[str]:
     if not raw:
         return set()
@@ -407,24 +411,27 @@ class SessionRecord:
 
 @dataclass(slots=True)
 class AccessTokenRecord:
-    token: str
     user_id: str
     session_id: str
     expires_at: datetime
+    token_digest: str = ""
+    token: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     revoked: bool = False
 
 
 @dataclass(slots=True)
 class RefreshTokenRecord:
-    token: str
     user_id: str
     session_id: str
     family_id: str
     expires_at: datetime
+    token_digest: str = ""
+    token: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     status: RefreshStatus = "active"
     used_at: datetime | None = None
+    replaced_by_digest: str | None = None
     replaced_by: str | None = None
     replacement_access_token: str | None = None
     grace_redeemed: bool = False
@@ -454,7 +461,8 @@ class PasswordResetRecord:
     failed_attempts: int = 0
 
 
-AUTH_STATE_SNAPSHOT_VERSION = 1
+AUTH_STATE_SNAPSHOT_VERSION = 2
+SUPPORTED_AUTH_STATE_SNAPSHOT_VERSIONS = frozenset({1, AUTH_STATE_SNAPSHOT_VERSION})
 AUTH_STATE_DATACLASSES = {
     "AuthUser": AuthUser,
     "UserProfile": UserProfile,
@@ -485,6 +493,7 @@ class InMemoryAuthSessionService:
         password_reset_max_attempts: int = 5,
         password_reset_debug_code_enabled: bool = False,
         refresh_reuse_grace_seconds: int = 0,
+        token_hash_secret: str | None = None,
         email_verification_sender: EmailVerificationSender | None = None,
         allowed_redirects_by_provider: dict[str, set[str]] | None = None,
         state_store: AuthStateStore | None = None,
@@ -501,6 +510,10 @@ class InMemoryAuthSessionService:
         self.password_reset_max_attempts = max(1, password_reset_max_attempts)
         self.password_reset_debug_code_enabled = password_reset_debug_code_enabled
         self.refresh_reuse_grace_seconds = max(0, refresh_reuse_grace_seconds)
+        self._token_hash_secret = self._resolve_token_hash_secret_for_constructor(
+            token_hash_secret=token_hash_secret,
+            state_store=state_store,
+        )
         self._email_verification_sender = email_verification_sender or LoggingEmailVerificationSender()
         self.allowed_redirects_by_provider = {
             key: set(value)
@@ -525,6 +538,7 @@ class InMemoryAuthSessionService:
         self._refresh_tokens: dict[str, RefreshTokenRecord] = {}
         self._access_tokens_by_session: dict[str, set[str]] = {}
         self._refresh_tokens_by_session: dict[str, set[str]] = {}
+        self._refresh_grace_bundles_by_digest: dict[str, dict[str, object]] = {}
         self._email_verifications_by_user_id: dict[str, EmailVerificationRecord] = {}
         self._password_resets_by_user_id: dict[str, PasswordResetRecord] = {}
 
@@ -607,6 +621,10 @@ class InMemoryAuthSessionService:
             password_reset_max_attempts=password_reset_max_attempts,
             password_reset_debug_code_enabled=password_reset_debug_code_enabled,
             refresh_reuse_grace_seconds=refresh_reuse_grace_seconds,
+            token_hash_secret=cls._resolve_token_hash_secret_from_env(
+                get_env=get_env,
+                state_store=state_store,
+            ),
             email_verification_sender=email_verification_sender,
             allowed_redirects_by_provider=allowed_redirects_by_provider,
             state_store=state_store,
@@ -617,13 +635,60 @@ class InMemoryAuthSessionService:
     def state_backend(self) -> str:
         return "postgres" if self._state_store is not None else "memory"
 
+    @classmethod
+    def _resolve_token_hash_secret_from_env(
+        cls,
+        *,
+        get_env: Callable[[str, str | None], str | None],
+        state_store: AuthStateStore | None,
+    ) -> str:
+        explicit_secret = (get_env("AUTH_TOKEN_HASH_SECRET", None) or "").strip()
+        if explicit_secret:
+            return explicit_secret
+
+        if state_store is not None:
+            raise ValueError("AUTH_TOKEN_HASH_SECRET is required for persisted auth token digests.")
+
+        return "foodlens-local-memory-token-hash-secret"
+
+    @staticmethod
+    def _resolve_token_hash_secret_for_constructor(
+        *,
+        token_hash_secret: str | None,
+        state_store: AuthStateStore | None,
+    ) -> str:
+        explicit_secret = (token_hash_secret or "").strip()
+        if explicit_secret:
+            return explicit_secret
+
+        env_secret = (os.environ.get("AUTH_TOKEN_HASH_SECRET") or "").strip()
+        if env_secret:
+            return env_secret
+
+        if state_store is not None:
+            raise ValueError("AUTH_TOKEN_HASH_SECRET is required for persisted auth token digests.")
+
+        return "foodlens-local-memory-token-hash-secret"
+
+    def _token_digest(self, *, token: str, purpose: str) -> str:
+        payload = f"{purpose}:{token}".encode("utf-8")
+        return hmac.new(self._token_hash_secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    def _access_token_digest(self, access_token: str) -> str:
+        return self._token_digest(token=access_token, purpose="access")
+
+    def _refresh_token_digest(self, refresh_token: str) -> str:
+        return self._token_digest(token=refresh_token, purpose="refresh")
+
     def _hydrate_from_state_store(self) -> None:
         if self._state_store is None:
             return
         snapshot = self._state_store.load()
         if not snapshot:
             return
-        self._restore_runtime_snapshot(snapshot)
+        migrated = self._restore_runtime_snapshot(snapshot)
+        if migrated:
+            self._persist_state_unlocked()
 
     def _persist_state_unlocked(self) -> None:
         if self._state_store is not None:
@@ -694,9 +759,9 @@ class InMemoryAuthSessionService:
             "payload": json.dumps(payload, default=self._snapshot_json_default, ensure_ascii=False, separators=(",", ":")),
         }
 
-    def _restore_runtime_snapshot(self, snapshot: dict[str, object]) -> None:
+    def _restore_runtime_snapshot(self, snapshot: dict[str, object]) -> bool:
         version = int(snapshot.get("version", 0))
-        if version != AUTH_STATE_SNAPSHOT_VERSION:
+        if version not in SUPPORTED_AUTH_STATE_SNAPSHOT_VERSIONS:
             raise AuthStateStoreError(f"Unsupported auth state snapshot version: {version}")
 
         raw_payload = snapshot.get("payload")
@@ -724,7 +789,121 @@ class InMemoryAuthSessionService:
         self._refresh_tokens_by_session = dict(state.get("_refresh_tokens_by_session", {}))
         self._email_verifications_by_user_id = dict(state.get("_email_verifications_by_user_id", {}))
         self._password_resets_by_user_id = dict(state.get("_password_resets_by_user_id", {}))
+        token_storage_migrated = self._migrate_token_storage_unlocked()
         logger.info("[Auth] restored state snapshot from backend=%s users=%s", self.state_backend, len(self._users_by_id))
+        return token_storage_migrated
+
+    def _migrate_token_storage_unlocked(self) -> bool:
+        access_migrated, access_key_map = self._migrate_access_token_records_unlocked()
+        refresh_migrated, refresh_key_map = self._migrate_refresh_token_records_unlocked()
+
+        index_migrated = False
+        self._access_tokens_by_session, access_index_migrated = self._migrate_token_session_index(
+            index=self._access_tokens_by_session,
+            key_map=access_key_map,
+            purpose="access",
+        )
+        self._refresh_tokens_by_session, refresh_index_migrated = self._migrate_token_session_index(
+            index=self._refresh_tokens_by_session,
+            key_map=refresh_key_map,
+            purpose="refresh",
+        )
+        index_migrated = access_index_migrated or refresh_index_migrated
+        return access_migrated or refresh_migrated or index_migrated
+
+    def _migrate_access_token_records_unlocked(self) -> tuple[bool, dict[str, str]]:
+        migrated = False
+        key_map: dict[str, str] = {}
+        migrated_records: dict[str, AccessTokenRecord] = {}
+        for key, record in self._access_tokens.items():
+            raw_key = str(key)
+            token_digest = record.token_digest
+            if not token_digest:
+                raw_token = record.token
+                if raw_token:
+                    token_digest = self._access_token_digest(raw_token)
+                elif _is_token_digest(raw_key):
+                    token_digest = raw_key
+                else:
+                    token_digest = self._access_token_digest(raw_key)
+                record.token_digest = token_digest
+                migrated = True
+            if record.token is not None:
+                record.token = None
+                migrated = True
+            key_map[raw_key] = token_digest
+            migrated_records[token_digest] = record
+            if raw_key != token_digest:
+                migrated = True
+        self._access_tokens = migrated_records
+        return migrated, key_map
+
+    def _migrate_refresh_token_records_unlocked(self) -> tuple[bool, dict[str, str]]:
+        migrated = False
+        key_map: dict[str, str] = {}
+        migrated_records: dict[str, RefreshTokenRecord] = {}
+        for key, record in self._refresh_tokens.items():
+            raw_key = str(key)
+            token_digest = record.token_digest
+            if not token_digest:
+                raw_token = record.token
+                if raw_token:
+                    token_digest = self._refresh_token_digest(raw_token)
+                elif _is_token_digest(raw_key):
+                    token_digest = raw_key
+                else:
+                    token_digest = self._refresh_token_digest(raw_key)
+                record.token_digest = token_digest
+                migrated = True
+            key_map[raw_key] = token_digest
+            migrated_records[token_digest] = record
+            if raw_key != token_digest:
+                migrated = True
+
+        for record in migrated_records.values():
+            if record.replaced_by and not record.replaced_by_digest:
+                record.replaced_by_digest = key_map.get(record.replaced_by) or self._refresh_token_digest(record.replaced_by)
+                migrated = True
+            if record.token is not None:
+                record.token = None
+                migrated = True
+            if record.replaced_by is not None:
+                record.replaced_by = None
+                migrated = True
+            if record.replacement_access_token is not None:
+                record.replacement_access_token = None
+                migrated = True
+
+        self._refresh_tokens = migrated_records
+        return migrated, key_map
+
+    def _migrate_token_session_index(
+        self,
+        *,
+        index: dict[str, set[str]],
+        key_map: dict[str, str],
+        purpose: str,
+    ) -> tuple[dict[str, set[str]], bool]:
+        migrated = False
+        migrated_index: dict[str, set[str]] = {}
+        for session_id, values in index.items():
+            migrated_values: set[str] = set()
+            for value in values:
+                raw_value = str(value)
+                token_digest = key_map.get(raw_value)
+                if token_digest is None:
+                    if _is_token_digest(raw_value):
+                        token_digest = raw_value
+                    elif purpose == "access":
+                        token_digest = self._access_token_digest(raw_value)
+                    else:
+                        token_digest = self._refresh_token_digest(raw_value)
+                    migrated = True
+                if token_digest != raw_value:
+                    migrated = True
+                migrated_values.add(token_digest)
+            migrated_index[session_id] = migrated_values
+        return migrated_index, migrated
 
     @staticmethod
     def _snapshot_json_default(value: object) -> object:
@@ -1281,7 +1460,8 @@ class InMemoryAuthSessionService:
     def refresh(self, *, refresh_token: str) -> dict[str, object]:
         now = _utc_now()
         with self._lock:
-            record = self._refresh_tokens.get(refresh_token)
+            refresh_token_digest = self._refresh_token_digest(refresh_token)
+            record = self._refresh_tokens.get(refresh_token_digest)
             if record is None:
                 raise AuthServiceError(
                     code="AUTH_REFRESH_INVALID",
@@ -1309,11 +1489,23 @@ class InMemoryAuthSessionService:
                 )
 
             if record.status != "active":
-                grace_bundle = self._build_grace_refresh_bundle(record=record, now=now)
+                grace_bundle = self._build_grace_refresh_bundle(
+                    record=record,
+                    refresh_token_digest=refresh_token_digest,
+                    now=now,
+                )
                 if grace_bundle is not None:
                     record.grace_redeemed = True
+                    self._refresh_grace_bundles_by_digest.pop(refresh_token_digest, None)
                     self._persist_state_unlocked()
                     return grace_bundle
+                if self._refresh_retry_is_within_grace_window(record=record, now=now):
+                    raise AuthServiceError(
+                        code="AUTH_REFRESH_REUSED",
+                        message="Refresh token retry is unavailable. Please use the latest refresh token.",
+                        status_code=401,
+                        user_id=record.user_id,
+                    )
                 self._revoke_family(record.family_id, reason="refresh_reuse_detected")
                 self._persist_state_unlocked()
                 raise AuthServiceError(
@@ -1334,9 +1526,11 @@ class InMemoryAuthSessionService:
                 )
 
             bundle = self._issue_tokens(user=user, session=session)
-            record.replaced_by = bundle["refresh_token"]
-            record.replacement_access_token = bundle["access_token"]
+            record.replaced_by_digest = self._refresh_token_digest(str(bundle["refresh_token"]))
+            record.replaced_by = None
+            record.replacement_access_token = None
             record.grace_redeemed = False
+            self._refresh_grace_bundles_by_digest[refresh_token_digest] = dict(bundle)
             self._persist_state_unlocked()
             return bundle
 
@@ -1344,11 +1538,11 @@ class InMemoryAuthSessionService:
         with self._lock:
             session_ids: set[str] = set()
             if access_token:
-                access_record = self._access_tokens.get(access_token)
+                access_record = self._access_tokens.get(self._access_token_digest(access_token))
                 if access_record is not None:
                     session_ids.add(access_record.session_id)
             if refresh_token:
-                refresh_record = self._refresh_tokens.get(refresh_token)
+                refresh_record = self._refresh_tokens.get(self._refresh_token_digest(refresh_token))
                 if refresh_record is not None:
                     session_ids.add(refresh_record.session_id)
 
@@ -1374,7 +1568,7 @@ class InMemoryAuthSessionService:
     def authenticate_access_token(self, *, access_token: str) -> AuthUser:
         now = _utc_now()
         with self._lock:
-            record = self._access_tokens.get(access_token)
+            record = self._access_tokens.get(self._access_token_digest(access_token))
             if record is None or record.revoked:
                 raise AuthServiceError(
                     code="AUTH_TOKEN_INVALID",
@@ -2124,13 +2318,14 @@ class InMemoryAuthSessionService:
                 if not family_sessions:
                     self._session_ids_by_family.pop(family_id, None)
 
-        access_tokens = set(self._access_tokens_by_session.pop(session_id, set()))
-        for token in access_tokens:
-            self._access_tokens.pop(token, None)
+        access_token_digests = set(self._access_tokens_by_session.pop(session_id, set()))
+        for token_digest in access_token_digests:
+            self._access_tokens.pop(token_digest, None)
 
-        refresh_tokens = set(self._refresh_tokens_by_session.pop(session_id, set()))
-        for token in refresh_tokens:
-            self._refresh_tokens.pop(token, None)
+        refresh_token_digests = set(self._refresh_tokens_by_session.pop(session_id, set()))
+        for token_digest in refresh_token_digests:
+            self._refresh_grace_bundles_by_digest.pop(token_digest, None)
+            self._refresh_tokens.pop(token_digest, None)
 
     def _create_user(
         self,
@@ -2211,25 +2406,27 @@ class InMemoryAuthSessionService:
         now = _utc_now()
 
         access_token = _random_token("atk")
+        access_token_digest = self._access_token_digest(access_token)
         access_record = AccessTokenRecord(
-            token=access_token,
             user_id=user.user_id,
             session_id=session.session_id,
             expires_at=now + timedelta(seconds=self.access_ttl_seconds),
+            token_digest=access_token_digest,
         )
-        self._access_tokens[access_token] = access_record
-        self._access_tokens_by_session.setdefault(session.session_id, set()).add(access_token)
+        self._access_tokens[access_token_digest] = access_record
+        self._access_tokens_by_session.setdefault(session.session_id, set()).add(access_token_digest)
 
         refresh_token = _random_token("rtk")
+        refresh_token_digest = self._refresh_token_digest(refresh_token)
         refresh_record = RefreshTokenRecord(
-            token=refresh_token,
             user_id=user.user_id,
             session_id=session.session_id,
             family_id=session.family_id,
             expires_at=now + timedelta(seconds=self.refresh_ttl_seconds),
+            token_digest=refresh_token_digest,
         )
-        self._refresh_tokens[refresh_token] = refresh_record
-        self._refresh_tokens_by_session.setdefault(session.session_id, set()).add(refresh_token)
+        self._refresh_tokens[refresh_token_digest] = refresh_record
+        self._refresh_tokens_by_session.setdefault(session.session_id, set()).add(refresh_token_digest)
 
         return {
             "access_token": access_token,
@@ -2248,24 +2445,38 @@ class InMemoryAuthSessionService:
             self._revoke_tokens_for_session(session_id)
 
     def _revoke_tokens_for_session(self, session_id: str) -> None:
-        for access_token in self._access_tokens_by_session.get(session_id, set()):
-            access_record = self._access_tokens.get(access_token)
+        for access_token_digest in self._access_tokens_by_session.get(session_id, set()):
+            access_record = self._access_tokens.get(access_token_digest)
             if access_record:
                 access_record.revoked = True
 
-        for refresh_token in self._refresh_tokens_by_session.get(session_id, set()):
-            refresh_record = self._refresh_tokens.get(refresh_token)
+        for refresh_token_digest in self._refresh_tokens_by_session.get(session_id, set()):
+            self._refresh_grace_bundles_by_digest.pop(refresh_token_digest, None)
+            refresh_record = self._refresh_tokens.get(refresh_token_digest)
             if refresh_record and refresh_record.status == "active":
                 refresh_record.status = "revoked"
 
-    def _build_grace_refresh_bundle(self, *, record: RefreshTokenRecord, now: datetime) -> dict[str, object] | None:
+    def _build_grace_refresh_bundle(
+        self,
+        *,
+        record: RefreshTokenRecord,
+        refresh_token_digest: str,
+        now: datetime,
+    ) -> dict[str, object] | None:
         if self.refresh_reuse_grace_seconds <= 0:
             return None
         if record.grace_redeemed:
             return None
-        if record.used_at is None or record.replaced_by is None or record.replacement_access_token is None:
+        if record.used_at is None or record.replaced_by_digest is None:
             return None
         if now > record.used_at + timedelta(seconds=self.refresh_reuse_grace_seconds):
+            return None
+        replacement_bundle = self._refresh_grace_bundles_by_digest.get(refresh_token_digest)
+        if not replacement_bundle:
+            return None
+        replacement_refresh_token = replacement_bundle.get("refresh_token")
+        replacement_access_token = replacement_bundle.get("access_token")
+        if not isinstance(replacement_refresh_token, str) or not isinstance(replacement_access_token, str):
             return None
 
         session = self._sessions.get(record.session_id)
@@ -2276,7 +2487,10 @@ class InMemoryAuthSessionService:
         if user is None:
             return None
 
-        replacement_refresh = self._refresh_tokens.get(record.replaced_by)
+        replacement_refresh_digest = self._refresh_token_digest(replacement_refresh_token)
+        if replacement_refresh_digest != record.replaced_by_digest:
+            return None
+        replacement_refresh = self._refresh_tokens.get(replacement_refresh_digest)
         if replacement_refresh is None:
             return None
         if replacement_refresh.session_id != record.session_id:
@@ -2286,7 +2500,7 @@ class InMemoryAuthSessionService:
         if replacement_refresh.expires_at <= now:
             return None
 
-        replacement_access = self._access_tokens.get(record.replacement_access_token)
+        replacement_access = self._access_tokens.get(self._access_token_digest(replacement_access_token))
         if replacement_access is None:
             return None
         if replacement_access.session_id != record.session_id:
@@ -2298,11 +2512,22 @@ class InMemoryAuthSessionService:
 
         expires_in = max(1, int((replacement_access.expires_at - now).total_seconds()))
         return {
-            "access_token": replacement_access.token,
-            "refresh_token": replacement_refresh.token,
+            "access_token": replacement_access_token,
+            "refresh_token": replacement_refresh_token,
             "expires_in": expires_in,
             "user": self._serialize_user(user),
         }
+
+    def _refresh_retry_is_within_grace_window(self, *, record: RefreshTokenRecord, now: datetime) -> bool:
+        if record.status != "used":
+            return False
+        if self.refresh_reuse_grace_seconds <= 0:
+            return False
+        if record.grace_redeemed:
+            return False
+        if record.used_at is None or record.replaced_by_digest is None:
+            return False
+        return now <= record.used_at + timedelta(seconds=self.refresh_reuse_grace_seconds)
 
     def _revoke_sessions_for_user(self, user_id: str, *, reason: str) -> int:
         now = _utc_now()

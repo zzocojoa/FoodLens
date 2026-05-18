@@ -148,6 +148,7 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             "MEDIA_RENDER_SIGNING_SECRET",
             "AUTH_GOOGLE_CLIENT_SECRET",
             "AUTH_KAKAO_CLIENT_SECRET",
+            "AUTH_TOKEN_HASH_SECRET",
             "AUTH_EMAIL_SMTP_PASSWORD",
             "DATAGO_API_KEY",
             "DATAGO_I2790_API_KEY",
@@ -295,6 +296,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN",
             "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN",
             "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN",
+            "AUTH_TOKEN_HASH_SECRET",
             "AUTH_GOOGLE_OAUTH_PROMPT",
             "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
             "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
@@ -325,6 +327,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_LOGIN_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", output)
+        self.assertIn("AUTH_TOKEN_HASH_SECRET", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
