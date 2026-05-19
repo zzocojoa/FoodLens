@@ -93,6 +93,10 @@ class Phase4OperationalConfigTests(unittest.TestCase):
             ("BARCODE_ALLERGEN_ESTIMATED_COST_USD_PER_REQUEST", "0.001"),
             ("BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST", "500"),
             ("AUTH_GOOGLE_OAUTH_PROMPT", "select_account"),
+            ("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", "1"),
+            ("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", "0"),
+            ("ANALYSIS_JOBS_TTL_SCRUB_DAYS", "30"),
+            ("ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE", "100"),
         )
         for key, value in fixed_values:
             self.assertEqual(render_blueprint.count(f'- key: {key}\n        value: "{value}"'), 3)

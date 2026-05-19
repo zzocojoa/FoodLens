@@ -21,7 +21,7 @@ ANALYSIS_JOBS_TTL_SCRUB_DAYS
 ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
 ```
 
-Safe rollout defaults are:
+Local `.env.example` defaults remain safe for development:
 
 ```text
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0
@@ -29,6 +29,17 @@ ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1
 ANALYSIS_JOBS_TTL_SCRUB_DAYS=30
 ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE=100
 ```
+
+Render blueprint defaults for the Google Play readiness path are continuous execute mode:
+
+```text
+ANALYSIS_JOBS_TTL_SCRUB_ENABLED=1
+ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=0
+ANALYSIS_JOBS_TTL_SCRUB_DAYS=30
+ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE=100
+```
+
+Complete preflight and execute approval before applying the Render blueprint with these defaults. If approval is not complete, keep the live Render env in safe mode by overriding `ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0` and `ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1`.
 
 ## Preflight
 
@@ -45,7 +56,7 @@ If an exhaustive Render env audit is needed, run:
 python .github/scripts/validate_render_live_env.py --blueprint render.yaml --all-blueprint-env --presence-only
 ```
 
-The live env check must report all four TTL scrub keys present on every parity service before enabling the cron path.
+The live env check must report all four TTL scrub keys present on every parity service before deploying or leaving the cron path in execute mode.
 
 ## Dry-Run Count Review
 
@@ -58,12 +69,11 @@ dry_run=true
 ttl_days
 batch_size
 cutoff_at
-eligible_total_count
-eligible_batch_count
+target_count
 scrubbed_count=0
 ```
 
-`eligible_batch_count` is capped by `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`. If `eligible_batch_count == batch_size`, treat the backlog as potentially larger than one batch and require an explicit batch plan before execute.
+`target_count` is capped by `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`. If `target_count == batch_size`, treat the backlog as potentially larger than one batch and require an explicit batch plan before execute.
 
 Render one-off job stdout can be missing from the Logs API. In that case, use the Render Postgres connection-info endpoint for a read-only aggregate `SELECT COUNT(*)` check. Do not print the returned connection string.
 
@@ -78,11 +88,11 @@ Execute is approved only when all conditions are true:
 - A quiet window is approved.
 - The operator accepts that DB recovery/PITR is the recovery path for scrubbed payload fields.
 
-Execute is not needed when `eligible_total_count=0`.
+Execute is not needed when `target_count=0`.
 
-## Enablement
+## Manual Staged Enablement
 
-Enable the cron path by changing only:
+Use this path only when the Render blueprint is not already in execute mode. To stage a future rollout, first enable the cron path in dry-run mode:
 
 ```text
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=1
@@ -95,7 +105,7 @@ After one or more dry-run cron passes are reviewed, execute by changing:
 ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=0
 ```
 
-Keep `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE` small for the first execute pass.
+Keep `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE` small for the first execute pass. The current Render blueprint keeps this at `100`.
 
 ## Post-Execute Verification
 
@@ -112,4 +122,3 @@ Return to safe mode after the approved batch if continuous rollout is not intend
 ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0
 ```
-
