@@ -84,6 +84,13 @@ run_release_env_gate() {
   node ./scripts/validate-eas-release-env.js
 }
 
+run_play_track_release_state_gate() {
+  if [ -z "${PHASE6_PLAY_RELEASE_STATE_PATH:-}" ]; then
+    return
+  fi
+  node ./scripts/validate-play-track-release-state.js "${PHASE6_PLAY_RELEASE_STATE_PATH}"
+}
+
 run_stamp() {
   if [ -n "${PHASE6_RUN_STAMP:-}" ]; then
     printf '%s\n' "${PHASE6_RUN_STAMP}"
@@ -187,6 +194,7 @@ fi
 
 prepare_google_play_service_account
 run_release_env_gate
+run_play_track_release_state_gate
 
 STAMP="$(run_stamp)"
 EVIDENCE_DIR="${ARTIFACT_ROOT}/${STAMP}"

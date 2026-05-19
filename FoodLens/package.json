@@ -28,6 +28,7 @@
     "phase6:mobile-e2e:gate": "bash ./scripts/ci_phase6_mobile_e2e_release_gate.sh",
     "phase6:mobile-e2e:release-gate": "MOBILE_E2E_REAL_DEVICE_EVIDENCE_REQUIRED=1 bash ./scripts/ci_phase6_mobile_e2e_release_gate.sh",
     "release:env:gate": "node ./scripts/validate-eas-release-env.js",
+    "release:play-track-state:gate": "node ./scripts/validate-play-track-release-state.js",
     "phase6:mobile-store-evidence": "bash ./scripts/ci_phase6_mobile_store_evidence.sh",
     "bundle:size:gate": "node ./scripts/mobile-bundle-size-gate.js"
   },

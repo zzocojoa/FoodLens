@@ -123,6 +123,10 @@
   - feature flag / kill switch 절차 고정
   - Android 제출 운영 원칙:
     - 최초 1회는 Play Console 수동 제출 허용
+    - Play Console 수동 제출 화면에서 기존 APK와 새 AAB/APK를 같은 draft release에 섞지 않는다.
+    - 예: `versionCode=21` AAB를 올릴 때 `versionCode=18` APK가 같은 draft에 남아 있으면 새 버전이 낮은 APK를 완전히 대체해 저장이 차단되므로, 낮은 versionCode APK를 draft에서 삭제하거나 새 release를 만든다.
+    - 수동 제출 전 Play release state JSON을 준비한 경우 `PHASE6_PLAY_RELEASE_STATE_PATH=<path> npm run release:play-track-state:gate`로 stale APK 혼입을 검증한다.
+    - 난독화 매핑 파일 경고는 R8/proguard 난독화를 켠 경우에만 Play Console에 mapping file을 업로드하고, 난독화 미사용 빌드에서는 출시 차단 오류로 보지 않는다.
     - 이후는 `eas submit` 자동 제출 + 재시도 절차 사용
   - Phase6 Mobile Store Evidence workflow 입력 고정:
     - 스토어 제출 증적 URI와 빌드 프로필을 입력으로 사용
