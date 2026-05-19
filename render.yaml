@@ -347,9 +347,9 @@ services:
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
       - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
-        value: "0"
-      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
         value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "0"
       - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
         value: "30"
       - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
@@ -725,9 +725,9 @@ services:
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
       - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
-        value: "0"
-      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
         value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "0"
       - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
         value: "30"
       - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
@@ -1103,9 +1103,9 @@ services:
       - key: RETENTION_LOG_TTL_DAYS
         value: "14"
       - key: ANALYSIS_JOBS_TTL_SCRUB_ENABLED
-        value: "0"
-      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
         value: "1"
+      - key: ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN
+        value: "0"
       - key: ANALYSIS_JOBS_TTL_SCRUB_DAYS
         value: "30"
       - key: ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE

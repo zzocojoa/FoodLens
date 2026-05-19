@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACT_ROOT="${ROOT_DIR}/artifacts/phase6/mobile-store-evidence"
+GOOGLE_PLAY_SERVICE_ACCOUNT_PATH="${ROOT_DIR}/artifacts/phase6/google-play-service-account.json"
 
 require_env() {
   local name="$1"
@@ -44,12 +45,10 @@ build_platforms() {
   esac
 }
 
-run_stamp() {
-  if [ -n "${PHASE6_RUN_STAMP:-}" ]; then
-    printf '%s\n' "${PHASE6_RUN_STAMP}"
-    return
-  fi
-  date -u +"%Y%m%dT%H%M%SZ"
+build_includes_platform() {
+  local selected_platform="$1"
+  local target_platform="$2"
+  [ "${selected_platform}" = "${target_platform}" ] || [ "${selected_platform}" = "all" ]
 }
 
 submit_enabled_flag() {
@@ -59,6 +58,38 @@ submit_enabled_flag() {
     return
   fi
   printf '%s\n' "false"
+}
+
+cleanup_google_play_service_account() {
+  if [ -f "${GOOGLE_PLAY_SERVICE_ACCOUNT_PATH}" ]; then
+    rm -f "${GOOGLE_PLAY_SERVICE_ACCOUNT_PATH}"
+  fi
+}
+
+prepare_google_play_service_account() {
+  if [ "${SUBMIT_ENABLED_NORMALIZED}" != "true" ]; then
+    return
+  fi
+  if ! build_includes_platform "${PHASE6_PLATFORM}" android; then
+    return
+  fi
+  require_env GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+  mkdir -p "$(dirname "${GOOGLE_PLAY_SERVICE_ACCOUNT_PATH}")"
+  printf '%s' "${GOOGLE_PLAY_SERVICE_ACCOUNT_JSON}" > "${GOOGLE_PLAY_SERVICE_ACCOUNT_PATH}"
+  chmod 600 "${GOOGLE_PLAY_SERVICE_ACCOUNT_PATH}"
+  trap cleanup_google_play_service_account EXIT
+}
+
+run_release_env_gate() {
+  node ./scripts/validate-eas-release-env.js
+}
+
+run_stamp() {
+  if [ -n "${PHASE6_RUN_STAMP:-}" ]; then
+    printf '%s\n' "${PHASE6_RUN_STAMP}"
+    return
+  fi
+  date -u +"%Y%m%dT%H%M%SZ"
 }
 
 write_summary_header() {
@@ -147,11 +178,15 @@ require_env EXPO_TOKEN
 normalize_submit_enabled "${PHASE6_SUBMIT_ENABLED}"
 
 SUBMIT_ENABLED_NORMALIZED="$(submit_enabled_flag "${PHASE6_SUBMIT_ENABLED}")"
+export FOODLENS_FORCE_CANONICAL_PACKAGE="${FOODLENS_FORCE_CANONICAL_PACKAGE:-1}"
 
 if [ "${SUBMIT_ENABLED_NORMALIZED}" = "false" ] && [ -z "${PHASE6_SUBMIT_JUSTIFICATION:-}" ]; then
   echo "PHASE6_SUBMIT_JUSTIFICATION is required when submit is disabled." >&2
   exit 1
 fi
+
+prepare_google_play_service_account
+run_release_env_gate
 
 STAMP="$(run_stamp)"
 EVIDENCE_DIR="${ARTIFACT_ROOT}/${STAMP}"

@@ -6,7 +6,7 @@ on:
       platform:
         description: "Build target platform"
         required: true
-        default: all
+        default: android
         type: choice
         options:
           - all
@@ -34,7 +34,7 @@ on:
       submit_justification:
         description: "Required when submit is disabled"
         required: false
-        default: ""
+        default: "Google Play evidence build only; submit disabled until release approval."
         type: string
 
 permissions:
@@ -43,6 +43,10 @@ permissions:
 jobs:
   mobile-store-evidence:
     runs-on: ubuntu-latest
+    env:
+      FOODLENS_FORCE_CANONICAL_PACKAGE: "1"
+      PHASE6_EXPECTED_ANDROID_PACKAGE: com.hoihou.foodlens
+      PHASE6_EXPECTED_IOS_BUNDLE_IDENTIFIER: com.hoihou.foodlens
     defaults:
       run:
         working-directory: FoodLens
@@ -84,6 +88,7 @@ jobs:
           PHASE6_SUBMIT_ENABLED: ${{ inputs.submit_enabled }}
           PHASE6_SUBMIT_PROFILE: ${{ inputs.submit_profile }}
           PHASE6_SUBMIT_JUSTIFICATION: ${{ inputs.submit_justification }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: npm run phase6:mobile-store-evidence
 

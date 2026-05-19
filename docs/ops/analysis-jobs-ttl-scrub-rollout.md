@@ -21,11 +21,20 @@ ANALYSIS_JOBS_TTL_SCRUB_DAYS
 ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE
 ```
 
-Safe rollout defaults are:
+Local `.env.example` defaults remain safe for development:
 
 ```text
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0
 ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1
+ANALYSIS_JOBS_TTL_SCRUB_DAYS=30
+ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE=100
+```
+
+Render blueprint defaults for the Google Play readiness path are continuous execute mode:
+
+```text
+ANALYSIS_JOBS_TTL_SCRUB_ENABLED=1
+ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=0
 ANALYSIS_JOBS_TTL_SCRUB_DAYS=30
 ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE=100
 ```
@@ -82,7 +91,7 @@ Execute is not needed when `eligible_total_count=0`.
 
 ## Enablement
 
-Enable the cron path by changing only:
+To stage a future rollout, first enable the cron path in dry-run mode:
 
 ```text
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=1
@@ -95,7 +104,7 @@ After one or more dry-run cron passes are reviewed, execute by changing:
 ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=0
 ```
 
-Keep `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE` small for the first execute pass.
+Keep `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE` small for the first execute pass. The current Render blueprint keeps this at `100`.
 
 ## Post-Execute Verification
 
@@ -112,4 +121,3 @@ Return to safe mode after the approved batch if continuous rollout is not intend
 ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0
 ```
-
