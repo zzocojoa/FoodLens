@@ -3,6 +3,8 @@ name: Phase2 Render Blueprint Gate
 on:
   pull_request:
     paths:
+      - .dockerignore
+      - Dockerfile
       - render.yaml
       - backend/scripts/ci_render_blueprint_gate.sh
       - .github/scripts/validate_render_live_env.py
@@ -12,6 +14,8 @@ on:
     branches:
       - main
     paths:
+      - .dockerignore
+      - Dockerfile
       - render.yaml
       - backend/scripts/ci_render_blueprint_gate.sh
       - .github/scripts/validate_render_live_env.py

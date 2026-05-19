@@ -43,12 +43,6 @@ Date: 2026-02-13
 - Decide on archived legacy lockfile retention policy
 
 ## File Distribution (Tracked Files)
- -    1 .gitignore
- -    1 Dockerfile
- -  335 FoodLens
- -    8 docs
- -   27 modules
- -    1 requirements.txt
- -    1 scripts
- -    1 server.py
- -    1 setup.sh
+- Root standard: `Dockerfile`, `render.yaml`, `.dockerignore`
+- Backend standard: `backend/server.py`, `backend/setup.sh`, `backend/requirements.txt`, `backend/modules/**`
+- Forbidden legacy paths: `server.py`, `setup.sh`, `requirements.txt`, `modules`, `backend/Dockerfile`
