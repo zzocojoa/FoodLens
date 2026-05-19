@@ -29,7 +29,6 @@ type UseScanBarcodeFlowParams = {
   setActiveStep: (value: number | undefined) => void;
   setMode: (mode: 'LABEL' | 'FOOD' | 'BARCODE') => void;
   setPendingAnalysisOrigin: (analysisOrigin: AnalysisOrigin | null) => void;
-  ensureAnalysisAccess: () => Promise<boolean>;
   t: Translate;
 };
 
@@ -54,7 +53,6 @@ export const useScanBarcodeFlow = ({
   setActiveStep,
   setMode,
   setPendingAnalysisOrigin,
-  ensureAnalysisAccess,
   t,
 }: UseScanBarcodeFlowParams) => {
   const [consecutiveScans, setConsecutiveScans] = useState(0);
@@ -72,16 +70,6 @@ export const useScanBarcodeFlow = ({
             messageFallback: 'Please check your internet connection.',
           });
           resetState();
-          return;
-        }
-
-        const hasAnalysisAccess = await ensureAnalysisAccess();
-        if (!hasAnalysisAccess) {
-          setPendingAnalysisOrigin(null);
-          setScanned(false);
-          isProcessingRef.current = false;
-          setConsecutiveScans(0);
-          lastAcceptedBarcodeRef.current = null;
           return;
         }
 
@@ -169,7 +157,6 @@ export const useScanBarcodeFlow = ({
     },
     [
       cachedLocation,
-      ensureAnalysisAccess,
       isConnectedRef,
       isProcessingRef,
       replace,

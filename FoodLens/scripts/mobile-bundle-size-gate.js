@@ -15,7 +15,6 @@ const LUCIDE_SOURCE_WARNING_LIMIT = 1850;
 const PACKAGE_SOURCE_MARKERS = [
   { key: 'lucideReactNative', pattern: 'node_modules/lucide-react-native/' },
   { key: 'shopifyReactNativeSkia', pattern: 'node_modules/@shopify/react-native-skia/' },
-  { key: 'reactNativeGoogleMobileAds', pattern: 'node_modules/react-native-google-mobile-ads/' },
   { key: 'reactNativeMaps', pattern: 'node_modules/react-native-maps/' },
 ];
 
@@ -344,7 +343,6 @@ const summarizeAssets = (files, outputDir) => {
 const createEmptySourceCounts = () => ({
   lucideReactNative: 0,
   shopifyReactNativeSkia: 0,
-  reactNativeGoogleMobileAds: 0,
   reactNativeMaps: 0,
   appCode: 0,
   total: 0,

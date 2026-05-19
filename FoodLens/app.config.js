@@ -26,11 +26,6 @@ const ANDROID_APP_PACKAGE = buildIdentity.androidPackage;
 const IOS_ALLOWS_LOCAL_NETWORKING = IS_DEV;
 const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
-const GOOGLE_MOBILE_ADS_TEST_PUBLISHER_ID = "ca-app-pub-3940256099942544";
-const EAS_BUILD_PROFILE = (process.env.EAS_BUILD_PROFILE || process.env.PHASE6_BUILD_PROFILE || "").trim();
-const IS_EAS_PRODUCTION_PROFILE = EAS_BUILD_PROFILE === "production";
-const ADMOB_ANDROID_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
-const ADMOB_IOS_TEST_APP_ID = "ca-app-pub-3940256099942544~1458002511";
 const ONBOARDING_PREVIEW_ENABLED =
   (process.env.EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED || "0").trim();
 
@@ -58,42 +53,6 @@ if (!ANDROID_GOOGLE_MAPS_API_KEY) {
       "Using placeholder key; Android map runtime may not function."
   );
 }
-
-const isGoogleMobileAdsTestId = (value) => {
-  return String(value || "").includes(GOOGLE_MOBILE_ADS_TEST_PUBLISHER_ID);
-};
-
-const resolveAdMobAppId = (envName, testAppId) => {
-  const configuredAppId = (process.env[envName] || "").trim();
-  if (IS_EAS_PRODUCTION_PROFILE && isGoogleMobileAdsTestId(configuredAppId)) {
-    throw new Error(`[app.config] ${envName} must not use a Google Mobile Ads test app id in production.`);
-  }
-  if (configuredAppId) {
-    return configuredAppId;
-  }
-  if (IS_EAS_PRODUCTION_PROFILE) {
-    throw new Error(`[app.config] ${envName} is required for production Google Mobile Ads native config.`);
-  }
-  return testAppId;
-};
-
-const ADMOB_ANDROID_APP_ID = resolveAdMobAppId(
-  "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID",
-  ADMOB_ANDROID_TEST_APP_ID
-);
-const ADMOB_IOS_APP_ID = resolveAdMobAppId("EXPO_PUBLIC_ADMOB_IOS_APP_ID", ADMOB_IOS_TEST_APP_ID);
-const GOOGLE_MOBILE_ADS_PLUGIN = [
-  [
-    "react-native-google-mobile-ads",
-    {
-      androidAppId: ADMOB_ANDROID_APP_ID,
-      iosAppId: ADMOB_IOS_APP_ID,
-      delayAppMeasurementInit: true,
-      optimizeInitialization: true,
-      optimizeAdLoading: true,
-    },
-  ],
-];
 
 module.exports = {
   expo: {
@@ -145,7 +104,6 @@ module.exports = {
       "./plugins/withResultShareModule",
       "expo-secure-store",
       "@sentry/react-native",
-      ...GOOGLE_MOBILE_ADS_PLUGIN,
       [
         "expo-splash-screen",
         {

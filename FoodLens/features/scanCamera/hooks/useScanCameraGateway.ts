@@ -24,7 +24,6 @@ import { useScanPermissionFlow } from './useScanPermissionFlow';
 import { useScanBarcodeFlow } from './useScanBarcodeFlow';
 import { useScanCaptureFlow } from './useScanCaptureFlow';
 import { useScanGalleryFlow } from './useScanGalleryFlow';
-import { useScanAnalysisAdGate } from './useScanAnalysisAdGate';
 import { dataStore } from '@/services/dataStore';
 import type { AnalysisOrigin } from '@/services/aiCore/types';
 import { logger } from '@/services/logger';
@@ -79,7 +78,6 @@ export const useScanCameraGateway = () => {
 
     const { isConnected } = useNetworkStatus();
     const isConnectedRef = useRef(true);
-    const { ensureAnalysisAccess } = useScanAnalysisAdGate({ t });
 
     useEffect(() => {
         isConnectedRef.current = isConnected;
@@ -246,10 +244,9 @@ export const useScanCameraGateway = () => {
                 replace: replaceWithAnalysisOrigin,
                 resetState,
                 handleError,
-                ensureAnalysisAccess,
             });
         },
-        [ensureAnalysisAccess, handleError, replaceWithAnalysisOrigin, resetState, t]
+        [handleError, replaceWithAnalysisOrigin, resetState, t]
     );
 
     const processImage = useCallback(
@@ -360,7 +357,6 @@ export const useScanCameraGateway = () => {
         setActiveStep,
         setMode,
         setPendingAnalysisOrigin,
-        ensureAnalysisAccess,
         t,
     });
     const handleCapture = useScanCaptureFlow({

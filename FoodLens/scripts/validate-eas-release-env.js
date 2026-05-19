@@ -2,76 +2,62 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const TEST_PUBLISHER_ID = "ca-app-pub-3940256099942544";
 const PRODUCTION_ANDROID_PACKAGE = "com.hoihou.foodlens";
 const PRODUCTION_IOS_BUNDLE_IDENTIFIER = "com.hoihou.foodlens";
-const REQUIRED_AD_APP_ID_ENV_KEYS = [
-  "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID",
-  "EXPO_PUBLIC_ADMOB_IOS_APP_ID",
-];
-const REQUIRED_REWARDED_AD_ENV_KEYS = [
-  "EXPO_PUBLIC_ADMOB_ANDROID_REWARDED_ANALYSIS_ID",
-  "EXPO_PUBLIC_ADMOB_IOS_REWARDED_ANALYSIS_ID",
+const GOOGLE_MOBILE_ADS_PACKAGE_NAME = "react-native-google-mobile-ads";
+const GOOGLE_MOBILE_ADS_PACKAGE_LOCK_PATH = `node_modules/${GOOGLE_MOBILE_ADS_PACKAGE_NAME}`;
+const FORBIDDEN_EAS_ENV_MARKERS = ["ADMOB", "GOOGLE_ADS", "GOOGLE_MOBILE_ADS", "ca-app-pub"];
+const PACKAGE_DEPENDENCY_SECTIONS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
 ];
 
 const trimValue = (value) => {
   return typeof value === "string" ? value.trim() : "";
 };
 
-const isEnabledFlag = (value) => {
-  const normalized = trimValue(value).toLowerCase();
-  return normalized === "1" || normalized === "true";
-};
-
-const isForbiddenAdValue = (value) => {
-  const normalized = trimValue(value).toLowerCase();
-  return (
-    normalized.length === 0 ||
-    normalized.includes(TEST_PUBLISHER_ID) ||
-    normalized.includes("ca-app-pub-test") ||
-    normalized.includes("__missing_") ||
-    normalized.startsWith("your_")
+const containsForbiddenEasEnvMarker = (value) => {
+  const normalized = String(value || "").toLowerCase();
+  return FORBIDDEN_EAS_ENV_MARKERS.some((marker) =>
+    normalized.includes(marker.toLowerCase())
   );
 };
 
-const valueFromProfileOrEnv = (profileEnv, processEnv, key) => {
-  const processValue = trimValue(processEnv[key]);
-  if (processValue) {
-    return processValue;
+const collectForbiddenEnvMarkerErrors = (env, label) => {
+  const errors = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (containsForbiddenEasEnvMarker(key)) {
+      errors.push(
+        `${label}.${key} must be removed because AdMob and Google Ads env keys are forbidden.`
+      );
+    }
+    if (containsForbiddenEasEnvMarker(value)) {
+      errors.push(
+        `${label}.${key} must not contain AdMob, Google Ads, or ca-app-pub values.`
+      );
+    }
   }
-  return trimValue(profileEnv[key]);
+  return errors;
+};
+
+const collectBuildProfileEnvErrors = (easConfig) => {
+  const errors = [];
+  const buildProfiles = easConfig.build || {};
+  for (const [profileName, profileConfig] of Object.entries(buildProfiles)) {
+    const profileEnv = (profileConfig || {}).env || {};
+    errors.push(...collectForbiddenEnvMarkerErrors(profileEnv, `${profileName}.env`));
+  }
+  return errors;
 };
 
 const collectProductionEnvErrors = (easConfig, processEnv, buildProfile) => {
   const errors = [];
   const buildProfiles = easConfig.build || {};
-  const productionProfile = buildProfiles[buildProfile] || {};
-  const profileEnv = productionProfile.env || {};
 
-  for (const [key, value] of Object.entries(profileEnv)) {
-    if (key.includes("ADMOB") && isForbiddenAdValue(String(value))) {
-      errors.push(`${buildProfile}.${key} must not contain a Google Mobile Ads test or placeholder value.`);
-    }
-  }
-
-  for (const key of REQUIRED_AD_APP_ID_ENV_KEYS) {
-    const value = valueFromProfileOrEnv(profileEnv, processEnv, key);
-    if (isForbiddenAdValue(value)) {
-      errors.push(`${key} must be configured with a production app id for native Google Mobile Ads config.`);
-    }
-  }
-
-  const adsEnabled =
-    isEnabledFlag(profileEnv.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED) ||
-    isEnabledFlag(processEnv.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED);
-  if (adsEnabled) {
-    for (const key of REQUIRED_REWARDED_AD_ENV_KEYS) {
-      const value = valueFromProfileOrEnv(profileEnv, processEnv, key);
-      if (isForbiddenAdValue(value)) {
-        errors.push(`${key} must be configured with a production value when analysis ads are enabled.`);
-      }
-    }
-  }
+  errors.push(...collectBuildProfileEnvErrors(easConfig));
+  errors.push(...collectForbiddenEnvMarkerErrors(processEnv, "process.env"));
 
   const submitProfile = (easConfig.submit || {})[buildProfile] || {};
   const androidSubmit = submitProfile.android || {};
@@ -95,13 +81,6 @@ const pluginName = (plugin) => {
   return plugin;
 };
 
-const pluginOptions = (plugin) => {
-  if (Array.isArray(plugin) && typeof plugin[1] === "object" && plugin[1] !== null) {
-    return plugin[1];
-  }
-  return {};
-};
-
 const collectExpoConfigErrors = (expoConfig, processEnv) => {
   const errors = [];
   const expo = expoConfig.expo || {};
@@ -116,21 +95,51 @@ const collectExpoConfigErrors = (expoConfig, processEnv) => {
     errors.push(`production iOS bundle identifier must be ${expectedIosBundleIdentifier}.`);
   }
 
-  let hasGoogleMobileAdsPlugin = false;
   for (const plugin of expo.plugins || []) {
     if (pluginName(plugin) !== "react-native-google-mobile-ads") {
       continue;
     }
-    hasGoogleMobileAdsPlugin = true;
-    const options = pluginOptions(plugin);
-    for (const key of ["androidAppId", "iosAppId"]) {
-      if (isForbiddenAdValue(options[key])) {
-        errors.push(`react-native-google-mobile-ads ${key} must not use a test or placeholder value.`);
-      }
+    errors.push(
+      "Expo config plugins must not include react-native-google-mobile-ads after AdMob removal."
+    );
+  }
+
+  return errors;
+};
+
+const hasOwnProperty = (value, propertyName) => {
+  return Object.prototype.hasOwnProperty.call(value, propertyName);
+};
+
+const collectPackageDependencySectionErrors = (packageConfig, label) => {
+  const errors = [];
+  for (const sectionName of PACKAGE_DEPENDENCY_SECTIONS) {
+    const dependencies = packageConfig[sectionName] || {};
+    if (hasOwnProperty(dependencies, GOOGLE_MOBILE_ADS_PACKAGE_NAME)) {
+      errors.push(`${label}.${sectionName}.${GOOGLE_MOBILE_ADS_PACKAGE_NAME} must be removed.`);
     }
   }
-  if (!hasGoogleMobileAdsPlugin) {
-    errors.push("react-native-google-mobile-ads plugin is required for production native config.");
+  return errors;
+};
+
+const collectPackageConfigErrors = (packageConfig) => {
+  return collectPackageDependencySectionErrors(packageConfig, "package.json");
+};
+
+const collectPackageLockConfigErrors = (packageLockConfig) => {
+  const errors = [];
+  const packages = packageLockConfig.packages || {};
+  const rootPackage = packages[""] || {};
+
+  errors.push(...collectPackageDependencySectionErrors(rootPackage, 'package-lock.json packages[""]'));
+
+  if (hasOwnProperty(packages, GOOGLE_MOBILE_ADS_PACKAGE_LOCK_PATH)) {
+    errors.push(`package-lock.json packages.${GOOGLE_MOBILE_ADS_PACKAGE_LOCK_PATH} must be removed.`);
+  }
+
+  const dependencies = packageLockConfig.dependencies || {};
+  if (hasOwnProperty(dependencies, GOOGLE_MOBILE_ADS_PACKAGE_NAME)) {
+    errors.push(`package-lock.json dependencies.${GOOGLE_MOBILE_ADS_PACKAGE_NAME} must be removed.`);
   }
 
   return errors;
@@ -154,7 +163,18 @@ const runValidation = (params) => {
   }
 
   const easConfig = readJsonFile(path.join(projectDir, "eas.json"));
+  const packageConfig = readJsonFile(path.join(projectDir, "package.json"));
+  const packageLockConfig = readJsonFile(path.join(projectDir, "package-lock.json"));
   const profileEnv = (((easConfig.build || {})[buildProfile] || {}).env || {});
+  const earlyErrors = [
+    ...collectProductionEnvErrors(easConfig, processEnv, buildProfile),
+    ...collectPackageConfigErrors(packageConfig),
+    ...collectPackageLockConfigErrors(packageLockConfig),
+  ];
+  if (earlyErrors.length > 0) {
+    return earlyErrors;
+  }
+
   const previousForceCanonical = processEnv.FOODLENS_FORCE_CANONICAL_PACKAGE;
   const previousEasBuildProfile = processEnv.EAS_BUILD_PROFILE;
   const previousProfileEnvValues = new Map();
@@ -167,18 +187,10 @@ const runValidation = (params) => {
   processEnv.FOODLENS_FORCE_CANONICAL_PACKAGE = "1";
   processEnv.EAS_BUILD_PROFILE = buildProfile;
   try {
-    const productionEnvErrors = collectProductionEnvErrors(easConfig, processEnv, buildProfile);
-    if (productionEnvErrors.length > 0) {
-      return productionEnvErrors;
-    }
-
     const appConfigPath = path.join(projectDir, "app.config.js");
     delete require.cache[require.resolve(appConfigPath)];
     const expoConfig = require(appConfigPath);
-    return [
-      ...productionEnvErrors,
-      ...collectExpoConfigErrors(expoConfig, processEnv),
-    ];
+    return collectExpoConfigErrors(expoConfig, processEnv);
   } finally {
     if (previousForceCanonical === undefined) {
       delete processEnv.FOODLENS_FORCE_CANONICAL_PACKAGE;
@@ -222,8 +234,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  collectBuildProfileEnvErrors,
   collectExpoConfigErrors,
+  collectPackageConfigErrors,
+  collectPackageLockConfigErrors,
   collectProductionEnvErrors,
-  isForbiddenAdValue,
+  containsForbiddenEasEnvMarker,
   runValidation,
 };

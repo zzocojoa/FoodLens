@@ -53,7 +53,6 @@ type RunAnalysisFlowParams = {
   replace: (route: Href) => void;
   resetState: () => void;
   handleError: (error: unknown) => void;
-  ensureAnalysisAccess: () => Promise<boolean>;
 };
 
 type ResumeAnalysisFlowParams = Pick<
@@ -104,7 +103,6 @@ export const runAnalysisFlow = async ({
   replace,
   resetState,
   handleError,
-  ensureAnalysisAccess,
 }: RunAnalysisFlowParams) => {
   try {
     isCancelled.current = false;
@@ -117,11 +115,6 @@ export const runAnalysisFlow = async ({
         resetState,
       })
     ) {
-      return;
-    }
-
-    const hasAnalysisAccess = await ensureAnalysisAccess();
-    if (!hasAnalysisAccess) {
       return;
     }
 
