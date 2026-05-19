@@ -124,6 +124,11 @@
   - Android 제출 운영 원칙:
     - 최초 1회는 Play Console 수동 제출 허용
     - 이후는 `eas submit` 자동 제출 + 재시도 절차 사용
+  - Phase6 Mobile Store Evidence workflow 입력 고정:
+    - GitHub Actions secret `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID`
+    - GitHub Actions secret `EXPO_PUBLIC_ADMOB_IOS_APP_ID`
+    - 분석 광고를 켜는 릴리스는 `EXPO_PUBLIC_ADMOB_ANDROID_REWARDED_ANALYSIS_ID`, `EXPO_PUBLIC_ADMOB_IOS_REWARDED_ANALYSIS_ID`도 production 값으로 설정
+    - production profile에는 Google Mobile Ads test publisher id 값을 커밋하지 않는다.
 - Backend Lead
   - 배포 전/후 smoke 스크립트 표준화
   - 운영 workflow: `.github/workflows/phase6-postdeploy-smoke.yml`
@@ -146,9 +151,9 @@
     - workflow가 실행 시점에 자동 로그인 후 access token / signed media render URL을 동적으로 확보
   - Render live env checker 고정:
     - `python .github/scripts/validate_render_live_env.py --blueprint render.yaml`
-    - 기본 검증 범위는 Google OAuth prompt, AI 모델명, label fallback, Pro fallback guardrail key로 제한하고, 전체 drift audit는 `--all-blueprint-env`로 별도 실행한다.
+    - 기본 검증 범위는 Google OAuth prompt, AI 모델명, label fallback, Pro fallback guardrail, auth/analysis rate limit, deletion retry, analysis_jobs TTL scrub key를 포함하고, 전체 drift audit는 `--all-blueprint-env`로 별도 실행한다.
     - 출력은 서비스명, key 이름, 존재 여부, blueprint 일치 여부만 포함하고 실제 env 값은 출력하지 않는다.
-    - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK`, `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER`가 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 반영되어야 rollout을 진행한다.
+    - `GEMINI_LABEL_PRO_FALLBACK_ENABLED=0`, `LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK`, `LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER`, `ANALYSIS_JOBS_TTL_SCRUB_ENABLED`, `ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN`, `ANALYSIS_JOBS_TTL_SCRUB_DAYS`, `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`가 `foodlens-api`, `foodlens-worker`, `foodlens-retention-cron`에 모두 반영되어야 rollout을 진행한다.
   - rollback rehearsal 증적 입력 필수:
     - 최근 리허설 참조값
     - readiness verdict

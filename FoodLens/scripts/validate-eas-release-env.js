@@ -5,9 +5,11 @@ const path = require("node:path");
 const TEST_PUBLISHER_ID = "ca-app-pub-3940256099942544";
 const PRODUCTION_ANDROID_PACKAGE = "com.hoihou.foodlens";
 const PRODUCTION_IOS_BUNDLE_IDENTIFIER = "com.hoihou.foodlens";
-const REQUIRED_AD_ENV_KEYS = [
+const REQUIRED_AD_APP_ID_ENV_KEYS = [
   "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID",
   "EXPO_PUBLIC_ADMOB_IOS_APP_ID",
+];
+const REQUIRED_REWARDED_AD_ENV_KEYS = [
   "EXPO_PUBLIC_ADMOB_ANDROID_REWARDED_ANALYSIS_ID",
   "EXPO_PUBLIC_ADMOB_IOS_REWARDED_ANALYSIS_ID",
 ];
@@ -52,11 +54,18 @@ const collectProductionEnvErrors = (easConfig, processEnv, buildProfile) => {
     }
   }
 
-  const adsEnabled = isEnabledFlag(
-    valueFromProfileOrEnv(profileEnv, processEnv, "EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED")
-  );
+  for (const key of REQUIRED_AD_APP_ID_ENV_KEYS) {
+    const value = valueFromProfileOrEnv(profileEnv, processEnv, key);
+    if (isForbiddenAdValue(value)) {
+      errors.push(`${key} must be configured with a production app id for native Google Mobile Ads config.`);
+    }
+  }
+
+  const adsEnabled =
+    isEnabledFlag(profileEnv.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED) ||
+    isEnabledFlag(processEnv.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED);
   if (adsEnabled) {
-    for (const key of REQUIRED_AD_ENV_KEYS) {
+    for (const key of REQUIRED_REWARDED_AD_ENV_KEYS) {
       const value = valueFromProfileOrEnv(profileEnv, processEnv, key);
       if (isForbiddenAdValue(value)) {
         errors.push(`${key} must be configured with a production value when analysis ads are enabled.`);
@@ -107,16 +116,21 @@ const collectExpoConfigErrors = (expoConfig, processEnv) => {
     errors.push(`production iOS bundle identifier must be ${expectedIosBundleIdentifier}.`);
   }
 
+  let hasGoogleMobileAdsPlugin = false;
   for (const plugin of expo.plugins || []) {
     if (pluginName(plugin) !== "react-native-google-mobile-ads") {
       continue;
     }
+    hasGoogleMobileAdsPlugin = true;
     const options = pluginOptions(plugin);
     for (const key of ["androidAppId", "iosAppId"]) {
       if (isForbiddenAdValue(options[key])) {
         errors.push(`react-native-google-mobile-ads ${key} must not use a test or placeholder value.`);
       }
     }
+  }
+  if (!hasGoogleMobileAdsPlugin) {
+    errors.push("react-native-google-mobile-ads plugin is required for production native config.");
   }
 
   return errors;
@@ -126,7 +140,8 @@ const readJsonFile = (filePath) => {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch (error) {
-    throw new Error(`Failed to read JSON file: ${filePath}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read JSON file: ${filePath}. ${message}`);
   }
 };
 
@@ -152,11 +167,16 @@ const runValidation = (params) => {
   processEnv.FOODLENS_FORCE_CANONICAL_PACKAGE = "1";
   processEnv.EAS_BUILD_PROFILE = buildProfile;
   try {
+    const productionEnvErrors = collectProductionEnvErrors(easConfig, processEnv, buildProfile);
+    if (productionEnvErrors.length > 0) {
+      return productionEnvErrors;
+    }
+
     const appConfigPath = path.join(projectDir, "app.config.js");
     delete require.cache[require.resolve(appConfigPath)];
     const expoConfig = require(appConfigPath);
     return [
-      ...collectProductionEnvErrors(easConfig, processEnv, buildProfile),
+      ...productionEnvErrors,
       ...collectExpoConfigErrors(expoConfig, processEnv),
     ];
   } finally {
@@ -181,7 +201,11 @@ const runValidation = (params) => {
 };
 
 const main = () => {
-  const projectDir = path.resolve(__dirname, "..");
+  const scriptPath = trimValue(process.argv[1]);
+  if (!scriptPath) {
+    throw new Error("Unable to resolve release env gate script path.");
+  }
+  const projectDir = path.resolve(path.dirname(scriptPath), "..");
   const errors = runValidation({ projectDir, processEnv: process.env });
   if (errors.length > 0) {
     for (const error of errors) {

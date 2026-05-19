@@ -24,7 +24,7 @@ type ReleaseEnvGate = {
   ) => string[];
 };
 
-const releaseEnvGate = require('../validate-eas-release-env') as ReleaseEnvGate;
+const releaseEnvGate = jest.requireActual('../validate-eas-release-env') as ReleaseEnvGate;
 
 const validSubmitConfig = {
   production: {
@@ -64,7 +64,29 @@ describe('validate-eas-release-env', () => {
     );
   });
 
-  it('allows production profile without ads enabled and without committed ad ids', () => {
+  it('allows production profile without ads enabled when native ad app ids come from environment', () => {
+    const errors = releaseEnvGate.collectProductionEnvErrors(
+      {
+        build: {
+          production: {
+            env: {
+              EXPO_PUBLIC_ANALYSIS_SERVER_URL: 'https://foodlens-2-w1xu.onrender.com',
+            },
+          },
+        },
+        submit: validSubmitConfig,
+      },
+      {
+        EXPO_PUBLIC_ADMOB_ANDROID_APP_ID: 'ca-app-pub-1234567890123456~1234567890',
+        EXPO_PUBLIC_ADMOB_IOS_APP_ID: 'ca-app-pub-1234567890123456~2345678901',
+      },
+      'production'
+    );
+
+    expect(errors).toEqual([]);
+  });
+
+  it('requires production native ad app ids even when analysis ads are disabled', () => {
     const errors = releaseEnvGate.collectProductionEnvErrors(
       {
         build: {
@@ -80,7 +102,12 @@ describe('validate-eas-release-env', () => {
       'production'
     );
 
-    expect(errors).toEqual([]);
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('EXPO_PUBLIC_ADMOB_ANDROID_APP_ID'),
+        expect.stringContaining('EXPO_PUBLIC_ADMOB_IOS_APP_ID'),
+      ])
+    );
   });
 
   it('requires production ad ids when ads are enabled from the environment', () => {
@@ -129,5 +156,20 @@ describe('validate-eas-release-env', () => {
     );
 
     expect(errors).toEqual([expect.stringContaining('androidAppId')]);
+  });
+
+  it('requires the Google Mobile Ads config plugin in production Expo config', () => {
+    const errors = releaseEnvGate.collectExpoConfigErrors(
+      {
+        expo: {
+          android: { package: 'com.hoihou.foodlens' },
+          ios: { bundleIdentifier: 'com.hoihou.foodlens' },
+          plugins: ['expo-router'],
+        },
+      },
+      {}
+    );
+
+    expect(errors).toEqual([expect.stringContaining('react-native-google-mobile-ads plugin')]);
   });
 });

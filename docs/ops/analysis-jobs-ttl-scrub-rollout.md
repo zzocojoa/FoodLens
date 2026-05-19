@@ -39,6 +39,8 @@ ANALYSIS_JOBS_TTL_SCRUB_DAYS=30
 ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE=100
 ```
 
+Complete preflight and execute approval before applying the Render blueprint with these defaults. If approval is not complete, keep the live Render env in safe mode by overriding `ANALYSIS_JOBS_TTL_SCRUB_ENABLED=0` and `ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN=1`.
+
 ## Preflight
 
 Run the blueprint and live env checks without printing values:
@@ -54,7 +56,7 @@ If an exhaustive Render env audit is needed, run:
 python .github/scripts/validate_render_live_env.py --blueprint render.yaml --all-blueprint-env --presence-only
 ```
 
-The live env check must report all four TTL scrub keys present on every parity service before enabling the cron path.
+The live env check must report all four TTL scrub keys present on every parity service before deploying or leaving the cron path in execute mode.
 
 ## Dry-Run Count Review
 
@@ -67,12 +69,11 @@ dry_run=true
 ttl_days
 batch_size
 cutoff_at
-eligible_total_count
-eligible_batch_count
+target_count
 scrubbed_count=0
 ```
 
-`eligible_batch_count` is capped by `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`. If `eligible_batch_count == batch_size`, treat the backlog as potentially larger than one batch and require an explicit batch plan before execute.
+`target_count` is capped by `ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE`. If `target_count == batch_size`, treat the backlog as potentially larger than one batch and require an explicit batch plan before execute.
 
 Render one-off job stdout can be missing from the Logs API. In that case, use the Render Postgres connection-info endpoint for a read-only aggregate `SELECT COUNT(*)` check. Do not print the returned connection string.
 
@@ -87,11 +88,11 @@ Execute is approved only when all conditions are true:
 - A quiet window is approved.
 - The operator accepts that DB recovery/PITR is the recovery path for scrubbed payload fields.
 
-Execute is not needed when `eligible_total_count=0`.
+Execute is not needed when `target_count=0`.
 
-## Enablement
+## Manual Staged Enablement
 
-To stage a future rollout, first enable the cron path in dry-run mode:
+Use this path only when the Render blueprint is not already in execute mode. To stage a future rollout, first enable the cron path in dry-run mode:
 
 ```text
 ANALYSIS_JOBS_TTL_SCRUB_ENABLED=1

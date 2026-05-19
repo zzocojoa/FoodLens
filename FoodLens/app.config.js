@@ -29,9 +29,6 @@ const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
 const GOOGLE_MOBILE_ADS_TEST_PUBLISHER_ID = "ca-app-pub-3940256099942544";
 const EAS_BUILD_PROFILE = (process.env.EAS_BUILD_PROFILE || process.env.PHASE6_BUILD_PROFILE || "").trim();
 const IS_EAS_PRODUCTION_PROFILE = EAS_BUILD_PROFILE === "production";
-const GOOGLE_ADS_ANALYSIS_ENABLED = (
-  process.env.EXPO_PUBLIC_GOOGLE_ADS_ANALYSIS_ENABLED || ""
-).trim();
 const ADMOB_ANDROID_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
 const ADMOB_IOS_TEST_APP_ID = "ca-app-pub-3940256099942544~1458002511";
 const ONBOARDING_PREVIEW_ENABLED =
@@ -62,11 +59,6 @@ if (!ANDROID_GOOGLE_MAPS_API_KEY) {
   );
 }
 
-const isEnabledFlag = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "1" || normalized === "true";
-};
-
 const isGoogleMobileAdsTestId = (value) => {
   return String(value || "").includes(GOOGLE_MOBILE_ADS_TEST_PUBLISHER_ID);
 };
@@ -80,10 +72,7 @@ const resolveAdMobAppId = (envName, testAppId) => {
     return configuredAppId;
   }
   if (IS_EAS_PRODUCTION_PROFILE) {
-    if (isEnabledFlag(GOOGLE_ADS_ANALYSIS_ENABLED)) {
-      throw new Error(`[app.config] ${envName} is required when production analysis ads are enabled.`);
-    }
-    return "";
+    throw new Error(`[app.config] ${envName} is required for production Google Mobile Ads native config.`);
   }
   return testAppId;
 };
@@ -93,21 +82,18 @@ const ADMOB_ANDROID_APP_ID = resolveAdMobAppId(
   ADMOB_ANDROID_TEST_APP_ID
 );
 const ADMOB_IOS_APP_ID = resolveAdMobAppId("EXPO_PUBLIC_ADMOB_IOS_APP_ID", ADMOB_IOS_TEST_APP_ID);
-const GOOGLE_MOBILE_ADS_PLUGIN =
-  ADMOB_ANDROID_APP_ID && ADMOB_IOS_APP_ID
-    ? [
-        [
-          "react-native-google-mobile-ads",
-          {
-            androidAppId: ADMOB_ANDROID_APP_ID,
-            iosAppId: ADMOB_IOS_APP_ID,
-            delayAppMeasurementInit: true,
-            optimizeInitialization: true,
-            optimizeAdLoading: true,
-          },
-        ],
-      ]
-    : [];
+const GOOGLE_MOBILE_ADS_PLUGIN = [
+  [
+    "react-native-google-mobile-ads",
+    {
+      androidAppId: ADMOB_ANDROID_APP_ID,
+      iosAppId: ADMOB_IOS_APP_ID,
+      delayAppMeasurementInit: true,
+      optimizeInitialization: true,
+      optimizeAdLoading: true,
+    },
+  ],
+];
 
 module.exports = {
   expo: {
