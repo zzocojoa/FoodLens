@@ -125,10 +125,8 @@
     - 최초 1회는 Play Console 수동 제출 허용
     - 이후는 `eas submit` 자동 제출 + 재시도 절차 사용
   - Phase6 Mobile Store Evidence workflow 입력 고정:
-    - GitHub Actions secret `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID`
-    - GitHub Actions secret `EXPO_PUBLIC_ADMOB_IOS_APP_ID`
-    - 분석 광고를 켜는 릴리스는 `EXPO_PUBLIC_ADMOB_ANDROID_REWARDED_ANALYSIS_ID`, `EXPO_PUBLIC_ADMOB_IOS_REWARDED_ANALYSIS_ID`도 production 값으로 설정
-    - production profile에는 Google Mobile Ads test publisher id 값을 커밋하지 않는다.
+    - 스토어 제출 증적 URI와 빌드 프로필을 입력으로 사용
+    - 광고 SDK 관련 secret은 요구하지 않는다.
 - Backend Lead
   - 배포 전/후 smoke 스크립트 표준화
   - 운영 workflow: `.github/workflows/phase6-postdeploy-smoke.yml`

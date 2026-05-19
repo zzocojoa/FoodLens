@@ -20,7 +20,6 @@ const mockHasCompletedOnboarding = jest.fn();
 const mockSyncI18nSettingsFromProfile = jest.fn();
 const mockSyncHistoryFromCloud = jest.fn();
 const mockSyncProfileFromCloud = jest.fn();
-const mockInitializeGoogleAdsRuntime = jest.fn();
 const mockSyncReleasePresentationStateVersion = jest.fn();
 const mockUseColorScheme = jest.fn();
 const mockInitSentry = jest.fn();
@@ -180,10 +179,6 @@ jest.mock('../../services/userService', () => ({
   },
 }));
 
-jest.mock('../../services/ads/googleAdsRuntime', () => ({
-  initializeGoogleAdsRuntime: (...args: unknown[]) => mockInitializeGoogleAdsRuntime(...args),
-}));
-
 jest.mock('../../services/appVersionState', () => ({
   syncReleasePresentationStateVersion: (...args: unknown[]) =>
     mockSyncReleasePresentationStateVersion(...args),
@@ -268,7 +263,6 @@ describe('RootLayout polling', () => {
     mockSyncI18nSettingsFromProfile.mockResolvedValue(undefined);
     mockSyncHistoryFromCloud.mockResolvedValue(undefined);
     mockSyncProfileFromCloud.mockResolvedValue(null);
-    mockInitializeGoogleAdsRuntime.mockResolvedValue(undefined);
     mockSyncReleasePresentationStateVersion.mockResolvedValue(undefined);
     mockUseColorScheme.mockReturnValue('light');
     mockShouldUseAndroidExitFlow.mockReturnValue(false);

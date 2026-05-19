@@ -103,12 +103,6 @@ jest.mock('../useScanGalleryFlow', () => ({
   useScanGalleryFlow: jest.fn(() => jest.fn()),
 }));
 
-jest.mock('../useScanAnalysisAdGate', () => ({
-  useScanAnalysisAdGate: jest.fn(() => ({
-    ensureAnalysisAccess: jest.fn(async () => true),
-  })),
-}));
-
 jest.mock('../useScanCameraLaserAnimation', () => ({
   useScanCameraLaserAnimation: jest.fn(() => 'laser-anim'),
 }));

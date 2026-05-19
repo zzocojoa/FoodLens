@@ -18,7 +18,6 @@ import { hasCompletedOnboarding } from '../services/onboardingGateService';
 import { syncI18nSettingsFromProfile } from '../features/i18n/services/i18nStore';
 import { AnalysisService } from '../services/analysisService';
 import { UserService } from '../services/userService';
-import { initializeGoogleAdsRuntime } from '../services/ads/googleAdsRuntime';
 import { syncReleasePresentationStateVersion } from '../services/appVersionState';
 import { Colors } from '../constants/theme';
 
@@ -333,10 +332,6 @@ function LayoutContent() {
       active = false;
     };
   }, [onboardingPreviewActive, routeOnboardingPreviewActive]);
-
-  useEffect(() => {
-    void initializeGoogleAdsRuntime();
-  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {

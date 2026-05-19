@@ -1,5 +1,9 @@
 import { resumeAnalysisFlow, runAnalysisFlow } from '../scanCameraAnalysisService';
-import { assertAnalysisImageFileReady, resolveAnalysisLocation } from '../../../../services/analysis/flow';
+import {
+  assertAnalysisImageFileReady,
+  resolveAnalysisLocation,
+  showOfflineAlertAndReset,
+} from '../../../../services/analysis/flow';
 import {
   isAsyncAnalyzeEnabled,
   resumePendingAnalysisJob,
@@ -104,6 +108,8 @@ const mockedAssertAnalysisImageFileReady =
   assertAnalysisImageFileReady as jest.MockedFunction<typeof assertAnalysisImageFileReady>;
 const mockedResolveAnalysisLocation =
   resolveAnalysisLocation as jest.MockedFunction<typeof resolveAnalysisLocation>;
+const mockedShowOfflineAlertAndReset =
+  showOfflineAlertAndReset as jest.MockedFunction<typeof showOfflineAlertAndReset>;
 const mockedIsAsyncAnalyzeEnabled = isAsyncAnalyzeEnabled as jest.MockedFunction<
   typeof isAsyncAnalyzeEnabled
 >;
@@ -204,7 +210,6 @@ describe('scanCameraAnalysisService', () => {
       replace: harness.replace,
       resetState: harness.resetState,
       handleError: harness.handleError,
-      ensureAnalysisAccess: jest.fn().mockResolvedValue(true),
     });
 
     expect(harness.setIsAnalyzing).toHaveBeenCalledWith(true);
@@ -215,6 +220,55 @@ describe('scanCameraAnalysisService', () => {
     expect(mockedRunAsyncAnalysisJob).toHaveBeenCalledTimes(1);
     expect(harness.handleError).toHaveBeenCalledWith(timeoutError);
     expect(harness.resetState).toHaveBeenCalledTimes(1);
+    expect(harness.replace).not.toHaveBeenCalled();
+    expect(mockedPersistAndNavigateAnalysisResult).not.toHaveBeenCalled();
+  });
+
+  it('keeps scan idle while offline and does not start analysis', async () => {
+    const harness = createHarness();
+    harness.isConnectedRef.current = false;
+    mockedShowOfflineAlertAndReset.mockImplementationOnce(({ resetState }) => {
+      resetState();
+      return true;
+    });
+
+    await runAnalysisFlow({
+      uri: 'file://offline.jpg',
+      sourceType: 'camera',
+      timestamp: '2026-03-17T00:00:00Z',
+      customLocation: null,
+      fallbackAddress: 'Location Unavailable',
+      offlineAlertTitle: 'Offline',
+      offlineAlertMessage: 'Please check your internet connection.',
+      needsFileValidation: true,
+      analyzer: jest.fn(),
+      analysisMode: 'food',
+      isCancelled: harness.isCancelled,
+      isConnectedRef: harness.isConnectedRef,
+      cachedLocation: harness.cachedLocation,
+      setIsAnalyzing: harness.setIsAnalyzing,
+      setCapturedImage: harness.setCapturedImage,
+      setActiveStep: harness.setActiveStep,
+      setUploadProgress: harness.setUploadProgress,
+      replace: harness.replace,
+      resetState: harness.resetState,
+      handleError: harness.handleError,
+    });
+
+    expect(mockedShowOfflineAlertAndReset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isConnected: false,
+        title: 'Offline',
+        message: 'Please check your internet connection.',
+        resetState: harness.resetState,
+      })
+    );
+    expect(harness.resetState).toHaveBeenCalledTimes(1);
+    expect(harness.setIsAnalyzing).not.toHaveBeenCalled();
+    expect(mockedResolveAnalysisLocation).not.toHaveBeenCalled();
+    expect(mockedAssertAnalysisImageFileReady).not.toHaveBeenCalled();
+    expect(mockedRunAsyncAnalysisJob).not.toHaveBeenCalled();
+    expect(harness.handleError).not.toHaveBeenCalled();
     expect(harness.replace).not.toHaveBeenCalled();
     expect(mockedPersistAndNavigateAnalysisResult).not.toHaveBeenCalled();
   });
@@ -247,7 +301,6 @@ describe('scanCameraAnalysisService', () => {
       replace: harness.replace,
       resetState: harness.resetState,
       handleError: harness.handleError,
-      ensureAnalysisAccess: jest.fn().mockResolvedValue(true),
     });
 
     expect(mockedRunAsyncAnalysisJob).toHaveBeenCalledTimes(1);
@@ -323,7 +376,6 @@ describe('scanCameraAnalysisService', () => {
       replace: harness.replace,
       resetState: harness.resetState,
       handleError: harness.handleError,
-      ensureAnalysisAccess: jest.fn().mockResolvedValue(true),
     });
 
     expect(mockedRunAsyncAnalysisJob).toHaveBeenCalledTimes(1);

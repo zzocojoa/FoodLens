@@ -113,7 +113,6 @@ describe('useScanBarcodeFlow', () => {
         setActiveStep: jest.fn(),
         setMode: jest.fn(),
         setPendingAnalysisOrigin,
-        ensureAnalysisAccess: jest.fn().mockResolvedValue(true),
         t: translate,
       })
     );
@@ -164,7 +163,6 @@ describe('useScanBarcodeFlow', () => {
         setActiveStep: jest.fn(),
         setMode,
         setPendingAnalysisOrigin,
-        ensureAnalysisAccess: jest.fn().mockResolvedValue(true),
         t: translate,
       })
     );
