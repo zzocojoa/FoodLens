@@ -16,7 +16,7 @@
         --accent: #635bff;
         --brand: #0074d9;
         --sidebar: 230px;
-        --content: 760px;
+        --content: 810px;
         --page: 1080px;
       }
 
@@ -82,6 +82,17 @@
         margin: 0 auto;
         display: flex;
         align-items: center;
+        position: relative;
+      }
+
+      .site-header::after {
+        position: absolute;
+        right: 50%;
+        bottom: 0;
+        width: 100vw;
+        border-bottom: 1px solid var(--grid);
+        content: "";
+        transform: translateX(50%);
       }
 
       .wordmark {
@@ -91,7 +102,7 @@
         color: var(--ink);
         font-size: 28px;
         font-weight: 800;
-        letter-spacing: -0.04em;
+        letter-spacing: 0;
       }
 
       .wordmark::before {
@@ -154,21 +165,12 @@
         color: var(--accent);
       }
 
-      .mobile-nav {
-        display: none;
-        width: 100%;
-        min-height: 46px;
-        margin-bottom: 32px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: #fff;
-        color: var(--ink);
-        padding: 0 12px;
-        font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      main {
+        padding: 16px 32px 90px;
       }
 
-      main {
-        padding-bottom: 90px;
+      main:focus {
+        outline: none;
       }
 
       .doc-title {
@@ -178,9 +180,10 @@
       h1 {
         margin: 0 0 52px;
         color: var(--ink);
-        font-size: clamp(52px, 6.2vw, 72px);
-        line-height: 1.04;
-        letter-spacing: -0.055em;
+        font-size: clamp(48px, 5vw, 60px);
+        line-height: 1.08;
+        font-weight: 700;
+        letter-spacing: 0;
         overflow-wrap: anywhere;
       }
 
@@ -208,7 +211,7 @@
         color: var(--ink);
         font-size: 34px;
         line-height: 1.18;
-        letter-spacing: -0.035em;
+        letter-spacing: 0;
       }
 
       h3 {
@@ -216,7 +219,7 @@
         color: var(--ink);
         font-size: 19px;
         line-height: 1.4;
-        letter-spacing: -0.015em;
+        letter-spacing: 0;
       }
 
       p {
@@ -286,6 +289,18 @@
         margin: 26px 0 10px;
         border: 1px solid var(--line);
         border-radius: 6px;
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       table {
@@ -377,22 +392,18 @@
 
         main {
           min-width: 0;
-          overflow: hidden;
+          padding: 0 0 90px;
         }
 
         .legal-nav {
           display: none;
         }
 
-        .mobile-nav {
-          display: block;
-        }
-
         h1 {
           margin-bottom: 36px;
           max-width: 100%;
-          font-size: clamp(42px, 12vw, 50px);
-          letter-spacing: -0.05em;
+          font-size: clamp(38px, 10.5vw, 44px);
+          letter-spacing: 0;
         }
 
         h2 {
@@ -403,7 +414,8 @@
         li,
         .intro {
           font-size: 17px;
-          word-break: break-all;
+          overflow-wrap: anywhere;
+          word-break: normal;
         }
 
         .compact-grid {
@@ -424,38 +436,32 @@
     </header>
 
     <div class="page">
-      <nav class="legal-nav" aria-label="Legal navigation">
+      <nav class="legal-nav" aria-label="법적 문서 내비게이션">
         <span class="eyebrow">Legal</span>
         <strong>FoodLens Privacy Policy &amp; Privacy Center</strong>
         <a href="#privacy-policy">Privacy Policy</a>
         <a href="terms-of-service.html">Terms of Service</a>
         <a href="#privacy-center">FoodLens Privacy Center</a>
+        <a href="#controller">Data Controller</a>
         <a href="#collected-data">Personal Data</a>
         <a href="#purposes">Processing Purposes</a>
+        <a href="#permissions">Permissions</a>
         <a href="#processors">Service Providers</a>
         <a href="#retention">Security and Retention</a>
         <a href="#rights">Your Privacy Rights</a>
+        <a href="#international-transfer">International Transfers</a>
         <a href="#contact">Contact Us</a>
+        <a href="#changes">Policy Changes</a>
       </nav>
 
-      <main id="main">
-        <select class="mobile-nav" aria-label="섹션 이동">
-          <option value="#privacy-policy">Privacy Policy</option>
-          <option value="#privacy-center">FoodLens Privacy Center</option>
-          <option value="#collected-data">Personal Data</option>
-          <option value="#purposes">Processing Purposes</option>
-          <option value="#processors">Service Providers</option>
-          <option value="#retention">Security and Retention</option>
-          <option value="#rights">Your Privacy Rights</option>
-          <option value="#contact">Contact Us</option>
-        </select>
-
+      <main id="main" tabindex="-1">
         <section id="privacy-policy" class="doc-title">
           <h1>Privacy Policy</h1>
           <p class="updated">Last updated: 2026년 4월 9일</p>
           <p class="intro">
-            이 개인정보처리방침은 FoodLens가 수집하는 개인정보, 사용 목적, 공유 및 처리 위탁, 보관 기간,
-            그리고 사용자의 권리와 선택에 관한 중요한 정보를 포함합니다.
+            FoodLens는 사용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다.
+            이 개인정보처리방침은 FoodLens가 수집하는 개인정보, 사용 목적, 공유 및 처리 위탁,
+            보관 기간, 그리고 사용자의 권리와 선택에 관한 중요한 정보를 포함합니다.
           </p>
         </section>
 
@@ -472,8 +478,9 @@
           </p>
           <div class="callout">
             <p>
-              FoodLens는 음식 안전 판단을 돕는 보조 도구입니다. AI 분석 결과는 100% 정확하지 않을 수 있으므로,
-              심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단과 함께 사용해야 합니다.
+              FoodLens는 음식 안전 판단을 돕는 보조 도구이며, 의료 진단이나 전문 영양 상담을 대체하지 않습니다.
+              AI 분석 결과는 100% 정확하지 않을 수 있으므로, 심각한 알레르기나 건강 문제가 있는 경우
+              반드시 전문가 판단과 함께 사용해야 합니다.
             </p>
           </div>
         </section>
@@ -538,7 +545,7 @@
             <div class="compact-card"><b>Camera</b><span>음식, 라벨, 바코드 촬영</span></div>
             <div class="compact-card"><b>Photo Library</b><span>이미지 선택 및 저장</span></div>
             <div class="compact-card"><b>Location</b><span>국가/지역 기반 음식 안전 정보 및 여행 컨텍스트 제공</span></div>
-            <div class="compact-card"><b>Advertising ID</b><span>현재 광고 SDK 또는 광고 ID 수집 없음</span></div>
+            <div class="compact-card"><b>Advertising ID</b><span>현재 광고 SDK 또는 광고 ID(IDFA/AAID 포함) 수집 없음</span></div>
           </div>
         </section>
 
@@ -550,6 +557,7 @@
           </p>
           <div class="table-wrap">
             <table>
+              <caption class="visually-hidden">FoodLens 서비스 제공업체와 처리하는 개인정보</caption>
               <thead>
                 <tr>
                   <th>Category</th>
@@ -657,22 +665,8 @@
     </div>
 
     <footer class="footer">
-      FoodLens Privacy Policy &amp; Privacy Center · Stripe privacy page visual adaptation draft.
+      FoodLens Privacy Policy &amp; Privacy Center
     </footer>
 
-    <script>
-      const mobileNav = document.querySelector(".mobile-nav");
-
-      if (mobileNav instanceof HTMLSelectElement) {
-        mobileNav.addEventListener("change", (event) => {
-          const target = event.currentTarget.value;
-          const element = document.querySelector(target);
-
-          if (element instanceof HTMLElement) {
-            element.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        });
-      }
-    </script>
   </body>
 </html>

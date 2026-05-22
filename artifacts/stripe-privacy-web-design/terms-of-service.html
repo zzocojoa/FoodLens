@@ -16,7 +16,7 @@
         --accent: #635bff;
         --brand: #0074d9;
         --sidebar: 230px;
-        --content: 760px;
+        --content: 810px;
         --page: 1080px;
       }
 
@@ -89,6 +89,17 @@
         margin: 0 auto;
         display: flex;
         align-items: center;
+        position: relative;
+      }
+
+      .site-header::after {
+        position: absolute;
+        right: 50%;
+        bottom: 0;
+        width: 100vw;
+        border-bottom: 1px solid var(--grid);
+        content: "";
+        transform: translateX(50%);
       }
 
       .wordmark {
@@ -98,7 +109,7 @@
         color: var(--ink);
         font-size: 28px;
         font-weight: 800;
-        letter-spacing: -0.04em;
+        letter-spacing: 0;
       }
 
       .wordmark::before {
@@ -161,21 +172,12 @@
         color: var(--accent);
       }
 
-      .mobile-nav {
-        display: none;
-        width: 100%;
-        min-height: 46px;
-        margin-bottom: 32px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: #fff;
-        color: var(--ink);
-        padding: 0 12px;
-        font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      main {
+        padding: 16px 32px 90px;
       }
 
-      main {
-        padding-bottom: 90px;
+      main:focus {
+        outline: none;
       }
 
       .doc-title {
@@ -185,9 +187,10 @@
       h1 {
         margin: 0 0 52px;
         color: var(--ink);
-        font-size: clamp(52px, 6.2vw, 72px);
-        line-height: 1.04;
-        letter-spacing: -0.055em;
+        font-size: clamp(48px, 5vw, 60px);
+        line-height: 1.08;
+        font-weight: 700;
+        letter-spacing: 0;
         overflow-wrap: anywhere;
       }
 
@@ -215,7 +218,7 @@
         color: var(--ink);
         font-size: 34px;
         line-height: 1.18;
-        letter-spacing: -0.035em;
+        letter-spacing: 0;
       }
 
       h3 {
@@ -223,7 +226,7 @@
         color: var(--ink);
         font-size: 19px;
         line-height: 1.4;
-        letter-spacing: -0.015em;
+        letter-spacing: 0;
       }
 
       p {
@@ -305,22 +308,18 @@
 
         main {
           min-width: 0;
-          overflow: hidden;
+          padding: 0 0 90px;
         }
 
         .legal-nav {
           display: none;
         }
 
-        .mobile-nav {
-          display: block;
-        }
-
         h1 {
           margin-bottom: 36px;
           max-width: 100%;
-          font-size: clamp(42px, 12vw, 50px);
-          letter-spacing: -0.05em;
+          font-size: clamp(38px, 10.5vw, 44px);
+          letter-spacing: 0;
         }
 
         h2 {
@@ -331,7 +330,8 @@
         li,
         .intro {
           font-size: 17px;
-          word-break: break-all;
+          overflow-wrap: anywhere;
+          word-break: normal;
         }
 
         .footer {
@@ -348,34 +348,25 @@
     </header>
 
     <div class="page">
-      <nav class="legal-nav" aria-label="Legal navigation">
+      <nav class="legal-nav" aria-label="법적 문서 내비게이션">
         <span class="eyebrow">Legal</span>
         <strong>FoodLens Terms of Service</strong>
         <a href="index.html">Privacy Policy</a>
         <a href="#terms-of-service">Terms of Service</a>
+        <a href="#purpose">Purpose</a>
         <a href="#service-description">Services</a>
         <a href="#account">Accounts</a>
         <a href="#disclaimer">Important Disclaimers</a>
         <a href="#prohibited-conduct">Prohibited Conduct</a>
+        <a href="#ip">Intellectual Property</a>
         <a href="#privacy-data">Privacy and Data</a>
+        <a href="#service-changes">Service Changes</a>
+        <a href="#law">Governing Law</a>
         <a href="#contact">Contact Us</a>
+        <a href="#effective-date">Effective Date</a>
       </nav>
 
-      <main id="main">
-        <select class="mobile-nav" aria-label="섹션 이동">
-          <option value="#terms-of-service">Terms of Service</option>
-          <option value="#purpose">Purpose</option>
-          <option value="#service-description">Services</option>
-          <option value="#account">Accounts</option>
-          <option value="#disclaimer">Important Disclaimers</option>
-          <option value="#prohibited-conduct">Prohibited Conduct</option>
-          <option value="#ip">Intellectual Property</option>
-          <option value="#privacy-data">Privacy and Data</option>
-          <option value="#service-changes">Service Changes</option>
-          <option value="#law">Governing Law</option>
-          <option value="#contact">Contact Us</option>
-        </select>
-
+      <main id="main" tabindex="-1">
         <section id="terms-of-service" class="doc-title">
           <h1>Terms of Service</h1>
           <p class="updated">Effective: 2026년 4월 9일</p>
@@ -488,22 +479,8 @@
     </div>
 
     <footer class="footer">
-      FoodLens Terms of Service · Stripe legal page visual adaptation draft.
+      FoodLens Terms of Service
     </footer>
 
-    <script>
-      const mobileNav = document.querySelector(".mobile-nav");
-
-      if (mobileNav instanceof HTMLSelectElement) {
-        mobileNav.addEventListener("change", (event) => {
-          const target = event.currentTarget.value;
-          const element = document.querySelector(target);
-
-          if (element instanceof HTMLElement) {
-            element.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        });
-      }
-    </script>
   </body>
 </html>
