@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FoodLens Privacy Policy</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fff;
+        --ink: #0a2540;
+        --body: #425466;
+        --muted: #697386;
+        --line: #e6ebf1;
+        --grid: #edf1f6;
+        --accent: #635bff;
+        --brand: #0074d9;
+        --sidebar: 230px;
+        --content: 760px;
+        --page: 1080px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(90deg, transparent 0, transparent calc(50% - 520px), var(--grid) calc(50% - 520px), var(--grid) calc(50% - 519px), transparent calc(50% - 519px)),
+          linear-gradient(90deg, transparent 0, transparent calc(50% - 260px), var(--grid) calc(50% - 260px), var(--grid) calc(50% - 259px), transparent calc(50% - 259px)),
+          linear-gradient(90deg, transparent 0, transparent 50%, var(--grid) 50%, var(--grid) calc(50% + 1px), transparent calc(50% + 1px)),
+          linear-gradient(90deg, transparent 0, transparent calc(50% + 260px), var(--grid) calc(50% + 260px), var(--grid) calc(50% + 261px), transparent calc(50% + 261px)),
+          var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover {
+        color: #4b43db;
+      }
+
+      a:focus-visible,
+      button:focus-visible,
+      select:focus-visible {
+        outline: 3px solid rgba(99, 91, 255, 0.24);
+        outline-offset: 3px;
+      }
+
+      .skip-link {
+        position: fixed;
+        left: 18px;
+        top: 18px;
+        z-index: 30;
+        transform: translateY(-140%);
+        padding: 10px 14px;
+        border-radius: 4px;
+        background: var(--ink);
+        color: #fff;
+        font-weight: 700;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .site-header {
+        width: calc(100% - 48px);
+        max-width: var(--page);
+        height: 74px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink);
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .wordmark::before {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--brand);
+        color: #fff;
+        content: "F";
+        font-size: 14px;
+        letter-spacing: 0;
+      }
+
+      .page {
+        width: calc(100% - 48px);
+        max-width: var(--page);
+        margin: 0 auto;
+        padding-top: 54px;
+        display: grid;
+        grid-template-columns: var(--sidebar) minmax(0, var(--content));
+        column-gap: 34px;
+        align-items: start;
+      }
+
+      .legal-nav {
+        position: sticky;
+        top: 28px;
+        padding-top: 2px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .legal-nav .eyebrow {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .legal-nav strong {
+        display: block;
+        margin-bottom: 7px;
+        border-left: 2px solid var(--accent);
+        padding-left: 14px;
+        color: var(--ink);
+        font-weight: 800;
+        line-height: 1.45;
+      }
+
+      .legal-nav a {
+        display: block;
+        padding: 4px 0 4px 16px;
+        color: #697386;
+        line-height: 1.45;
+      }
+
+      .legal-nav a:hover {
+        color: var(--accent);
+      }
+
+      .mobile-nav {
+        display: none;
+        width: 100%;
+        min-height: 46px;
+        margin-bottom: 32px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+        padding: 0 12px;
+        font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      }
+
+      main {
+        padding-bottom: 90px;
+      }
+
+      .doc-title {
+        margin: 0 0 58px;
+      }
+
+      h1 {
+        margin: 0 0 52px;
+        color: var(--ink);
+        font-size: clamp(52px, 6.2vw, 72px);
+        line-height: 1.04;
+        letter-spacing: -0.055em;
+        overflow-wrap: anywhere;
+      }
+
+      .updated {
+        margin: 0 0 12px;
+        color: var(--ink);
+        font-weight: 800;
+      }
+
+      .intro {
+        max-width: 670px;
+        margin: 0;
+        color: var(--body);
+        font-size: 19px;
+        line-height: 1.55;
+      }
+
+      section {
+        scroll-margin-top: 34px;
+        margin-bottom: 62px;
+      }
+
+      h2 {
+        margin: 0 0 25px;
+        color: var(--ink);
+        font-size: 34px;
+        line-height: 1.18;
+        letter-spacing: -0.035em;
+      }
+
+      h3 {
+        margin: 34px 0 10px;
+        color: var(--ink);
+        font-size: 19px;
+        line-height: 1.4;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        max-width: 720px;
+        margin: 0 0 25px;
+        color: var(--body);
+        font-size: 18px;
+        line-height: 1.62;
+        overflow-wrap: anywhere;
+      }
+
+      ul {
+        max-width: 720px;
+        margin: 0 0 26px;
+        padding: 0;
+        list-style: none;
+      }
+
+      li {
+        position: relative;
+        margin: 0 0 14px;
+        padding-left: 28px;
+        color: var(--body);
+        font-size: 18px;
+        line-height: 1.62;
+        overflow-wrap: anywhere;
+      }
+
+      li::before {
+        position: absolute;
+        left: 2px;
+        top: 0.72em;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #d6dee8;
+        content: "";
+      }
+
+      .callout {
+        max-width: 720px;
+        margin: 30px 0 34px;
+        padding: 22px 26px;
+        border-left: 2px solid var(--accent);
+        background: linear-gradient(90deg, rgba(99, 91, 255, 0.06), rgba(99, 91, 255, 0));
+      }
+
+      .callout p {
+        margin: 0;
+      }
+
+      .link-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .link-list a {
+        width: fit-content;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .table-wrap {
+        max-width: 830px;
+        overflow-x: auto;
+        margin: 26px 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 760px;
+        border-collapse: collapse;
+        background: #fff;
+        color: var(--body);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      th,
+      td {
+        padding: 15px 17px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .compact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        max-width: 720px;
+        margin: 28px 0 10px;
+        background: var(--line);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .compact-card {
+        background: #fff;
+        padding: 18px 20px;
+      }
+
+      .compact-card b {
+        display: block;
+        margin-bottom: 7px;
+        color: var(--ink);
+        font-size: 16px;
+      }
+
+      .compact-card span {
+        display: block;
+        color: var(--body);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .footer {
+        width: calc(100% - 48px);
+        max-width: var(--page);
+        margin: 0 auto;
+        padding: 28px 0 56px calc(var(--sidebar) + 34px);
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 860px) {
+        body {
+          background: var(--bg);
+          overflow-x: hidden;
+        }
+
+        .site-header,
+        .page,
+        .footer {
+          width: calc(100% - 32px);
+          max-width: var(--page);
+        }
+
+        .page {
+          display: block;
+          padding-top: 34px;
+        }
+
+        main {
+          min-width: 0;
+          overflow: hidden;
+        }
+
+        .legal-nav {
+          display: none;
+        }
+
+        .mobile-nav {
+          display: block;
+        }
+
+        h1 {
+          margin-bottom: 36px;
+          max-width: 100%;
+          font-size: clamp(42px, 12vw, 50px);
+          letter-spacing: -0.05em;
+        }
+
+        h2 {
+          font-size: 30px;
+        }
+
+        p,
+        li,
+        .intro {
+          font-size: 17px;
+          word-break: break-all;
+        }
+
+        .compact-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .footer {
+          padding-left: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문으로 이동</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="#main" aria-label="FoodLens">FoodLens</a>
+    </header>
+
+    <div class="page">
+      <nav class="legal-nav" aria-label="Legal navigation">
+        <span class="eyebrow">Legal</span>
+        <strong>FoodLens Privacy Policy &amp; Privacy Center</strong>
+        <a href="#privacy-policy">Privacy Policy</a>
+        <a href="terms-of-service.html">Terms of Service</a>
+        <a href="#privacy-center">FoodLens Privacy Center</a>
+        <a href="#collected-data">Personal Data</a>
+        <a href="#purposes">Processing Purposes</a>
+        <a href="#processors">Service Providers</a>
+        <a href="#retention">Security and Retention</a>
+        <a href="#rights">Your Privacy Rights</a>
+        <a href="#contact">Contact Us</a>
+      </nav>
+
+      <main id="main">
+        <select class="mobile-nav" aria-label="섹션 이동">
+          <option value="#privacy-policy">Privacy Policy</option>
+          <option value="#privacy-center">FoodLens Privacy Center</option>
+          <option value="#collected-data">Personal Data</option>
+          <option value="#purposes">Processing Purposes</option>
+          <option value="#processors">Service Providers</option>
+          <option value="#retention">Security and Retention</option>
+          <option value="#rights">Your Privacy Rights</option>
+          <option value="#contact">Contact Us</option>
+        </select>
+
+        <section id="privacy-policy" class="doc-title">
+          <h1>Privacy Policy</h1>
+          <p class="updated">Last updated: 2026년 4월 9일</p>
+          <p class="intro">
+            이 개인정보처리방침은 FoodLens가 수집하는 개인정보, 사용 목적, 공유 및 처리 위탁, 보관 기간,
+            그리고 사용자의 권리와 선택에 관한 중요한 정보를 포함합니다.
+          </p>
+        </section>
+
+        <section id="privacy-center">
+          <h2>Welcome</h2>
+          <p>
+            FoodLens는 음식, 라벨, 바코드 분석을 통해 사용자가 식품 정보를 더 안전하게 이해하도록 돕습니다.
+            사용자는 알레르기, 식이 제한, 이미지, 분석 기록, 여행자 카드와 같은 정보를 서비스에 입력할 수 있습니다.
+          </p>
+          <p>
+            이 Policy는 FoodLens Team이 서비스를 제공하기 위해 어떤 Personal Data를 처리하는지 설명합니다.
+            FoodLens는 현재 광고 SDK를 포함하지 않으며, 광고 제공 또는 측정 목적의 기기 정보나 광고 ID를 수집하지 않습니다.
+            또한 사용자의 개인정보를 판매하지 않습니다.
+          </p>
+          <div class="callout">
+            <p>
+              FoodLens는 음식 안전 판단을 돕는 보조 도구입니다. AI 분석 결과는 100% 정확하지 않을 수 있으므로,
+              심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단과 함께 사용해야 합니다.
+            </p>
+          </div>
+        </section>
+
+        <section id="controller">
+          <h2>Data Controller</h2>
+          <p>
+            FoodLens Team은 이 Policy가 적용되는 서비스의 개인정보 처리 주체입니다.
+            개인정보 처리와 관련한 문의는 <a href="mailto:support@foodlens.com">support@foodlens.com</a>으로 접수해 주세요.
+          </p>
+        </section>
+
+        <section id="collected-data">
+          <h2>Personal Data We Collect</h2>
+          <p>
+            FoodLens가 처리하는 Personal Data는 사용자가 어떤 기능을 선택하고 어떻게 서비스를 이용하는지에 따라 달라집니다.
+            아래는 서비스 제공을 위해 처리될 수 있는 정보의 범주입니다.
+          </p>
+
+          <h3>Account and authentication data</h3>
+          <ul>
+            <li>이메일 로그인 시 이메일 주소, 비밀번호 해시, 인증 또는 재설정 상태 정보</li>
+            <li>Google / Kakao 로그인 시 제공자 식별값, 이메일, 표시 이름 등 로그인에 필요한 정보</li>
+            <li>세션, refresh token, 기기 식별자, 요청 추적용 request_id</li>
+          </ul>
+
+          <h3>Profile and personalization data</h3>
+          <ul>
+            <li>표시 이름, 알레르기 정보, 식이 제한, 심각도 설정</li>
+            <li>언어 및 여행자 카드 관련 설정</li>
+            <li>선택적으로 입력한 성별, 출생연도, 싫어하는 재료, 현재 여행 위치 또는 좌표</li>
+          </ul>
+
+          <h3>User content and automatically collected data</h3>
+          <ul>
+            <li>라벨, 음식, 바코드 분석에 사용한 이미지와 분석 결과</li>
+            <li>프로필 이미지, 히스토리, 저장한 기록, 오분석 제보 또는 지원 문의에 포함된 내용</li>
+            <li>앱 버전, OS 버전, 기기 모델, 이용 기록, 접속 로그, 장애 대응을 위한 진단 정보</li>
+          </ul>
+        </section>
+
+        <section id="purposes">
+          <h2>How We Use Personal Data</h2>
+          <p>FoodLens는 수집한 정보를 다음 목적을 위해 사용합니다.</p>
+          <ul>
+            <li>음식, 라벨, 바코드 분석 결과 제공</li>
+            <li>사용자 알레르기 기준 경고 및 개인화 결과 제공</li>
+            <li>히스토리, 프로필, 설정, 여행자 카드 기능 제공</li>
+            <li>로그인, 세션 유지, 계정 보안, 비밀번호 재설정, 이메일 인증</li>
+            <li>고객 문의 대응, 오분석 제보 처리, 서비스 품질 개선, 장애 대응, 부정 사용 방지</li>
+            <li>법령상 의무 이행 및 분쟁 대응</li>
+          </ul>
+        </section>
+
+        <section id="permissions">
+          <h2>Permissions</h2>
+          <p>
+            카메라, 사진 라이브러리, 위치 권한은 사용자가 허용한 경우에만 사용합니다.
+            사용자는 운영체제 설정에서 언제든 권한을 철회할 수 있습니다.
+          </p>
+          <div class="compact-grid" aria-label="선택 권한 정보">
+            <div class="compact-card"><b>Camera</b><span>음식, 라벨, 바코드 촬영</span></div>
+            <div class="compact-card"><b>Photo Library</b><span>이미지 선택 및 저장</span></div>
+            <div class="compact-card"><b>Location</b><span>국가/지역 기반 음식 안전 정보 및 여행 컨텍스트 제공</span></div>
+            <div class="compact-card"><b>Advertising ID</b><span>현재 광고 SDK 또는 광고 ID 수집 없음</span></div>
+          </div>
+        </section>
+
+        <section id="processors">
+          <h2>Disclosure of Personal Data</h2>
+          <p>
+            서비스는 기능 제공을 위해 필요한 범위에서 아래 업체 또는 서비스를 사용합니다.
+            이들은 FoodLens의 서비스 운영, 저장, 이메일 발송, 오류 분석 목적에 따라 정보를 처리할 수 있습니다.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Service Provider</th>
+                  <th>Purpose</th>
+                  <th>Personal Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>AI analysis</td>
+                  <td>Google LLC</td>
+                  <td>Gemini 기반 음식/라벨 분석</td>
+                  <td>분석 이미지, 분석 프롬프트에 필요한 텍스트 컨텍스트</td>
+                </tr>
+                <tr>
+                  <td>Cloud and storage</td>
+                  <td>Google Cloud Platform</td>
+                  <td>미디어 저장 및 signed render 제공</td>
+                  <td>업로드 이미지, 파생 썸네일/렌더 정보</td>
+                </tr>
+                <tr>
+                  <td>Application hosting</td>
+                  <td>Render</td>
+                  <td>백엔드 API 운영</td>
+                  <td>계정, 프로필, 설정, 히스토리, 운영 로그</td>
+                </tr>
+                <tr>
+                  <td>Email delivery</td>
+                  <td>SendGrid(SMTP)</td>
+                  <td>이메일 인증, 비밀번호 재설정 메일 발송</td>
+                  <td>이메일 주소, 메일 발송 메타데이터</td>
+                </tr>
+                <tr>
+                  <td>Error tracking</td>
+                  <td>Sentry, when enabled</td>
+                  <td>장애 분석 및 품질 개선</td>
+                  <td>앱/서버 오류 진단 정보</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>FoodLens는 사용자의 개인정보를 판매하지 않습니다.</p>
+        </section>
+
+        <section id="retention">
+          <h2>Security and Retention</h2>
+          <p>
+            FoodLens는 목적 달성 후 지체 없이 파기하는 것을 원칙으로 하되,
+            운영, 보안, 법적 의무를 위해 필요한 범위에서 일정 기간 보관할 수 있습니다.
+          </p>
+          <div class="compact-grid" aria-label="보관 기간">
+            <div class="compact-card"><b>Account data</b><span>계정, 프로필, 알레르기, 설정, 히스토리는 사용자가 삭제하거나 계정을 종료할 때까지</span></div>
+            <div class="compact-card"><b>Original media</b><span>원본 업로드 미디어는 기본 30일</span></div>
+            <div class="compact-card"><b>Derived media</b><span>파생 미디어와 렌더 결과는 기본 90일</span></div>
+            <div class="compact-card"><b>Operational logs</b><span>운영 로그는 기본 14일</span></div>
+          </div>
+          <p>
+            인증, 비밀번호 재설정, 삭제 요청 관련 기록은 보안 및 운영 목적으로 필요한 기간 동안 별도 보관될 수 있습니다.
+          </p>
+        </section>
+
+        <section id="rights">
+          <h2>Your Privacy Rights</h2>
+          <p>사용자는 FoodLens에서 다음 권리를 행사할 수 있습니다.</p>
+          <ul>
+            <li>프로필, 알레르기, 설정, 히스토리 조회 및 수정</li>
+            <li>앱 권한 철회</li>
+            <li>문의 메일을 통한 개인정보 처리 문의</li>
+            <li>Delete My Data 요청: 계정은 유지하고 저장된 프로필, 히스토리, 개인화 데이터, 미디어를 초기화합니다.</li>
+            <li>Delete Account 요청: 계정 및 관련 데이터를 삭제하고 세션을 무효화합니다.</li>
+          </ul>
+        </section>
+
+        <section id="international-transfer">
+          <h2>International Data Transfers</h2>
+          <p>
+            서비스가 사용하는 일부 처리자(Google, Render, SendGrid, Sentry 등)는 대한민국 외 지역에서 데이터를 처리할 수 있습니다.
+            서비스는 필요한 경우 적절한 보호조치를 전제로 해당 서비스를 사용합니다.
+          </p>
+        </section>
+
+        <section id="contact">
+          <h2>Contact Us</h2>
+          <p>
+            개인정보 처리와 관련한 문의는 아래 이메일로 접수해 주세요.
+          </p>
+          <div class="link-list">
+            <a href="mailto:support@foodlens.com">support@foodlens.com</a>
+          </div>
+        </section>
+
+        <section id="changes">
+          <h2>Changes to Our Privacy Policy</h2>
+          <p>
+            본 방침은 법령 또는 서비스 변경에 따라 수정될 수 있으며,
+            중요한 변경이 있는 경우 앱 또는 문서를 통해 안내합니다.
+          </p>
+          <ul>
+            <li>공고일자: 2026년 4월 9일</li>
+            <li>시행일자: 2026년 4월 9일</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      FoodLens Privacy Policy &amp; Privacy Center · Stripe privacy page visual adaptation draft.
+    </footer>
+
+    <script>
+      const mobileNav = document.querySelector(".mobile-nav");
+
+      if (mobileNav instanceof HTMLSelectElement) {
+        mobileNav.addEventListener("change", (event) => {
+          const target = event.currentTarget.value;
+          const element = document.querySelector(target);
+
+          if (element instanceof HTMLElement) {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
