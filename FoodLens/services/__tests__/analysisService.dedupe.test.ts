@@ -92,6 +92,7 @@ describe('AnalysisService barcode dedupe', () => {
   });
 
   afterEach(() => {
+    queryClient.clear();
     jest.restoreAllMocks();
   });
 
