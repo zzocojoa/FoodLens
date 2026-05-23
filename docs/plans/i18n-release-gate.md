@@ -12,6 +12,13 @@ taskID: `I18N-P1-T013`
   1. `npm run i18n:verify`
   2. `npx tsc --noEmit`
   3. `npm run lint`
+- CI 실행: `.github/workflows/i18n-release-gate.yml`
+  - `npm run i18n:release-gate`
+  - i18n 회귀 Jest 테스트:
+    - `features/i18n/__tests__/constants.test.ts`
+    - `features/i18n/__tests__/languageService.test.ts`
+    - `components/profileSheet/__tests__/constants.test.ts`
+    - `features/profile/profileHub/__tests__/constants.test.ts`
 
 ### 통과 기준
 - 모든 명령이 exit code 0
@@ -31,6 +38,8 @@ taskID: `I18N-P1-T013`
 - [ ] 자동 게이트 통과 로그 첨부
 - [ ] EN 전환 기준 핵심 플로우 점검 완료
 - [ ] KO 전환 기준 핵심 플로우 점검 완료
+- [ ] JA 전환 기준 핵심 플로우 점검 완료
+- [ ] ZH 전환 기준 핵심 플로우 점검 완료
 - [ ] 결과 요약/경고 문구 언어 혼재 없음 확인
 - [ ] 릴리즈 승인자 확인
 
