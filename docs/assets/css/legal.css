@@ -1,0 +1,390 @@
+:root {
+  color-scheme: light;
+  --bg: #fff;
+  --ink: #0a2540;
+  --body: #425466;
+  --muted: #697386;
+  --line: #e6ebf1;
+  --grid: #edf1f6;
+  --accent: #635bff;
+  --brand: #0074d9;
+  --green: #00a88f;
+  --sidebar: 230px;
+  --content: 810px;
+  --page: 1080px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, transparent 0, transparent calc(50% - 520px), var(--grid) calc(50% - 520px), var(--grid) calc(50% - 519px), transparent calc(50% - 519px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% - 260px), var(--grid) calc(50% - 260px), var(--grid) calc(50% - 259px), transparent calc(50% - 259px)),
+    linear-gradient(90deg, transparent 0, transparent 50%, var(--grid) 50%, var(--grid) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% + 260px), var(--grid) calc(50% + 260px), var(--grid) calc(50% + 261px), transparent calc(50% + 261px)),
+    var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: #4b43db;
+}
+
+a:focus-visible {
+  outline: 3px solid rgba(99, 91, 255, 0.24);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 30;
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  transform: translateY(-140%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.site-header {
+  position: relative;
+  width: calc(100% - 48px);
+  max-width: var(--page);
+  height: 74px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.site-header::after {
+  position: absolute;
+  right: 50%;
+  bottom: 0;
+  width: 100vw;
+  border-bottom: 1px solid var(--grid);
+  content: "";
+  transform: translateX(50%);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.wordmark::before {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  content: "F";
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.top-nav {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.top-nav a {
+  color: var(--muted);
+}
+
+.top-nav a:hover {
+  color: var(--accent);
+}
+
+.legal-shell {
+  width: calc(100% - 48px);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding-top: 54px;
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(0, var(--content));
+  column-gap: 34px;
+  align-items: start;
+}
+
+.legal-sidebar {
+  min-width: 0;
+}
+
+.legal-nav {
+  position: sticky;
+  top: 28px;
+  padding-top: 2px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.legal-nav .eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.legal-nav strong {
+  display: block;
+  margin-bottom: 7px;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.legal-nav a {
+  display: block;
+  padding: 4px 0 4px 16px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.legal-nav a:hover {
+  color: var(--accent);
+}
+
+.legal-main {
+  min-width: 0;
+  padding: 16px 32px 90px;
+}
+
+.legal-main:focus {
+  outline: none;
+}
+
+.doc-title {
+  margin: 0 0 58px;
+}
+
+.updated {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+h1 {
+  margin: 0 0 52px;
+  color: var(--ink);
+  font-size: 60px;
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.intro {
+  max-width: 670px;
+  margin: 0;
+  color: var(--body);
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+.legal-content section,
+.legal-content h2 {
+  scroll-margin-top: 34px;
+}
+
+.legal-content h2 {
+  margin: 62px 0 25px;
+  color: var(--ink);
+  font-size: 34px;
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+
+.legal-content h2:first-child {
+  margin-top: 0;
+}
+
+.legal-content h3 {
+  margin: 34px 0 10px;
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.legal-content p {
+  max-width: 690px;
+  margin: 0 0 18px;
+  color: var(--body);
+}
+
+.legal-content ul {
+  max-width: 690px;
+  margin: 0 0 24px;
+  padding-left: 21px;
+  color: var(--body);
+}
+
+.legal-content li {
+  margin: 9px 0;
+  padding-left: 4px;
+}
+
+.legal-content li::marker {
+  color: var(--green);
+}
+
+.legal-content strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.legal-content code {
+  border-radius: 4px;
+  padding: 2px 5px;
+  background: #f6f9fc;
+  color: var(--ink);
+  font-size: 0.92em;
+}
+
+.legal-content table {
+  width: 100%;
+  margin: 28px 0 36px;
+  border-collapse: collapse;
+  color: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.legal-content th {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.legal-content th,
+.legal-content td {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-content tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 860px) {
+  body {
+    background: var(--bg);
+  }
+
+  .site-header {
+    width: calc(100% - 32px);
+    height: 64px;
+  }
+
+  .wordmark {
+    font-size: 23px;
+  }
+
+  .top-nav {
+    gap: 14px;
+  }
+
+  .legal-shell {
+    width: calc(100% - 32px);
+    padding-top: 28px;
+    display: block;
+  }
+
+  .legal-sidebar {
+    margin-bottom: 34px;
+  }
+
+  .legal-nav {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    font-size: 14px;
+  }
+
+  .legal-nav .eyebrow,
+  .legal-nav strong {
+    grid-column: 1 / -1;
+  }
+
+  .legal-nav a {
+    padding-left: 0;
+  }
+
+  .legal-main {
+    padding: 0 0 70px;
+  }
+
+  h1 {
+    margin-bottom: 30px;
+    font-size: 42px;
+  }
+
+  .doc-title {
+    margin-bottom: 42px;
+  }
+
+  .intro {
+    font-size: 17px;
+  }
+
+  .legal-content h2 {
+    margin-top: 48px;
+    font-size: 28px;
+  }
+
+  .legal-content table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .top-nav {
+    display: none;
+  }
+
+  .legal-nav {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 35px;
+  }
+}
