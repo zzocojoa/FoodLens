@@ -97,6 +97,20 @@ describe('languageService.getDeviceLocale', () => {
     expect(locale).toBe('fr-FR');
   });
 
+  it('supports Japanese and Simplified Chinese as device locales', () => {
+    (NativeModules as any).SettingsManager.settings = {
+      AppleLanguages: ['ja-JP'],
+    };
+
+    expect(getDeviceLocale()).toBe('ja-JP');
+
+    (NativeModules as any).SettingsManager.settings = {
+      AppleLanguages: ['zh-CN'],
+    };
+
+    expect(getDeviceLocale()).toBe('zh-Hans');
+  });
+
   it('uses region fallback in iOS remote runtime when Intl returns en-KR', () => {
     (NativeModules as any).SettingsManager.settings = {};
     Intl.DateTimeFormat = (() => ({
@@ -141,6 +155,18 @@ describe('languageService.normalizeLanguageSettings', () => {
     ).toEqual({
       language: 'ko-KR',
       targetLanguage: 'fr-FR',
+    });
+  });
+
+  it('normalizes Japanese UI language and Simplified Chinese traveler target language', () => {
+    expect(
+      normalizeLanguageSettings({
+        language: 'JP',
+        targetLanguage: 'CN',
+      })
+    ).toEqual({
+      language: 'ja-JP',
+      targetLanguage: 'zh-Hans',
     });
   });
 });
