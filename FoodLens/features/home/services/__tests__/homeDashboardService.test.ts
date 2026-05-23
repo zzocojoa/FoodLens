@@ -19,6 +19,10 @@ describe('fetchHomeDashboardData', () => {
     queryClient.clear();
   });
 
+  afterEach(() => {
+    queryClient.clear();
+  });
+
   it('derives recent scans from the single history snapshot load', async () => {
     const allHistory: AnalysisRecord[] = [
       {
