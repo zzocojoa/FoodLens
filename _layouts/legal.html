@@ -6,17 +6,40 @@
     <title>{{ page.title | escape }} | FoodLens</title>
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <link rel="canonical" href="{{ page.url | absolute_url }}">
+    {% for option in page.language_options %}
+    <link rel="alternate" hreflang="{{ option.lang }}" href="{{ option.href | absolute_url }}">
+    {% endfor %}
     <link rel="stylesheet" href="{{ '/assets/css/legal.css' | relative_url }}">
   </head>
   <body>
-    <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+    <a class="skip-link" href="#main">{{ page.skip_label | default: '본문으로 건너뛰기' }}</a>
 
     <header class="site-header" aria-label="FoodLens">
       <a class="wordmark" href="{{ '/' | relative_url }}">FoodLens</a>
-      <nav class="top-nav" aria-label="법적 문서">
-        <a href="{{ '/docs/privacy-policy/' | relative_url }}">Privacy</a>
-        <a href="{{ '/docs/terms-of-service/' | relative_url }}">Terms</a>
-      </nav>
+      <div class="header-actions">
+        <nav class="top-nav" aria-label="{{ page.top_nav_label | default: 'Legal documents' }}">
+          <a href="{{ '/docs/privacy-policy/' | relative_url }}">Privacy</a>
+          <a href="{{ '/docs/terms-of-service/' | relative_url }}">Terms</a>
+        </nav>
+        {% if page.language_options %}
+        <details class="language-menu">
+          <summary aria-label="{{ page.language_menu_label | default: 'Language' }}">
+            <span class="language-menu-kicker">{{ page.language_menu_label | default: 'Language' }}</span>
+            <span class="language-menu-current">{{ page.language_label | default: page.lang | default: 'Language' }}</span>
+          </summary>
+          <div class="language-menu-panel">
+            {% for option in page.language_options %}
+            <a
+              {% if option.lang == page.lang %}class="is-active"{% endif %}
+              href="{{ option.href | relative_url }}"
+              hreflang="{{ option.lang }}"
+              lang="{{ option.lang }}"
+            >{{ option.label }}</a>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
     </header>
 
     <div class="legal-shell">
