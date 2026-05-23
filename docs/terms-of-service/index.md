@@ -1,4 +1,34 @@
-# 이용약관 (Terms of Service)
+---
+layout: legal
+title: 이용약관 (Terms of Service)
+description: FoodLens 이용약관
+nav_eyebrow: Terms of Service
+effective_date: 시행일자 2026년 4월 9일
+lead: FoodLens 서비스 이용 조건과 사용자 책임, 데이터 삭제, 서비스 한계를 안내합니다.
+nav:
+  - label: 목적
+    href: "#1-목적"
+  - label: 서비스 내용
+    href: "#2-서비스-내용"
+  - label: 계정 및 이용 조건
+    href: "#3-계정-및-이용-조건"
+  - label: 면책 조항
+    href: "#4-중요한-면책-조항"
+  - label: 금지 행위
+    href: "#5-금지-행위"
+  - label: 지식재산권
+    href: "#6-지식재산권"
+  - label: 개인정보 및 삭제
+    href: "#7-개인정보-및-데이터-삭제"
+  - label: 변경 및 책임 제한
+    href: "#8-서비스-변경-중단-책임-제한"
+  - label: 준거법 및 분쟁
+    href: "#9-준거법-및-분쟁"
+  - label: 문의처
+    href: "#10-문의처"
+  - label: 시행일
+    href: "#11-시행일"
+---
 
 ## 1. 목적
 

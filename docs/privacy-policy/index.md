@@ -1,6 +1,32 @@
-# 개인정보처리방침 (Privacy Policy)
-
-FoodLens(이하 "서비스")는 사용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 본 방침은 서비스가 어떤 정보를 수집하고, 왜 사용하며, 어디에 보관하고, 사용자가 어떤 권리를 가지는지 설명합니다.
+---
+layout: legal
+title: 개인정보처리방침 (Privacy Policy)
+description: FoodLens 개인정보처리방침
+nav_eyebrow: Privacy Policy
+effective_date: 시행일자 2026년 4월 9일
+lead: FoodLens는 사용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 본 방침은 서비스가 어떤 정보를 수집하고, 왜 사용하며, 어디에 보관하고, 사용자가 어떤 권리를 가지는지 설명합니다.
+nav:
+  - label: 처리 주체
+    href: "#1-개인정보-처리-주체"
+  - label: 수집 정보
+    href: "#2-수집하는-정보"
+  - label: 이용 목적
+    href: "#3-개인정보-이용-목적"
+  - label: 제3자 제공
+    href: "#4-제3자-제공-및-처리-위탁"
+  - label: 보관 기간
+    href: "#5-보관-기간"
+  - label: 사용자 권리
+    href: "#6-사용자의-권리"
+  - label: 안전성 및 한계
+    href: "#7-안전성-및-한계"
+  - label: 국제 이전
+    href: "#8-국제-이전"
+  - label: 문의처
+    href: "#9-문의처"
+  - label: 개정 안내
+    href: "#10-개정-안내"
+---
 
 ## 1. 개인정보 처리 주체
 
