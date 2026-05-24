@@ -12,7 +12,9 @@
 - 스킬 요청 플레이북: [`/docs/technical/skills_usage_guide.md`](./technical/skills_usage_guide.md)
 - 출시 게이트/운영 리허설: [`/docs/roadmap/phase-6-release-gate-execution.md`](./roadmap/phase-6-release-gate-execution.md)
 - 개인정보처리방침: [`/docs/privacy-policy/index.md`](./privacy-policy/index.md)
+  - 언어별 문서: [`en`](./privacy-policy/en/index.md), [`ja`](./privacy-policy/ja/index.md), [`zh-Hans`](./privacy-policy/zh-Hans/index.md)
 - 이용약관: [`/docs/terms-of-service/index.md`](./terms-of-service/index.md)
+  - 언어별 문서: [`en`](./terms-of-service/en/index.md), [`ja`](./terms-of-service/ja/index.md), [`zh-Hans`](./terms-of-service/zh-Hans/index.md)
 - 제품 워크스루: [`/docs/walkthroughs/walkthrough.md`](./walkthroughs/walkthrough.md)
 
 ## 역사성 문서

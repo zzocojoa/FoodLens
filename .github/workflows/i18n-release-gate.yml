@@ -1,0 +1,44 @@
+name: I18n Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  i18n-release-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FoodLens
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate legal docs language links
+        working-directory: .
+        run: |
+          python3 docs/scripts/validate_legal_docs.py
+          python3 docs/scripts/render_legal_artifacts.py --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FoodLens/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run i18n release gate
+        run: npm run i18n:release-gate
+
+      - name: Run i18n regression tests
+        run: >
+          npx jest --runInBand
+          features/i18n/__tests__/constants.test.ts
+          features/i18n/__tests__/languageService.test.ts
+          components/profileSheet/__tests__/constants.test.ts
+          features/profile/profileHub/__tests__/constants.test.ts

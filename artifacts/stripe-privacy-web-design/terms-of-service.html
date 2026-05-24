@@ -3,484 +3,602 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>FoodLens Terms of Service</title>
+    <title>이용약관 (Terms of Service) | FoodLens</title>
+    <meta name="description" content="FoodLens 이용약관">
     <style>
-      :root {
-        color-scheme: light;
-        --bg: #fff;
-        --ink: #0a2540;
-        --body: #425466;
-        --muted: #697386;
-        --line: #e6ebf1;
-        --grid: #edf1f6;
-        --accent: #635bff;
-        --brand: #0074d9;
-        --sidebar: 230px;
-        --content: 810px;
-        --page: 1080px;
-      }
+:root {
+  color-scheme: light;
+  --bg: #fff;
+  --ink: #0a2540;
+  --body: #425466;
+  --muted: #697386;
+  --line: #e6ebf1;
+  --grid: #edf1f6;
+  --accent: #635bff;
+  --brand: #0074d9;
+  --green: #00a88f;
+  --sidebar: 230px;
+  --content: 810px;
+  --page: 1080px;
+}
 
-      * {
-        box-sizing: border-box;
-      }
+* {
+  box-sizing: border-box;
+}
 
-      html {
-        scroll-behavior: smooth;
-      }
+html {
+  scroll-behavior: smooth;
+}
 
-      body {
-        margin: 0;
-        background:
-          linear-gradient(90deg, transparent 0, transparent calc(50% - 520px), var(--grid) calc(50% - 520px), var(--grid) calc(50% - 519px), transparent calc(50% - 519px)),
-          linear-gradient(90deg, transparent 0, transparent calc(50% - 260px), var(--grid) calc(50% - 260px), var(--grid) calc(50% - 259px), transparent calc(50% - 259px)),
-          linear-gradient(90deg, transparent 0, transparent 50%, var(--grid) 50%, var(--grid) calc(50% + 1px), transparent calc(50% + 1px)),
-          linear-gradient(90deg, transparent 0, transparent calc(50% + 260px), var(--grid) calc(50% + 260px), var(--grid) calc(50% + 261px), transparent calc(50% + 261px)),
-          var(--bg);
-        color: var(--ink);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-        font-size: 16px;
-        line-height: 1.65;
-      }
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, transparent 0, transparent calc(50% - 520px), var(--grid) calc(50% - 520px), var(--grid) calc(50% - 519px), transparent calc(50% - 519px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% - 260px), var(--grid) calc(50% - 260px), var(--grid) calc(50% - 259px), transparent calc(50% - 259px)),
+    linear-gradient(90deg, transparent 0, transparent 50%, var(--grid) 50%, var(--grid) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% + 260px), var(--grid) calc(50% + 260px), var(--grid) calc(50% + 261px), transparent calc(50% + 261px)),
+    var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-x: hidden;
+}
 
-      a {
-        color: var(--accent);
-        text-decoration: none;
-      }
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
 
-      a:hover {
-        color: #4b43db;
-      }
+a:hover {
+  color: #4b43db;
+}
 
-      a:focus-visible,
-      select:focus-visible {
-        outline: 3px solid rgba(99, 91, 255, 0.24);
-        outline-offset: 3px;
-      }
+a:focus-visible {
+  outline: 3px solid rgba(99, 91, 255, 0.24);
+  outline-offset: 3px;
+}
 
-      code {
-        border-radius: 4px;
-        background: #f6f9fc;
-        color: var(--ink);
-        padding: 2px 5px;
-        font-size: 0.9em;
-      }
+summary:focus-visible {
+  outline: 3px solid rgba(99, 91, 255, 0.24);
+  outline-offset: 3px;
+}
 
-      .skip-link {
-        position: fixed;
-        left: 18px;
-        top: 18px;
-        z-index: 30;
-        transform: translateY(-140%);
-        padding: 10px 14px;
-        border-radius: 4px;
-        background: var(--ink);
-        color: #fff;
-        font-weight: 700;
-      }
+.skip-link {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 30;
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  transform: translateY(-140%);
+}
 
-      .skip-link:focus {
-        transform: translateY(0);
-      }
+.skip-link:focus {
+  transform: translateY(0);
+}
 
-      .site-header {
-        width: calc(100% - 48px);
-        max-width: var(--page);
-        height: 74px;
-        margin: 0 auto;
-        display: flex;
-        align-items: center;
-        position: relative;
-      }
+.site-header {
+  position: relative;
+  width: calc(100% - 48px);
+  max-width: var(--page);
+  height: 74px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
-      .site-header::after {
-        position: absolute;
-        right: 50%;
-        bottom: 0;
-        width: 100vw;
-        border-bottom: 1px solid var(--grid);
-        content: "";
-        transform: translateX(50%);
-      }
+.site-header::after {
+  position: absolute;
+  right: 50%;
+  bottom: 0;
+  width: 100vw;
+  border-bottom: 1px solid var(--grid);
+  content: "";
+  transform: translateX(50%);
+}
 
-      .wordmark {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--ink);
-        font-size: 28px;
-        font-weight: 800;
-        letter-spacing: 0;
-      }
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
 
-      .wordmark::before {
-        display: inline-grid;
-        place-items: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: var(--brand);
-        color: #fff;
-        content: "F";
-        font-size: 14px;
-        letter-spacing: 0;
-      }
+.wordmark::before {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  content: "F";
+  font-size: 14px;
+  letter-spacing: 0;
+}
 
-      .page {
-        width: calc(100% - 48px);
-        max-width: var(--page);
-        margin: 0 auto;
-        padding-top: 54px;
-        display: grid;
-        grid-template-columns: var(--sidebar) minmax(0, var(--content));
-        column-gap: 34px;
-        align-items: start;
-      }
+.top-nav {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+}
 
-      .legal-nav {
-        position: sticky;
-        top: 28px;
-        padding-top: 2px;
-        color: var(--muted);
-        font-size: 15px;
-      }
+.top-nav a {
+  color: var(--muted);
+}
 
-      .legal-nav .eyebrow {
-        display: block;
-        margin-bottom: 8px;
-        color: var(--muted);
-        font-weight: 700;
-      }
+.top-nav a:hover {
+  color: var(--accent);
+}
 
-      .legal-nav strong {
-        display: block;
-        margin-bottom: 7px;
-        border-left: 2px solid var(--accent);
-        padding-left: 14px;
-        color: var(--ink);
-        font-weight: 800;
-        line-height: 1.45;
-      }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
 
-      .legal-nav a {
-        display: block;
-        padding: 4px 0 4px 16px;
-        color: #697386;
-        line-height: 1.45;
-      }
+.language-menu {
+  position: relative;
+  z-index: 3;
+}
 
-      .legal-nav a:hover {
-        color: var(--accent);
-      }
+.language-menu summary {
+  display: inline-flex;
+  min-width: 126px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  box-shadow: 0 6px 18px rgba(10, 37, 64, 0.05);
+}
 
-      main {
-        padding: 16px 32px 90px;
-      }
+.language-menu summary::-webkit-details-marker {
+  display: none;
+}
 
-      main:focus {
-        outline: none;
-      }
+.language-menu summary::after {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+}
 
-      .doc-title {
-        margin: 0 0 58px;
-      }
+.language-menu[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
 
-      h1 {
-        margin: 0 0 52px;
-        color: var(--ink);
-        font-size: clamp(48px, 5vw, 60px);
-        line-height: 1.08;
-        font-weight: 700;
-        letter-spacing: 0;
-        overflow-wrap: anywhere;
-      }
+.language-menu-kicker,
+.language-menu-current {
+  display: block;
+  white-space: nowrap;
+}
 
-      .updated {
-        margin: 0 0 12px;
-        color: var(--ink);
-        font-weight: 800;
-      }
+.language-menu-kicker {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
 
-      .intro {
-        max-width: 670px;
-        margin: 0;
-        color: var(--body);
-        font-size: 19px;
-        line-height: 1.55;
-      }
+.language-menu-current {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+}
 
-      section {
-        scroll-margin-top: 34px;
-        margin-bottom: 62px;
-      }
+.language-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(10, 37, 64, 0.14);
+}
 
-      h2 {
-        margin: 0 0 25px;
-        color: var(--ink);
-        font-size: 34px;
-        line-height: 1.18;
-        letter-spacing: 0;
-      }
+.language-menu-panel a {
+  padding: 9px 10px;
+  border-radius: 4px;
+  color: var(--body);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
 
-      h3 {
-        margin: 34px 0 10px;
-        color: var(--ink);
-        font-size: 19px;
-        line-height: 1.4;
-        letter-spacing: 0;
-      }
+.language-menu-panel a:hover,
+.language-menu-panel a.is-active {
+  background: #f6f9fc;
+  color: var(--accent);
+}
 
-      p {
-        max-width: 720px;
-        margin: 0 0 25px;
-        color: var(--body);
-        font-size: 18px;
-        line-height: 1.62;
-        overflow-wrap: anywhere;
-      }
+.legal-shell {
+  width: calc(100% - 48px);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding-top: 54px;
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(0, var(--content));
+  column-gap: 34px;
+  align-items: start;
+}
 
-      ul {
-        max-width: 720px;
-        margin: 0 0 26px;
-        padding: 0;
-        list-style: none;
-      }
+.legal-sidebar {
+  min-width: 0;
+}
 
-      li {
-        position: relative;
-        margin: 0 0 14px;
-        padding-left: 28px;
-        color: var(--body);
-        font-size: 18px;
-        line-height: 1.62;
-        overflow-wrap: anywhere;
-      }
+.legal-nav {
+  position: sticky;
+  top: 28px;
+  padding-top: 2px;
+  color: var(--muted);
+  font-size: 15px;
+}
 
-      li::before {
-        position: absolute;
-        left: 2px;
-        top: 0.72em;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #d6dee8;
-        content: "";
-      }
+.legal-nav .eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
 
-      .callout {
-        max-width: 720px;
-        margin: 30px 0 34px;
-        padding: 22px 26px;
-        border-left: 2px solid var(--accent);
-        background: linear-gradient(90deg, rgba(99, 91, 255, 0.06), rgba(99, 91, 255, 0));
-      }
+.legal-nav strong {
+  display: block;
+  margin-bottom: 7px;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.45;
+}
 
-      .callout p {
-        margin: 0;
-      }
+.legal-nav a {
+  display: block;
+  padding: 4px 0 4px 16px;
+  color: var(--muted);
+  line-height: 1.45;
+}
 
-      .footer {
-        width: calc(100% - 48px);
-        max-width: var(--page);
-        margin: 0 auto;
-        padding: 28px 0 56px calc(var(--sidebar) + 34px);
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 14px;
-      }
+.legal-nav a:hover {
+  color: var(--accent);
+}
 
-      @media (max-width: 860px) {
-        body {
-          background: var(--bg);
-          overflow-x: hidden;
-        }
+.legal-main {
+  min-width: 0;
+  max-width: 100%;
+  padding: 16px 32px 90px;
+}
 
-        .site-header,
-        .page,
-        .footer {
-          width: calc(100% - 32px);
-          max-width: var(--page);
-        }
+.legal-main:focus {
+  outline: none;
+}
 
-        .page {
-          display: block;
-          padding-top: 34px;
-        }
+.doc-title {
+  margin: 0 0 58px;
+}
 
-        main {
-          min-width: 0;
-          padding: 0 0 90px;
-        }
+.updated {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-weight: 800;
+}
 
-        .legal-nav {
-          display: none;
-        }
+h1 {
+  margin: 0 0 52px;
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 60px;
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
-        h1 {
-          margin-bottom: 36px;
-          max-width: 100%;
-          font-size: clamp(38px, 10.5vw, 44px);
-          letter-spacing: 0;
-        }
+.intro {
+  max-width: 670px;
+  margin: 0;
+  color: var(--body);
+  font-size: 19px;
+  line-height: 1.55;
+}
 
-        h2 {
-          font-size: 30px;
-        }
+.legal-content section,
+.legal-content h2 {
+  scroll-margin-top: 34px;
+}
 
-        p,
-        li,
-        .intro {
-          font-size: 17px;
-          overflow-wrap: anywhere;
-          word-break: normal;
-        }
+.legal-content h2 {
+  margin: 62px 0 25px;
+  color: var(--ink);
+  font-size: 34px;
+  line-height: 1.18;
+  letter-spacing: 0;
+}
 
-        .footer {
-          padding-left: 0;
-        }
-      }
+.legal-content h2:first-child {
+  margin-top: 0;
+}
+
+.legal-content h3 {
+  margin: 34px 0 10px;
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.legal-content p {
+  max-width: 690px;
+  margin: 0 0 18px;
+  color: var(--body);
+}
+
+.legal-content ul {
+  max-width: 690px;
+  margin: 0 0 24px;
+  padding-left: 21px;
+  color: var(--body);
+}
+
+.legal-content li {
+  margin: 9px 0;
+  padding-left: 4px;
+}
+
+.legal-content li::marker {
+  color: var(--green);
+}
+
+.legal-content strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.legal-content code {
+  border-radius: 4px;
+  padding: 2px 5px;
+  background: #f6f9fc;
+  color: var(--ink);
+  font-size: 0.92em;
+}
+
+.legal-content table {
+  width: 100%;
+  margin: 28px 0 36px;
+  border-collapse: collapse;
+  color: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.legal-content th {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.legal-content th,
+.legal-content td {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-content tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 860px) {
+  body {
+    background: var(--bg);
+  }
+
+  .site-header {
+    width: calc(100% - 32px);
+    height: 64px;
+  }
+
+  .wordmark {
+    font-size: 23px;
+  }
+
+  .header-actions {
+    gap: 14px;
+  }
+
+  .legal-shell {
+    width: calc(100% - 32px);
+    padding-top: 28px;
+    display: block;
+  }
+
+  .legal-sidebar {
+    margin-bottom: 34px;
+  }
+
+  .legal-nav {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    font-size: 14px;
+  }
+
+  .legal-nav .eyebrow,
+  .legal-nav strong {
+    grid-column: 1 / -1;
+  }
+
+  .legal-nav a {
+    padding-left: 0;
+  }
+
+  .legal-main {
+    padding: 0 0 70px;
+  }
+
+  h1 {
+    margin-bottom: 30px;
+    font-size: 34px;
+    line-height: 1.12;
+  }
+
+  .doc-title {
+    margin-bottom: 42px;
+  }
+
+  .intro {
+    font-size: 17px;
+  }
+
+  .legal-content h2 {
+    margin-top: 48px;
+    font-size: 28px;
+  }
+
+  .legal-content table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .top-nav {
+    display: none;
+  }
+
+  .language-menu summary {
+    min-width: 104px;
+    padding: 7px 9px;
+  }
+
+  .language-menu-kicker {
+    display: none;
+  }
+
+  .language-menu-panel {
+    min-width: 148px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 360px) {
+  .legal-nav {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+}
+
     </style>
   </head>
   <body>
-    <a class="skip-link" href="#main">본문으로 이동</a>
+    <a class="skip-link" href="#main">본문으로 건너뛰기</a>
 
-    <header class="site-header">
-      <a class="wordmark" href="index.html" aria-label="FoodLens">FoodLens</a>
+    <header class="site-header" aria-label="FoodLens">
+      <a class="wordmark" href="#main">FoodLens</a>
+      <div class="header-actions">
+        <nav class="top-nav" aria-label="법적 문서">
+          <a href="index.html">개인정보</a>
+          <a href="terms-of-service.html">약관</a>
+        </nav>
+        <details class="language-menu">
+          <summary>
+            <span class="language-menu-kicker">언어</span>
+            <span class="language-menu-current">한국어</span>
+          </summary>
+          <div class="language-menu-panel">
+            <a class="is-active" aria-current="page" href="terms-of-service.html" hreflang="ko" lang="ko">한국어</a><a href="terms-of-service.en.html" hreflang="en" lang="en">English</a><a href="terms-of-service.ja.html" hreflang="ja" lang="ja">日本語</a><a href="terms-of-service.zh-Hans.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
+          </div>
+        </details>
+      </div>
     </header>
 
-    <div class="page">
-      <nav class="legal-nav" aria-label="법적 문서 내비게이션">
-        <span class="eyebrow">Legal</span>
-        <strong>FoodLens Terms of Service</strong>
-        <a href="index.html">Privacy Policy</a>
-        <a href="#terms-of-service">Terms of Service</a>
-        <a href="#purpose">Purpose</a>
-        <a href="#service-description">Services</a>
-        <a href="#account">Accounts</a>
-        <a href="#disclaimer">Important Disclaimers</a>
-        <a href="#prohibited-conduct">Prohibited Conduct</a>
-        <a href="#ip">Intellectual Property</a>
-        <a href="#privacy-data">Privacy and Data</a>
-        <a href="#service-changes">Service Changes</a>
-        <a href="#law">Governing Law</a>
-        <a href="#contact">Contact Us</a>
-        <a href="#effective-date">Effective Date</a>
-      </nav>
+    <div class="legal-shell">
+      <aside class="legal-sidebar">
+        <nav class="legal-nav" aria-label="이용약관 목차">
+          <span class="eyebrow">Terms of Service</span>
+          <strong>이용약관 (Terms of Service)</strong>
+          <a href="#purpose">목적</a>
+          <a href="#service-description">서비스 내용</a>
+          <a href="#account">계정 및 이용 조건</a>
+          <a href="#disclaimer">면책 조항</a>
+          <a href="#prohibited-conduct">금지 행위</a>
+          <a href="#ip">지식재산권</a>
+          <a href="#privacy-data">개인정보 및 삭제</a>
+          <a href="#service-changes">변경 및 책임 제한</a>
+          <a href="#law">준거법 및 분쟁</a>
+          <a href="#contact">문의처</a>
+          <a href="#effective-date">시행일</a>
+        </nav>
+      </aside>
 
-      <main id="main" tabindex="-1">
-        <section id="terms-of-service" class="doc-title">
-          <h1>Terms of Service</h1>
-          <p class="updated">Effective: 2026년 4월 9일</p>
-          <p class="intro">
-            본 약관은 FoodLens가 제공하는 음식 분석, 알레르기 경고, 여행자 카드, 히스토리 및 관련 부가 기능의 이용 조건을 규정합니다.
-          </p>
+      <main id="main" class="legal-main" tabindex="-1">
+        <section class="doc-title" aria-labelledby="doc-title">
+          <p class="updated">시행일자 2026년 4월 9일</p>
+          <h1 id="doc-title">이용약관 (Terms of Service)</h1>
+          <p class="intro">FoodLens 서비스 이용 조건과 사용자 책임, 데이터 삭제, 서비스 한계를 안내합니다.</p>
         </section>
 
-        <section id="purpose">
-          <h2>Purpose</h2>
-          <p>
-            FoodLens(이하 “서비스”)는 사용자가 음식, 라벨, 바코드 정보를 더 안전하게 이해하도록 돕기 위해 제공됩니다.
-            본 Terms of Service는 서비스 이용 조건, 사용자의 책임, 금지 행위, 개인정보 및 데이터 삭제, 책임 제한을 설명합니다.
-          </p>
-        </section>
-
-        <section id="service-description">
-          <h2>Services</h2>
-          <p>서비스는 다음 기능을 포함할 수 있습니다.</p>
-          <ul>
-            <li>음식/라벨/바코드 분석</li>
-            <li>사용자 알레르기 및 식이 제한 기반 경고</li>
-            <li>프로필, 설정, 히스토리, 푸드 패스포트</li>
-            <li>지원 문의, 개인정보처리방침 및 약관 제공</li>
-            <li>계정/데이터 삭제 요청</li>
-          </ul>
-          <p>서비스 내용은 운영상 또는 기술상 필요에 따라 변경되거나 일부 중단될 수 있습니다.</p>
-        </section>
-
-        <section id="account">
-          <h2>Accounts and Eligibility</h2>
-          <ul>
-            <li>일부 기능은 로그인 없이 접근될 수 있으나, 개인화 기능과 클라우드 동기화는 로그인 후 이용합니다.</li>
-            <li>사용자는 정확한 계정 정보를 제공하고 본인 계정을 안전하게 관리할 책임이 있습니다.</li>
-            <li>이메일 로그인 사용자는 인증 절차를 완료해야 할 수 있습니다.</li>
-          </ul>
-        </section>
-
-        <section id="disclaimer">
-          <h2>Important Disclaimers</h2>
-          <p>
-            FoodLens는 AI를 활용해 정보를 제공하지만, <strong>의료 진단이나 전문 영양 상담을 대체하지 않습니다</strong>.
-          </p>
-          <div class="callout">
-            <p>음식 섭취 여부에 대한 최종 판단 책임은 사용자에게 있습니다. 심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단을 우선해야 합니다.</p>
-          </div>
-          <ul>
-            <li>분석 결과는 실제 성분과 다를 수 있습니다.</li>
-            <li>복합 조리 음식, 불분명한 사진, 누락된 라벨 정보에서는 오류가 생길 수 있습니다.</li>
-            <li>음식 섭취 여부에 대한 최종 판단 책임은 사용자에게 있습니다.</li>
-            <li>심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단을 우선해야 합니다.</li>
-          </ul>
-        </section>
-
-        <section id="prohibited-conduct">
-          <h2>Prohibited Conduct</h2>
-          <p>사용자는 다음 행위를 해서는 안 됩니다.</p>
-          <ul>
-            <li>타인의 계정 또는 정보를 도용하는 행위</li>
-            <li>허위 신고, 악성 자동화 요청, 서비스 남용</li>
-            <li>서비스를 이용한 불법 행위</li>
-            <li>서비스 운영을 방해하거나 보안을 침해하려는 시도</li>
-          </ul>
-        </section>
-
-        <section id="ip">
-          <h2>Intellectual Property</h2>
-          <ul>
-            <li>서비스의 UI, 문서, 분석 결과 표현, 브랜드 자산에 대한 권리는 서비스 운영 주체에 있습니다.</li>
-            <li>사용자가 업로드한 원본 이미지의 권리는 원칙적으로 사용자에게 있습니다.</li>
-            <li>단, 서비스 제공과 운영을 위해 필요한 범위 내에서 해당 콘텐츠를 처리할 수 있습니다.</li>
-          </ul>
-        </section>
-
-        <section id="privacy-data">
-          <h2>Privacy and Data Deletion</h2>
-          <ul>
-            <li>개인정보 처리에 관한 자세한 내용은 <a href="index.html">개인정보처리방침</a>을 따릅니다.</li>
-            <li>사용자는 <code>Delete My Data</code> 또는 <code>Delete Account</code> 요청을 통해 저장된 데이터를 삭제할 수 있습니다.</li>
-            <li>관련 법령, 보안, 분쟁 대응 목적상 일부 기록은 일정 기간 별도 보관될 수 있습니다.</li>
-          </ul>
-        </section>
-
-        <section id="service-changes">
-          <h2>Service Changes and Limitation of Liability</h2>
-          <ul>
-            <li>서비스는 유지보수, 장애 대응, 정책 변경에 따라 전부 또는 일부가 변경되거나 중단될 수 있습니다.</li>
-            <li>서비스는 가용성과 정확성을 높이기 위해 노력하지만, 항상 완전무결한 상태를 보장하지는 않습니다.</li>
-          </ul>
-        </section>
-
-        <section id="law">
-          <h2>Governing Law and Disputes</h2>
-          <p>본 약관은 대한민국 법률을 따르며, 관련 분쟁은 대한민국 법원 관할을 따릅니다.</p>
-        </section>
-
-        <section id="contact">
-          <h2>Contact Us</h2>
-          <ul>
-            <li>운영 주체: <strong>FoodLens Team</strong></li>
-            <li>문의 이메일: <strong><a href="mailto:support@foodlens.com">support@foodlens.com</a></strong></li>
-          </ul>
-        </section>
-
-        <section id="effective-date">
-          <h2>Effective Date</h2>
-          <p>본 약관은 2026년 4월 9일부터 시행합니다.</p>
-        </section>
+        <article class="legal-content">
+<h2 id="purpose">1. 목적</h2>
+<p>본 약관은 FoodLens(이하 &quot;서비스&quot;)가 제공하는 음식 분석, 알레르기 경고, 여행자 카드, 히스토리 및 관련 부가 기능의 이용 조건을 규정합니다.</p>
+<h2 id="service-description">2. 서비스 내용</h2>
+<p>서비스는 다음 기능을 포함할 수 있습니다.</p>
+<ul><li>음식/라벨/바코드 분석</li><li>사용자 알레르기 및 식이 제한 기반 경고</li><li>프로필, 설정, 히스토리, 푸드 패스포트</li><li>지원 문의, 개인정보처리방침 및 약관 제공</li><li>계정/데이터 삭제 요청</li></ul>
+<p>서비스 내용은 운영상 또는 기술상 필요에 따라 변경되거나 일부 중단될 수 있습니다.</p>
+<h2 id="account">3. 계정 및 이용 조건</h2>
+<ul><li>일부 기능은 로그인 없이 접근될 수 있으나, 개인화 기능과 클라우드 동기화는 로그인 후 이용합니다.</li><li>사용자는 정확한 계정 정보를 제공하고 본인 계정을 안전하게 관리할 책임이 있습니다.</li><li>이메일 로그인 사용자는 인증 절차를 완료해야 할 수 있습니다.</li></ul>
+<h2 id="disclaimer">4. 중요한 면책 조항</h2>
+<p>FoodLens는 AI를 활용해 정보를 제공하지만, <strong>의료 진단이나 전문 영양 상담을 대체하지 않습니다</strong>.</p>
+<ul><li>분석 결과는 실제 성분과 다를 수 있습니다.</li><li>복합 조리 음식, 불분명한 사진, 누락된 라벨 정보에서는 오류가 생길 수 있습니다.</li><li>음식 섭취 여부에 대한 최종 판단 책임은 사용자에게 있습니다.</li><li>심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단을 우선해야 합니다.</li></ul>
+<h2 id="prohibited-conduct">5. 금지 행위</h2>
+<p>사용자는 다음 행위를 해서는 안 됩니다.</p>
+<ul><li>타인의 계정 또는 정보를 도용하는 행위</li><li>허위 신고, 악성 자동화 요청, 서비스 남용</li><li>서비스를 이용한 불법 행위</li><li>서비스 운영을 방해하거나 보안을 침해하려는 시도</li></ul>
+<h2 id="ip">6. 지식재산권</h2>
+<ul><li>서비스의 UI, 문서, 분석 결과 표현, 브랜드 자산에 대한 권리는 서비스 운영 주체에 있습니다.</li><li>사용자가 업로드한 원본 이미지의 권리는 원칙적으로 사용자에게 있습니다.</li><li>단, 서비스 제공과 운영을 위해 필요한 범위 내에서 해당 콘텐츠를 처리할 수 있습니다.</li></ul>
+<h2 id="privacy-data">7. 개인정보 및 데이터 삭제</h2>
+<ul><li>개인정보 처리에 관한 자세한 내용은 개인정보처리방침을 따릅니다.</li><li>사용자는 <code>Delete My Data</code> 또는 <code>Delete Account</code> 요청을 통해 저장된 데이터를 삭제할 수 있습니다.</li><li>관련 법령, 보안, 분쟁 대응 목적상 일부 기록은 일정 기간 별도 보관될 수 있습니다.</li></ul>
+<h2 id="service-changes">8. 서비스 변경, 중단, 책임 제한</h2>
+<ul><li>서비스는 유지보수, 장애 대응, 정책 변경에 따라 전부 또는 일부가 변경되거나 중단될 수 있습니다.</li><li>서비스는 가용성과 정확성을 높이기 위해 노력하지만, 항상 완전무결한 상태를 보장하지는 않습니다.</li></ul>
+<h2 id="law">9. 준거법 및 분쟁</h2>
+<p>본 약관은 대한민국 법률을 따르며, 관련 분쟁은 대한민국 법원 관할을 따릅니다.</p>
+<h2 id="contact">10. 문의처</h2>
+<ul><li>운영 주체: <strong>FoodLens Team</strong></li><li>문의 이메일: <strong>support@foodlens.com</strong></li></ul>
+<h2 id="effective-date">11. 시행일</h2>
+<p>본 약관은 2026년 4월 9일부터 시행합니다.</p>
+        </article>
       </main>
     </div>
-
-    <footer class="footer">
-      FoodLens Terms of Service
-    </footer>
-
   </body>
 </html>

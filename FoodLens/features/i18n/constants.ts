@@ -1,6 +1,8 @@
 import { CanonicalLocale, ResolvedLocale, TranslationDictionary } from './types';
 const enResource = require('./resources/en.json') as TranslationDictionary;
 const koResource = require('./resources/ko.json') as TranslationDictionary;
+const jaResource = require('./resources/ja-JP.json') as TranslationDictionary;
+const zhHansResource = require('./resources/zh-Hans.json') as TranslationDictionary;
 
 export const I18N_SETTINGS_KEY = 'foodlens_i18n_settings_v1';
 
@@ -42,10 +44,8 @@ export const LANGUAGE_LABELS: Record<CanonicalLocale, string> = {
 export const TRANSLATIONS: Record<ResolvedLocale, TranslationDictionary> = {
   'en-US': enResource,
   'ko-KR': koResource,
-  // Until dedicated dictionaries ship, use English fallback dictionaries
-  // instead of empty maps to avoid translation-key leaks in UI.
-  'ja-JP': enResource,
-  'zh-Hans': enResource,
+  'ja-JP': jaResource,
+  'zh-Hans': zhHansResource,
   'th-TH': enResource,
   'vi-VN': enResource,
   'fr-FR': enResource,

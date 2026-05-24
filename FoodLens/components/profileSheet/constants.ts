@@ -20,4 +20,6 @@ export const UI_LANGUAGE_OPTIONS: LanguageOptionSeed[] = [
     { code: 'auto', flag: '📱' },
     { code: 'ko-KR', flag: '🇰🇷' },
     { code: 'en-US', flag: '🇺🇸' },
+    { code: 'ja-JP', flag: '🇯🇵' },
+    { code: 'zh-Hans', flag: '🇨🇳' },
 ];

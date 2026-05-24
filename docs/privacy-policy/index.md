@@ -1,39 +1,62 @@
 ---
 layout: legal
+lang: ko
 title: 개인정보처리방침 (Privacy Policy)
 description: FoodLens 개인정보처리방침
 nav_eyebrow: Privacy Policy
 effective_date: 시행일자 2026년 4월 9일
 lead: FoodLens는 사용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 본 방침은 서비스가 어떤 정보를 수집하고, 왜 사용하며, 어디에 보관하고, 사용자가 어떤 권리를 가지는지 설명합니다.
+skip_label: 본문으로 건너뛰기
+top_nav_label: 법적 문서
+contents_label: 개인정보처리방침 목차
+language_menu_label: 언어
+language_label: 한국어
+privacy_href: /docs/privacy-policy/
+terms_href: /docs/terms-of-service/
+privacy_nav_label: 개인정보
+terms_nav_label: 약관
+language_options:
+  - label: 한국어
+    lang: ko
+    href: /docs/privacy-policy/
+  - label: English
+    lang: en
+    href: /docs/privacy-policy/en/
+  - label: 日本語
+    lang: ja
+    href: /docs/privacy-policy/ja/
+  - label: 简体中文
+    lang: zh-Hans
+    href: /docs/privacy-policy/zh-Hans/
 nav:
   - label: 처리 주체
-    href: "#1-개인정보-처리-주체"
+    href: "#controller"
   - label: 수집 정보
-    href: "#2-수집하는-정보"
+    href: "#collected-data"
   - label: 이용 목적
-    href: "#3-개인정보-이용-목적"
+    href: "#purposes"
   - label: 제3자 제공
-    href: "#4-제3자-제공-및-처리-위탁"
+    href: "#processors"
   - label: 보관 기간
-    href: "#5-보관-기간"
+    href: "#retention"
   - label: 사용자 권리
-    href: "#6-사용자의-권리"
+    href: "#rights"
   - label: 안전성 및 한계
-    href: "#7-안전성-및-한계"
+    href: "#safety-limits"
   - label: 국제 이전
-    href: "#8-국제-이전"
+    href: "#international-transfer"
   - label: 문의처
-    href: "#9-문의처"
+    href: "#contact"
   - label: 개정 안내
-    href: "#10-개정-안내"
+    href: "#changes"
 ---
 
-## 1. 개인정보 처리 주체
+## 1. 개인정보 처리 주체 {#controller}
 
 - 운영 주체: **FoodLens Team**
 - 문의 이메일: **support@foodlens.com**
 
-## 2. 수집하는 정보
+## 2. 수집하는 정보 {#collected-data}
 
 서비스는 사용자가 선택한 기능에 따라 아래 정보를 처리할 수 있습니다.
 
@@ -71,7 +94,7 @@ nav:
 
 위 권한은 사용자가 허용한 경우에만 사용합니다.
 
-## 3. 개인정보 이용 목적
+## 3. 개인정보 이용 목적 {#purposes}
 
 서비스는 수집한 정보를 다음 목적으로 사용합니다.
 
@@ -83,7 +106,7 @@ nav:
 - 서비스 품질 개선, 장애 대응, 부정 사용 방지
 - 법령상 의무 이행 및 분쟁 대응
 
-## 4. 제3자 제공 및 처리 위탁
+## 4. 제3자 제공 및 처리 위탁 {#processors}
 
 서비스는 기능 제공을 위해 필요한 범위에서 아래 업체/서비스를 사용합니다.
 
@@ -97,7 +120,7 @@ nav:
 
 서비스는 사용자의 개인정보를 판매하지 않습니다.
 
-## 5. 보관 기간
+## 5. 보관 기간 {#retention}
 
 서비스는 목적 달성 후 지체 없이 파기하는 것을 원칙으로 하되, 운영/보안/법적 의무를 위해 필요한 범위에서 일정 기간 보관할 수 있습니다.
 
@@ -107,7 +130,7 @@ nav:
 - 운영 로그: 기본 **14일**
 - 인증/비밀번호 재설정/삭제 요청 관련 기록: 보안 및 운영 목적으로 필요한 기간 동안 별도 보관 가능
 
-## 6. 사용자의 권리
+## 6. 사용자의 권리 {#rights}
 
 사용자는 다음 권리를 가집니다.
 
@@ -119,22 +142,22 @@ nav:
 - **Delete Account** 요청
   - 계정 및 관련 데이터를 삭제하고 세션을 무효화합니다.
 
-## 7. 안전성 및 한계
+## 7. 안전성 및 한계 {#safety-limits}
 
 - FoodLens는 음식 안전 판단을 돕는 보조 도구이며, 의료 진단이나 전문 영양 상담을 대체하지 않습니다.
 - AI 분석 결과는 100% 정확하지 않을 수 있으므로, 심각한 알레르기나 건강 문제가 있는 경우 반드시 전문가 판단과 함께 사용해야 합니다.
 
-## 8. 국제 이전
+## 8. 국제 이전 {#international-transfer}
 
 서비스가 사용하는 일부 처리자(Google, Render, SendGrid, Sentry 등)는 대한민국 외 지역에서 데이터를 처리할 수 있습니다. 서비스는 필요한 경우 적절한 보호조치를 전제로 해당 서비스를 사용합니다.
 
-## 9. 문의처
+## 9. 문의처 {#contact}
 
 개인정보 처리와 관련한 문의는 아래로 접수해 주세요.
 
 - 이메일: **support@foodlens.com**
 
-## 10. 개정 안내
+## 10. 개정 안내 {#changes}
 
 본 방침은 법령 또는 서비스 변경에 따라 수정될 수 있으며, 중요한 변경이 있는 경우 앱 또는 문서를 통해 안내합니다.
 
