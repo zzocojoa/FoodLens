@@ -6,9 +6,9 @@
     <title>{{ page.title | escape }} | FoodLens</title>
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <link rel="canonical" href="{{ page.url | absolute_url }}">
-    <link rel="icon" type="image/png" sizes="48x48" href="{{ '/assets/images/favicon.png?v=foodlens-logo-20260524' | relative_url }}">
-    <link rel="shortcut icon" type="image/x-icon" href="{{ '/favicon.ico?v=foodlens-logo-20260524' | relative_url }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ '/apple-touch-icon.png?v=foodlens-logo-20260524' | relative_url }}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{{ '/assets/images/favicon.png?v=foodlens-brand-20260524' | relative_url }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ '/favicon.ico?v=foodlens-brand-20260524' | relative_url }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ '/apple-touch-icon.png?v=foodlens-brand-20260524' | relative_url }}">
     {% for option in page.language_options %}
     <link rel="alternate" hreflang="{{ option.lang }}" href="{{ option.href | absolute_url }}">
     {% endfor %}
