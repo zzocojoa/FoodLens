@@ -8,8 +8,13 @@ effective_date: "Effective date: April 9, 2026"
 lead: FoodLens respects your privacy and follows applicable privacy laws. This policy explains what information the service collects, why it is used, where it is stored, and what rights and choices you have.
 skip_label: Skip to main content
 top_nav_label: Legal documents
+contents_label: Privacy Policy contents
 language_menu_label: Language
 language_label: English
+privacy_href: /docs/privacy-policy/en/
+terms_href: /docs/terms-of-service/en/
+privacy_nav_label: Privacy
+terms_nav_label: Terms
 language_options:
   - label: 한국어
     lang: ko

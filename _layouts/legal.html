@@ -18,19 +18,19 @@
       <a class="wordmark" href="{{ '/' | relative_url }}">FoodLens</a>
       <div class="header-actions">
         <nav class="top-nav" aria-label="{{ page.top_nav_label | default: 'Legal documents' }}">
-          <a href="{{ '/docs/privacy-policy/' | relative_url }}">Privacy</a>
-          <a href="{{ '/docs/terms-of-service/' | relative_url }}">Terms</a>
+          <a href="{{ page.privacy_href | default: '/docs/privacy-policy/' | relative_url }}">{{ page.privacy_nav_label | default: 'Privacy' }}</a>
+          <a href="{{ page.terms_href | default: '/docs/terms-of-service/' | relative_url }}">{{ page.terms_nav_label | default: 'Terms' }}</a>
         </nav>
         {% if page.language_options %}
         <details class="language-menu">
-          <summary aria-label="{{ page.language_menu_label | default: 'Language' }}">
+          <summary>
             <span class="language-menu-kicker">{{ page.language_menu_label | default: 'Language' }}</span>
             <span class="language-menu-current">{{ page.language_label | default: page.lang | default: 'Language' }}</span>
           </summary>
           <div class="language-menu-panel">
             {% for option in page.language_options %}
             <a
-              {% if option.lang == page.lang %}class="is-active"{% endif %}
+              {% if option.lang == page.lang %}class="is-active" aria-current="page"{% endif %}
               href="{{ option.href | relative_url }}"
               hreflang="{{ option.lang }}"
               lang="{{ option.lang }}"
@@ -44,7 +44,7 @@
 
     <div class="legal-shell">
       <aside class="legal-sidebar">
-        <nav class="legal-nav" aria-label="{{ page.title | escape }} 목차">
+        <nav class="legal-nav" aria-label="{{ page.contents_label | default: page.title | escape }}">
           <span class="eyebrow">{{ page.nav_eyebrow | default: 'Legal' }}</span>
           <strong>{{ page.title }}</strong>
           {% for item in page.nav %}

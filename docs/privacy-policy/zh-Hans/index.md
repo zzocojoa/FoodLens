@@ -3,13 +3,18 @@ layout: legal
 lang: zh-Hans
 title: 隐私政策
 description: FoodLens 隐私政策
-nav_eyebrow: Privacy Policy
+nav_eyebrow: 隐私政策
 effective_date: 生效日期：2026年4月9日
 lead: FoodLens重视用户的个人信息，并遵守适用的隐私法律。本政策说明服务会收集哪些信息、为何使用、保存在哪里，以及用户拥有哪些权利和选择。
 skip_label: 跳转到正文
 top_nav_label: 法律文档
+contents_label: 隐私政策目录
 language_menu_label: 语言
 language_label: 简体中文
+privacy_href: /docs/privacy-policy/zh-Hans/
+terms_href: /docs/terms-of-service/zh-Hans/
+privacy_nav_label: 隐私政策
+terms_nav_label: 服务条款
 language_options:
   - label: 한국어
     lang: ko
@@ -108,7 +113,7 @@ FoodLens将收集的信息用于以下目的。
 | 类别 | 接收方 / 处理方 | 目的 | 主要处理信息 |
 | --- | --- | --- | --- |
 | AI分析 | Google LLC | 基于Gemini的食物和标签分析 | 分析图片、分析提示所需的文本上下文 |
-| 云服务 / 存储 | Google Cloud Platform | 媒体保存和signed render提供 | 上传图片、衍生缩略图、渲染信息 |
+| 云服务 / 存储 | Google Cloud Platform | 媒体保存和签名渲染服务 | 上传图片、衍生缩略图、渲染信息 |
 | 应用托管 | Render | 后端API运营 | 账号、个人资料、设置、历史记录、运营日志 |
 | 邮件发送 | SendGrid(SMTP) | 邮箱认证、密码重置邮件发送 | 邮箱地址、邮件发送元数据 |
 | 错误追踪（启用时） | Sentry | 故障分析和质量改进 | 应用 / 服务器错误诊断信息 |

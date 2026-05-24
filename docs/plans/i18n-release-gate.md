@@ -13,6 +13,8 @@ taskID: `I18N-P1-T013`
   2. `npx tsc --noEmit`
   3. `npm run lint`
 - CI 실행: `.github/workflows/i18n-release-gate.yml`
+  - `python3 docs/scripts/validate_legal_docs.py`
+  - `python3 docs/scripts/render_legal_artifacts.py --check`
   - `npm run i18n:release-gate`
   - i18n 회귀 Jest 테스트:
     - `features/i18n/__tests__/constants.test.ts`
@@ -23,6 +25,8 @@ taskID: `I18N-P1-T013`
 ### 통과 기준
 - 모든 명령이 exit code 0
 - i18n 키 누락/하드코딩 UI 문자열 검출 0건
+- 법적 문서 언어 링크, 목차 anchor, 정적 미리보기 링크 검증 통과
+- 법적 문서 정적 미리보기가 canonical Markdown 재생성 결과와 일치
 - TypeScript error 0건
 - ESLint error 0건
 

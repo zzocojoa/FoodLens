@@ -73,6 +73,7 @@ curl --fail-with-body -L \
         "backend-auth-runtime",
         "mobile-auth-runtime",
         "sync-regression",
+        "i18n-release-gate",
         "backend-media-performance-regression",
         "bundle-size",
         "mobile-e2e",

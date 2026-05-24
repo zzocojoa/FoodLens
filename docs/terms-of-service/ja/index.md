@@ -3,13 +3,18 @@ layout: legal
 lang: ja
 title: 利用規約
 description: FoodLens 利用規約
-nav_eyebrow: Terms of Service
+nav_eyebrow: 利用規約
 effective_date: "施行日: 2026年4月9日"
 lead: FoodLensのサービス利用条件、利用者の責任、データ削除、サービスの限界について説明します。
 skip_label: 本文へ移動
 top_nav_label: 法的文書
+contents_label: 利用規約目次
 language_menu_label: 言語
 language_label: 日本語
+privacy_href: /docs/privacy-policy/ja/
+terms_href: /docs/terms-of-service/ja/
+privacy_nav_label: プライバシー
+terms_nav_label: 利用規約
 language_options:
   - label: 한국어
     lang: ko

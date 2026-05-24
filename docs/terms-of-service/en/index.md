@@ -8,8 +8,13 @@ effective_date: "Effective date: April 9, 2026"
 lead: These terms explain the conditions for using FoodLens, user responsibilities, data deletion, and service limitations.
 skip_label: Skip to main content
 top_nav_label: Legal documents
+contents_label: Terms of Service contents
 language_menu_label: Language
 language_label: English
+privacy_href: /docs/privacy-policy/en/
+terms_href: /docs/terms-of-service/en/
+privacy_nav_label: Privacy
+terms_nav_label: Terms
 language_options:
   - label: 한국어
     lang: ko

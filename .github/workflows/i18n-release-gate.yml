@@ -16,6 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Validate legal docs language links
+        working-directory: .
+        run: |
+          python3 docs/scripts/validate_legal_docs.py
+          python3 docs/scripts/render_legal_artifacts.py --check
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:

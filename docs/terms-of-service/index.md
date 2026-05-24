@@ -8,8 +8,13 @@ effective_date: 시행일자 2026년 4월 9일
 lead: FoodLens 서비스 이용 조건과 사용자 책임, 데이터 삭제, 서비스 한계를 안내합니다.
 skip_label: 본문으로 건너뛰기
 top_nav_label: 법적 문서
+contents_label: 이용약관 목차
 language_menu_label: 언어
 language_label: 한국어
+privacy_href: /docs/privacy-policy/
+terms_href: /docs/terms-of-service/
+privacy_nav_label: 개인정보
+terms_nav_label: 약관
 language_options:
   - label: 한국어
     lang: ko

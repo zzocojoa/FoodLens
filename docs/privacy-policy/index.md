@@ -8,8 +8,13 @@ effective_date: 시행일자 2026년 4월 9일
 lead: FoodLens는 사용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 본 방침은 서비스가 어떤 정보를 수집하고, 왜 사용하며, 어디에 보관하고, 사용자가 어떤 권리를 가지는지 설명합니다.
 skip_label: 본문으로 건너뛰기
 top_nav_label: 법적 문서
+contents_label: 개인정보처리방침 목차
 language_menu_label: 언어
 language_label: 한국어
+privacy_href: /docs/privacy-policy/
+terms_href: /docs/terms-of-service/
+privacy_nav_label: 개인정보
+terms_nav_label: 약관
 language_options:
   - label: 한국어
     lang: ko

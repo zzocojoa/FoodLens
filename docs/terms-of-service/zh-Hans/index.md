@@ -3,13 +3,18 @@ layout: legal
 lang: zh-Hans
 title: 服务条款
 description: FoodLens 服务条款
-nav_eyebrow: Terms of Service
+nav_eyebrow: 服务条款
 effective_date: 生效日期：2026年4月9日
 lead: 本条款说明FoodLens服务的使用条件、用户责任、数据删除以及服务限制。
 skip_label: 跳转到正文
 top_nav_label: 法律文档
+contents_label: 服务条款目录
 language_menu_label: 语言
 language_label: 简体中文
+privacy_href: /docs/privacy-policy/zh-Hans/
+terms_href: /docs/terms-of-service/zh-Hans/
+privacy_nav_label: 隐私政策
+terms_nav_label: 服务条款
 language_options:
   - label: 한국어
     lang: ko

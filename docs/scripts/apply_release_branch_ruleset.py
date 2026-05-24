@@ -23,6 +23,7 @@ REQUIRED_STATUS_CHECKS: tuple[str, ...] = (
     "backend-auth-runtime",
     "mobile-auth-runtime",
     "sync-regression",
+    "i18n-release-gate",
     "pr-policy-check",
     "image-hydration-policy",
     "backend-media-performance-regression",
