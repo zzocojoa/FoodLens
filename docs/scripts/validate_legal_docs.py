@@ -5,6 +5,7 @@ import re
 import sys
 from pathlib import Path
 from typing import TypeAlias
+from urllib.parse import urlsplit
 
 
 ScalarMap: TypeAlias = dict[str, str]
@@ -204,7 +205,10 @@ def validate_artifact_links(repo_root: Path, doc_name: str, language: str, rel_p
     for href in re.findall(r'href="([^"]+)"', text):
         if href.startswith("#") or href.startswith("mailto:"):
             continue
-        target = path.parent / href
+        target_path = urlsplit(href).path
+        if not target_path:
+            continue
+        target = path.parent / target_path
         if not target.is_file():
             errors.append(f"{path}: artifact link points to missing file: {href}")
     return errors

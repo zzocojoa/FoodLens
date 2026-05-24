@@ -17,6 +17,35 @@ LEGAL_DOC_MAP: dict[tuple[str, str], str] = {
 ARTIFACT_MAP: dict[tuple[str, str], str] = {
     (doc_name, language): rel_path for doc_name, language, rel_path in ARTIFACTS
 }
+FAVICON_HREF = "../../assets/images/favicon.png?v=foodlens-logo"
+BRAND_ICON = """<svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
+            <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
+            <path d="M12.55 12.25 16.2 18"></path>
+          </svg>"""
+PRIVACY_ICON = """<svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 3.5 18.75 6v5.15c0 4.2-2.72 7.42-6.75 9.35-4.03-1.93-6.75-5.15-6.75-9.35V6L12 3.5Z"></path>
+                <path d="m9.4 12.1 1.75 1.75 3.6-3.7"></path>
+              </svg>"""
+TERMS_ICON = """<svg viewBox="0 0 24 24" focusable="false">
+                <path d="M7.25 3.75h7.5L18.75 8v12.25H7.25V3.75Z"></path>
+                <path d="M14.5 3.95V8.2h4"></path>
+                <path d="M9.75 12.25h6"></path>
+                <path d="M9.75 15.5h4.5"></path>
+              </svg>"""
+LANGUAGE_ICON = """<svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 20.75a8.75 8.75 0 1 0 0-17.5 8.75 8.75 0 0 0 0 17.5Z"></path>
+                <path d="M3.75 12h16.5"></path>
+                <path d="M12 3.25c2.1 2.25 3.15 5.17 3.15 8.75S14.1 18.5 12 20.75C9.9 18.5 8.85 15.58 8.85 12S9.9 5.5 12 3.25Z"></path>
+              </svg>"""
+CONTENTS_ICON = """<svg viewBox="0 0 24 24" focusable="false">
+                <path d="M8.75 6.75h10"></path>
+                <path d="M8.75 12h10"></path>
+                <path d="M8.75 17.25h10"></path>
+                <path d="M5.25 6.75h.01"></path>
+                <path d="M5.25 12h.01"></path>
+                <path d="M5.25 17.25h.01"></path>
+              </svg>"""
 
 
 def render_inline(value: str) -> str:
@@ -134,8 +163,13 @@ def render_language_menu(doc_name: str, language: str, scalars: ScalarMap, optio
     return f'''
         <details class="language-menu">
           <summary>
-            <span class="language-menu-kicker">{html.escape(scalars["language_menu_label"])}</span>
-            <span class="language-menu-current">{html.escape(scalars["language_label"])}</span>
+            <span class="language-menu-icon" aria-hidden="true">
+              {LANGUAGE_ICON}
+            </span>
+            <span class="language-menu-copy">
+              <span class="language-menu-kicker">{html.escape(scalars["language_menu_label"])}</span>
+              <span class="language-menu-current">{html.escape(scalars["language_label"])}</span>
+            </span>
           </summary>
           <div class="language-menu-panel">
             {''.join(links)}
@@ -149,8 +183,15 @@ def render_side_nav(scalars: ScalarMap, nav_items: list[ScalarMap]) -> str:
         for item in nav_items
     )
     return f'''        <nav class="legal-nav" aria-label="{html.escape(scalars["contents_label"])}">
-          <span class="eyebrow">{html.escape(scalars["nav_eyebrow"])}</span>
-          <strong>{html.escape(scalars["title"])}</strong>
+          <div class="legal-nav-heading">
+            <span class="legal-nav-icon" aria-hidden="true">
+              {CONTENTS_ICON}
+            </span>
+            <span class="legal-nav-title">
+              <span class="eyebrow">{html.escape(scalars["nav_eyebrow"])}</span>
+              <strong>{html.escape(scalars["title"])}</strong>
+            </span>
+          </div>
 {nav_links}
         </nav>'''
 
@@ -176,6 +217,7 @@ def render_page(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title} | FoodLens</title>
     <meta name="description" content="{html.escape(scalars["description"])}">
+    <link rel="icon" type="image/png" href="{FAVICON_HREF}">
     <style>
 {css}
     </style>
@@ -184,11 +226,26 @@ def render_page(
     <a class="skip-link" href="#main">{html.escape(scalars["skip_label"])}</a>
 
     <header class="site-header" aria-label="FoodLens">
-      <a class="wordmark" href="#main">FoodLens</a>
+      <a class="wordmark" href="#main" aria-label="FoodLens">
+        <span class="brand-mark" aria-hidden="true">
+          {BRAND_ICON}
+        </span>
+        <span>FoodLens</span>
+      </a>
       <div class="header-actions">
         <nav class="top-nav" aria-label="{html.escape(scalars["top_nav_label"])}">
-          <a href="{privacy_href}">{html.escape(scalars["privacy_nav_label"])}</a>
-          <a href="{terms_href}">{html.escape(scalars["terms_nav_label"])}</a>
+          <a href="{privacy_href}">
+            <span class="nav-icon nav-icon-privacy" aria-hidden="true">
+              {PRIVACY_ICON}
+            </span>
+            <span>{html.escape(scalars["privacy_nav_label"])}</span>
+          </a>
+          <a href="{terms_href}">
+            <span class="nav-icon nav-icon-terms" aria-hidden="true">
+              {TERMS_ICON}
+            </span>
+            <span>{html.escape(scalars["terms_nav_label"])}</span>
+          </a>
         </nav>{language_menu}
       </div>
     </header>

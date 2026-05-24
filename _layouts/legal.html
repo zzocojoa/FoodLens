@@ -6,6 +6,7 @@
     <title>{{ page.title | escape }} | FoodLens</title>
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <link rel="canonical" href="{{ page.url | absolute_url }}">
+    <link rel="icon" type="image/png" href="{{ '/assets/images/favicon.png?v=foodlens-logo' | relative_url }}">
     {% for option in page.language_options %}
     <link rel="alternate" hreflang="{{ option.lang }}" href="{{ option.href | absolute_url }}">
     {% endfor %}
@@ -15,17 +16,53 @@
     <a class="skip-link" href="#main">{{ page.skip_label | default: '본문으로 건너뛰기' }}</a>
 
     <header class="site-header" aria-label="FoodLens">
-      <a class="wordmark" href="{{ '/' | relative_url }}">FoodLens</a>
+      <a class="wordmark" href="{{ '/' | relative_url }}" aria-label="FoodLens">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
+            <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
+            <path d="M12.55 12.25 16.2 18"></path>
+          </svg>
+        </span>
+        <span>FoodLens</span>
+      </a>
       <div class="header-actions">
         <nav class="top-nav" aria-label="{{ page.top_nav_label | default: 'Legal documents' }}">
-          <a href="{{ page.privacy_href | default: '/docs/privacy-policy/' | relative_url }}">{{ page.privacy_nav_label | default: 'Privacy' }}</a>
-          <a href="{{ page.terms_href | default: '/docs/terms-of-service/' | relative_url }}">{{ page.terms_nav_label | default: 'Terms' }}</a>
+          <a href="{{ page.privacy_href | default: '/docs/privacy-policy/' | relative_url }}">
+            <span class="nav-icon nav-icon-privacy" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 3.5 18.75 6v5.15c0 4.2-2.72 7.42-6.75 9.35-4.03-1.93-6.75-5.15-6.75-9.35V6L12 3.5Z"></path>
+                <path d="m9.4 12.1 1.75 1.75 3.6-3.7"></path>
+              </svg>
+            </span>
+            <span>{{ page.privacy_nav_label | default: 'Privacy' }}</span>
+          </a>
+          <a href="{{ page.terms_href | default: '/docs/terms-of-service/' | relative_url }}">
+            <span class="nav-icon nav-icon-terms" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M7.25 3.75h7.5L18.75 8v12.25H7.25V3.75Z"></path>
+                <path d="M14.5 3.95V8.2h4"></path>
+                <path d="M9.75 12.25h6"></path>
+                <path d="M9.75 15.5h4.5"></path>
+              </svg>
+            </span>
+            <span>{{ page.terms_nav_label | default: 'Terms' }}</span>
+          </a>
         </nav>
         {% if page.language_options %}
         <details class="language-menu">
           <summary>
-            <span class="language-menu-kicker">{{ page.language_menu_label | default: 'Language' }}</span>
-            <span class="language-menu-current">{{ page.language_label | default: page.lang | default: 'Language' }}</span>
+            <span class="language-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 20.75a8.75 8.75 0 1 0 0-17.5 8.75 8.75 0 0 0 0 17.5Z"></path>
+                <path d="M3.75 12h16.5"></path>
+                <path d="M12 3.25c2.1 2.25 3.15 5.17 3.15 8.75S14.1 18.5 12 20.75C9.9 18.5 8.85 15.58 8.85 12S9.9 5.5 12 3.25Z"></path>
+              </svg>
+            </span>
+            <span class="language-menu-copy">
+              <span class="language-menu-kicker">{{ page.language_menu_label | default: 'Language' }}</span>
+              <span class="language-menu-current">{{ page.language_label | default: page.lang | default: 'Language' }}</span>
+            </span>
           </summary>
           <div class="language-menu-panel">
             {% for option in page.language_options %}
@@ -45,8 +82,22 @@
     <div class="legal-shell">
       <aside class="legal-sidebar">
         <nav class="legal-nav" aria-label="{{ page.contents_label | default: page.title | escape }}">
-          <span class="eyebrow">{{ page.nav_eyebrow | default: 'Legal' }}</span>
-          <strong>{{ page.title }}</strong>
+          <div class="legal-nav-heading">
+            <span class="legal-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M8.75 6.75h10"></path>
+                <path d="M8.75 12h10"></path>
+                <path d="M8.75 17.25h10"></path>
+                <path d="M5.25 6.75h.01"></path>
+                <path d="M5.25 12h.01"></path>
+                <path d="M5.25 17.25h.01"></path>
+              </svg>
+            </span>
+            <span class="legal-nav-title">
+              <span class="eyebrow">{{ page.nav_eyebrow | default: 'Legal' }}</span>
+              <strong>{{ page.title }}</strong>
+            </span>
+          </div>
           {% for item in page.nav %}
           <a href="{{ item.href }}">{{ item.label }}</a>
           {% endfor %}

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Terms of Service | FoodLens</title>
     <meta name="description" content="FoodLens Terms of Service">
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png?v=foodlens-logo">
     <style>
 :root {
   color-scheme: light;
@@ -17,6 +18,7 @@
   --accent: #635bff;
   --brand: #0074d9;
   --green: #00a88f;
+  --icon-soft: #f6f9fc;
   --sidebar: 230px;
   --content: 810px;
   --page: 1080px;
@@ -112,17 +114,37 @@ summary:focus-visible {
   letter-spacing: 0;
 }
 
-.wordmark::before {
+.brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--brand);
+  background:
+    linear-gradient(135deg, rgba(99, 91, 255, 0.22), transparent 48%),
+    var(--brand);
   color: #fff;
-  content: "F";
-  font-size: 14px;
-  letter-spacing: 0;
+  box-shadow: 0 10px 24px rgba(0, 116, 217, 0.2);
+}
+
+.brand-mark svg,
+.nav-icon svg,
+.language-menu-icon svg,
+.legal-nav-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-mark svg,
+.nav-icon svg,
+.language-menu-icon svg,
+.legal-nav-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .top-nav {
@@ -134,11 +156,22 @@ summary:focus-visible {
 }
 
 .top-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
 }
 
 .top-nav a:hover {
   color: var(--accent);
+}
+
+.nav-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: currentColor;
 }
 
 .header-actions {
@@ -154,10 +187,10 @@ summary:focus-visible {
 
 .language-menu summary {
   display: inline-flex;
-  min-width: 126px;
+  min-width: 142px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
   padding: 8px 11px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -173,6 +206,7 @@ summary:focus-visible {
 }
 
 .language-menu summary::after {
+  flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-right: 1.5px solid var(--muted);
@@ -183,6 +217,22 @@ summary:focus-visible {
 
 .language-menu[open] summary::after {
   transform: translateY(2px) rotate(225deg);
+}
+
+.language-menu-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--accent);
+}
+
+.language-menu-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 2px;
 }
 
 .language-menu-kicker,
@@ -258,16 +308,42 @@ summary:focus-visible {
   font-size: 15px;
 }
 
+.legal-nav-heading {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+  margin-bottom: 7px;
+}
+
+.legal-nav-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--icon-soft);
+  color: var(--accent);
+}
+
+.legal-nav-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.legal-nav-title {
+  min-width: 0;
+}
+
 .legal-nav .eyebrow {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--muted);
   font-weight: 700;
 }
 
 .legal-nav strong {
   display: block;
-  margin-bottom: 7px;
   border-left: 2px solid var(--accent);
   padding-left: 14px;
   color: var(--ink);
@@ -426,6 +502,11 @@ h1 {
     font-size: 23px;
   }
 
+  .brand-mark {
+    width: 25px;
+    height: 25px;
+  }
+
   .header-actions {
     gap: 14px;
   }
@@ -446,6 +527,10 @@ h1 {
     grid-template-columns: 1fr 1fr;
     gap: 4px 12px;
     font-size: 14px;
+  }
+
+  .legal-nav-heading {
+    grid-column: 1 / -1;
   }
 
   .legal-nav .eyebrow,
@@ -493,8 +578,13 @@ h1 {
   }
 
   .language-menu summary {
-    min-width: 104px;
+    min-width: 112px;
     padding: 7px 9px;
+  }
+
+  .language-menu-icon {
+    width: 17px;
+    height: 17px;
   }
 
   .language-menu-kicker {
@@ -526,16 +616,52 @@ h1 {
     <a class="skip-link" href="#main">Skip to main content</a>
 
     <header class="site-header" aria-label="FoodLens">
-      <a class="wordmark" href="#main">FoodLens</a>
+      <a class="wordmark" href="#main" aria-label="FoodLens">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
+            <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
+            <path d="M12.55 12.25 16.2 18"></path>
+          </svg>
+        </span>
+        <span>FoodLens</span>
+      </a>
       <div class="header-actions">
         <nav class="top-nav" aria-label="Legal documents">
-          <a href="index.en.html">Privacy</a>
-          <a href="terms-of-service.en.html">Terms</a>
+          <a href="index.en.html">
+            <span class="nav-icon nav-icon-privacy" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 3.5 18.75 6v5.15c0 4.2-2.72 7.42-6.75 9.35-4.03-1.93-6.75-5.15-6.75-9.35V6L12 3.5Z"></path>
+                <path d="m9.4 12.1 1.75 1.75 3.6-3.7"></path>
+              </svg>
+            </span>
+            <span>Privacy</span>
+          </a>
+          <a href="terms-of-service.en.html">
+            <span class="nav-icon nav-icon-terms" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M7.25 3.75h7.5L18.75 8v12.25H7.25V3.75Z"></path>
+                <path d="M14.5 3.95V8.2h4"></path>
+                <path d="M9.75 12.25h6"></path>
+                <path d="M9.75 15.5h4.5"></path>
+              </svg>
+            </span>
+            <span>Terms</span>
+          </a>
         </nav>
         <details class="language-menu">
           <summary>
-            <span class="language-menu-kicker">Language</span>
-            <span class="language-menu-current">English</span>
+            <span class="language-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 20.75a8.75 8.75 0 1 0 0-17.5 8.75 8.75 0 0 0 0 17.5Z"></path>
+                <path d="M3.75 12h16.5"></path>
+                <path d="M12 3.25c2.1 2.25 3.15 5.17 3.15 8.75S14.1 18.5 12 20.75C9.9 18.5 8.85 15.58 8.85 12S9.9 5.5 12 3.25Z"></path>
+              </svg>
+            </span>
+            <span class="language-menu-copy">
+              <span class="language-menu-kicker">Language</span>
+              <span class="language-menu-current">English</span>
+            </span>
           </summary>
           <div class="language-menu-panel">
             <a href="terms-of-service.html" hreflang="ko" lang="ko">한국어</a><a class="is-active" aria-current="page" href="terms-of-service.en.html" hreflang="en" lang="en">English</a><a href="terms-of-service.ja.html" hreflang="ja" lang="ja">日本語</a><a href="terms-of-service.zh-Hans.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a>
@@ -547,8 +673,22 @@ h1 {
     <div class="legal-shell">
       <aside class="legal-sidebar">
         <nav class="legal-nav" aria-label="Terms of Service contents">
-          <span class="eyebrow">Terms of Service</span>
-          <strong>Terms of Service</strong>
+          <div class="legal-nav-heading">
+            <span class="legal-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M8.75 6.75h10"></path>
+                <path d="M8.75 12h10"></path>
+                <path d="M8.75 17.25h10"></path>
+                <path d="M5.25 6.75h.01"></path>
+                <path d="M5.25 12h.01"></path>
+                <path d="M5.25 17.25h.01"></path>
+              </svg>
+            </span>
+            <span class="legal-nav-title">
+              <span class="eyebrow">Terms of Service</span>
+              <strong>Terms of Service</strong>
+            </span>
+          </div>
           <a href="#purpose">Purpose</a>
           <a href="#service-description">Services</a>
           <a href="#account">Accounts</a>
