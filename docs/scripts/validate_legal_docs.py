@@ -25,6 +25,10 @@ LEGAL_DOCS: tuple[tuple[str, str, str], ...] = (
 )
 APP_FAVICON_PATH: Path = Path("FoodLens/assets/images/favicon.png")
 LEGAL_FAVICON_PATH: Path = Path("assets/images/favicon.png")
+ROOT_FAVICON_ICO_PATH: Path = Path("favicon.ico")
+ROOT_APPLE_TOUCH_ICON_PATH: Path = Path("apple-touch-icon.png")
+PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"
+ICO_SIGNATURE: bytes = b"\x00\x00\x01\x00"
 LANGUAGE_CODES: tuple[str, ...] = ("ko", "en", "ja", "zh-Hans")
 SCALAR_KEYS: tuple[str, ...] = (
     "layout",
@@ -224,16 +228,29 @@ def file_sha256(path: Path) -> str:
 def validate_favicon_sync(repo_root: Path) -> list[str]:
     app_favicon = repo_root / APP_FAVICON_PATH
     legal_favicon = repo_root / LEGAL_FAVICON_PATH
+    root_favicon_ico = repo_root / ROOT_FAVICON_ICO_PATH
+    root_apple_touch_icon = repo_root / ROOT_APPLE_TOUCH_ICON_PATH
+    errors: list[str] = []
     if not app_favicon.is_file():
-        return [f"missing app favicon: {APP_FAVICON_PATH}"]
+        errors.append(f"missing app favicon: {APP_FAVICON_PATH}")
     if not legal_favicon.is_file():
-        return [f"missing legal favicon: {LEGAL_FAVICON_PATH}"]
+        errors.append(f"missing legal favicon: {LEGAL_FAVICON_PATH}")
+    if not root_favicon_ico.is_file():
+        errors.append(f"missing root browser favicon: {ROOT_FAVICON_ICO_PATH}")
+    if not root_apple_touch_icon.is_file():
+        errors.append(f"missing root Apple touch icon: {ROOT_APPLE_TOUCH_ICON_PATH}")
+    if errors:
+        return errors
+    if not root_favicon_ico.read_bytes().startswith(ICO_SIGNATURE):
+        errors.append(f"root browser favicon must be an ICO file: {ROOT_FAVICON_ICO_PATH}")
+    if not root_apple_touch_icon.read_bytes().startswith(PNG_SIGNATURE):
+        errors.append(f"root Apple touch icon must be a PNG file: {ROOT_APPLE_TOUCH_ICON_PATH}")
     if file_sha256(app_favicon) != file_sha256(legal_favicon):
-        return [
+        errors.append(
             "FoodLens app favicon and legal docs favicon must stay byte-identical: "
             f"{APP_FAVICON_PATH} != {LEGAL_FAVICON_PATH}"
-        ]
-    return []
+        )
+    return errors
 
 
 def main() -> int:
@@ -248,7 +265,7 @@ def main() -> int:
         for error in errors:
             print(f"[LEGAL-DOCS-CHECK] {error}")
         return 1
-    print("[LEGAL-DOCS-CHECK] PASS: legal docs language links, anchors, and artifacts are valid.")
+    print("[LEGAL-DOCS-CHECK] PASS: legal docs language links, anchors, artifacts, and favicon assets are valid.")
     return 0
 
 
