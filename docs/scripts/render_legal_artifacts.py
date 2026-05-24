@@ -114,6 +114,14 @@ def render_markdown(body: str) -> str:
         if not stripped:
             index += 1
             continue
+        html_heading = re.match(r"^<h([2-6])\s+id=\"([A-Za-z0-9_-]+)\">(.+)</h\1>$", stripped)
+        if html_heading:
+            level = html_heading.group(1)
+            anchor = html.escape(html_heading.group(2))
+            text = render_inline(html_heading.group(3))
+            blocks.append(f'<h{level} id="{anchor}">{text}</h{level}>')
+            index += 1
+            continue
         heading = re.match(r"^(#{2,6})\s+(.+?)(?:\s+\{#([A-Za-z0-9_-]+)\})?$", stripped)
         if heading:
             level = len(heading.group(1))
@@ -138,6 +146,7 @@ def render_markdown(body: str) -> str:
             if (
                 not next_stripped
                 or re.match(r"^(#{2,6})\s+", next_stripped)
+                or re.match(r"^<h[2-6]\s+id=\"[A-Za-z0-9_-]+\">", next_stripped)
                 or re.match(r"^\s*-\s+", next_line)
                 or next_stripped.startswith("|")
             ):

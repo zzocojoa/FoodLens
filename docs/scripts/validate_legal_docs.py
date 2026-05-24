@@ -155,7 +155,8 @@ def validate_nav_anchors(path: Path, body: str, lists: ListMap) -> list[str]:
             errors.append(f"{path}: nav href must be an anchor: {href}")
             continue
         anchor = href.removeprefix("#")
-        if f"{{#{anchor}}}" not in body:
+        html_heading_pattern = rf"<h[2-6]\s+id=\"{re.escape(anchor)}\">"
+        if f"{{#{anchor}}}" not in body and not re.search(html_heading_pattern, body):
             errors.append(f"{path}: nav anchor is missing from markdown body: {anchor}")
     return errors
 

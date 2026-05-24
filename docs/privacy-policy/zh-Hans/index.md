@@ -51,12 +51,12 @@ nav:
     href: "#changes"
 ---
 
-## 1. 个人信息处理主体 {#controller}
+<h2 id="controller">1. 个人信息处理主体</h2>
 
 - 运营主体：**FoodLens Team**
 - 联系邮箱：**support@foodlens.com**
 
-## 2. 我们收集的信息 {#collected-data}
+<h2 id="collected-data">2. 我们收集的信息</h2>
 
 服务可能会根据用户选择使用的功能处理以下信息。
 
@@ -94,7 +94,7 @@ nav:
 
 上述权限仅在用户允许后使用。
 
-## 3. 个人信息使用目的 {#purposes}
+<h2 id="purposes">3. 个人信息使用目的</h2>
 
 FoodLens将收集的信息用于以下目的。
 
@@ -106,7 +106,7 @@ FoodLens将收集的信息用于以下目的。
 - 改善服务质量、响应故障、防止滥用
 - 履行法律义务和处理争议
 
-## 4. 第三方提供和处理委托 {#processors}
+<h2 id="processors">4. 第三方提供和处理委托</h2>
 
 服务会在提供功能所需范围内使用以下供应商或服务。
 
@@ -120,7 +120,7 @@ FoodLens将收集的信息用于以下目的。
 
 FoodLens不会出售用户的个人信息。
 
-## 5. 保存期限 {#retention}
+<h2 id="retention">5. 保存期限</h2>
 
 FoodLens原则上会在处理目的达成后及时删除个人信息，但在运营、安全或法律义务所需范围内，可能会保留一定期间。
 
@@ -130,7 +130,7 @@ FoodLens原则上会在处理目的达成后及时删除个人信息，但在运
 - 运营日志：默认 **14天**
 - 与认证、密码重置、删除请求相关的记录，可能会基于安全和运营目的另行保留必要期间
 
-## 6. 用户权利 {#rights}
+<h2 id="rights">6. 用户权利</h2>
 
 用户拥有以下权利和选择。
 
@@ -142,22 +142,22 @@ FoodLens原则上会在处理目的达成后及时删除个人信息，但在运
 - 请求 **Delete Account**
   - 删除账号及相关数据，并使会话失效。
 
-## 7. 安全性和限制 {#safety-limits}
+<h2 id="safety-limits">7. 安全性和限制</h2>
 
 - FoodLens是辅助食品安全判断的工具，不替代医疗诊断或专业营养建议。
 - AI分析结果可能并非100%准确。如有严重过敏或健康问题，请务必结合专业人士判断使用。
 
-## 8. 国际传输 {#international-transfer}
+<h2 id="international-transfer">8. 国际传输</h2>
 
 服务使用的部分处理方，包括Google、Render、SendGrid、Sentry等，可能会在韩国以外地区处理数据。FoodLens会在必要时基于适当保护措施使用这些服务。
 
-## 9. 联系方式 {#contact}
+<h2 id="contact">9. 联系方式</h2>
 
 如对个人信息处理有疑问，请联系：
 
 - 邮箱：**support@foodlens.com**
 
-## 10. 政策变更 {#changes}
+<h2 id="changes">10. 政策变更</h2>
 
 本政策可能会因法律或服务变更而修改。如有重要变更，FoodLens会通过应用或文档通知用户。
 
