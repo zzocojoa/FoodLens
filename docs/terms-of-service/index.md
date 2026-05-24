@@ -1,7 +1,7 @@
 ---
 layout: legal
 lang: ko
-title: 이용약관 (Terms of Service)
+title: 이용약관
 description: FoodLens 이용약관
 nav_eyebrow: Terms of Service
 effective_date: 시행일자 2026년 4월 9일
