@@ -148,8 +148,10 @@ summary:focus-visible {
 
 .top-nav a {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: 7px;
+  padding: 0 4px;
   color: var(--muted);
 }
 
@@ -179,6 +181,7 @@ summary:focus-visible {
 .language-menu summary {
   display: inline-flex;
   min-width: 142px;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
   gap: 9px;
@@ -563,11 +566,13 @@ h1 {
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 640px) {
   .top-nav {
     display: none;
   }
+}
 
+@media (max-width: 520px) {
   .language-menu summary {
     min-width: 112px;
     padding: 7px 9px;

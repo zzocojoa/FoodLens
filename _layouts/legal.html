@@ -10,7 +10,7 @@
     {% for option in page.language_options %}
     <link rel="alternate" hreflang="{{ option.lang }}" href="{{ option.href | absolute_url }}">
     {% endfor %}
-    <link rel="stylesheet" href="{{ '/assets/css/legal.css' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/legal.css?v=legal-icons-20260524' | relative_url }}">
   </head>
   <body>
     <a class="skip-link" href="#main">{{ page.skip_label | default: '본문으로 건너뛰기' }}</a>

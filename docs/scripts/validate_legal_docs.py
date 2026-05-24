@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -22,6 +23,8 @@ LEGAL_DOCS: tuple[tuple[str, str, str], ...] = (
     ("terms-of-service", "ja", "docs/terms-of-service/ja/index.md"),
     ("terms-of-service", "zh-Hans", "docs/terms-of-service/zh-Hans/index.md"),
 )
+APP_FAVICON_PATH: Path = Path("FoodLens/assets/images/favicon.png")
+LEGAL_FAVICON_PATH: Path = Path("assets/images/favicon.png")
 LANGUAGE_CODES: tuple[str, ...] = ("ko", "en", "ja", "zh-Hans")
 SCALAR_KEYS: tuple[str, ...] = (
     "layout",
@@ -214,6 +217,25 @@ def validate_artifact_links(repo_root: Path, doc_name: str, language: str, rel_p
     return errors
 
 
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_favicon_sync(repo_root: Path) -> list[str]:
+    app_favicon = repo_root / APP_FAVICON_PATH
+    legal_favicon = repo_root / LEGAL_FAVICON_PATH
+    if not app_favicon.is_file():
+        return [f"missing app favicon: {APP_FAVICON_PATH}"]
+    if not legal_favicon.is_file():
+        return [f"missing legal favicon: {LEGAL_FAVICON_PATH}"]
+    if file_sha256(app_favicon) != file_sha256(legal_favicon):
+        return [
+            "FoodLens app favicon and legal docs favicon must stay byte-identical: "
+            f"{APP_FAVICON_PATH} != {LEGAL_FAVICON_PATH}"
+        ]
+    return []
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[2]
     errors: list[str] = []
@@ -221,6 +243,7 @@ def main() -> int:
         errors.extend(validate_markdown_doc(repo_root, doc_name, language, rel_path))
     for doc_name, language, rel_path in ARTIFACTS:
         errors.extend(validate_artifact_links(repo_root, doc_name, language, rel_path))
+    errors.extend(validate_favicon_sync(repo_root))
     if errors:
         for error in errors:
             print(f"[LEGAL-DOCS-CHECK] {error}")
