@@ -745,15 +745,18 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 allergy_info="soy allergy",
                 result_food_name="Private Data Meal",
             )
+            deletion_request_id = "req-phase5-data-deletion-route"
+            deletion_headers = {**headers, "X-Request-Id": deletion_request_id}
 
             deletion = client.post(
                 "/me/deletion-requests",
                 json={"target": "data"},
-                headers=headers,
+                headers=deletion_headers,
             )
             self.assertEqual(deletion.status_code, 200)
             deletion_body = deletion.json()
-            self.assertIn("request_id", deletion_body)
+            self.assertEqual(deletion_body["request_id"], deletion_request_id)
+            self.assertEqual(deletion_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(deletion_body["deletion_request"]["target"], "data")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
             self.assertEqual(deletion_body["deletion_request"]["retry_count"], 0)
@@ -775,6 +778,7 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(latest.status_code, 200)
             latest_body = latest.json()
             self.assertEqual(latest_body["deletion_request"]["queue_id"], deletion_body["deletion_request"]["queue_id"])
+            self.assertEqual(latest_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(latest_body["deletion_request"]["status"], "done")
 
             profile = client.get("/me/profile", headers=latest_headers)
@@ -817,14 +821,18 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
                 allergy_info="shellfish allergy",
                 result_food_name="Private Account Meal",
             )
+            deletion_request_id = "req-phase5-account-deletion-route"
+            deletion_headers = {**headers, "X-Request-Id": deletion_request_id}
 
             deletion = client.post(
                 "/me/deletion-requests",
                 json={"target": "account"},
-                headers=headers,
+                headers=deletion_headers,
             )
             self.assertEqual(deletion.status_code, 200)
             deletion_body = deletion.json()
+            self.assertEqual(deletion_body["request_id"], deletion_request_id)
+            self.assertEqual(deletion_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(deletion_body["deletion_request"]["target"], "account")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
             self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)

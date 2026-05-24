@@ -5706,7 +5706,7 @@ async def delete_me_history(history_item_id: str, request: Request):
 
 @app.get("/me/deletion-requests/latest", response_model=DeletionRequestStatusResponse)
 async def get_me_latest_deletion_request(request: Request):
-    def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+    def _action(_auth_service: Any, user: Any, _http_request_id: str) -> dict[str, Any]:
         storage = getattr(app.state, "deletion_queue_storage", None)
         snapshot = storage.get_latest_status_for_user(user.user_id) if storage is not None else None
         return {"deletion_request": _serialize_deletion_status(snapshot)}
@@ -5719,7 +5719,7 @@ async def get_me_latest_deletion_request(request: Request):
 
 @app.post("/me/deletion-requests", response_model=DeletionRequestStatusResponse)
 async def post_me_deletion_request(payload: DeletionRequestCreateRequest, request: Request):
-    def _action(_auth_service: Any, user: Any, _request_id: str) -> dict[str, Any]:
+    def _action(_auth_service: Any, user: Any, http_request_id: str) -> dict[str, Any]:
         producer = getattr(app.state, "deletion_queue_producer", None)
         consumer = getattr(app.state, "deletion_queue_consumer", None)
         storage = getattr(app.state, "deletion_queue_storage", None)
@@ -5731,7 +5731,7 @@ async def post_me_deletion_request(payload: DeletionRequestCreateRequest, reques
             user_id=user.user_id,
             target=target,
             reason="user_requested",
-            request_id=_request_id,
+            request_id=http_request_id,
         )
         consumer.consume_queue_id(item.queue_id)
         snapshot = storage.get_status(item.queue_id)
