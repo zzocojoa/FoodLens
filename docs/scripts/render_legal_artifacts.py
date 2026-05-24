@@ -17,15 +17,12 @@ LEGAL_DOC_MAP: dict[tuple[str, str], str] = {
 ARTIFACT_MAP: dict[tuple[str, str], str] = {
     (doc_name, language): rel_path for doc_name, language, rel_path in ARTIFACTS
 }
-FAVICON_VERSION = "foodlens-logo-20260524"
+FAVICON_VERSION = "foodlens-brand-20260524"
 FAVICON_HREF = f"../../assets/images/favicon.png?v={FAVICON_VERSION}"
 SHORTCUT_ICON_HREF = f"../../favicon.ico?v={FAVICON_VERSION}"
 APPLE_TOUCH_ICON_HREF = f"../../apple-touch-icon.png?v={FAVICON_VERSION}"
-BRAND_ICON = """<svg viewBox="0 0 24 24" focusable="false">
-            <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
-            <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
-            <path d="M12.55 12.25 16.2 18"></path>
-          </svg>"""
+BRAND_ICON_HREF = f"../../assets/images/brand-mark.png?v={FAVICON_VERSION}"
+BRAND_ICON = f"""<img src="{BRAND_ICON_HREF}" width="192" height="192" alt="">"""
 PRIVACY_ICON = """<svg viewBox="0 0 24 24" focusable="false">
                 <path d="M12 3.5 18.75 6v5.15c0 4.2-2.72 7.42-6.75 9.35-4.03-1.93-6.75-5.15-6.75-9.35V6L12 3.5Z"></path>
                 <path d="m9.4 12.1 1.75 1.75 3.6-3.7"></path>
