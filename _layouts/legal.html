@@ -6,13 +6,13 @@
     <title>{{ page.title | escape }} | FoodLens</title>
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <link rel="canonical" href="{{ page.url | absolute_url }}">
-    <link rel="icon" type="image/png" sizes="48x48" href="{{ '/assets/images/favicon.png?v=foodlens-logo-20260524' | relative_url }}">
-    <link rel="shortcut icon" type="image/x-icon" href="{{ '/favicon.ico?v=foodlens-logo-20260524' | relative_url }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ '/apple-touch-icon.png?v=foodlens-logo-20260524' | relative_url }}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{{ '/assets/images/favicon.png?v=foodlens-brand-20260524' | relative_url }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ '/favicon.ico?v=foodlens-brand-20260524' | relative_url }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ '/apple-touch-icon.png?v=foodlens-brand-20260524' | relative_url }}">
     {% for option in page.language_options %}
     <link rel="alternate" hreflang="{{ option.lang }}" href="{{ option.href | absolute_url }}">
     {% endfor %}
-    <link rel="stylesheet" href="{{ '/assets/css/legal.css?v=legal-icons-20260524' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/legal.css?v=legal-brand-20260524' | relative_url }}">
   </head>
   <body>
     <a class="skip-link" href="#main">{{ page.skip_label | default: '본문으로 건너뛰기' }}</a>
@@ -20,11 +20,7 @@
     <header class="site-header" aria-label="FoodLens">
       <a class="wordmark" href="{{ '/' | relative_url }}" aria-label="FoodLens">
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
-            <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
-            <path d="M12.55 12.25 16.2 18"></path>
-          </svg>
+          <img src="{{ '/assets/images/brand-mark.png?v=foodlens-brand-20260524' | relative_url }}" width="192" height="192" alt="">
         </span>
         <span>FoodLens</span>
       </a>

@@ -99,6 +99,7 @@ summary:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   color: var(--ink);
   font-size: 28px;
   font-weight: 800;
@@ -108,17 +109,16 @@ summary:focus-visible {
 .brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background:
-    linear-gradient(135deg, rgba(99, 91, 255, 0.22), transparent 48%),
-    var(--brand);
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(0, 116, 217, 0.2);
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: 0 10px 24px rgba(0, 116, 217, 0.12);
 }
 
-.brand-mark svg,
+.brand-mark img,
 .nav-icon svg,
 .language-menu-icon svg,
 .legal-nav-icon svg {
@@ -127,7 +127,10 @@ summary:focus-visible {
   height: 100%;
 }
 
-.brand-mark svg,
+.brand-mark img {
+  object-fit: contain;
+}
+
 .nav-icon svg,
 .language-menu-icon svg,
 .legal-nav-icon svg {
@@ -265,7 +268,10 @@ summary:focus-visible {
 }
 
 .language-menu-panel a {
-  padding: 9px 10px;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0 10px;
   border-radius: 4px;
   color: var(--body);
   font-size: 14px;
@@ -497,8 +503,8 @@ h1 {
   }
 
   .brand-mark {
-    width: 25px;
-    height: 25px;
+    width: 29px;
+    height: 29px;
   }
 
   .header-actions {
@@ -533,7 +539,10 @@ h1 {
   }
 
   .legal-nav a {
-    padding-left: 0;
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    padding: 0;
   }
 
   .legal-main {
