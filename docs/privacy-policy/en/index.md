@@ -51,12 +51,12 @@ nav:
     href: "#changes"
 ---
 
-## 1. Data Controller {#controller}
+<h2 id="controller">1. Data Controller</h2>
 
 - Operating entity: **FoodLens Team**
 - Contact email: **support@foodlens.com**
 
-## 2. Information We Collect {#collected-data}
+<h2 id="collected-data">2. Information We Collect</h2>
 
 The service may process the information below depending on the features you choose to use.
 
@@ -94,7 +94,7 @@ The service may process the information below depending on the features you choo
 
 These permissions are used only when you grant them.
 
-## 3. How We Use Personal Information {#purposes}
+<h2 id="purposes">3. How We Use Personal Information</h2>
 
 FoodLens uses collected information for the following purposes.
 
@@ -106,7 +106,7 @@ FoodLens uses collected information for the following purposes.
 - Improving service quality, responding to incidents, and preventing abuse
 - Meeting legal obligations and handling disputes
 
-## 4. Third-Party Sharing and Processing Providers {#processors}
+<h2 id="processors">4. Third-Party Sharing and Processing Providers</h2>
 
 FoodLens uses the providers and services below within the scope needed to provide service features.
 
@@ -120,7 +120,7 @@ FoodLens uses the providers and services below within the scope needed to provid
 
 FoodLens does not sell your personal information.
 
-## 5. Retention Period {#retention}
+<h2 id="retention">5. Retention Period</h2>
 
 FoodLens generally deletes personal information without delay after the purpose of processing is achieved, but may retain information for limited periods when needed for operations, security, or legal obligations.
 
@@ -130,7 +130,7 @@ FoodLens generally deletes personal information without delay after the purpose 
 - Operational logs: default **14 days**
 - Records related to authentication, password reset, or deletion requests may be retained separately for the period needed for security and operations
 
-## 6. Your Rights {#rights}
+<h2 id="rights">6. Your Rights</h2>
 
 You have the following rights and choices.
 
@@ -142,22 +142,22 @@ You have the following rights and choices.
 - Request **Delete Account**
   - This deletes the account and related data and invalidates sessions.
 
-## 7. Safety and Limits {#safety-limits}
+<h2 id="safety-limits">7. Safety and Limits</h2>
 
 - FoodLens is an assistive tool for food safety decisions and does not replace medical diagnosis or professional nutrition advice.
 - AI analysis results may not be 100% accurate. If you have severe allergies or health concerns, use FoodLens together with professional judgment.
 
-## 8. International Transfers {#international-transfer}
+<h2 id="international-transfer">8. International Transfers</h2>
 
 Some processors used by the service, including Google, Render, SendGrid, and Sentry, may process data outside Korea. FoodLens uses these services with appropriate safeguards where required.
 
-## 9. Contact {#contact}
+<h2 id="contact">9. Contact</h2>
 
 For questions about personal information processing, contact us at:
 
 - Email: **support@foodlens.com**
 
-## 10. Changes {#changes}
+<h2 id="changes">10. Changes</h2>
 
 This policy may be updated because of changes to laws or the service. If there are important changes, FoodLens will notify users through the app or documents.
 

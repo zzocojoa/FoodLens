@@ -53,11 +53,11 @@ nav:
     href: "#effective-date"
 ---
 
-## 1. Purpose {#purpose}
+<h2 id="purpose">1. Purpose</h2>
 
 These Terms of Service define the conditions for using FoodLens (the "service"), including food analysis, allergy warnings, traveler cards, history, and related additional features.
 
-## 2. Service Description {#service-description}
+<h2 id="service-description">2. Service Description</h2>
 
 The service may include the following features.
 
@@ -69,13 +69,13 @@ The service may include the following features.
 
 Service features may be changed or partially suspended when needed for operational or technical reasons.
 
-## 3. Accounts and Eligibility {#account}
+<h2 id="account">3. Accounts and Eligibility</h2>
 
 - Some features may be available without login, but personalization features and cloud sync require login.
 - Users are responsible for providing accurate account information and keeping their account secure.
 - Email login users may need to complete a verification process.
 
-## 4. Important Disclaimers {#disclaimer}
+<h2 id="disclaimer">4. Important Disclaimers</h2>
 
 FoodLens uses AI to provide information, but it **does not replace medical diagnosis or professional nutrition advice**.
 
@@ -84,7 +84,7 @@ FoodLens uses AI to provide information, but it **does not replace medical diagn
 - The user is responsible for the final decision about whether to eat a food.
 - If you have severe allergies or health concerns, always prioritize professional judgment.
 
-## 5. Prohibited Conduct {#prohibited-conduct}
+<h2 id="prohibited-conduct">5. Prohibited Conduct</h2>
 
 Users must not do the following.
 
@@ -93,32 +93,32 @@ Users must not do the following.
 - Use the service for illegal activity
 - Interfere with service operations or attempt to compromise security
 
-## 6. Intellectual Property {#ip}
+<h2 id="ip">6. Intellectual Property</h2>
 
 - Rights to the service UI, documents, analysis-result presentation, and brand assets belong to the service operator.
 - Users generally retain rights to the original images they upload.
 - FoodLens may process that content within the scope necessary to provide and operate the service.
 
-## 7. Privacy and Data Deletion {#privacy-data}
+<h2 id="privacy-data">7. Privacy and Data Deletion</h2>
 
 - Details about personal information processing are governed by the Privacy Policy.
 - Users may request deletion of saved data through `Delete My Data` or `Delete Account`.
 - Some records may be retained separately for a certain period when required for law, security, or dispute handling.
 
-## 8. Service Changes, Suspension, and Limitation of Liability {#service-changes}
+<h2 id="service-changes">8. Service Changes, Suspension, and Limitation of Liability</h2>
 
 - The service may be changed or suspended in whole or in part because of maintenance, incident response, or policy changes.
 - FoodLens works to improve availability and accuracy, but does not guarantee that the service will always be complete or error-free.
 
-## 9. Governing Law and Disputes {#law}
+<h2 id="law">9. Governing Law and Disputes</h2>
 
 These terms are governed by the laws of the Republic of Korea, and related disputes are subject to the jurisdiction of Korean courts.
 
-## 10. Contact {#contact}
+<h2 id="contact">10. Contact</h2>
 
 - Operating entity: **FoodLens Team**
 - Contact email: **support@foodlens.com**
 
-## 11. Effective Date {#effective-date}
+<h2 id="effective-date">11. Effective Date</h2>
 
 These terms are effective from April 9, 2026.
