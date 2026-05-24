@@ -17,7 +17,10 @@ LEGAL_DOC_MAP: dict[tuple[str, str], str] = {
 ARTIFACT_MAP: dict[tuple[str, str], str] = {
     (doc_name, language): rel_path for doc_name, language, rel_path in ARTIFACTS
 }
-FAVICON_HREF = "../../assets/images/favicon.png?v=foodlens-logo"
+FAVICON_VERSION = "foodlens-logo-20260524"
+FAVICON_HREF = f"../../assets/images/favicon.png?v={FAVICON_VERSION}"
+SHORTCUT_ICON_HREF = f"../../favicon.ico?v={FAVICON_VERSION}"
+APPLE_TOUCH_ICON_HREF = f"../../apple-touch-icon.png?v={FAVICON_VERSION}"
 BRAND_ICON = """<svg viewBox="0 0 24 24" focusable="false">
             <path d="M12 3.25c4.84 0 8.75 3.91 8.75 8.75S16.84 20.75 12 20.75 3.25 16.84 3.25 12 7.16 3.25 12 3.25Z"></path>
             <path d="M8.35 12.25h4.2a3.1 3.1 0 1 0 0-6.2h-4.2v11.9"></path>
@@ -217,7 +220,9 @@ def render_page(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title} | FoodLens</title>
     <meta name="description" content="{html.escape(scalars["description"])}">
-    <link rel="icon" type="image/png" href="{FAVICON_HREF}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{FAVICON_HREF}">
+    <link rel="shortcut icon" type="image/x-icon" href="{SHORTCUT_ICON_HREF}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{APPLE_TOUCH_ICON_HREF}">
     <style>
 {css}
     </style>
