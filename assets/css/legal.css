@@ -268,7 +268,10 @@ summary:focus-visible {
 }
 
 .language-menu-panel a {
-  padding: 9px 10px;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0 10px;
   border-radius: 4px;
   color: var(--body);
   font-size: 14px;
@@ -536,7 +539,10 @@ h1 {
   }
 
   .legal-nav a {
-    padding-left: 0;
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    padding: 0;
   }
 
   .legal-main {
