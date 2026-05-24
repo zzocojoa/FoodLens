@@ -1,7 +1,7 @@
 ---
 layout: legal
 lang: ko
-title: 개인정보처리방침 (Privacy Policy)
+title: 개인정보처리방침
 description: FoodLens 개인정보처리방침
 nav_eyebrow: Privacy Policy
 effective_date: 시행일자 2026년 4월 9일
