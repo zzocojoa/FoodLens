@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import RLock
-from typing import Literal
+from typing import Literal, cast
 from uuid import uuid4
 from .email_sender import (
     EmailVerificationDeliveryError,
@@ -24,6 +24,7 @@ from .state_store import (
     AuthProjectionStore,
     AuthStateStore,
     AuthStateStoreError,
+    OAuthPendingStateStore,
     PostgresAuthProjectionStore,
     PostgresAuthStateStore,
 )
@@ -665,6 +666,20 @@ class InMemoryAuthSessionService:
     @property
     def state_backend(self) -> str:
         return "postgres" if self._state_store is not None else "memory"
+
+    def _atomic_oauth_pending_state_store(self) -> OAuthPendingStateStore | None:
+        state_store = self._state_store
+        if state_store is None:
+            return None
+
+        required_methods = (
+            "create_oauth_pending_state",
+            "get_oauth_pending_state",
+            "consume_oauth_pending_state",
+        )
+        if all(callable(getattr(state_store, method_name, None)) for method_name in required_methods):
+            return cast(OAuthPendingStateStore, state_store)
+        return None
 
     @classmethod
     def _resolve_token_hash_secret_from_env(
@@ -1401,6 +1416,99 @@ class InMemoryAuthSessionService:
             "consumed_at": _to_iso8601(record.consumed_at) if record.consumed_at is not None else None,
         }
 
+    @staticmethod
+    def _required_oauth_pending_state_payload_string(
+        *,
+        payload: dict[str, object],
+        field_name: str,
+    ) -> str:
+        raw_value = payload.get(field_name)
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            raise AuthStateStoreError(f"OAuth pending state payload is missing {field_name}.")
+        return raw_value.strip()
+
+    @staticmethod
+    def _optional_oauth_pending_state_payload_string(
+        *,
+        payload: dict[str, object],
+        field_name: str,
+    ) -> str | None:
+        raw_value = payload.get(field_name)
+        if raw_value is None:
+            return None
+        if not isinstance(raw_value, str):
+            raise AuthStateStoreError(f"OAuth pending state payload has invalid {field_name}.")
+        return raw_value.strip() or None
+
+    @staticmethod
+    def _required_oauth_pending_state_payload_datetime(
+        *,
+        payload: dict[str, object],
+        field_name: str,
+    ) -> datetime:
+        raw_value = payload.get(field_name)
+        if isinstance(raw_value, datetime):
+            return raw_value.astimezone(timezone.utc)
+        if isinstance(raw_value, str) and raw_value.strip():
+            try:
+                return _from_iso8601(raw_value.strip()).astimezone(timezone.utc)
+            except ValueError as error:
+                raise AuthStateStoreError(f"OAuth pending state payload has invalid {field_name}.") from error
+        raise AuthStateStoreError(f"OAuth pending state payload is missing {field_name}.")
+
+    @staticmethod
+    def _optional_oauth_pending_state_payload_datetime(
+        *,
+        payload: dict[str, object],
+        field_name: str,
+    ) -> datetime | None:
+        raw_value = payload.get(field_name)
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, datetime):
+            return raw_value.astimezone(timezone.utc)
+        if isinstance(raw_value, str) and raw_value.strip():
+            try:
+                return _from_iso8601(raw_value.strip()).astimezone(timezone.utc)
+            except ValueError as error:
+                raise AuthStateStoreError(f"OAuth pending state payload has invalid {field_name}.") from error
+        raise AuthStateStoreError(f"OAuth pending state payload has invalid {field_name}.")
+
+    def _oauth_pending_state_record_from_payload(
+        self,
+        *,
+        payload: dict[str, object],
+    ) -> OAuthPendingStateRecord:
+        return OAuthPendingStateRecord(
+            state=self._required_oauth_pending_state_payload_string(payload=payload, field_name="state"),
+            provider=self._required_oauth_pending_state_payload_string(payload=payload, field_name="provider").lower(),
+            app_redirect_uri=self._required_oauth_pending_state_payload_string(
+                payload=payload,
+                field_name="app_redirect_uri",
+            ),
+            request_id=self._required_oauth_pending_state_payload_string(payload=payload, field_name="request_id"),
+            nonce=self._optional_oauth_pending_state_payload_string(payload=payload, field_name="nonce"),
+            code_verifier=self._optional_oauth_pending_state_payload_string(payload=payload, field_name="code_verifier"),
+            code_challenge=self._optional_oauth_pending_state_payload_string(
+                payload=payload,
+                field_name="code_challenge",
+            ),
+            created_at=self._required_oauth_pending_state_payload_datetime(payload=payload, field_name="created_at"),
+            expires_at=self._required_oauth_pending_state_payload_datetime(payload=payload, field_name="expires_at"),
+            consumed_at=self._optional_oauth_pending_state_payload_datetime(payload=payload, field_name="consumed_at"),
+        )
+
+    @staticmethod
+    def _normalize_oauth_pending_state_value(*, state: str) -> str:
+        normalized_state = state.strip()
+        if not normalized_state:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Missing or invalid state value.",
+                status_code=400,
+            )
+        return normalized_state
+
     def _purge_oauth_pending_states_unlocked(self, *, now: datetime) -> bool:
         stale_states = [
             state
@@ -1421,100 +1529,28 @@ class InMemoryAuthSessionService:
         if not normalized_state:
             return "unknown"
 
+        atomic_state_store = self._atomic_oauth_pending_state_store()
+        if atomic_state_store is not None:
+            stored_payload = atomic_state_store.get_oauth_pending_state(state=normalized_state)
+            if stored_payload is None:
+                return "unknown"
+            stored_record = self._oauth_pending_state_record_from_payload(payload=stored_payload)
+            return _oauth_state_age_bucket(created_at=stored_record.created_at, now=now)
+
         with self._lock:
             record = self._oauth_pending_states.get(normalized_state)
             if record is None:
                 return "unknown"
             return _oauth_state_age_bucket(created_at=record.created_at, now=now)
 
-    def create_oauth_pending_state(
+    def _validate_oauth_pending_state_record(
         self,
         *,
+        record: OAuthPendingStateRecord,
         provider: str,
-        app_redirect_uri: str,
-        state: str,
-        request_id: str,
-        nonce: str | None,
-        code_verifier: str | None,
-        code_challenge: str | None,
-        ttl_seconds: int,
-    ) -> dict[str, object]:
-        provider_normalized = provider.strip().lower()
-        if provider_normalized not in {"google", "kakao"}:
-            raise AuthServiceError(
-                code="AUTH_PROVIDER_UNSUPPORTED",
-                message="Unsupported provider.",
-                status_code=400,
-            )
-
-        normalized_state = state.strip()
-        if not normalized_state:
-            raise AuthServiceError(
-                code="AUTH_PROVIDER_INVALID_STATE",
-                message="Missing or invalid state value.",
-                status_code=400,
-            )
-
-        normalized_app_redirect_uri = app_redirect_uri.strip()
-        if not normalized_app_redirect_uri:
-            raise AuthServiceError(
-                code="AUTH_REDIRECT_URI_MISMATCH",
-                message="Redirect URI mismatch.",
-                status_code=400,
-            )
-
-        now = _utc_now()
-        expires_at = now + timedelta(seconds=max(60, min(ttl_seconds, 600)))
-        with self._lock:
-            self._purge_oauth_pending_states_unlocked(now=now)
-            existing = self._oauth_pending_states.get(normalized_state)
-            if existing is not None:
-                raise AuthServiceError(
-                    code="AUTH_PROVIDER_STATE_REUSED",
-                    message="OAuth state has already been used.",
-                    status_code=400,
-                )
-
-            record = OAuthPendingStateRecord(
-                state=normalized_state,
-                provider=provider_normalized,
-                app_redirect_uri=normalized_app_redirect_uri,
-                request_id=request_id.strip(),
-                nonce=(nonce or "").strip() or None,
-                code_verifier=(code_verifier or "").strip() or None,
-                code_challenge=(code_challenge or "").strip() or None,
-                created_at=now,
-                expires_at=expires_at,
-                consumed_at=None,
-            )
-            self._oauth_pending_states[record.state] = record
-            self._persist_state_unlocked()
-            return self._serialize_oauth_pending_state(record)
-
-    def _require_oauth_pending_state_unlocked(
-        self,
-        *,
-        provider: str,
-        state: str,
         app_redirect_uri: str | None,
         now: datetime,
     ) -> OAuthPendingStateRecord:
-        normalized_state = state.strip()
-        if not normalized_state:
-            raise AuthServiceError(
-                code="AUTH_PROVIDER_INVALID_STATE",
-                message="Missing or invalid state value.",
-                status_code=400,
-            )
-
-        record = self._oauth_pending_states.get(normalized_state)
-        if record is None:
-            raise AuthServiceError(
-                code="AUTH_PROVIDER_INVALID_STATE",
-                message="Unknown OAuth state.",
-                status_code=400,
-            )
-
         if record.consumed_at is not None:
             raise AuthServiceError(
                 code="AUTH_PROVIDER_STATE_REUSED",
@@ -1546,6 +1582,136 @@ class InMemoryAuthSessionService:
 
         return record
 
+    def create_oauth_pending_state(
+        self,
+        *,
+        provider: str,
+        app_redirect_uri: str,
+        state: str,
+        request_id: str,
+        nonce: str | None,
+        code_verifier: str | None,
+        code_challenge: str | None,
+        ttl_seconds: int,
+    ) -> dict[str, object]:
+        provider_normalized = provider.strip().lower()
+        if provider_normalized not in {"google", "kakao"}:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_UNSUPPORTED",
+                message="Unsupported provider.",
+                status_code=400,
+            )
+
+        normalized_state = self._normalize_oauth_pending_state_value(state=state)
+
+        normalized_app_redirect_uri = app_redirect_uri.strip()
+        if not normalized_app_redirect_uri:
+            raise AuthServiceError(
+                code="AUTH_REDIRECT_URI_MISMATCH",
+                message="Redirect URI mismatch.",
+                status_code=400,
+            )
+
+        now = _utc_now()
+        expires_at = now + timedelta(seconds=max(60, min(ttl_seconds, 600)))
+        record = OAuthPendingStateRecord(
+            state=normalized_state,
+            provider=provider_normalized,
+            app_redirect_uri=normalized_app_redirect_uri,
+            request_id=request_id.strip(),
+            nonce=(nonce or "").strip() or None,
+            code_verifier=(code_verifier or "").strip() or None,
+            code_challenge=(code_challenge or "").strip() or None,
+            created_at=now,
+            expires_at=expires_at,
+            consumed_at=None,
+        )
+        atomic_state_store = self._atomic_oauth_pending_state_store()
+        if atomic_state_store is not None:
+            created = atomic_state_store.create_oauth_pending_state(
+                state=record.state,
+                provider=record.provider,
+                app_redirect_uri=record.app_redirect_uri,
+                request_id=record.request_id,
+                created_at=record.created_at,
+                expires_at=record.expires_at,
+                nonce=record.nonce,
+                code_verifier=record.code_verifier,
+                code_challenge=record.code_challenge,
+            )
+            if not created:
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_STATE_REUSED",
+                    message="OAuth state has already been used.",
+                    status_code=400,
+                )
+            return self._serialize_oauth_pending_state(record)
+
+        with self._lock:
+            self._purge_oauth_pending_states_unlocked(now=now)
+            existing = self._oauth_pending_states.get(normalized_state)
+            if existing is not None:
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_STATE_REUSED",
+                    message="OAuth state has already been used.",
+                    status_code=400,
+                )
+
+            self._oauth_pending_states[record.state] = record
+            self._persist_state_unlocked()
+            return self._serialize_oauth_pending_state(record)
+
+    def _require_oauth_pending_state_unlocked(
+        self,
+        *,
+        provider: str,
+        state: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> OAuthPendingStateRecord:
+        normalized_state = self._normalize_oauth_pending_state_value(state=state)
+
+        record = self._oauth_pending_states.get(normalized_state)
+        if record is None:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Unknown OAuth state.",
+                status_code=400,
+            )
+
+        return self._validate_oauth_pending_state_record(
+            record=record,
+            provider=provider,
+            app_redirect_uri=app_redirect_uri,
+            now=now,
+        )
+
+    def _require_oauth_pending_state_from_store(
+        self,
+        *,
+        state_store: OAuthPendingStateStore,
+        provider: str,
+        state: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> OAuthPendingStateRecord:
+        normalized_state = self._normalize_oauth_pending_state_value(state=state)
+        stored_payload = state_store.get_oauth_pending_state(state=normalized_state)
+        if stored_payload is None:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Unknown OAuth state.",
+                status_code=400,
+            )
+
+        record = self._oauth_pending_state_record_from_payload(payload=stored_payload)
+        return self._validate_oauth_pending_state_record(
+            record=record,
+            provider=provider,
+            app_redirect_uri=app_redirect_uri,
+            now=now,
+        )
+
     def verify_oauth_pending_state(
         self,
         *,
@@ -1554,10 +1720,22 @@ class InMemoryAuthSessionService:
         app_redirect_uri: str | None,
     ) -> dict[str, object]:
         now = _utc_now()
+        normalized_state = self._normalize_oauth_pending_state_value(state=state or "")
+        atomic_state_store = self._atomic_oauth_pending_state_store()
+        if atomic_state_store is not None:
+            stored_record = self._require_oauth_pending_state_from_store(
+                state_store=atomic_state_store,
+                provider=provider.strip().lower(),
+                state=normalized_state,
+                app_redirect_uri=(app_redirect_uri or "").strip() or None,
+                now=now,
+            )
+            return self._serialize_oauth_pending_state(stored_record)
+
         with self._lock:
             record = self._require_oauth_pending_state_unlocked(
                 provider=provider,
-                state=(state or ""),
+                state=normalized_state,
                 app_redirect_uri=app_redirect_uri,
                 now=now,
             )
@@ -1571,10 +1749,35 @@ class InMemoryAuthSessionService:
         app_redirect_uri: str | None,
     ) -> dict[str, object]:
         now = _utc_now()
+        normalized_state = self._normalize_oauth_pending_state_value(state=state or "")
+        atomic_state_store = self._atomic_oauth_pending_state_store()
+        if atomic_state_store is not None:
+            stored_payload = atomic_state_store.consume_oauth_pending_state(
+                provider=provider.strip().lower(),
+                state=normalized_state,
+                app_redirect_uri=(app_redirect_uri or "").strip() or None,
+                now=now,
+            )
+            if stored_payload is None:
+                self._require_oauth_pending_state_from_store(
+                    state_store=atomic_state_store,
+                    provider=provider.strip().lower(),
+                    state=normalized_state,
+                    app_redirect_uri=(app_redirect_uri or "").strip() or None,
+                    now=now,
+                )
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_STATE_REUSED",
+                    message="OAuth state has already been used.",
+                    status_code=400,
+                )
+            stored_record = self._oauth_pending_state_record_from_payload(payload=stored_payload)
+            return self._serialize_oauth_pending_state(stored_record)
+
         with self._lock:
             record = self._require_oauth_pending_state_unlocked(
                 provider=provider,
-                state=(state or ""),
+                state=normalized_state,
                 app_redirect_uri=app_redirect_uri,
                 now=now,
             )

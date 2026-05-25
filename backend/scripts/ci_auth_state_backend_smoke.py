@@ -17,6 +17,11 @@ OAUTH_STATE_FAILURE_LOG_FIELDS: tuple[str, ...] = (
     "failure_code",
     "state_age_bucket",
 )
+RENDER_INSTANCE_COUNT_ENV_NAMES: tuple[str, ...] = (
+    "RENDER_FOODLENS_API_INSTANCE_COUNT",
+    "FOODLENS_API_INSTANCE_COUNT",
+    "RENDER_SERVICE_INSTANCE_COUNT",
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,8 @@ class RuntimeConfig:
     database_url_set: bool
     masked_database_url: str
     token_hash_secret_set: bool
+    render_instance_count_env_name: str
+    render_instance_count_value: str
 
 
 def _repo_root() -> Path:
@@ -67,13 +74,32 @@ def _runtime_config(env: Mapping[str, str]) -> RuntimeConfig:
     database_url = (env.get("DATABASE_URL") or "").strip()
     token_hash_secret = (env.get("AUTH_TOKEN_HASH_SECRET") or "").strip()
     requested_backend = _requested_backend(env=env)
+    render_instance_count_env_name, render_instance_count_value = _render_instance_count(env=env)
     return RuntimeConfig(
         requested_backend=requested_backend or "auto",
         resolved_backend=_resolved_backend(env=env),
         database_url_set=bool(database_url),
         masked_database_url=_mask_database_url(value=database_url),
         token_hash_secret_set=bool(token_hash_secret),
+        render_instance_count_env_name=render_instance_count_env_name,
+        render_instance_count_value=render_instance_count_value,
     )
+
+
+def _render_instance_count(env: Mapping[str, str]) -> tuple[str, str]:
+    for env_name in RENDER_INSTANCE_COUNT_ENV_NAMES:
+        env_value = (env.get(env_name) or "").strip()
+        if env_value:
+            return (env_name, env_value)
+    return ("unset", "")
+
+
+def _render_instance_count_display(config: RuntimeConfig) -> str:
+    if not config.render_instance_count_value:
+        return "unset"
+    if config.render_instance_count_value.isdigit():
+        return f"{config.render_instance_count_env_name}={config.render_instance_count_value}"
+    return f"{config.render_instance_count_env_name}=invalid"
 
 
 def _backend_is_valid(config: RuntimeConfig) -> CheckResult:
@@ -171,6 +197,42 @@ def _shared_state_is_required(config: RuntimeConfig, require_shared_state: bool)
     )
 
 
+def _single_render_instance_is_required(
+    config: RuntimeConfig,
+    require_single_render_instance: bool,
+) -> CheckResult:
+    if not require_single_render_instance:
+        return CheckResult(
+            name="single_render_instance_required",
+            passed=True,
+            message="require_single_render_instance=false",
+        )
+    if not config.render_instance_count_value:
+        return CheckResult(
+            name="single_render_instance_required",
+            passed=False,
+            message="set one of "
+            + ",".join(RENDER_INSTANCE_COUNT_ENV_NAMES)
+            + " to the verified Render foodlens-api instance count.",
+        )
+    if not config.render_instance_count_value.isdigit():
+        return CheckResult(
+            name="single_render_instance_required",
+            passed=False,
+            message=f"{config.render_instance_count_env_name} must be a positive integer.",
+        )
+    render_instance_count = int(config.render_instance_count_value)
+    return CheckResult(
+        name="single_render_instance_required",
+        passed=render_instance_count == 1,
+        message=(
+            "foodlens-api instance count must stay 1 until atomic OAuth state consume is deployed "
+            "and live-concurrency validated. "
+            f"current_count={render_instance_count}"
+        ),
+    )
+
+
 def _server_log_fields_are_present(repo_root: Path) -> CheckResult:
     server_path = repo_root / "backend" / "server.py"
     server_source = server_path.read_text(encoding="utf-8")
@@ -221,6 +283,7 @@ def _build_results(
     repo_root: Path,
     expected_backend: str,
     require_shared_state: bool,
+    require_single_render_instance: bool,
 ) -> list[CheckResult]:
     config = _runtime_config(env=env)
     return [
@@ -229,6 +292,10 @@ def _build_results(
         _postgres_env_is_complete(config=config),
         _database_url_scheme_is_valid(env=env, config=config),
         _shared_state_is_required(config=config, require_shared_state=require_shared_state),
+        _single_render_instance_is_required(
+            config=config,
+            require_single_render_instance=require_single_render_instance,
+        ),
         _server_log_fields_are_present(repo_root=repo_root),
         _live_smoke_supports_dry_run(repo_root=repo_root),
     ]
@@ -241,6 +308,7 @@ def _print_config(config: RuntimeConfig) -> None:
     print(f"[AuthStateBackendSmoke] resolved_backend={config.resolved_backend}")
     print(f"[AuthStateBackendSmoke] DATABASE_URL={config.masked_database_url}")
     print(f"[AuthStateBackendSmoke] AUTH_TOKEN_HASH_SECRET={token_hash_secret_status}")
+    print(f"[AuthStateBackendSmoke] render_instance_count={_render_instance_count_display(config=config)}")
     print(
         "[AuthStateBackendSmoke] oauth_state_failure_log_fields="
         + ",".join(OAUTH_STATE_FAILURE_LOG_FIELDS)
@@ -268,6 +336,11 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="Require a persisted postgres auth state backend for staging/prod.",
     )
+    parser.add_argument(
+        "--require-single-render-instance",
+        action="store_true",
+        help="Require Render foodlens-api instance count to be explicitly verified as 1.",
+    )
     return parser.parse_args(argv)
 
 
@@ -280,6 +353,7 @@ def main(argv: Sequence[str]) -> int:
         repo_root=_repo_root(),
         expected_backend=str(args.expected_backend),
         require_shared_state=bool(args.require_shared_state),
+        require_single_render_instance=bool(args.require_single_render_instance),
     )
     _print_config(config=config)
     _print_results(results=results)

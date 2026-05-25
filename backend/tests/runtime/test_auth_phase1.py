@@ -5,6 +5,7 @@ import sys
 import threading
 import types
 import unittest
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock, patch
 
@@ -50,6 +51,111 @@ class _FailingAuthRateLimiter:
         now: float | None,
     ) -> None:
         raise RateLimitStorageError("postgres auth rate limit unavailable")
+
+
+def _oauth_store_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc)
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+class _AtomicOAuthPendingStateStore:
+    def __init__(self) -> None:
+        self.records: dict[str, dict[str, object]] = {}
+        self.snapshot_saves: list[dict[str, object]] = []
+        self.create_calls = 0
+        self.get_calls = 0
+        self.consume_calls = 0
+
+    def load(self) -> dict[str, object] | None:
+        return None
+
+    def save(self, payload: dict[str, object]) -> None:
+        self.snapshot_saves.append(payload)
+
+    def create_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str,
+        request_id: str,
+        created_at: datetime,
+        expires_at: datetime,
+        nonce: str | None,
+        code_verifier: str | None,
+        code_challenge: str | None,
+    ) -> bool:
+        self.create_calls += 1
+        if state in self.records:
+            return False
+        self.records[state] = {
+            "state": state,
+            "provider": provider,
+            "app_redirect_uri": app_redirect_uri,
+            "request_id": request_id,
+            "nonce": nonce,
+            "code_verifier": code_verifier,
+            "code_challenge": code_challenge,
+            "created_at": created_at,
+            "expires_at": expires_at,
+            "consumed_at": None,
+        }
+        return True
+
+    def get_oauth_pending_state(
+        self,
+        *,
+        state: str,
+    ) -> dict[str, object] | None:
+        self.get_calls += 1
+        record = self.records.get(state)
+        if record is None:
+            return None
+        return dict(record)
+
+    def consume_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> dict[str, object] | None:
+        self.consume_calls += 1
+        record = self.records.get(state)
+        if record is None or not self._can_consume_record(
+            record=record,
+            state=state,
+            provider=provider,
+            app_redirect_uri=app_redirect_uri,
+            now=now,
+        ):
+            return None
+        record["consumed_at"] = now
+        return dict(record)
+
+    def _can_consume_record(
+        self,
+        *,
+        record: dict[str, object],
+        state: str,
+        provider: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> bool:
+        if str(record.get("state")) != state:
+            return False
+        if record.get("consumed_at") is not None:
+            return False
+        expires_at = _oauth_store_datetime(record["expires_at"])
+        if expires_at <= now:
+            return False
+        if str(record["provider"]) != provider:
+            return False
+        if app_redirect_uri and app_redirect_uri != str(record["app_redirect_uri"]):
+            return False
+        return True
 
 
 def _auth_headers(access_token: str) -> dict[str, str]:
@@ -1264,6 +1370,63 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             )
             self.assertEqual(wrong_provider.status_code, 400)
             self.assertEqual(wrong_provider.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_STATE")
+
+    def test_oauth_pending_state_uses_atomic_store_capability(self):
+        atomic_store = _AtomicOAuthPendingStateStore()
+        service = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=atomic_store,
+            token_hash_secret="test-atomic-oauth-state-secret",
+        )
+        state = self._oauth_test_state("atomic-store")
+        created = service.create_oauth_pending_state(
+            provider="google",
+            app_redirect_uri="foodlens://oauth/google-callback",
+            state=state,
+            request_id="req-atomic-store",
+            nonce=self._oauth_test_state("atomic-store-nonce"),
+            code_verifier="atomic-store-code-verifier-000000000000000000",
+            code_challenge="atomic-store-code-challenge-00000000000000000",
+            ttl_seconds=600,
+        )
+
+        self.assertEqual(atomic_store.create_calls, 1)
+        self.assertEqual(created["state"], state)
+        self.assertEqual(created["request_id"], "req-atomic-store")
+        self.assertEqual(atomic_store.snapshot_saves, [])
+
+        verified = service.verify_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+        self.assertEqual(atomic_store.get_calls, 1)
+        self.assertEqual(verified["provider"], "google")
+        self.assertEqual(verified["code_verifier"], "atomic-store-code-verifier-000000000000000000")
+
+        age_bucket = service.oauth_pending_state_age_bucket(
+            state=state,
+            now=datetime.now(timezone.utc),
+        )
+        self.assertEqual(age_bucket, "lt_1m")
+        self.assertEqual(atomic_store.get_calls, 2)
+
+        consumed = service.consume_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+        self.assertEqual(atomic_store.consume_calls, 1)
+        self.assertIsNotNone(consumed["consumed_at"])
+
+        with self.assertRaises(AuthServiceError) as context:
+            service.consume_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/google-callback",
+            )
+        self.assertEqual(context.exception.code, "AUTH_PROVIDER_STATE_REUSED")
+        self.assertEqual(atomic_store.get_calls, 3)
 
     def test_oauth_callback_rejects_unknown_expired_and_wrong_provider_state(self):
         with (

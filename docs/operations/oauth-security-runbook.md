@@ -20,12 +20,22 @@ python3 backend/scripts/ci_auth_state_backend_smoke.py
 staging, production 배포 전에는 persisted state backend 요구사항을 명시한다.
 
 ```bash
-python3 backend/scripts/ci_auth_state_backend_smoke.py \
+RENDER_FOODLENS_API_INSTANCE_COUNT=1 python3 backend/scripts/ci_auth_state_backend_smoke.py \
   --expected-backend postgres \
-  --require-shared-state
+  --require-shared-state \
+  --require-single-render-instance
 ```
 
-이 명령은 DB 연결을 열지 않고 환경변수 형태와 코드상 로그 필드만 확인한다.
+이 명령은 DB 연결을 열지 않고 환경변수 형태와 코드상 로그 필드만 확인한다. `--require-single-render-instance`는 atomic OAuth state consume이 배포된 revision에서 live-concurrency 검증을 마치기 전까지 쓰는 rollout guard다. 사용할 때는 Render Dashboard에서 `foodlens-api` service의 instance count를 먼저 확인한 뒤 값을 넣는다. CI에서 다른 이름을 쓰는 경우 `FOODLENS_API_INSTANCE_COUNT` 또는 `RENDER_SERVICE_INSTANCE_COUNT`도 사용할 수 있다.
+
+```bash
+FOODLENS_API_INSTANCE_COUNT=1 python3 backend/scripts/ci_auth_state_backend_smoke.py \
+  --expected-backend postgres \
+  --require-shared-state \
+  --require-single-render-instance
+```
+
+instance count 값은 secret이 아니지만 운영 상태값이므로 스크립트는 숫자 또는 `unset`/`invalid`만 출력한다.
 
 ## Auth State Backend 운영 확인
 
@@ -41,7 +51,21 @@ python3 backend/scripts/ci_auth_state_backend_smoke.py \
 - `AUTH_TOKEN_HASH_SECRET`은 값이 아니라 `set` 또는 `unset` 상태만 표시한다.
 - `AUTH_TOKEN_HASH_SECRET`은 배포 사이에 안정적으로 유지되어야 한다. 값이 바뀌면 기존 access/refresh token digest 검증이 깨질 수 있다.
 - `AUTH_STATE_BACKEND=memory`는 단일 프로세스 로컬 개발 전용이다. scale-out 환경에서는 OAuth pending state가 프로세스별로 분리되어 callback/POST 검증이 실패할 수 있다.
-- 현재 `AUTH_STATE_BACKEND=postgres`는 auth runtime snapshot 영속화와 재시작 복구용이다. 여러 backend instance가 같은 OAuth state를 동시에 원자적으로 consume하는 전용 row-level store는 아니므로, Render `foodlens-api` instance count는 1로 유지한다. 2개 이상으로 scale-out하기 전에는 atomic OAuth state store 또는 동등한 sticky routing 검증을 별도 완료해야 한다.
+- `AUTH_STATE_BACKEND=postgres`는 OAuth pending state를 `auth_runtime_state_oauth_pending_states` 전용 table에 저장하고, POST consume 시 row-level conditional update로 같은 state의 동시 재사용을 막는다. live DB 호출 없는 검증에서는 SQL shape와 mock/fake connection 테스트까지만 확인한다.
+
+Render 운영 확인:
+
+- Render Dashboard에서 `foodlens-api` service를 연다.
+- Settings 또는 Scaling 화면에서 instance count가 `1`인지 확인한다.
+- atomic OAuth state consume이 배포된 revision에서 live-concurrency 검증을 마치기 전에는 배포 전 smoke에서 `RENDER_FOODLENS_API_INSTANCE_COUNT=1`과 `--require-single-render-instance`를 함께 사용한다.
+- live-concurrency 검증 전 instance count가 `2` 이상이면 배포를 중단하고, 검증이 끝날 때까지 `1`로 되돌린다.
+
+Atomic OAuth state store 확인:
+
+- pending OAuth state가 provider, app redirect URI, expires_at, consumed_at, nonce, PKCE verifier를 row 단위로 저장한다.
+- consume은 `state`, `provider`, `consumed_at IS NULL`, `expires_at > now()` 조건을 하나의 atomic update로 처리한다.
+- mock/fake connection 테스트는 live DB를 열지 않고 SQL shape와 service delegation만 검증한다.
+- 다중 instance 배포 전에는 같은 state로 동시에 들어온 두 POST 중 하나만 session 발급까지 진행되는 live-concurrency 검증 증적을 남긴다.
 
 ## OAuth State Failure 알림 필드
 

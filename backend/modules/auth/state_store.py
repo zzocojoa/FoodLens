@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 
@@ -20,6 +21,40 @@ class AuthStateStore(Protocol):
 
 class AuthProjectionStore(Protocol):
     def save_projection(self, payload: dict[str, object]) -> None:
+        ...
+
+
+class OAuthPendingStateStore(Protocol):
+    def create_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str,
+        request_id: str,
+        created_at: datetime,
+        expires_at: datetime,
+        nonce: str | None,
+        code_verifier: str | None,
+        code_challenge: str | None,
+    ) -> bool:
+        ...
+
+    def get_oauth_pending_state(
+        self,
+        *,
+        state: str,
+    ) -> dict[str, object] | None:
+        ...
+
+    def consume_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> dict[str, object] | None:
         ...
 
 
@@ -79,6 +114,124 @@ class PostgresAuthStateStore:
         except Exception as error:  # pragma: no cover - defensive integration guard
             raise AuthStateStoreError(f"Failed to save auth state to postgres: {error}") from error
 
+    def create_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str,
+        request_id: str,
+        created_at: datetime,
+        expires_at: datetime,
+        nonce: str | None,
+        code_verifier: str | None,
+        code_challenge: str | None,
+    ) -> bool:
+        connect = self._load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_oauth_pending_state_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        f"DELETE FROM {self._oauth_pending_state_table_name()} WHERE expires_at <= %s",
+                        (created_at,),
+                    )
+                    cursor.execute(
+                        (
+                            f"INSERT INTO {self._oauth_pending_state_table_name()} "
+                            "(state, provider, app_redirect_uri, request_id, created_at, expires_at, "
+                            "nonce, code_verifier, code_challenge) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "ON CONFLICT (state) DO NOTHING "
+                            "RETURNING state"
+                        ),
+                        (
+                            state,
+                            provider,
+                            app_redirect_uri,
+                            request_id,
+                            created_at,
+                            expires_at,
+                            nonce,
+                            code_verifier,
+                            code_challenge,
+                        ),
+                    )
+                    return cursor.fetchone() is not None
+        except Exception as error:  # pragma: no cover - defensive integration guard
+            raise AuthStateStoreError(f"Failed to create oauth pending state in postgres: {error}") from error
+
+    def get_oauth_pending_state(
+        self,
+        *,
+        state: str,
+    ) -> dict[str, object] | None:
+        connect = self._load_connect()
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_oauth_pending_state_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            f"SELECT {self._oauth_pending_state_columns()} "
+                            f"FROM {self._oauth_pending_state_table_name()} "
+                            "WHERE state = %s"
+                        ),
+                        (state,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        return None
+                    return self._oauth_pending_state_row_to_dict(row)
+        except AuthStateStoreError:
+            raise
+        except Exception as error:  # pragma: no cover - defensive integration guard
+            raise AuthStateStoreError(f"Failed to load oauth pending state from postgres: {error}") from error
+
+    def consume_oauth_pending_state(
+        self,
+        *,
+        state: str,
+        provider: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> dict[str, object] | None:
+        connect = self._load_connect()
+        normalized_app_redirect_uri = (app_redirect_uri or "").strip()
+        redirect_sql = ""
+        params: tuple[object, ...]
+        if normalized_app_redirect_uri:
+            redirect_sql = "AND app_redirect_uri = %s "
+            params = (now, state, provider, now, normalized_app_redirect_uri)
+        else:
+            params = (now, state, provider, now)
+
+        try:
+            with connect(self.database_url, autocommit=True) as conn:
+                self._ensure_oauth_pending_state_table(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        (
+                            f"UPDATE {self._oauth_pending_state_table_name()} "
+                            "SET consumed_at = %s "
+                            "WHERE state = %s "
+                            "AND provider = %s "
+                            "AND consumed_at IS NULL "
+                            "AND expires_at > %s "
+                            f"{redirect_sql}"
+                            f"RETURNING {self._oauth_pending_state_columns()}"
+                        ),
+                        params,
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        return None
+                    return self._oauth_pending_state_row_to_dict(row)
+        except AuthStateStoreError:
+            raise
+        except Exception as error:  # pragma: no cover - defensive integration guard
+            raise AuthStateStoreError(f"Failed to consume oauth pending state in postgres: {error}") from error
+
     def _ensure_table(self, conn: object) -> None:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -89,6 +242,30 @@ class PostgresAuthStateStore:
                     "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
                     ")"
                 )
+            )
+
+    def _ensure_oauth_pending_state_table(self, conn: object) -> None:
+        table_name = self._oauth_pending_state_table_name()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                (
+                    f"CREATE TABLE IF NOT EXISTS {table_name} ("
+                    "state TEXT PRIMARY KEY,"
+                    "provider TEXT NOT NULL,"
+                    "app_redirect_uri TEXT NOT NULL,"
+                    "request_id TEXT NOT NULL,"
+                    "created_at TIMESTAMPTZ NOT NULL,"
+                    "expires_at TIMESTAMPTZ NOT NULL,"
+                    "consumed_at TIMESTAMPTZ NULL,"
+                    "nonce TEXT NULL,"
+                    "code_verifier TEXT NULL,"
+                    "code_challenge TEXT NULL"
+                    ")"
+                )
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {table_name}_provider_expires_idx ON {table_name} "
+                "(provider, expires_at)"
             )
 
     def _load_connect(self):
@@ -106,6 +283,35 @@ class PostgresAuthStateStore:
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", candidate):
             raise AuthStateStoreError("AUTH_STATE_TABLE has invalid format.")
         return candidate
+
+    def _oauth_pending_state_table_name(self) -> str:
+        return self._sanitize_table_name(f"{self.table_name}_oauth_pending_states")
+
+    @staticmethod
+    def _oauth_pending_state_columns() -> str:
+        return (
+            "state, provider, app_redirect_uri, request_id, created_at, expires_at, "
+            "consumed_at, nonce, code_verifier, code_challenge"
+        )
+
+    @staticmethod
+    def _oauth_pending_state_row_to_dict(row: object) -> dict[str, object]:
+        if not isinstance(row, tuple):
+            raise AuthStateStoreError("Unexpected oauth pending state row type loaded from postgres.")
+        if len(row) != 10:
+            raise AuthStateStoreError("Unexpected oauth pending state column count loaded from postgres.")
+        return {
+            "state": row[0],
+            "provider": row[1],
+            "app_redirect_uri": row[2],
+            "request_id": row[3],
+            "created_at": row[4],
+            "expires_at": row[5],
+            "consumed_at": row[6],
+            "nonce": row[7],
+            "code_verifier": row[8],
+            "code_challenge": row[9],
+        }
 
 
 @dataclass(slots=True)

@@ -268,7 +268,9 @@
   - 공식 Kakao Developers OIDC Discovery 문서가 `authorization_endpoint=https://kauth.kakao.com/oauth/authorize`, `token_endpoint=https://kauth.kakao.com/oauth/token`, `code_challenge_methods_supported=["S256"]`를 문서화하므로 Kakao도 S256 PKCE 적용 대상으로 분류한다.
   - bridge 런타임은 Kakao authorize URL에도 `code_challenge`와 `code_challenge_method=S256`을 포함하고, token exchange 요청 body에 pending state의 `code_verifier`를 사용한다. 테스트는 provider 호출 없이 mock/stub으로 검증한다.
   - 세부 근거와 적용 체크리스트는 [OAuth Provider PKCE Notes](../security/oauth-provider-pkce-notes.md)를 따른다.
-- pending OAuth state는 auth runtime state backend snapshot에 포함되며, persisted backend 복구 후에도 provider, app redirect URI, 만료/소비 상태, provider PKCE 값을 그대로 검증/소비해야 한다.
+- memory backend의 pending OAuth state는 auth runtime state snapshot에 포함되며, persisted backend 복구 후에도 provider, app redirect URI, 만료/소비 상태, provider PKCE 값을 그대로 검증/소비해야 한다.
+- `AUTH_STATE_BACKEND=postgres`는 OAuth pending state를 `auth_runtime_state_oauth_pending_states` 전용 table에 저장하고, `state`, `provider`, optional app redirect URI, `consumed_at IS NULL`, `expires_at > now` 조건의 atomic update로 one-time consume한다.
+- live DB 호출 없는 테스트 범위에서는 SQL shape와 service delegation만 검증한다. 다중 instance 운영 전에는 배포된 revision에서 concurrency smoke를 별도 수행하거나, 그 전까지 `backend/scripts/ci_auth_state_backend_smoke.py --expected-backend postgres --require-shared-state --require-single-render-instance`로 `foodlens-api` instance count `1` 운영 guard를 유지한다.
 - live provider bridge smoke는 `/auth/{provider}/start` 호출 때 client-supplied `state`를 보내지 않고 서버 생성 state가 32~256자 URL-safe 고엔트로피 형식인지 검증한다. Provider redirect는 따라가지 않는다.
 - `/auth/{provider}/callback`은 callback 시점에 pending state가 존재하고 만료되지 않았으며 provider가 일치하는지 확인한다. 저장된 app redirect URI는 allowlist로 다시 확인하고, callback에 `redirect_uri`가 제공되면 pending state의 app redirect URI와도 비교한다. 이 단계에서는 state를 소비하지 않는다.
 - `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
