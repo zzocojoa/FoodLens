@@ -18,6 +18,10 @@ const ICON_PATH = "./assets/images/icon.png";
 const IOS_ICON_PATH = "./assets/images/ios-icon.png";
 const FAVICON_PATH = "./assets/images/favicon.png";
 const SPLASH_IMAGE_PATH = "./assets/images/splash-icon.png";
+const SPLASH_IMAGE_WIDTH = 240;
+const SPLASH_RESIZE_MODE = "contain";
+const SPLASH_BACKGROUND_COLOR = "#FFFFFF";
+const SPLASH_DARK_BACKGROUND_COLOR = "#020617";
 
 const EAS_PROJECT_ID = "dab80641-3ca1-4633-a381-36ddbb37a22e";
 
@@ -46,6 +50,15 @@ const EXPO_BUILD_IDENTITY = {
   gitCommitShortSha: buildIdentity.gitCommitShortSha,
   gitDirty: buildIdentity.gitDirty,
   builtAtIso: buildIdentity.builtAtIso,
+};
+const SPLASH_SCREEN_CONFIG = {
+  image: SPLASH_IMAGE_PATH,
+  imageWidth: SPLASH_IMAGE_WIDTH,
+  resizeMode: SPLASH_RESIZE_MODE,
+  backgroundColor: SPLASH_BACKGROUND_COLOR,
+  dark: {
+    backgroundColor: SPLASH_DARK_BACKGROUND_COLOR,
+  },
 };
 
 if (!ANDROID_GOOGLE_MAPS_API_KEY) {
@@ -109,13 +122,8 @@ module.exports = {
       [
         "expo-splash-screen",
         {
-          image: SPLASH_IMAGE_PATH,
-          imageWidth: 240,
-          resizeMode: "contain",
-          backgroundColor: "#FFFFFF",
-          dark: {
-            backgroundColor: "#020617",
-          },
+          ios: SPLASH_SCREEN_CONFIG,
+          android: SPLASH_SCREEN_CONFIG,
         },
       ],
       [

@@ -61,6 +61,24 @@ const CRITICAL_ASSETS = [
     },
   },
 ];
+const ICON_SPLASH_SEPARATION_PAIRS = [
+  {
+    primaryPath: 'assets/images/splash-icon.png',
+    comparisonPath: 'assets/images/icon.png',
+  },
+  {
+    primaryPath: 'assets/images/splash-icon.png',
+    comparisonPath: 'assets/images/ios-icon.png',
+  },
+  {
+    primaryPath: 'assets/images/splash-icon.png',
+    comparisonPath: 'assets/images/android-icon-background.png',
+  },
+  {
+    primaryPath: 'assets/images/splash-icon.png',
+    comparisonPath: 'assets/images/android-icon-foreground.png',
+  },
+];
 
 const createCrc32Table = () => {
   const table = [];
@@ -604,12 +622,54 @@ const createAssetResult = (asset, rootDir) => {
   };
 };
 
+const createAssetSeparationResult = (pair, rootDir) => {
+  const primaryAbsolutePath = path.join(rootDir, pair.primaryPath);
+  const comparisonAbsolutePath = path.join(rootDir, pair.comparisonPath);
+  const errors = [];
+
+  if (!fs.existsSync(primaryAbsolutePath)) {
+    errors.push(`missing asset: ${pair.primaryPath}`);
+  }
+
+  if (!fs.existsSync(comparisonAbsolutePath)) {
+    errors.push(`missing asset: ${pair.comparisonPath}`);
+  }
+
+  if (errors.length > 0) {
+    return {
+      asset: { path: pair.primaryPath },
+      pair,
+      ok: false,
+      errors,
+    };
+  }
+
+  const primaryHash = hashBuffer(fs.readFileSync(primaryAbsolutePath));
+  const comparisonHash = hashBuffer(fs.readFileSync(comparisonAbsolutePath));
+  if (primaryHash === comparisonHash) {
+    errors.push(`${pair.primaryPath} must not reuse ${pair.comparisonPath}`);
+  }
+
+  return {
+    asset: { path: pair.primaryPath },
+    pair,
+    ok: errors.length === 0,
+    primaryHash,
+    comparisonHash,
+    errors,
+  };
+};
+
 const runAssetImageQualityGate = (rootDir) => {
   const results = CRITICAL_ASSETS.map((asset) => createAssetResult(asset, rootDir));
-  const failures = results.filter((result) => !result.ok);
+  const separationResults = ICON_SPLASH_SEPARATION_PAIRS.map((pair) =>
+    createAssetSeparationResult(pair, rootDir)
+  );
+  const failures = [...results, ...separationResults].filter((result) => !result.ok);
   return {
     ok: failures.length === 0,
     results,
+    separationResults,
     failures,
   };
 };
@@ -625,6 +685,16 @@ const main = () => {
 
     console.log(
       `[asset-image-quality] ${entry.asset.path}: ${entry.dimensions.width}x${entry.dimensions.height}, ${entry.bytes} bytes`
+    );
+  });
+  result.separationResults.forEach((entry) => {
+    if (!entry.ok) {
+      console.error(`[asset-image-quality] ${entry.asset.path}: ${entry.errors.join('; ')}`);
+      return;
+    }
+
+    console.log(
+      `[asset-image-quality] ${entry.pair.primaryPath}: distinct from ${entry.pair.comparisonPath}`
     );
   });
 
@@ -644,7 +714,9 @@ if (require.main === module) {
 
 module.exports = {
   CRITICAL_ASSETS,
+  ICON_SPLASH_SEPARATION_PAIRS,
   compareImageFingerprint,
+  createAssetSeparationResult,
   createImageFingerprint,
   readImageDimensions,
   readJpegFingerprintData,
