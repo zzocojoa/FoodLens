@@ -1857,6 +1857,8 @@ OAUTH_PROVIDER_CONFIG = {
         "scope_default": "openid email profile",
         "default_app_redirect_uri": "foodlens://oauth/google-callback",
         "callback_path": "/auth/google/callback",
+        "pkce_enabled": "1",
+        "nonce_enabled": "1",
     },
     "kakao": {
         "authorize_url": "https://kauth.kakao.com/oauth/authorize",
@@ -1865,11 +1867,25 @@ OAUTH_PROVIDER_CONFIG = {
         "scope_default": "",
         "default_app_redirect_uri": "foodlens://oauth/kakao-callback",
         "callback_path": "/auth/kakao/callback",
+        "pkce_enabled": "1",
+        "nonce_enabled": "0",
     },
 }
 
 DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
 DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
+DEFAULT_OAUTH_STATE_TTL_SECONDS = 600
+OAUTH_STATE_MIN_LENGTH = 32
+OAUTH_STATE_MAX_LENGTH = 256
+OAUTH_STATE_ALLOWED_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+OAUTH_STATE_FAILURE_CODES = frozenset(
+    {
+        "AUTH_PROVIDER_INVALID_STATE",
+        "AUTH_PROVIDER_STATE_REUSED",
+        "AUTH_PROVIDER_STATE_EXPIRED",
+    }
+)
+OAUTH_STATE_REDIRECT_FAILURE_CODE = "AUTH_REDIRECT_URI_MISMATCH"
 MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -2350,29 +2366,70 @@ def _resolve_provider_logout_callback_uri(
     return _append_query_params(callback_uri, {"app_redirect_uri": app_redirect_uri})
 
 
-def _pack_oauth_state(*, state: str, app_redirect_uri: str) -> str:
-    encoded = base64.urlsafe_b64encode(app_redirect_uri.encode("utf-8")).decode("ascii").rstrip("=")
-    return f"{state}.{encoded}"
+def _base64_urlsafe_token(*, byte_count: int) -> str:
+    return base64.urlsafe_b64encode(os.urandom(byte_count)).decode("ascii").rstrip("=")
 
 
-def _extract_app_redirect_uri_from_state(state: str | None) -> str | None:
-    if not state or "." not in state:
-        return None
+def _is_high_entropy_oauth_state(value: str) -> bool:
+    if len(value) < OAUTH_STATE_MIN_LENGTH or len(value) > OAUTH_STATE_MAX_LENGTH:
+        return False
+    return all(character in OAUTH_STATE_ALLOWED_CHARACTERS for character in value)
 
-    encoded = state.rsplit(".", 1)[1]
-    padding = "=" * (-len(encoded) % 4)
+
+def _generate_oauth_state_handle() -> str:
+    return _base64_urlsafe_token(byte_count=32)
+
+
+def _resolve_oauth_state_handle(state: str | None) -> str:
+    normalized_state = (state or "").strip()
+    if not normalized_state:
+        return _generate_oauth_state_handle()
+    if _is_high_entropy_oauth_state(normalized_state):
+        return normalized_state
+    raise AuthServiceError(
+        code="AUTH_PROVIDER_INVALID_STATE",
+        message="OAuth state must be a high-entropy URL-safe value.",
+        status_code=400,
+    )
+
+
+def _oauth_state_ttl_seconds() -> int:
+    raw_value = (os.environ.get("AUTH_OAUTH_STATE_TTL_SECONDS") or "").strip()
+    if not raw_value:
+        return DEFAULT_OAUTH_STATE_TTL_SECONDS
     try:
-        decoded = base64.urlsafe_b64decode(f"{encoded}{padding}").decode("utf-8").strip()
-    except Exception:
-        return None
-    return decoded or None
+        parsed = int(raw_value)
+    except ValueError:
+        return DEFAULT_OAUTH_STATE_TTL_SECONDS
+    return max(60, min(parsed, DEFAULT_OAUTH_STATE_TTL_SECONDS))
+
+
+def _provider_uses_pkce(provider: str) -> bool:
+    config = _oauth_provider_config(provider)
+    return str(config.get("pkce_enabled", "0")).strip() == "1"
+
+
+def _provider_uses_nonce(provider: str) -> bool:
+    config = _oauth_provider_config(provider)
+    return str(config.get("nonce_enabled", "0")).strip() == "1"
+
+
+def _generate_pkce_code_verifier() -> str:
+    return _base64_urlsafe_token(byte_count=64)
+
+
+def _pkce_code_challenge(*, code_verifier: str) -> str:
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 def _build_oauth_authorize_url(
     *,
     provider: str,
     callback_uri: str,
-    packed_state: str,
+    state: str,
+    nonce: str | None,
+    code_challenge: str | None,
 ) -> str:
     config = _oauth_provider_config(provider)
     client_id_env = str(config["client_id_env"])
@@ -2388,8 +2445,13 @@ def _build_oauth_authorize_url(
         "client_id": client_id,
         "redirect_uri": callback_uri,
         "response_type": "code",
-        "state": packed_state,
+        "state": state,
     }
+    if nonce:
+        params["nonce"] = nonce
+    if code_challenge:
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
 
     scope = os.environ.get(str(config["scope_env"]), str(config["scope_default"])).strip()
     if scope:
@@ -2499,7 +2561,7 @@ def _provider_timeout_seconds() -> float:
     return parsed if parsed > 0 else DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS
 
 
-def _verify_kakao_identity(*, request: Request, code: str) -> tuple[str, str | None]:
+def _verify_kakao_identity(*, request: Request, code: str, code_verifier: str | None) -> tuple[str, str | None]:
     client_id = os.environ.get("AUTH_KAKAO_CLIENT_ID", "").strip()
     if not client_id:
         raise AuthServiceError(
@@ -2514,6 +2576,8 @@ def _verify_kakao_identity(*, request: Request, code: str) -> tuple[str, str | N
         "redirect_uri": _resolve_provider_callback_uri(request=request, provider="kakao"),
         "code": code.strip(),
     }
+    if code_verifier:
+        token_request_data["code_verifier"] = code_verifier
     client_secret = os.environ.get("AUTH_KAKAO_CLIENT_SECRET", "").strip()
     if client_secret:
         token_request_data["client_secret"] = client_secret
@@ -2622,7 +2686,7 @@ def _verify_kakao_identity(*, request: Request, code: str) -> tuple[str, str | N
     return provider_user_id, email
 
 
-def _verify_google_identity(*, request: Request, code: str) -> tuple[str, str | None]:
+def _verify_google_identity(*, request: Request, code: str, code_verifier: str | None) -> tuple[str, str | None]:
     client_id = os.environ.get("AUTH_GOOGLE_CLIENT_ID", "").strip()
     if not client_id:
         raise AuthServiceError(
@@ -2637,6 +2701,8 @@ def _verify_google_identity(*, request: Request, code: str) -> tuple[str, str | 
         "redirect_uri": _resolve_provider_callback_uri(request=request, provider="google"),
         "code": code.strip(),
     }
+    if code_verifier:
+        token_request_data["code_verifier"] = code_verifier
     client_secret = os.environ.get("AUTH_GOOGLE_CLIENT_SECRET", "").strip()
     if client_secret:
         token_request_data["client_secret"] = client_secret
@@ -3562,6 +3628,66 @@ def _log_auth_failure(
     )
 
 
+def _oauth_state_failure_age_bucket(
+    *,
+    auth_service: Any,
+    state: str | None,
+) -> str:
+    if not state or not state.strip():
+        return "unknown"
+    return str(auth_service.oauth_pending_state_age_bucket(state=state, now=_utc_now()))
+
+
+def _log_oauth_state_failure(
+    *,
+    request_id: str,
+    provider: str,
+    failure_code: str,
+    state_age_bucket: str,
+) -> None:
+    logger.warning(
+        "[OAuthState] validation failed",
+        extra={
+            "request_id": request_id,
+            "provider": provider,
+            "failure_code": failure_code,
+            "state_age_bucket": state_age_bucket,
+        },
+    )
+
+
+def _is_oauth_state_failure_code(
+    *,
+    failure_code: str,
+    include_redirect_mismatch: bool,
+) -> bool:
+    if failure_code in OAUTH_STATE_FAILURE_CODES:
+        return True
+    return include_redirect_mismatch and failure_code == OAUTH_STATE_REDIRECT_FAILURE_CODE
+
+
+def _log_oauth_state_failure_for_error(
+    *,
+    auth_service: Any,
+    request_id: str,
+    provider: str,
+    state: str | None,
+    error: AuthServiceError,
+    include_redirect_mismatch: bool,
+) -> None:
+    if not _is_oauth_state_failure_code(
+        failure_code=error.code,
+        include_redirect_mismatch=include_redirect_mismatch,
+    ):
+        return
+    _log_oauth_state_failure(
+        request_id=request_id,
+        provider=provider,
+        failure_code=error.code,
+        state_age_bucket=_oauth_state_failure_age_bucket(auth_service=auth_service, state=state),
+    )
+
+
 def _log_phase2_write(
     *,
     request_id: str,
@@ -3952,20 +4078,41 @@ def _build_provider_start_redirect(
     state: str | None,
 ) -> RedirectResponse:
     request_id = _request_id(request)
+    auth_service = _service("auth_service")
     try:
         app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=redirect_uri)
-        packed_state = _pack_oauth_state(
-            state=(state or os.urandom(8).hex()).strip(),
+        state_handle = _resolve_oauth_state_handle(state)
+        nonce = _generate_oauth_state_handle() if _provider_uses_nonce(provider) else None
+        code_verifier = _generate_pkce_code_verifier() if _provider_uses_pkce(provider) else None
+        code_challenge = _pkce_code_challenge(code_verifier=code_verifier) if code_verifier else None
+        auth_service.create_oauth_pending_state(
+            provider=provider,
             app_redirect_uri=app_redirect_uri,
+            state=state_handle,
+            request_id=request_id,
+            nonce=nonce,
+            code_verifier=code_verifier,
+            code_challenge=code_challenge,
+            ttl_seconds=_oauth_state_ttl_seconds(),
         )
         provider_callback_uri = _resolve_provider_callback_uri(request=request, provider=provider)
         authorize_url = _build_oauth_authorize_url(
             provider=provider,
             callback_uri=provider_callback_uri,
-            packed_state=packed_state,
+            state=state_handle,
+            nonce=nonce,
+            code_challenge=code_challenge,
         )
         return RedirectResponse(url=authorize_url, status_code=302)
     except AuthServiceError as error:
+        _log_oauth_state_failure_for_error(
+            auth_service=auth_service,
+            request_id=request_id,
+            provider=provider,
+            state=state,
+            error=error,
+            include_redirect_mismatch=False,
+        )
         _raise_auth_route_error(
             error=error,
             request_id=request_id,
@@ -3984,9 +4131,17 @@ def _build_provider_callback_redirect(
     redirect_uri: str | None,
 ) -> RedirectResponse:
     request_id = _request_id(request)
+    auth_service = _service("auth_service")
     try:
-        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
-        app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=requested_redirect)
+        pending_state = auth_service.verify_oauth_pending_state(
+            provider=provider,
+            state=state,
+            app_redirect_uri=redirect_uri,
+        )
+        app_redirect_uri = _resolve_app_redirect_uri(
+            provider=provider,
+            requested_uri=str(pending_state["app_redirect_uri"]),
+        )
         params: dict[str, str] = {"request_id": request_id}
         if code:
             params["code"] = code
@@ -3998,6 +4153,14 @@ def _build_provider_callback_redirect(
             params["error_description"] = error_description
         return RedirectResponse(url=_append_query_params(app_redirect_uri, params), status_code=302)
     except AuthServiceError as auth_error:
+        _log_oauth_state_failure_for_error(
+            auth_service=auth_service,
+            request_id=request_id,
+            provider=provider,
+            state=state,
+            error=auth_error,
+            include_redirect_mismatch=True,
+        )
         _raise_auth_route_error(
             error=auth_error,
             request_id=request_id,
@@ -4014,14 +4177,22 @@ def _build_provider_callback_rate_limited_redirect(
     error: HTTPException,
 ) -> RedirectResponse:
     request_id = _request_id(request)
+    auth_service = _service("auth_service")
     try:
         detail = error.detail if isinstance(error.detail, dict) else {}
         retry_after_raw = detail.get("retry_after_seconds")
         if retry_after_raw is None and error.headers is not None:
             retry_after_raw = error.headers.get("Retry-After")
         retry_after_seconds = max(1, int(retry_after_raw or 1))
-        requested_redirect = _extract_app_redirect_uri_from_state(state) or redirect_uri
-        app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=requested_redirect)
+        pending_state = auth_service.verify_oauth_pending_state(
+            provider=provider,
+            state=state,
+            app_redirect_uri=redirect_uri,
+        )
+        app_redirect_uri = _resolve_app_redirect_uri(
+            provider=provider,
+            requested_uri=str(pending_state["app_redirect_uri"]),
+        )
         params: dict[str, str] = {
             "request_id": request_id,
             "error": "AUTH_RATE_LIMITED",
@@ -4034,6 +4205,14 @@ def _build_provider_callback_rate_limited_redirect(
         response.headers["Retry-After"] = str(retry_after_seconds)
         return response
     except AuthServiceError as auth_error:
+        _log_oauth_state_failure_for_error(
+            auth_service=auth_service,
+            request_id=request_id,
+            provider=provider,
+            state=state,
+            error=auth_error,
+            include_redirect_mismatch=True,
+        )
         _raise_auth_route_error(
             error=auth_error,
             request_id=request_id,
@@ -4109,6 +4288,25 @@ def _build_oauth_provider_login_result(
     payload: OAuthProviderRequest,
     request: Request,
 ) -> dict[str, Any]:
+    try:
+        pending_state = auth_service.consume_oauth_pending_state(
+            provider=provider,
+            state=payload.state,
+            app_redirect_uri=payload.redirect_uri,
+        )
+    except AuthServiceError as error:
+        _log_oauth_state_failure_for_error(
+            auth_service=auth_service,
+            request_id=_request_id(request),
+            provider=provider,
+            state=payload.state,
+            error=error,
+            include_redirect_mismatch=True,
+        )
+        raise
+    pending_redirect_uri = str(pending_state["app_redirect_uri"])
+    code_verifier = pending_state.get("code_verifier")
+    pending_code_verifier = code_verifier if isinstance(code_verifier, str) and code_verifier.strip() else None
     provider_user_id = payload.provider_user_id
     email = payload.email
     if _should_verify_provider_identity(
@@ -4119,19 +4317,27 @@ def _build_oauth_provider_login_result(
         email=email,
     ):
         if provider == "google":
-            provider_user_id, verified_email = _verify_google_identity(request=request, code=payload.code)
-            if verified_email:
-                email = verified_email
+            verified_provider_user_id, verified_email = _verify_google_identity(
+                request=request,
+                code=payload.code,
+                code_verifier=pending_code_verifier,
+            )
+            provider_user_id = verified_provider_user_id
+            email = verified_email
         elif provider == "kakao":
-            provider_user_id, verified_email = _verify_kakao_identity(request=request, code=payload.code)
-            if verified_email:
-                email = verified_email
+            verified_provider_user_id, verified_email = _verify_kakao_identity(
+                request=request,
+                code=payload.code,
+                code_verifier=pending_code_verifier,
+            )
+            provider_user_id = verified_provider_user_id
+            email = verified_email
 
     return auth_service.oauth_login(
         provider=provider,
         code=payload.code,
         state=payload.state,
-        redirect_uri=payload.redirect_uri,
+        redirect_uri=pending_redirect_uri,
         error=payload.error,
         provider_user_id=provider_user_id,
         email=email,

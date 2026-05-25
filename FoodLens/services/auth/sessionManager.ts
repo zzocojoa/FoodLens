@@ -1,6 +1,7 @@
 import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 import { AuthSecureSessionStore } from './secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser';
+import { clearOAuthPendingStates } from './oauthProvider';
 import { queryClient } from '../queryClient';
 import { SafeStorage } from '../storage';
 import { USER_STORAGE_KEY } from '../user/constants';
@@ -60,6 +61,7 @@ export const persistSession = async (
   if (hasAuthenticatedUser() && getCurrentUserId() !== session.user.id) {
     clearSessionScopedCaches();
     await clearLegacyProfileSnapshot();
+    await clearOAuthPendingStates();
   }
   if (persist) {
     await AuthSecureSessionStore.write(session);
@@ -73,6 +75,7 @@ export const clearSession = async (): Promise<void> => {
   await AuthSecureSessionStore.clear();
   await clearCurrentUserId();
   await clearLegacyProfileSnapshot();
+  await clearOAuthPendingStates();
   clearSessionScopedCaches();
 };
 

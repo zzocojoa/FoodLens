@@ -156,6 +156,7 @@
   - `email`, `code`, `new_password`
 - `POST /auth/google|kakao`
   - `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
+  - `state`는 `/auth/{provider}/start`에서 생성/저장된 pending OAuth state와 일치해야 한다. 모바일이 `state`를 전달하는 경우 32~256자 URL-safe 고엔트로피 값이어야 하며, 전달하지 않으면 서버가 생성한다.
 - `POST /auth/refresh`
   - `refresh_token`
 - `POST /auth/logout`
@@ -169,6 +170,9 @@
 - `AUTH_REFRESH_REUSED`
 - `AUTH_PROVIDER_CANCELLED`
 - `AUTH_PROVIDER_INVALID_CODE`
+- `AUTH_PROVIDER_INVALID_STATE`
+- `AUTH_PROVIDER_STATE_EXPIRED`
+- `AUTH_PROVIDER_STATE_REUSED`
 - `AUTH_REDIRECT_URI_MISMATCH`
 - `AUTH_EMAIL_NOT_VERIFIED`
 - `AUTH_EMAIL_VERIFICATION_INVALID`
@@ -252,7 +256,48 @@
   - `detail.retry_scope`: 잠금 에러 코드
   - `detail.retryable_by_client`: `false`
 
-### F. 분석 API Rate Limit 계약
+### F. OAuth state / PKCE 보안 계약
+
+- `/auth/{provider}/start`는 provider, app redirect URI, request_id, 생성/만료 시각을 포함한 pending OAuth state를 서버 auth state backend에 저장한다.
+  - `state` query가 없으면 서버가 opaque state handle을 생성한다.
+  - 모바일이 `state` query를 전달하면 32~256자 URL-safe 고엔트로피 값이어야 한다. 허용 문자는 `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`이다.
+  - 기본 TTL은 10분(`600`초)이다. `AUTH_OAUTH_STATE_TTL_SECONDS`로 조정할 수 있으나 서버는 최종 TTL을 `60`~`600`초 범위로 제한한다.
+  - 동일 state handle이 이미 pending backend에 있으면 새 pending state를 만들지 않고 `AUTH_PROVIDER_STATE_REUSED`로 거절한다.
+- Google 시작 URL에는 PKCE `code_challenge`와 `code_challenge_method=S256`, OIDC `nonce`가 포함된다. 서버는 같은 pending state에 `code_verifier`를 저장하고, Google code exchange 시 `code_verifier`를 사용한다.
+- Kakao PKCE 결정(확인일: 2026-05-25 KST):
+  - 공식 Kakao Developers OIDC Discovery 문서가 `authorization_endpoint=https://kauth.kakao.com/oauth/authorize`, `token_endpoint=https://kauth.kakao.com/oauth/token`, `code_challenge_methods_supported=["S256"]`를 문서화하므로 Kakao도 S256 PKCE 적용 대상으로 분류한다.
+  - bridge 런타임은 Kakao authorize URL에도 `code_challenge`와 `code_challenge_method=S256`을 포함하고, token exchange mock/stub 경로에서 pending state의 `code_verifier`를 사용한다.
+  - 세부 근거와 적용 체크리스트는 [OAuth Provider PKCE Notes](../security/oauth-provider-pkce-notes.md)를 따른다.
+- pending OAuth state는 auth runtime state backend snapshot에 포함되며, persisted backend 복구 후에도 provider, app redirect URI, 만료/소비 상태, provider PKCE 값을 그대로 검증/소비해야 한다.
+- live provider bridge smoke는 `/auth/{provider}/start` 호출 때 client-supplied `state`를 보내지 않고 서버 생성 state가 32~256자 URL-safe 고엔트로피 형식인지 검증한다. Provider redirect는 따라가지 않는다.
+- `/auth/{provider}/callback`은 callback 시점에 pending state가 존재하고 만료되지 않았으며 provider와 app redirect URI가 일치하는지만 확인한다. 이 단계에서는 state를 소비하지 않는다.
+- `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
+  - 성공, provider cancel/error, invalid code 모두 같은 state를 다시 사용할 수 없다.
+  - 같은 state 재사용, 만료 state, unknown/tampered state, 다른 provider state는 인증 실패로 처리된다.
+- callback deep link와 POST body의 `state`는 opaque state handle이다. app redirect URI를 state 문자열에서 파싱하거나 신뢰하지 않는다.
+- 정상 bridge 예시:
+  - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars`
+  - 서버는 pending state를 저장하고 Google authorize URL로 `302` redirect한다.
+  - `GET /auth/google/callback?code=provider-code&state=clientGeneratedStateValueWithAtLeast32Chars`는 앱 redirect URI로 `code`, `state`, `request_id`를 붙여 `302` redirect한다.
+  - 앱은 같은 `state`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
+- State 에러 코드 예시:
+  - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
+  - `AUTH_PROVIDER_STATE_EXPIRED`: pending state가 TTL을 초과했다. 클라이언트는 `/auth/{provider}/start`부터 다시 시작해야 한다.
+  - `AUTH_PROVIDER_STATE_REUSED`: 이미 consume된 state 또는 아직 pending backend에 남아 있는 동일 state를 재사용했다. 클라이언트는 같은 state로 재시도하지 말고 새 OAuth flow를 시작해야 한다.
+  - `AUTH_REDIRECT_URI_MISMATCH`: start의 app redirect URI가 allowlist에 없거나 callback/POST의 `redirect_uri`가 pending state의 app redirect URI와 다르다.
+- State 에러 응답 예시:
+
+```json
+{
+  "detail": {
+    "code": "AUTH_PROVIDER_STATE_REUSED",
+    "message": "OAuth state has already been used.",
+    "request_id": "req-example"
+  }
+}
+```
+
+### G. 분석 API Rate Limit 계약
 
 - 대상:
   - `POST /analyze`

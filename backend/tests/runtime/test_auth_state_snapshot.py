@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from backend.modules.auth.service import InMemoryAuthSessionService
+from backend.modules.auth.service import AuthServiceError, InMemoryAuthSessionService
 
 
 _TEST_TOKEN_HASH_SECRET = "test-auth-state-token-hash-secret"
@@ -81,6 +81,75 @@ class AuthStateSnapshotTests(unittest.TestCase):
         history = service_b.get_history(user_id=user_id, limit=10)
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["entry"]["foodName"], "Kimchi")
+
+    def test_state_snapshot_restores_oauth_pending_state(self):
+        state_store = _MemoryStateStore()
+        state = "snapshot-oauth-state-000000000000000000000000"
+        code_verifier = "snapshot-code-verifier-0000000000000000000"
+        code_challenge = "snapshot-code-challenge-000000000000000000"
+
+        service_a = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+        service_a.create_oauth_pending_state(
+            provider="google",
+            app_redirect_uri="foodlens://oauth/google-callback",
+            state=state,
+            request_id="req-oauth-snapshot",
+            nonce="snapshot-oauth-nonce-0000000000000000000000",
+            code_verifier=code_verifier,
+            code_challenge=code_challenge,
+            ttl_seconds=600,
+        )
+
+        persisted_snapshot = state_store.payload
+        if persisted_snapshot is None:
+            raise AssertionError("OAuth pending state was not persisted.")
+        snapshot_payload = json.loads(str(persisted_snapshot["payload"]))
+        stored_pending_states = snapshot_payload["_oauth_pending_states"]
+        self.assertEqual(
+            stored_pending_states[state]["__fl_dataclass__"],
+            "OAuthPendingStateRecord",
+        )
+
+        service_b = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+        restored = service_b.verify_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+        self.assertEqual(restored["provider"], "google")
+        self.assertEqual(restored["app_redirect_uri"], "foodlens://oauth/google-callback")
+        self.assertEqual(restored["request_id"], "req-oauth-snapshot")
+        self.assertEqual(restored["nonce"], "snapshot-oauth-nonce-0000000000000000000000")
+        self.assertEqual(restored["code_verifier"], code_verifier)
+        self.assertEqual(restored["code_challenge"], code_challenge)
+
+        consumed = service_b.consume_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+        self.assertIsNotNone(consumed["consumed_at"])
+
+        service_c = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+        with self.assertRaises(AuthServiceError) as context:
+            service_c.verify_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/google-callback",
+            )
+        self.assertEqual(context.exception.code, "AUTH_PROVIDER_STATE_REUSED")
 
     def test_from_env_selects_postgres_backend_when_database_url_exists(self):
         with patch("backend.modules.auth.service.PostgresAuthStateStore") as mocked_store:

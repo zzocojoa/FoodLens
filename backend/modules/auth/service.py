@@ -29,6 +29,7 @@ from .state_store import (
 )
 
 RefreshStatus = Literal["active", "used", "revoked", "expired"]
+OAuthStateAgeBucket = Literal["unknown", "lt_1m", "1m_5m", "5m_10m", "gte_10m"]
 logger = logging.getLogger("foodlens.auth.state")
 
 
@@ -38,6 +39,20 @@ def _utc_now() -> datetime:
 
 def _to_iso8601(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _oauth_state_age_bucket(*, created_at: datetime | None, now: datetime) -> OAuthStateAgeBucket:
+    if created_at is None:
+        return "unknown"
+
+    age_seconds = max(0, int((now - created_at).total_seconds()))
+    if age_seconds < 60:
+        return "lt_1m"
+    if age_seconds < 300:
+        return "1m_5m"
+    if age_seconds < 600:
+        return "5m_10m"
+    return "gte_10m"
 
 
 def _random_id(prefix: str) -> str:
@@ -461,6 +476,20 @@ class PasswordResetRecord:
     failed_attempts: int = 0
 
 
+@dataclass(slots=True)
+class OAuthPendingStateRecord:
+    state: str
+    provider: str
+    app_redirect_uri: str
+    request_id: str
+    nonce: str | None
+    code_verifier: str | None
+    code_challenge: str | None
+    created_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None
+
+
 AUTH_STATE_SNAPSHOT_VERSION = 2
 SUPPORTED_AUTH_STATE_SNAPSHOT_VERSIONS = frozenset({1, AUTH_STATE_SNAPSHOT_VERSION})
 AUTH_STATE_DATACLASSES = {
@@ -475,6 +504,7 @@ AUTH_STATE_DATACLASSES = {
     "RefreshTokenRecord": RefreshTokenRecord,
     "EmailVerificationRecord": EmailVerificationRecord,
     "PasswordResetRecord": PasswordResetRecord,
+    "OAuthPendingStateRecord": OAuthPendingStateRecord,
 }
 
 
@@ -541,6 +571,7 @@ class InMemoryAuthSessionService:
         self._refresh_grace_bundles_by_digest: dict[str, dict[str, object]] = {}
         self._email_verifications_by_user_id: dict[str, EmailVerificationRecord] = {}
         self._password_resets_by_user_id: dict[str, PasswordResetRecord] = {}
+        self._oauth_pending_states: dict[str, OAuthPendingStateRecord] = {}
 
         self._lock = RLock()
         if self._state_store is not None:
@@ -752,6 +783,7 @@ class InMemoryAuthSessionService:
             "_refresh_tokens_by_session": self._refresh_tokens_by_session,
             "_email_verifications_by_user_id": self._email_verifications_by_user_id,
             "_password_resets_by_user_id": self._password_resets_by_user_id,
+            "_oauth_pending_states": self._oauth_pending_states,
         }
         return {
             "version": AUTH_STATE_SNAPSHOT_VERSION,
@@ -789,6 +821,7 @@ class InMemoryAuthSessionService:
         self._refresh_tokens_by_session = dict(state.get("_refresh_tokens_by_session", {}))
         self._email_verifications_by_user_id = dict(state.get("_email_verifications_by_user_id", {}))
         self._password_resets_by_user_id = dict(state.get("_password_resets_by_user_id", {}))
+        self._oauth_pending_states = dict(state.get("_oauth_pending_states", {}))
         token_storage_migrated = self._migrate_token_storage_unlocked()
         logger.info("[Auth] restored state snapshot from backend=%s users=%s", self.state_backend, len(self._users_by_id))
         return token_storage_migrated
@@ -1353,6 +1386,202 @@ class InMemoryAuthSessionService:
                 "password_reset": True,
                 "sessions_revoked": revoked_sessions,
             }
+
+    def _serialize_oauth_pending_state(self, record: OAuthPendingStateRecord) -> dict[str, object]:
+        return {
+            "state": record.state,
+            "provider": record.provider,
+            "app_redirect_uri": record.app_redirect_uri,
+            "request_id": record.request_id,
+            "nonce": record.nonce,
+            "code_verifier": record.code_verifier,
+            "code_challenge": record.code_challenge,
+            "created_at": _to_iso8601(record.created_at),
+            "expires_at": _to_iso8601(record.expires_at),
+            "consumed_at": _to_iso8601(record.consumed_at) if record.consumed_at is not None else None,
+        }
+
+    def _purge_oauth_pending_states_unlocked(self, *, now: datetime) -> bool:
+        stale_states = [
+            state
+            for state, record in self._oauth_pending_states.items()
+            if record.expires_at <= now
+        ]
+        for state in stale_states:
+            self._oauth_pending_states.pop(state, None)
+        return bool(stale_states)
+
+    def oauth_pending_state_age_bucket(
+        self,
+        *,
+        state: str | None,
+        now: datetime,
+    ) -> OAuthStateAgeBucket:
+        normalized_state = (state or "").strip()
+        if not normalized_state:
+            return "unknown"
+
+        with self._lock:
+            record = self._oauth_pending_states.get(normalized_state)
+            if record is None:
+                return "unknown"
+            return _oauth_state_age_bucket(created_at=record.created_at, now=now)
+
+    def create_oauth_pending_state(
+        self,
+        *,
+        provider: str,
+        app_redirect_uri: str,
+        state: str,
+        request_id: str,
+        nonce: str | None,
+        code_verifier: str | None,
+        code_challenge: str | None,
+        ttl_seconds: int,
+    ) -> dict[str, object]:
+        provider_normalized = provider.strip().lower()
+        if provider_normalized not in {"google", "kakao"}:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_UNSUPPORTED",
+                message="Unsupported provider.",
+                status_code=400,
+            )
+
+        normalized_state = state.strip()
+        if not normalized_state:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Missing or invalid state value.",
+                status_code=400,
+            )
+
+        normalized_app_redirect_uri = app_redirect_uri.strip()
+        if not normalized_app_redirect_uri:
+            raise AuthServiceError(
+                code="AUTH_REDIRECT_URI_MISMATCH",
+                message="Redirect URI mismatch.",
+                status_code=400,
+            )
+
+        now = _utc_now()
+        expires_at = now + timedelta(seconds=max(60, min(ttl_seconds, 600)))
+        with self._lock:
+            self._purge_oauth_pending_states_unlocked(now=now)
+            existing = self._oauth_pending_states.get(normalized_state)
+            if existing is not None:
+                raise AuthServiceError(
+                    code="AUTH_PROVIDER_STATE_REUSED",
+                    message="OAuth state has already been used.",
+                    status_code=400,
+                )
+
+            record = OAuthPendingStateRecord(
+                state=normalized_state,
+                provider=provider_normalized,
+                app_redirect_uri=normalized_app_redirect_uri,
+                request_id=request_id.strip(),
+                nonce=(nonce or "").strip() or None,
+                code_verifier=(code_verifier or "").strip() or None,
+                code_challenge=(code_challenge or "").strip() or None,
+                created_at=now,
+                expires_at=expires_at,
+                consumed_at=None,
+            )
+            self._oauth_pending_states[record.state] = record
+            self._persist_state_unlocked()
+            return self._serialize_oauth_pending_state(record)
+
+    def _require_oauth_pending_state_unlocked(
+        self,
+        *,
+        provider: str,
+        state: str,
+        app_redirect_uri: str | None,
+        now: datetime,
+    ) -> OAuthPendingStateRecord:
+        normalized_state = state.strip()
+        if not normalized_state:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Missing or invalid state value.",
+                status_code=400,
+            )
+
+        record = self._oauth_pending_states.get(normalized_state)
+        if record is None:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="Unknown OAuth state.",
+                status_code=400,
+            )
+
+        if record.consumed_at is not None:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_STATE_REUSED",
+                message="OAuth state has already been used.",
+                status_code=400,
+            )
+
+        if record.expires_at <= now:
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_STATE_EXPIRED",
+                message="OAuth state expired.",
+                status_code=400,
+            )
+
+        if record.provider != provider.strip().lower():
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_INVALID_STATE",
+                message="OAuth state does not match provider.",
+                status_code=400,
+            )
+
+        normalized_app_redirect_uri = (app_redirect_uri or "").strip()
+        if normalized_app_redirect_uri and normalized_app_redirect_uri != record.app_redirect_uri:
+            raise AuthServiceError(
+                code="AUTH_REDIRECT_URI_MISMATCH",
+                message="Redirect URI mismatch.",
+                status_code=400,
+            )
+
+        return record
+
+    def verify_oauth_pending_state(
+        self,
+        *,
+        provider: str,
+        state: str | None,
+        app_redirect_uri: str | None,
+    ) -> dict[str, object]:
+        now = _utc_now()
+        with self._lock:
+            record = self._require_oauth_pending_state_unlocked(
+                provider=provider,
+                state=(state or ""),
+                app_redirect_uri=app_redirect_uri,
+                now=now,
+            )
+            return self._serialize_oauth_pending_state(record)
+
+    def consume_oauth_pending_state(
+        self,
+        *,
+        provider: str,
+        state: str | None,
+        app_redirect_uri: str | None,
+    ) -> dict[str, object]:
+        now = _utc_now()
+        with self._lock:
+            record = self._require_oauth_pending_state_unlocked(
+                provider=provider,
+                state=(state or ""),
+                app_redirect_uri=app_redirect_uri,
+                now=now,
+            )
+            record.consumed_at = now
+            payload = self._serialize_oauth_pending_state(record)
+            self._persist_state_unlocked()
+            return payload
 
     def oauth_login(
         self,
