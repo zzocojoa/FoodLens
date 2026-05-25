@@ -1877,6 +1877,7 @@ DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
 DEFAULT_OAUTH_STATE_TTL_SECONDS = 600
 OAUTH_STATE_MIN_LENGTH = 32
 OAUTH_STATE_MAX_LENGTH = 256
+OAUTH_STATE_MIN_UNIQUE_CHARACTERS = 8
 OAUTH_STATE_ALLOWED_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 OAUTH_STATE_FAILURE_CODES = frozenset(
     {
@@ -2372,6 +2373,8 @@ def _base64_urlsafe_token(*, byte_count: int) -> str:
 
 def _is_high_entropy_oauth_state(value: str) -> bool:
     if len(value) < OAUTH_STATE_MIN_LENGTH or len(value) > OAUTH_STATE_MAX_LENGTH:
+        return False
+    if len(set(value)) < OAUTH_STATE_MIN_UNIQUE_CHARACTERS:
         return False
     return all(character in OAUTH_STATE_ALLOWED_CHARACTERS for character in value)
 

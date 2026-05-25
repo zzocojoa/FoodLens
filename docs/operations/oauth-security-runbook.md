@@ -17,7 +17,7 @@ AUTH_PROVIDER_SMOKE_MODE=dry-run bash backend/scripts/ci_auth_live_provider_smok
 python3 backend/scripts/ci_auth_state_backend_smoke.py
 ```
 
-scale-out, staging, production 배포 전에는 공유 state backend 요구사항을 명시한다.
+staging, production 배포 전에는 persisted state backend 요구사항을 명시한다.
 
 ```bash
 python3 backend/scripts/ci_auth_state_backend_smoke.py \
@@ -41,6 +41,7 @@ python3 backend/scripts/ci_auth_state_backend_smoke.py \
 - `AUTH_TOKEN_HASH_SECRET`은 값이 아니라 `set` 또는 `unset` 상태만 표시한다.
 - `AUTH_TOKEN_HASH_SECRET`은 배포 사이에 안정적으로 유지되어야 한다. 값이 바뀌면 기존 access/refresh token digest 검증이 깨질 수 있다.
 - `AUTH_STATE_BACKEND=memory`는 단일 프로세스 로컬 개발 전용이다. scale-out 환경에서는 OAuth pending state가 프로세스별로 분리되어 callback/POST 검증이 실패할 수 있다.
+- 현재 `AUTH_STATE_BACKEND=postgres`는 auth runtime snapshot 영속화와 재시작 복구용이다. 여러 backend instance가 같은 OAuth state를 동시에 원자적으로 consume하는 전용 row-level store는 아니므로, Render `foodlens-api` instance count는 1로 유지한다. 2개 이상으로 scale-out하기 전에는 atomic OAuth state store 또는 동등한 sticky routing 검증을 별도 완료해야 한다.
 
 ## OAuth State Failure 알림 필드
 

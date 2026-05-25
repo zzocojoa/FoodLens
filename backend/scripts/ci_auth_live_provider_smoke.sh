@@ -105,6 +105,28 @@ assert_query_param_absent() {
   fi
 }
 
+assert_location_origin() {
+  local location="$1"
+  local expected_host="$2"
+  local label="$3"
+
+  if ! "$PYTHON_BIN" - "$location" "$expected_host" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+location = sys.argv[1]
+expected_host = sys.argv[2].lower()
+parsed = urlparse(location)
+host = (parsed.hostname or "").lower()
+if parsed.scheme != "https" or host != expected_host:
+    raise SystemExit(1)
+PY
+  then
+    echo "[Smoke] ${label} unexpected redirect origin ($(describe_url "$location"))."
+    exit 1
+  fi
+}
+
 assert_generated_state() {
   local location="$1"
   local label="$2"
@@ -179,7 +201,7 @@ run_dry_run() {
 
 assert_redirect() {
   local url="$1"
-  local expected_location_substring="$2"
+  local expected_location_host="$2"
   local label="$3"
 
   local headers
@@ -187,20 +209,17 @@ assert_redirect() {
   local status
   status="$(printf '%s\n' "$headers" | awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}')"
   local location
-  location="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,"",$2); print $2; exit}')"
+  location="$(printf '%s\n' "$headers" | awk 'tolower($1) == "location:" {$1=""; sub(/^[[:space:]]+/, ""); sub(/\r$/, ""); print; exit}')"
 
   if [ "$status" != "302" ]; then
     echo "[Smoke] ${label} expected 302, got ${status}"
     exit 1
   fi
 
-  if [[ "$location" != *"$expected_location_substring"* ]]; then
-    echo "[Smoke] ${label} unexpected location ($(describe_url "$location"))."
-    exit 1
-  fi
+  assert_location_origin "$location" "$expected_location_host" "$label"
 
   REDIRECT_LOCATION="$location"
-  echo "[Smoke] ${label} OK provider_host=${expected_location_substring}"
+  echo "[Smoke] ${label} OK provider_host=${expected_location_host}"
 }
 
 if [ "$SMOKE_MODE" = "dry-run" ]; then

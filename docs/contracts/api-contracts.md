@@ -156,7 +156,7 @@
   - `email`, `code`, `new_password`
 - `POST /auth/google|kakao`
   - `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
-  - `state`는 `/auth/{provider}/start`에서 생성/저장된 pending OAuth state와 일치해야 한다. 모바일이 `state`를 전달하는 경우 32~256자 URL-safe 고엔트로피 값이어야 하며, 전달하지 않으면 서버가 생성한다.
+  - `state`는 `/auth/{provider}/start`에서 생성/저장된 pending OAuth state와 일치해야 한다. `state` 생략 시 서버 생성은 `/auth/{provider}/start` query에만 적용되며, POST 단계에서는 callback deep link로 받은 opaque state handle을 그대로 전달해야 한다.
 - `POST /auth/refresh`
   - `refresh_token`
 - `POST /auth/logout`
@@ -266,11 +266,11 @@
 - Google 시작 URL에는 PKCE `code_challenge`와 `code_challenge_method=S256`, OIDC `nonce`가 포함된다. 서버는 같은 pending state에 `code_verifier`를 저장하고, Google code exchange 시 `code_verifier`를 사용한다.
 - Kakao PKCE 결정(확인일: 2026-05-25 KST):
   - 공식 Kakao Developers OIDC Discovery 문서가 `authorization_endpoint=https://kauth.kakao.com/oauth/authorize`, `token_endpoint=https://kauth.kakao.com/oauth/token`, `code_challenge_methods_supported=["S256"]`를 문서화하므로 Kakao도 S256 PKCE 적용 대상으로 분류한다.
-  - bridge 런타임은 Kakao authorize URL에도 `code_challenge`와 `code_challenge_method=S256`을 포함하고, token exchange mock/stub 경로에서 pending state의 `code_verifier`를 사용한다.
+  - bridge 런타임은 Kakao authorize URL에도 `code_challenge`와 `code_challenge_method=S256`을 포함하고, token exchange 요청 body에 pending state의 `code_verifier`를 사용한다. 테스트는 provider 호출 없이 mock/stub으로 검증한다.
   - 세부 근거와 적용 체크리스트는 [OAuth Provider PKCE Notes](../security/oauth-provider-pkce-notes.md)를 따른다.
 - pending OAuth state는 auth runtime state backend snapshot에 포함되며, persisted backend 복구 후에도 provider, app redirect URI, 만료/소비 상태, provider PKCE 값을 그대로 검증/소비해야 한다.
 - live provider bridge smoke는 `/auth/{provider}/start` 호출 때 client-supplied `state`를 보내지 않고 서버 생성 state가 32~256자 URL-safe 고엔트로피 형식인지 검증한다. Provider redirect는 따라가지 않는다.
-- `/auth/{provider}/callback`은 callback 시점에 pending state가 존재하고 만료되지 않았으며 provider와 app redirect URI가 일치하는지만 확인한다. 이 단계에서는 state를 소비하지 않는다.
+- `/auth/{provider}/callback`은 callback 시점에 pending state가 존재하고 만료되지 않았으며 provider가 일치하는지 확인한다. 저장된 app redirect URI는 allowlist로 다시 확인하고, callback에 `redirect_uri`가 제공되면 pending state의 app redirect URI와도 비교한다. 이 단계에서는 state를 소비하지 않는다.
 - `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
   - 성공, provider cancel/error, invalid code 모두 같은 state를 다시 사용할 수 없다.
   - 같은 state 재사용, 만료 state, unknown/tampered state, 다른 provider state는 인증 실패로 처리된다.
@@ -281,7 +281,7 @@
   - `GET /auth/google/callback?code=provider-code&state=clientGeneratedStateValueWithAtLeast32Chars`는 앱 redirect URI로 `code`, `state`, `request_id`를 붙여 `302` redirect한다.
   - 앱은 같은 `state`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
 - State 에러 코드 예시:
-  - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
+  - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, start의 client-supplied state 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
   - `AUTH_PROVIDER_STATE_EXPIRED`: pending state가 TTL을 초과했다. 클라이언트는 `/auth/{provider}/start`부터 다시 시작해야 한다.
   - `AUTH_PROVIDER_STATE_REUSED`: 이미 consume된 state 또는 아직 pending backend에 남아 있는 동일 state를 재사용했다. 클라이언트는 같은 state로 재시도하지 말고 새 OAuth flow를 시작해야 한다.
   - `AUTH_REDIRECT_URI_MISMATCH`: start의 app redirect URI가 allowlist에 없거나 callback/POST의 `redirect_uri`가 pending state의 app redirect URI와 다르다.

@@ -156,18 +156,18 @@ def _shared_state_is_required(config: RuntimeConfig, require_shared_state: bool)
         return CheckResult(
             name="shared_state_required",
             passed=False,
-            message="scale-out OAuth state requires AUTH_STATE_BACKEND=postgres.",
+            message="persisted OAuth state requires AUTH_STATE_BACKEND=postgres.",
         )
     if not config.database_url_set or not config.token_hash_secret_set:
         return CheckResult(
             name="shared_state_required",
             passed=False,
-            message="scale-out OAuth state requires DATABASE_URL and AUTH_TOKEN_HASH_SECRET.",
+            message="persisted OAuth state requires DATABASE_URL and AUTH_TOKEN_HASH_SECRET.",
         )
     return CheckResult(
         name="shared_state_required",
         passed=True,
-        message="shared state backend is configured",
+        message="persisted state backend is configured",
     )
 
 
@@ -266,7 +266,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--require-shared-state",
         action="store_true",
-        help="Require a shared postgres auth state backend for scale-out/staging/prod.",
+        help="Require a persisted postgres auth state backend for staging/prod.",
     )
     return parser.parse_args(argv)
 

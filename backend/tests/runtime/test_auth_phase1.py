@@ -2019,6 +2019,32 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(kakao_query["code_challenge_method"][0], "S256")
             self.assertEqual(kakao_query["state"][0], kakao_state)
 
+    def test_oauth_start_rejects_low_diversity_client_state(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            low_diversity_state = "a" * server_module.OAUTH_STATE_MIN_LENGTH
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "state": low_diversity_state,
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 400)
+            self.assertEqual(start.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_STATE")
+
     def test_google_oauth_web_bridge_start_and_callback(self):
         with (
             patch.dict(
