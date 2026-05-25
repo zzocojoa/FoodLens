@@ -15,6 +15,7 @@ const DEV_PLIST_PATH = "./Dev.plist";
 const PROD_PLIST_PATH = "./Prod.plist";
 
 const ICON_PATH = "./assets/images/icon.png";
+const IOS_ICON_PATH = "./assets/images/ios-icon.png";
 const FAVICON_PATH = "./assets/images/favicon.png";
 const SPLASH_IMAGE_PATH = "./assets/images/splash-icon.png";
 
@@ -66,6 +67,7 @@ module.exports = {
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
+      icon: IOS_ICON_PATH,
       bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
       googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
       entitlements: {
