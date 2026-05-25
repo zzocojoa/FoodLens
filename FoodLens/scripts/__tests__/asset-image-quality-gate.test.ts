@@ -5,12 +5,21 @@ import * as zlib from 'zlib';
 
 const assetImageQualityGate = require('../asset-image-quality-gate.js');
 
+type AssetSeparationPair = {
+  primaryPath: string;
+  comparisonPath: string;
+};
+
 const projectRootDir = path.resolve(__dirname, '..', '..');
 const criticalAssetPaths = [
   'assets/images/guide-good.jpg',
   'assets/images/guide-bad.jpg',
   'assets/images/allergens/sesame.png',
 ];
+const assetSeparationPaths = assetImageQualityGate.ICON_SPLASH_SEPARATION_PAIRS.flatMap(
+  (pair: AssetSeparationPair): string[] => [pair.primaryPath, pair.comparisonPath]
+);
+const gateAssetPaths = Array.from(new Set([...criticalAssetPaths, ...assetSeparationPaths]));
 const pngCrc32Polynomial = 0xedb88320;
 
 const createTempRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'foodlens-asset-quality-'));
@@ -20,7 +29,7 @@ const cleanupTempRoot = (rootDir: string): void => {
 };
 
 const copyCriticalAssets = (rootDir: string): void => {
-  criticalAssetPaths.forEach((assetPath: string) => {
+  gateAssetPaths.forEach((assetPath: string) => {
     const sourcePath = path.join(projectRootDir, assetPath);
     const destinationPath = path.join(rootDir, assetPath);
     fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
@@ -147,6 +156,47 @@ describe('asset-image-quality-gate', () => {
       'assets/images/guide-bad.jpg',
       'assets/images/allergens/sesame.png',
     ]);
+    expect(
+      result.separationResults.map(
+        (entry: { pair: AssetSeparationPair }): [string, string] => [
+          entry.pair.primaryPath,
+          entry.pair.comparisonPath,
+        ]
+      )
+    ).toEqual([
+      ['assets/images/splash-icon.png', 'assets/images/icon.png'],
+      ['assets/images/splash-icon.png', 'assets/images/ios-icon.png'],
+      ['assets/images/splash-icon.png', 'assets/images/android-icon-background.png'],
+      ['assets/images/splash-icon.png', 'assets/images/android-icon-foreground.png'],
+    ]);
+  });
+
+  it('rejects a splash asset that reuses launcher icon bytes', () => {
+    const rootDir = createTempRoot();
+
+    try {
+      copyCriticalAssets(rootDir);
+      fs.copyFileSync(
+        path.join(rootDir, 'assets/images/android-icon-background.png'),
+        path.join(rootDir, 'assets/images/splash-icon.png')
+      );
+
+      const result = assetImageQualityGate.runAssetImageQualityGate(rootDir);
+      const separationFailure = result.failures.find(
+        (entry: { pair?: AssetSeparationPair }): boolean =>
+          entry.pair?.comparisonPath === 'assets/images/android-icon-background.png'
+      );
+
+      expect(result.ok).toBe(false);
+      if (!separationFailure) {
+        throw new Error('expected splash/icon separation failure');
+      }
+      expect(separationFailure.errors.join(' ')).toContain(
+        'assets/images/splash-icon.png must not reuse assets/images/android-icon-background.png'
+      );
+    } finally {
+      cleanupTempRoot(rootDir);
+    }
   });
 
   it('rejects a PNG that has matching dimensions but a corrupt chunk layout', () => {
