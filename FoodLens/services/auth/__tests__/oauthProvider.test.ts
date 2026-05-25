@@ -7,6 +7,7 @@ import type { OAuthProvider } from '../oauthProvider';
 const mockSafeStorageGet = jest.fn();
 const mockSafeStorageSet = jest.fn();
 const mockSafeStorageRemove = jest.fn();
+const mockGetRandomBytes = jest.fn();
 
 jest.mock('../authApi', () => ({
   AuthApi: {
@@ -41,6 +42,10 @@ jest.mock('expo-linking', () => ({
   parse: jest.fn(),
 }));
 
+jest.mock('expo-crypto', () => ({
+  getRandomBytes: (byteCount: number): Uint8Array => mockGetRandomBytes(byteCount),
+}));
+
 jest.mock('expo-web-browser', () => ({
   openAuthSessionAsync: jest.fn(),
 }));
@@ -67,7 +72,6 @@ const mockSession = (userId: string): AuthSessionTokens => ({
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_DEV_FLAG = (global as { __DEV__?: boolean }).__DEV__;
-const ORIGINAL_CRYPTO = globalThis.crypto;
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const GOOGLE_PENDING_STATE_KEY = '@foodlens_oauth_pending_state_google';
 const KAKAO_PENDING_STATE_KEY = '@foodlens_oauth_pending_state_kakao';
@@ -135,6 +139,13 @@ const firstInvocationOrderForStorageKey = (mockFn: jest.Mock, key: string): numb
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockGetRandomBytes.mockImplementation((byteCount: number): Uint8Array => {
+    const bytes = new Uint8Array(byteCount);
+    bytes.forEach((_value, index) => {
+      bytes[index] = (index + 1) % 256;
+    });
+    return bytes;
+  });
   mockSafeStorageGet.mockResolvedValue(null);
   mockSafeStorageSet.mockResolvedValue(undefined);
   mockSafeStorageRemove.mockResolvedValue(undefined);
@@ -144,26 +155,11 @@ beforeEach(() => {
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'];
   delete process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
   (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
-  Object.defineProperty(globalThis, 'crypto', {
-    configurable: true,
-    value: {
-      getRandomValues: (array: Uint8Array): Uint8Array => {
-        array.forEach((_value, index) => {
-          array[index] = (index + 1) % 256;
-        });
-        return array;
-      },
-    },
-  });
 });
 
 afterAll(() => {
   process.env = ORIGINAL_ENV;
   (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
-  Object.defineProperty(globalThis, 'crypto', {
-    configurable: true,
-    value: ORIGINAL_CRYPTO,
-  });
 });
 
 describe('oauthProvider', () => {
@@ -211,6 +207,23 @@ describe('oauthProvider', () => {
     await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
         code: 'AUTH_PROVIDER_MISCONFIGURED',
       });
+  });
+
+  it('throws misconfigured error when native secure random is unavailable', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+    mockedLinking.createURL.mockReturnValue('foodlens://oauth/google-callback');
+    mockGetRandomBytes.mockImplementationOnce(() => {
+      throw new Error('native crypto unavailable');
+    });
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedWebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
+    expect(mockSafeStorageSet).not.toHaveBeenCalled();
   });
 
   it('maps cancelled live oauth to provider cancelled error', async () => {
