@@ -1,4 +1,5 @@
 import * as Linking from 'expo-linking';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 import { SafeStorage } from '@/services/storage';
@@ -165,15 +166,19 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
 };
 
 const generateLiveOAuthState = (): string => {
-  const cryptoSource = globalThis.crypto as
-    | { getRandomValues?: (array: Uint8Array) => Uint8Array }
-    | undefined;
-  if (!cryptoSource?.getRandomValues) {
-    throw new AuthApiError('Secure random source is unavailable.', 'AUTH_PROVIDER_MISCONFIGURED', 500);
+  let bytes: Uint8Array;
+  try {
+    bytes = Crypto.getRandomBytes(32);
+  } catch (error) {
+    throw new AuthApiError(
+      `Secure random source is unavailable for OAuth state generation: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
   }
 
-  const bytes = new Uint8Array(32);
-  cryptoSource.getRandomValues(bytes);
   return Array.from(bytes)
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('');
