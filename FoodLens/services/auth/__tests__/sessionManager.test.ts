@@ -56,6 +56,13 @@ jest.mock('../../sync/phase2SyncQueue', () => ({
   dispatchPhase2SyncQueue: jest.fn(),
 }));
 
+jest.mock('../oauthProvider', () => ({
+  clearOAuthPendingStates: async (): Promise<void> => {
+    await mockedSafeStorage.remove('@foodlens_oauth_pending_state_google');
+    await mockedSafeStorage.remove('@foodlens_oauth_pending_state_kakao');
+  },
+}));
+
 const mockedAuthApi = AuthApi as jest.Mocked<typeof AuthApi>;
 const mockedStore = AuthSecureSessionStore as jest.Mocked<typeof AuthSecureSessionStore>;
 const mockedSetCurrentUserId = setCurrentUserId as jest.Mock;
@@ -121,6 +128,8 @@ describe('sessionManager', () => {
 
     expect(mockedQueryClient.clear).toHaveBeenCalledTimes(1);
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_google');
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_kakao');
     expect(mockedSetCurrentUserId).toHaveBeenCalledWith('usr_1');
   });
 
@@ -219,6 +228,8 @@ describe('sessionManager', () => {
     expect(mockedStore.clear).toHaveBeenCalledTimes(1);
     expect(mockedClearCurrentUserId).toHaveBeenCalledTimes(1);
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_google');
+    expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_kakao');
     expect(mockedQueryClient.clear).toHaveBeenCalledTimes(1);
   });
 });

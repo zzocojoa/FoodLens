@@ -17,12 +17,33 @@ type OAuthGrant = {
   providerUserId?: string;
 };
 
+type OAuthPendingState = {
+  provider: OAuthProvider;
+  state: string;
+  redirectUri: string;
+  createdAt: number;
+  expiresAt: number;
+};
+
 const DEVICE_ID_KEY = '@foodlens_device_id';
+const OAUTH_PENDING_STATE_TTL_MS = 10 * 60 * 1000;
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
   kakao: 'oauth/kakao-callback',
 };
+
+const BACKEND_START_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
+  google: '/auth/google/start',
+  kakao: '/auth/kakao/start',
+};
+
+const PENDING_STATE_KEY_BY_PROVIDER: Record<OAuthProvider, string> = {
+  google: '@foodlens_oauth_pending_state_google',
+  kakao: '@foodlens_oauth_pending_state_kakao',
+};
+
+const OAUTH_PROVIDERS: readonly OAuthProvider[] = ['google', 'kakao'];
 
 const isDevelopmentRuntime = (): boolean => {
   const runtime = globalThis as { __DEV__?: boolean };
@@ -143,7 +164,117 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
   };
 };
 
-const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string): string => {
+const generateLiveOAuthState = (): string => {
+  const cryptoSource = globalThis.crypto as
+    | { getRandomValues?: (array: Uint8Array) => Uint8Array }
+    | undefined;
+  if (!cryptoSource?.getRandomValues) {
+    throw new AuthApiError('Secure random source is unavailable.', 'AUTH_PROVIDER_MISCONFIGURED', 500);
+  }
+
+  const bytes = new Uint8Array(32);
+  cryptoSource.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const createPendingOAuthState = (
+  provider: OAuthProvider,
+  redirectUri: string,
+  createdAt: number
+): OAuthPendingState => {
+  return {
+    provider,
+    state: generateLiveOAuthState(),
+    redirectUri,
+    createdAt,
+    expiresAt: createdAt + OAUTH_PENDING_STATE_TTL_MS,
+  };
+};
+
+const writePendingOAuthState = async (pendingState: OAuthPendingState): Promise<void> => {
+  await SafeStorage.set(PENDING_STATE_KEY_BY_PROVIDER[pendingState.provider], pendingState);
+};
+
+const removePendingOAuthState = async (provider: OAuthProvider): Promise<void> => {
+  await SafeStorage.remove(PENDING_STATE_KEY_BY_PROVIDER[provider]);
+};
+
+export const clearOAuthPendingStates = async (): Promise<void> => {
+  for (const provider of OAUTH_PROVIDERS) {
+    await removePendingOAuthState(provider);
+  }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isOAuthProvider = (value: unknown): value is OAuthProvider => value === 'google' || value === 'kakao';
+
+const isOAuthPendingState = (value: unknown): value is OAuthPendingState => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isOAuthProvider(value['provider']) &&
+    typeof value['state'] === 'string' &&
+    typeof value['redirectUri'] === 'string' &&
+    typeof value['createdAt'] === 'number' &&
+    typeof value['expiresAt'] === 'number'
+  );
+};
+
+const readPendingOAuthState = async (provider: OAuthProvider): Promise<OAuthPendingState | null> => {
+  const stored = await SafeStorage.get<unknown>(PENDING_STATE_KEY_BY_PROVIDER[provider], null);
+  return isOAuthPendingState(stored) ? stored : null;
+};
+
+const cleanupStalePendingOAuthStates = async (now: number): Promise<void> => {
+  for (const provider of OAUTH_PROVIDERS) {
+    const pendingState = await readPendingOAuthState(provider);
+    if (pendingState && pendingState.expiresAt <= now) {
+      await removePendingOAuthState(provider);
+    }
+  }
+};
+
+const trimTrailingSlashes = (value: string): string => {
+  return value.replace(/\/+$/, '');
+};
+
+const isValidBackendStartUrl = (provider: OAuthProvider, startUrl: string): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(startUrl);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return false;
+  }
+
+  const expectedPath = BACKEND_START_PATH_BY_PROVIDER[provider];
+  const normalizedPath = trimTrailingSlashes(parsed.pathname);
+  return normalizedPath === expectedPath || normalizedPath.endsWith(expectedPath);
+};
+
+const assertBackendStartUrl = (provider: OAuthProvider, startUrl: string): void => {
+  if (isValidBackendStartUrl(provider, startUrl)) {
+    return;
+  }
+
+  throw new AuthApiError(
+    `${provider} OAuth start URL must point to the backend ${BACKEND_START_PATH_BY_PROVIDER[provider]} bridge.`,
+    'AUTH_PROVIDER_MISCONFIGURED',
+    500
+  );
+};
+
+const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string, state: string): string => {
   let startUrl = getExpoPublicProviderStartUrl(provider).trim();
   if (!startUrl) {
     const baseUrl = getExpoPublicAnalysisServerUrl().trim().replace(/\/+$/, '');
@@ -160,11 +291,37 @@ const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string): string 
     );
   }
 
+  assertBackendStartUrl(provider, startUrl);
+
   const delimiter = startUrl.includes('?') ? '&' : '?';
-  return `${startUrl}${delimiter}redirect_uri=${encodeURIComponent(redirectUri)}`;
+  return `${startUrl}${delimiter}redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
 };
 
-const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGrant => {
+const assertCallbackStateMatches = (
+  pendingState: OAuthPendingState,
+  callbackState: string | undefined,
+  redirectUri: string
+): string => {
+  if (!callbackState) {
+    throw new AuthApiError('Missing or invalid state value.', 'AUTH_PROVIDER_INVALID_STATE', 400);
+  }
+  if (pendingState.expiresAt <= Date.now()) {
+    throw new AuthApiError('OAuth state expired.', 'AUTH_PROVIDER_INVALID_STATE', 400);
+  }
+  if (pendingState.redirectUri !== redirectUri) {
+    throw new AuthApiError('OAuth redirect URI mismatch.', 'AUTH_PROVIDER_INVALID_STATE', 400);
+  }
+  if (pendingState.state !== callbackState) {
+    throw new AuthApiError('OAuth state mismatch.', 'AUTH_PROVIDER_INVALID_STATE', 400);
+  }
+  return callbackState;
+};
+
+const parseCallbackGrant = (
+  callbackUrl: string,
+  redirectUri: string,
+  pendingState: OAuthPendingState
+): OAuthGrant => {
   const parsed = Linking.parse(callbackUrl);
   const params = parsed.queryParams ?? {};
   const fallbackParams = parseFallbackParamsFromCallbackUrl(callbackUrl);
@@ -178,6 +335,7 @@ const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGran
     return undefined;
   };
 
+  const state = assertCallbackStateMatches(pendingState, readParam('state'), redirectUri);
   const providerError = readParam('error');
   if (providerError) {
     if (providerError === 'access_denied' || providerError === 'cancelled' || providerError === 'canceled') {
@@ -200,14 +358,9 @@ const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGran
   }
 
   const code = readParam('code');
-  const state = readParam('state');
 
   if (!code) {
     throw new AuthApiError('Missing or invalid authorization code.', 'AUTH_PROVIDER_INVALID_CODE', 400);
-  }
-
-  if (!state) {
-    throw new AuthApiError('Missing or invalid state value.', 'AUTH_PROVIDER_INVALID_STATE', 400);
   }
 
   return {
@@ -221,14 +374,23 @@ const parseCallbackGrant = (callbackUrl: string, redirectUri: string): OAuthGran
 
 const requestLiveGrant = async (provider: OAuthProvider): Promise<OAuthGrant> => {
   const redirectUri = buildRedirectUri(provider);
-  const authUrl = buildLiveAuthUrl(provider, redirectUri);
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+  const now = Date.now();
+  await cleanupStalePendingOAuthStates(now);
+  const pendingState = createPendingOAuthState(provider, redirectUri, now);
+  const authUrl = buildLiveAuthUrl(provider, redirectUri, pendingState.state);
+  await writePendingOAuthState(pendingState);
 
-  if (result.type !== 'success' || !result.url) {
-    throw new AuthApiError('Provider login was cancelled.', 'AUTH_PROVIDER_CANCELLED', 400);
+  try {
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+    if (result.type !== 'success' || !result.url) {
+      throw new AuthApiError('Provider login was cancelled.', 'AUTH_PROVIDER_CANCELLED', 400);
+    }
+
+    return parseCallbackGrant(result.url, redirectUri, pendingState);
+  } finally {
+    await removePendingOAuthState(provider);
   }
-
-  return parseCallbackGrant(result.url, redirectUri);
 };
 
 const requestGrant = async (provider: OAuthProvider): Promise<OAuthGrant> => {
@@ -267,6 +429,7 @@ export const loginWithOAuthProvider = async (
 };
 
 export const AuthOAuthProvider = {
+  clearOAuthPendingStates,
   getOAuthMode,
   loginWithOAuthProvider,
 };

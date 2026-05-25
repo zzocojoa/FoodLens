@@ -435,7 +435,7 @@ export const AuthApi = {
   async loginWithKakao(input: {
     code: string;
     state: string;
-    redirectUri?: string;
+    redirectUri: string;
     email?: string;
     providerUserId?: string;
     locale?: string;
