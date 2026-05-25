@@ -151,6 +151,51 @@ class AuthStateSnapshotTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "AUTH_PROVIDER_STATE_REUSED")
 
+    def test_snapshot_store_stale_instances_can_double_consume_oauth_state(self):
+        state_store = _MemoryStateStore()
+        state = "snapshot-oauth-state-race-000000000000000000"
+
+        service_seed = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+        service_seed.create_oauth_pending_state(
+            provider="google",
+            app_redirect_uri="foodlens://oauth/google-callback",
+            state=state,
+            request_id="req-oauth-race",
+            nonce="snapshot-oauth-nonce-race-00000000000000000000",
+            code_verifier="snapshot-code-verifier-race-0000000000000000",
+            code_challenge="snapshot-code-challenge-race-000000000000",
+            ttl_seconds=600,
+        )
+
+        service_a = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+        service_b = InMemoryAuthSessionService(
+            email_verification_required=False,
+            state_store=state_store,
+            token_hash_secret=_TEST_TOKEN_HASH_SECRET,
+        )
+
+        first_consume = service_a.consume_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+        second_consume = service_b.consume_oauth_pending_state(
+            provider="google",
+            state=state,
+            app_redirect_uri="foodlens://oauth/google-callback",
+        )
+
+        self.assertIsNotNone(first_consume["consumed_at"])
+        self.assertIsNotNone(second_consume["consumed_at"])
+
     def test_from_env_selects_postgres_backend_when_database_url_exists(self):
         with patch("backend.modules.auth.service.PostgresAuthStateStore") as mocked_store:
             mocked_store.return_value = _MemoryStateStore()
