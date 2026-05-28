@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse
-from typing import Any, Awaitable, Callable, Literal, TypeAlias, TypeVar
+from typing import Any, Awaitable, Callable, Final, Literal, Mapping, TypeAlias, TypeVar
 import requests
 from pydantic import BaseModel, ConfigDict
 from PIL import Image, ImageOps
@@ -254,8 +254,105 @@ class UploadBodyTooLargeError(Exception):
         self.http_exception = http_exception
 
 
+class MediaRenderSigningSecretError(RuntimeError):
+    pass
+
+
+MEDIA_RENDER_SIGNING_SECRET_ENV_NAME: Final[str] = "MEDIA_RENDER_SIGNING_SECRET"
+MEDIA_RENDER_DEV_SIGNING_SECRET: Final[str] = "foodlens-media-dev-secret"
+MEDIA_RENDER_SIGNING_SECRET_MIN_BYTES: Final[int] = 32
+MEDIA_RENDER_PRODUCTION_ENVIRONMENTS: Final[frozenset[str]] = frozenset(
+    {
+        "prod",
+        "production",
+        "stage",
+        "staging",
+    }
+)
+MEDIA_RENDER_RENDER_ENV_NAMES: Final[tuple[str, ...]] = (
+    "RENDER",
+    "RENDER_EXTERNAL_URL",
+    "RENDER_INSTANCE_ID",
+    "RENDER_PROCESS_ROLE",
+    "RENDER_SERVICE_ID",
+    "RENDER_SERVICE_NAME",
+)
+MEDIA_RENDER_KNOWN_WEAK_SECRETS: Final[frozenset[str]] = frozenset(
+    {
+        "",
+        "auth_state_key",
+        "change-me",
+        "changeme",
+        "default",
+        "dev",
+        "development",
+        MEDIA_RENDER_DEV_SIGNING_SECRET,
+        "password",
+        "secret",
+        "test",
+        "unit-test-secret",
+    }
+)
+
+
 def _is_openapi_export_mode() -> bool:
     return os.environ.get("OPENAPI_EXPORT_ONLY") == "1"
+
+
+def _media_render_env_value(env: Mapping[str, str], name: str) -> str | None:
+    raw_value = env.get(name)
+    if raw_value is None:
+        return None
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return None
+    return normalized_value
+
+
+def _is_media_render_production_like_runtime(env: Mapping[str, str]) -> bool:
+    if _media_render_env_value(env, "OPENAPI_EXPORT_ONLY") == "1":
+        return False
+
+    sentry_environment = (_media_render_env_value(env, "SENTRY_ENVIRONMENT") or "").lower()
+    if sentry_environment in MEDIA_RENDER_PRODUCTION_ENVIRONMENTS:
+        return True
+
+    return any(_media_render_env_value(env, name) is not None for name in MEDIA_RENDER_RENDER_ENV_NAMES)
+
+
+def _is_weak_media_render_signing_secret(secret: str) -> bool:
+    normalized_secret = secret.strip()
+    if len(normalized_secret.encode("utf-8")) < MEDIA_RENDER_SIGNING_SECRET_MIN_BYTES:
+        return True
+    return normalized_secret.lower() in MEDIA_RENDER_KNOWN_WEAK_SECRETS
+
+
+def _media_render_secret_matches_auth_state_key(env: Mapping[str, str], secret: str) -> bool:
+    auth_state_key = _media_render_env_value(env, "AUTH_STATE_KEY")
+    if auth_state_key is None:
+        return False
+    return hmac.compare_digest(secret, auth_state_key)
+
+
+def _resolve_media_render_signing_secret(env: Mapping[str, str]) -> str:
+    configured_secret = _media_render_env_value(env, MEDIA_RENDER_SIGNING_SECRET_ENV_NAME)
+    production_like_runtime = _is_media_render_production_like_runtime(env)
+    if configured_secret is None:
+        if production_like_runtime:
+            raise MediaRenderSigningSecretError(
+                "MEDIA_RENDER_SIGNING_SECRET is required for production-like media render runtime."
+            )
+        return MEDIA_RENDER_DEV_SIGNING_SECRET
+
+    if _is_weak_media_render_signing_secret(configured_secret):
+        raise MediaRenderSigningSecretError(
+            "MEDIA_RENDER_SIGNING_SECRET must be at least 32 bytes and must not use known development or default values."
+        )
+    if production_like_runtime and _media_render_secret_matches_auth_state_key(env, configured_secret):
+        raise MediaRenderSigningSecretError(
+            "MEDIA_RENDER_SIGNING_SECRET must be distinct from AUTH_STATE_KEY in production-like media render runtime."
+        )
+    return configured_secret
 
 
 def _is_label_cost_guardrail_enabled() -> bool:
@@ -1228,10 +1325,7 @@ def _reset_runtime_state() -> None:
 def _initialize_auth_and_media_runtime() -> None:
     app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
     app.state.media_storage = build_media_storage_from_env(os.environ.get)
-    app.state.media_render_signing_secret = _env_str(
-        "MEDIA_RENDER_SIGNING_SECRET",
-        _env_str("AUTH_STATE_KEY", "foodlens-media-dev-secret"),
-    )
+    app.state.media_render_signing_secret = _resolve_media_render_signing_secret(os.environ)
     app.state.media_render_url_ttl_seconds = max(60, _env_int("MEDIA_RENDER_URL_TTL_SECONDS", 86_400))
     app.state.media_render_allowed_widths = {
         int(part.strip())
@@ -1921,9 +2015,18 @@ def _resolve_media_public_base_url(request: Request) -> str:
 
 
 def _media_render_signature(asset_id: str, width: int, quality: int, fmt: str, exp: int) -> str:
-    secret = getattr(app.state, "media_render_signing_secret", "")
+    secret = _media_render_runtime_signing_secret()
     payload = f"{asset_id}:{width}:{quality}:{fmt}:{exp}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _media_render_runtime_signing_secret() -> str:
+    secret = getattr(app.state, "media_render_signing_secret", None)
+    if not isinstance(secret, str) or not secret.strip():
+        raise MediaRenderSigningSecretError(
+            "MEDIA_RENDER_SIGNING_SECRET must be initialized before signing media render URLs."
+        )
+    return secret.strip()
 
 
 def _build_media_render_url(

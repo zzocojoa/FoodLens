@@ -178,6 +178,132 @@ class MediaRenderRuntimeTests(unittest.TestCase):
         server.app.state.media_render_max_concurrent_misses = 2
         server.app.state.media_render_miss_semaphore = server._build_media_render_miss_semaphore(2)
 
+    def test_resolve_media_render_signing_secret_requires_secret_for_production_like_runtime(self) -> None:
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "SENTRY_ENVIRONMENT": "production",
+            "AUTH_STATE_KEY": "A" * 48,
+        }
+
+        with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+            server._resolve_media_render_signing_secret(env)
+
+        message = str(context.exception)
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", message)
+        self.assertNotIn(env["AUTH_STATE_KEY"], message)
+
+    def test_resolve_media_render_signing_secret_rejects_weak_production_value(self) -> None:
+        weak_secret = "change-me"
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "SENTRY_ENVIRONMENT": "staging",
+            "MEDIA_RENDER_SIGNING_SECRET": weak_secret,
+        }
+
+        with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+            server._resolve_media_render_signing_secret(env)
+
+        message = str(context.exception)
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", message)
+        self.assertNotIn(weak_secret, message)
+
+    def test_resolve_media_render_signing_secret_accepts_strong_production_value(self) -> None:
+        strong_secret = "A" * 32
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "RENDER": "true",
+            "MEDIA_RENDER_SIGNING_SECRET": strong_secret,
+        }
+
+        self.assertEqual(server._resolve_media_render_signing_secret(env), strong_secret)
+
+    def test_resolve_media_render_signing_secret_rejects_auth_state_key_reuse_in_production(self) -> None:
+        shared_secret = "D" * 32
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "SENTRY_ENVIRONMENT": "production",
+            "AUTH_STATE_KEY": shared_secret,
+            "MEDIA_RENDER_SIGNING_SECRET": shared_secret,
+        }
+
+        with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+            server._resolve_media_render_signing_secret(env)
+
+        message = str(context.exception)
+        self.assertIn("AUTH_STATE_KEY", message)
+        self.assertNotIn(shared_secret, message)
+
+    def test_resolve_media_render_signing_secret_allows_openapi_export_dev_fallback(self) -> None:
+        env = {
+            "OPENAPI_EXPORT_ONLY": "1",
+            "SENTRY_ENVIRONMENT": "production",
+        }
+
+        self.assertEqual(server._resolve_media_render_signing_secret(env), server.MEDIA_RENDER_DEV_SIGNING_SECRET)
+
+    def test_initialize_auth_and_media_runtime_fails_closed_without_production_secret(self) -> None:
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "SENTRY_ENVIRONMENT": "production",
+            "AUTH_STATE_BACKEND": "memory",
+            "ANALYSIS_JOB_BACKEND": "memory",
+            "ANALYSIS_NUTRITION_CACHE_BACKEND": "memory",
+            "MEDIA_STORAGE_BACKEND": "disabled",
+            "AUTH_STATE_KEY": "B" * 48,
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+                server._initialize_auth_and_media_runtime()
+
+        message = str(context.exception)
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", message)
+        self.assertNotIn(env["AUTH_STATE_KEY"], message)
+
+    def test_startup_runtime_fails_closed_without_production_secret(self) -> None:
+        env = {
+            "OPENAPI_EXPORT_ONLY": "0",
+            "SENTRY_ENVIRONMENT": "production",
+            "AUTH_STATE_BACKEND": "memory",
+            "ANALYSIS_JOB_BACKEND": "memory",
+            "ANALYSIS_NUTRITION_CACHE_BACKEND": "memory",
+            "MEDIA_STORAGE_BACKEND": "disabled",
+            "AUTH_STATE_KEY": "E" * 48,
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+                asyncio.run(server._startup_runtime(server.PROCESS_ROLE_WEB))
+
+        message = str(context.exception)
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", message)
+        self.assertNotIn(env["AUTH_STATE_KEY"], message)
+        self.assertFalse(getattr(server.app.state, "startup_completed", False))
+
+    def test_media_render_signature_requires_initialized_secret(self) -> None:
+        server.app.state.media_render_signing_secret = ""
+
+        with self.assertRaises(server.MediaRenderSigningSecretError) as context:
+            server._media_render_signature("asset_1", 512, 75, "auto", 1_700_000_000)
+
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", str(context.exception))
+
+    def test_media_render_signature_verifies_with_configured_secret(self) -> None:
+        server.app.state.media_render_signing_secret = "C" * 32
+
+        signature = server._media_render_signature("asset_1", 512, 75, "auto", 1_700_000_000)
+
+        self.assertTrue(
+            server._verify_media_render_signature(
+                asset_id="asset_1",
+                width=512,
+                quality=75,
+                fmt="auto",
+                exp=1_700_000_000,
+                sig=signature,
+            )
+        )
+
     def test_build_render_url_is_stable_within_sign_bucket(self) -> None:
         request = _FakeRequest(base_url="https://example.com/")
         with patch("backend.server.time.time", return_value=1_700_000_000):
