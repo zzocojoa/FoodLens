@@ -1287,6 +1287,7 @@ def _reset_runtime_state() -> None:
         "startup_completed": False,
         "auth_service": None,
         "media_storage": None,
+        "media_render_signing_secret": None,
         "analysis_job_store": None,
         "analysis_nutrition_cache_store": None,
         "analysis_nutrition_service": None,
@@ -1323,9 +1324,13 @@ def _reset_runtime_state() -> None:
 
 
 def _initialize_auth_and_media_runtime() -> None:
-    app.state.auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
-    app.state.media_storage = build_media_storage_from_env(os.environ.get)
-    app.state.media_render_signing_secret = _resolve_media_render_signing_secret(os.environ)
+    app.state.media_render_signing_secret = None
+    auth_service = InMemoryAuthSessionService.from_env(os.environ.get)
+    media_storage = build_media_storage_from_env(os.environ.get)
+    media_render_signing_secret = _resolve_media_render_signing_secret(os.environ)
+    app.state.auth_service = auth_service
+    app.state.media_storage = media_storage
+    app.state.media_render_signing_secret = media_render_signing_secret
     app.state.media_render_url_ttl_seconds = max(60, _env_int("MEDIA_RENDER_URL_TTL_SECONDS", 86_400))
     app.state.media_render_allowed_widths = {
         int(part.strip())

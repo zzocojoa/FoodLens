@@ -289,6 +289,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "GEMINI_LABEL_PRO_FALLBACK_ENABLED",
             "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
             "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+            "OPENAPI_EXPORT_ONLY",
             "AUTH_RATE_LIMIT_ENABLED",
             "AUTH_RATE_LIMIT_BACKEND",
             "AUTH_RATE_LIMIT_TABLE",
@@ -301,14 +302,17 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
             "AUTH_RATE_LIMIT_OAUTH_START_PER_MIN",
             "AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN",
             "AUTH_TOKEN_HASH_SECRET",
+            "MEDIA_RENDER_SIGNING_SECRET",
             "AUTH_GOOGLE_OAUTH_PROMPT",
             "ANALYSIS_JOBS_TTL_SCRUB_ENABLED",
             "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
             "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
             "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE",
+            "MEDIA_RENDER_SIGN_BUCKET_SECONDS",
             "DELETION_QUEUE_RETRY_MAX_ATTEMPTS",
             "DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS",
             "DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS",
+            "SENTRY_ENVIRONMENT",
         )
         for service_env in live_env_by_service.values():
             for missing_key in missing_keys:
@@ -320,6 +324,7 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("GEMINI_LABEL_PRO_FALLBACK_ENABLED", output)
         self.assertIn("LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK", output)
         self.assertIn("LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER", output)
+        self.assertIn("OPENAPI_EXPORT_ONLY", output)
         self.assertIn("AUTH_RATE_LIMIT_ENABLED", output)
         self.assertIn("AUTH_RATE_LIMIT_BACKEND", output)
         self.assertIn("AUTH_RATE_LIMIT_TABLE", output)
@@ -332,14 +337,17 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_START_PER_MIN", output)
         self.assertIn("AUTH_RATE_LIMIT_OAUTH_CALLBACK_PER_MIN", output)
         self.assertIn("AUTH_TOKEN_HASH_SECRET", output)
+        self.assertIn("MEDIA_RENDER_SIGNING_SECRET", output)
         self.assertIn("AUTH_GOOGLE_OAUTH_PROMPT", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_ENABLED", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_DAYS", output)
         self.assertIn("ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE", output)
+        self.assertIn("MEDIA_RENDER_SIGN_BUCKET_SECONDS", output)
         self.assertIn("DELETION_QUEUE_RETRY_MAX_ATTEMPTS", output)
         self.assertIn("DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS", output)
         self.assertIn("DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS", output)
+        self.assertIn("SENTRY_ENVIRONMENT", output)
         self.assertIn("present=false", output)
         self.assertIn("action=update Render Dashboard env keys or render.yaml", output)
         self.assertNotIn("0.12", output)
@@ -353,20 +361,22 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("live env contract checks passed", output)
-        self.assertNotIn("PORT", output)
+        self.assertNotIn("key=PORT", output)
 
     def test_render_live_env_check_rejects_empty_live_managed_secret(self) -> None:
         module = _load_render_live_env_module()
         live_env_by_service = self._live_env_from_blueprint(module, False)
         service_env = live_env_by_service["foodlens-api"]
         service_env["AUTH_TOKEN_HASH_SECRET"] = ""
+        service_env["MEDIA_RENDER_SIGNING_SECRET"] = ""
 
         exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
 
         self.assertEqual(exit_code, 1)
         self.assertIn("key=AUTH_TOKEN_HASH_SECRET", output)
+        self.assertIn("key=MEDIA_RENDER_SIGNING_SECRET", output)
         self.assertIn("empty=true", output)
-        self.assertIn("empty_keys=1", output)
+        self.assertIn("empty_keys=2", output)
         self.assertNotIn("present-without-value", output)
 
     def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:

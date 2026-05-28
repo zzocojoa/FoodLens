@@ -27,6 +27,7 @@ DEFAULT_LIVE_ENV_KEYS: tuple[str, ...] = (
     "LABEL_ESTIMATED_COST_USD_PER_REQUEST_FALLBACK",
     "LABEL_ESTIMATED_COST_USD_PER_REQUEST_PRO_FALLBACK",
     "LABEL_PRO_FALLBACK_MIN_COST_MULTIPLIER",
+    "OPENAPI_EXPORT_ONLY",
     "ANALYSIS_RATE_LIMIT_BACKEND",
     "ANALYSIS_RATE_LIMIT_TABLE",
     "AUTH_RATE_LIMIT_ENABLED",
@@ -45,12 +46,15 @@ DEFAULT_LIVE_ENV_KEYS: tuple[str, ...] = (
     "ANALYSIS_JOBS_TTL_SCRUB_DRY_RUN",
     "ANALYSIS_JOBS_TTL_SCRUB_DAYS",
     "ANALYSIS_JOBS_TTL_SCRUB_BATCH_SIZE",
+    "MEDIA_RENDER_SIGN_BUCKET_SECONDS",
     "DELETION_QUEUE_RETRY_MAX_ATTEMPTS",
     "DELETION_QUEUE_RETRY_BASE_DELAY_SECONDS",
     "DELETION_QUEUE_RETRY_MAX_DELAY_SECONDS",
+    "SENTRY_ENVIRONMENT",
 )
 DEFAULT_LIVE_MANAGED_ENV_KEYS: tuple[str, ...] = (
     "AUTH_TOKEN_HASH_SECRET",
+    "MEDIA_RENDER_SIGNING_SECRET",
 )
 
 
@@ -110,6 +114,8 @@ def _parse_env_vars(block: list[str]) -> dict[str, BlueprintEnvVar]:
         key_match = re.match(r"^\s+- key:\s*([A-Z0-9_]+)\s*$", line)
         if key_match is not None:
             current_key = key_match.group(1)
+            if current_key in env_vars:
+                raise RuntimeError(f"duplicate env key: {current_key}")
             env_vars[current_key] = BlueprintEnvVar(key=current_key, value=None, sync=None)
             continue
         if current_key is None:

@@ -55,6 +55,7 @@ def parse_env_vars(block: list[str]) -> dict[str, dict[str, str | None]]:
         key_match = re.match(r"^\s+- key:\s*([A-Z0-9_]+)\s*$", line)
         if key_match is not None:
             current_key = key_match.group(1)
+            require(current_key not in env_vars, f"duplicate env key: {current_key}")
             env_vars[current_key] = {"value": None, "sync": None}
             continue
         if current_key is None:
