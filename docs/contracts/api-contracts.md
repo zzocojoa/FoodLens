@@ -155,8 +155,9 @@
 - `POST /auth/email/password/reset/confirm`
   - `email`, `code`, `new_password`
 - `POST /auth/google|kakao`
-  - `code`, `state`, `redirect_uri?`, `provider_user_id?`, `email?`, `locale?`, `device_id?`
+  - `code`, `state`, `redirect_uri?`, `locale?`, `device_id?`
   - `state`는 `/auth/{provider}/start`에서 생성/저장된 pending OAuth state와 일치해야 한다. `state` 생략 시 서버 생성은 `/auth/{provider}/start` query에만 적용되며, POST 단계에서는 callback deep link로 받은 opaque state handle을 그대로 전달해야 한다.
+  - client가 보낸 `email` / `provider_user_id`는 public OAuth login 계약이 아니며 legacy 앱 호환을 위해 ignored 처리합니다. FoodLens 사용자 매핑은 provider code exchange로 검증된 provider-verified subject만 사용합니다.
 - `POST /auth/refresh`
   - `refresh_token`
 - `POST /auth/logout`
