@@ -397,7 +397,11 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(signup_response.json()["user"]["locale"], "en-US")
 
     def test_oauth_new_user_resolves_locale_from_accept_language(self):
-        with TestClient(app) as client:
+        with (
+            patch.dict(os.environ, {"AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1"}, clear=False),
+            patch("backend.server._verify_google_identity", return_value=("google-locale-user", None)),
+            TestClient(app) as client,
+        ):
             state = self._seed_oauth_pending_state(
                 provider="google",
                 redirect_uri="foodlens://oauth/google-callback",
@@ -409,7 +413,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-locale-code",
                     "state": state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "email": "oauth-locale-user@example.com",
                 },
                 headers={"Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8"},
             )
@@ -1203,11 +1206,14 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "1",
                     "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
-                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
                 },
                 clear=False,
             ),
+            patch("backend.server._verify_google_identity", return_value=("google-user-1", "google-user@example.com")),
+            patch("backend.server._verify_kakao_identity", return_value=("kakao-user-1", "kakao-user@example.com")),
             TestClient(app) as client,
         ):
             google_state = self._seed_oauth_pending_state(
@@ -1221,7 +1227,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-code-1",
                     "state": google_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "email": "google-user@example.com",
                 },
             )
             self.assertEqual(google_success.status_code, 200)
@@ -1237,7 +1242,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 json={
                     "code": "kakao-code-1",
                     "state": kakao_state,
-                    "email": "kakao-user@example.com",
                 },
             )
             self.assertEqual(kakao_success.status_code, 200)
@@ -1278,13 +1282,94 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-auth-code",
                     "state": redirect_mismatch_state,
                     "redirect_uri": "foodlens://oauth/invalid",
-                    "email": "google-user@example.com",
                 },
             )
             self.assertEqual(redirect_mismatch.status_code, 400)
             self.assertEqual(redirect_mismatch.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
 
-    def test_oauth_requires_stable_provider_identity_or_email(self):
+    def test_oauth_public_request_ignores_client_supplied_identity(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server._verify_google_identity", return_value=("verified-google-subject", "verified-google@example.com")),
+            patch("backend.server._verify_kakao_identity", return_value=("verified-kakao-subject", "verified-kakao@example.com")),
+            TestClient(app) as client,
+        ):
+            cases = (
+                ("google", "/auth/google", "verified-google@example.com", "google:verified-google-subject"),
+                ("kakao", "/auth/kakao", "verified-kakao@example.com", "kakao:verified-kakao-subject"),
+            )
+            for provider, endpoint, verified_email, provider_key in cases:
+                redirect_uri = f"foodlens://oauth/{provider}-callback"
+                state = self._seed_oauth_pending_state(
+                    provider=provider,
+                    redirect_uri=redirect_uri,
+                    state=self._oauth_test_state(f"{provider}-forged-state"),
+                )
+                response = client.post(
+                    endpoint,
+                    json={
+                        "code": "forged-code",
+                        "state": state,
+                        "redirect_uri": redirect_uri,
+                        "email": "victim@example.com",
+                        "provider_user_id": "victim-provider-subject",
+                    },
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["user"]["email"], verified_email)
+                provider_subjects = app.state.auth_service._provider_subject_to_user_id
+                self.assertIn(provider_key, provider_subjects)
+                self.assertNotIn(f"{provider}:victim-provider-subject", provider_subjects)
+
+    def test_oauth_login_rejects_email_without_provider_subject(self):
+        service = InMemoryAuthSessionService(email_verification_required=False)
+
+        with self.assertRaises(AuthServiceError) as context:
+            service.oauth_login(
+                provider="google",
+                code="google-code-with-email-only",
+                state="google-state-with-email-only",
+                redirect_uri=None,
+                error=None,
+                provider_user_id=None,
+                email="owner@example.com",
+            )
+
+        self.assertEqual(context.exception.code, "AUTH_PROVIDER_IDENTITY_MISSING")
+
+    def test_oauth_links_existing_email_user_only_with_verified_provider_subject(self):
+        service = InMemoryAuthSessionService(email_verification_required=False)
+        email_session = service.signup_email(
+            email="linkable@example.com",
+            password="Passw0rd!",
+            display_name="Linkable User",
+            locale="ko-KR",
+            device_id="ios-email-linkable",
+        )
+
+        oauth_session = service.oauth_login(
+            provider="google",
+            code="google-code-with-verified-email",
+            state="google-state-with-verified-email",
+            redirect_uri=None,
+            error=None,
+            provider_user_id="google-verified-subject",
+            email="Linkable@Example.com",
+        )
+
+        self.assertEqual(oauth_session["user"]["id"], email_session["user"]["id"])
+        self.assertIn("google:google-verified-subject", service._provider_subject_to_user_id)
+
+    def test_oauth_requires_verified_provider_identity(self):
         with (
             patch.dict(
                 os.environ,
@@ -1307,23 +1392,29 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-code-no-identity",
                     "state": state,
                     "redirect_uri": "foodlens://oauth/google-callback",
+                    "email": "forged-no-identity@example.com",
+                    "provider_user_id": "forged-no-identity-subject",
                 },
             )
 
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.json()["detail"]["code"], "AUTH_PROVIDER_IDENTITY_MISSING")
+            provider_subjects = app.state.auth_service._provider_subject_to_user_id
+            self.assertNotIn("google:forged-no-identity-subject", provider_subjects)
 
     def test_oauth_pending_state_is_consumed_once_and_bound_to_provider(self):
         with (
             patch.dict(
                 os.environ,
                 {
-                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "0",
-                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "1",
                     "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
                 },
                 clear=False,
             ),
+            patch("backend.server._verify_google_identity", return_value=("google-consume-user", None)),
+            patch("backend.server._verify_kakao_identity", return_value=("kakao-wrong-provider-user", None)),
             TestClient(app) as client,
         ):
             valid_state = self._seed_oauth_pending_state(
@@ -1337,7 +1428,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-consume-code",
                     "state": valid_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "provider_user_id": "google-consume-user",
                 },
             )
             self.assertEqual(success.status_code, 200)
@@ -1348,7 +1438,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-consume-code-2",
                     "state": valid_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "provider_user_id": "google-consume-user-2",
                 },
             )
             self.assertEqual(replay.status_code, 400)
@@ -1365,7 +1454,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "kakao-wrong-provider-code",
                     "state": wrong_provider_state,
                     "redirect_uri": "foodlens://oauth/kakao-callback",
-                    "provider_user_id": "kakao-wrong-provider-user",
                 },
             )
             self.assertEqual(wrong_provider.status_code, 400)
@@ -1573,13 +1661,15 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "0",
-                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "0",
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_KAKAO_CODE_VERIFY_ENABLED": "1",
                     "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
                     "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
                 },
                 clear=False,
             ),
+            patch("backend.server._verify_google_identity", return_value=("google-device-limit-1", None)),
+            patch("backend.server._verify_kakao_identity", return_value=("kakao-device-limit-1", None)),
             TestClient(app) as client,
         ):
             previous_limiter = getattr(app.state, "auth_rate_limiter", None)
@@ -1602,7 +1692,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                         "code": "google-device-limit-1",
                         "state": first_google_state,
                         "redirect_uri": "foodlens://oauth/google-callback",
-                        "provider_user_id": "google-device-limit-1",
                         "device_id": "ios-oauth-provider-limit",
                     },
                     headers={
@@ -1618,7 +1707,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                         "code": "google-device-limit-2",
                         "state": self._oauth_test_state("google-device-limit-2"),
                         "redirect_uri": "foodlens://oauth/google-callback",
-                        "provider_user_id": "google-device-limit-2",
                         "device_id": "ios-oauth-provider-limit",
                     },
                     headers={
@@ -1642,7 +1730,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     json={
                         "code": "kakao-device-limit-1",
                         "state": kakao_state,
-                        "provider_user_id": "kakao-device-limit-1",
                         "device_id": "ios-oauth-provider-limit",
                     },
                     headers={
@@ -1817,7 +1904,11 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         mocked_profile_response.status_code = 200
         mocked_profile_response.json.return_value = {
             "id": "kakao-user-123",
-            "kakao_account": {"email": "verified-kakao@example.com"},
+            "kakao_account": {
+                "email": "verified-kakao@example.com",
+                "is_email_valid": True,
+                "is_email_verified": True,
+            },
         }
 
         with (
@@ -1847,8 +1938,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "kakao-code-live",
                     "state": kakao_state,
                     "redirect_uri": "foodlens://oauth/kakao-callback",
-                    "provider_user_id": "untrusted-client-subject",
-                    "email": "untrusted@example.com",
                 },
             )
 
@@ -1884,7 +1973,11 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         mocked_profile_response.status_code = 200
         mocked_profile_response.json.return_value = {
             "id": "kakao-user-bridge",
-            "kakao_account": {"email": "bridge-kakao@example.com"},
+            "kakao_account": {
+                "email": "bridge-kakao@example.com",
+                "is_email_valid": True,
+                "is_email_verified": True,
+            },
         }
 
         with (
@@ -2003,8 +2096,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-code-live",
                     "state": google_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "provider_user_id": "untrusted-google-subject",
-                    "email": "untrusted@example.com",
                 },
             )
 
@@ -2071,8 +2162,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "google-code-live-unverified-email",
                     "state": google_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "provider_user_id": "client-only-google-subject",
-                    "email": "client-only-google@example.com",
                 },
             )
 
@@ -2118,8 +2207,6 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "code": "invalid-live-code",
                     "state": google_state,
                     "redirect_uri": "foodlens://oauth/google-callback",
-                    "provider_user_id": "client-only-google-invalid",
-                    "email": "client-only-invalid@example.com",
                 },
             )
 

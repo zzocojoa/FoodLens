@@ -2240,17 +2240,6 @@
             ],
             "title": "Device Id"
           },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
           "error": {
             "anyOf": [
               {
@@ -2272,17 +2261,6 @@
               }
             ],
             "title": "Locale"
-          },
-          "provider_user_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider User Id"
           },
           "redirect_uri": {
             "anyOf": [

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Literal, TypeAlias, TypeVar
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from PIL import Image, ImageOps
 
 from backend.modules.server_bootstrap import (
@@ -2524,19 +2524,11 @@ def _provider_client_id(provider: str) -> str:
     return os.environ.get(env_name, "").strip()
 
 
-def _has_client_supplied_provider_identity(*, provider_user_id: str | None, email: str | None) -> bool:
-    normalized_provider_user_id = (provider_user_id or "").strip()
-    normalized_email = (email or "").strip()
-    return bool(normalized_provider_user_id or normalized_email)
-
-
 def _should_verify_provider_identity(
     *,
     provider: str,
     code: str | None,
     error: str | None,
-    provider_user_id: str | None,
-    email: str | None,
 ) -> bool:
     if not code or error:
         return False
@@ -2546,9 +2538,6 @@ def _should_verify_provider_identity(
 
     if provider == "kakao" and _is_kakao_code_verification_enabled():
         return True
-
-    if _has_client_supplied_provider_identity(provider_user_id=provider_user_id, email=email):
-        return False
 
     return bool(_provider_client_id(provider))
 
@@ -2682,7 +2671,12 @@ def _verify_kakao_identity(*, request: Request, code: str, code_verifier: str | 
     email: str | None = None
     kakao_account = profile_payload.get("kakao_account")
     if isinstance(kakao_account, dict):
-        raw_email = kakao_account.get("email")
+        raw_email_verified = kakao_account.get("is_email_verified")
+        raw_email_valid = kakao_account.get("is_email_valid")
+        if raw_email_verified in {True, "true", "True", "1", 1} and raw_email_valid is not False:
+            raw_email = kakao_account.get("email")
+        else:
+            raw_email = None
         if isinstance(raw_email, str):
             email = raw_email.strip() or None
 
@@ -2867,12 +2861,12 @@ class PasswordResetConfirmRequest(BaseModel):
 
 
 class OAuthProviderRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     code: str | None = None
     state: str | None = None
     redirect_uri: str | None = None
     error: str | None = None
-    provider_user_id: str | None = None
-    email: str | None = None
     locale: str | None = None
     device_id: str | None = None
 
@@ -4310,14 +4304,12 @@ def _build_oauth_provider_login_result(
     pending_redirect_uri = str(pending_state["app_redirect_uri"])
     code_verifier = pending_state.get("code_verifier")
     pending_code_verifier = code_verifier if isinstance(code_verifier, str) and code_verifier.strip() else None
-    provider_user_id = payload.provider_user_id
-    email = payload.email
+    provider_user_id: str | None = None
+    email: str | None = None
     if _should_verify_provider_identity(
         provider=provider,
         code=payload.code,
         error=payload.error,
-        provider_user_id=provider_user_id,
-        email=email,
     ):
         if provider == "google":
             verified_provider_user_id, verified_email = _verify_google_identity(
@@ -5019,7 +5011,7 @@ async def auth_google(payload: OAuthProviderRequest, request: Request):
         request=request,
         provider="google",
         rate_limit_endpoint="/auth/google",
-        rate_limit_email=payload.email,
+        rate_limit_email=None,
         rate_limit_device_id=payload.device_id,
         action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
             auth_service=auth_service,
@@ -5041,7 +5033,7 @@ async def auth_kakao(payload: OAuthProviderRequest, request: Request):
         request=request,
         provider="kakao",
         rate_limit_endpoint="/auth/kakao",
-        rate_limit_email=payload.email,
+        rate_limit_email=None,
         rate_limit_device_id=payload.device_id,
         action=lambda auth_service, _request_id: _build_oauth_provider_login_result(
             auth_service=auth_service,

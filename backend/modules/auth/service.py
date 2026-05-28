@@ -1800,6 +1800,7 @@ class InMemoryAuthSessionService:
         accept_language: str | None = None,
         device_id: str | None = None,
     ) -> dict[str, object]:
+        """서버가 검증한 provider subject만 OAuth 세션 identity로 사용한다."""
         provider_normalized = provider.strip().lower()
         if provider_normalized not in {"google", "kakao"}:
             raise AuthServiceError(
@@ -1840,14 +1841,11 @@ class InMemoryAuthSessionService:
         subject = (provider_user_id or "").strip()
         normalized_email = self._normalize_email(email) if email else None
         if not subject:
-            if normalized_email:
-                subject = f"email:{normalized_email}"
-            else:
-                raise AuthServiceError(
-                    code="AUTH_PROVIDER_IDENTITY_MISSING",
-                    message="Provider identity could not be verified.",
-                    status_code=400,
-                )
+            raise AuthServiceError(
+                code="AUTH_PROVIDER_IDENTITY_MISSING",
+                message="Provider identity could not be verified.",
+                status_code=400,
+            )
         provider_key = f"{provider_normalized}:{subject}"
         resolved_locale = _normalize_resolved_locale(
             locale,
@@ -1861,10 +1859,12 @@ class InMemoryAuthSessionService:
             if user_id:
                 user = self._users_by_id[user_id]
             else:
-                normalized_email = normalized_email or self._normalize_email(
+                fallback_email = self._normalize_email(
                     f"{provider_normalized}_{subject}@foodlens.local"
                 )
-                existing_by_email = self._user_id_by_email.get(normalized_email)
+                existing_by_email = (
+                    self._user_id_by_email.get(normalized_email) if normalized_email else None
+                )
                 if existing_by_email:
                     user = self._users_by_id[existing_by_email]
                     user.provider = provider_normalized
@@ -1872,7 +1872,7 @@ class InMemoryAuthSessionService:
                     user.updated_at = _utc_now()
                 else:
                     user = self._create_user(
-                        email=normalized_email,
+                        email=normalized_email or fallback_email,
                         display_name=None,
                         provider=provider_normalized,
                         provider_subject=subject,
