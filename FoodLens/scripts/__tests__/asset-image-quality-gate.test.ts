@@ -169,6 +169,9 @@ describe('asset-image-quality-gate', () => {
       ['assets/images/splash-icon.png', 'assets/images/android-icon-background.png'],
       ['assets/images/splash-icon.png', 'assets/images/android-icon-foreground.png'],
     ]);
+    expect(
+      result.transparentRgbResults.map((entry: { asset: { path: string } }) => entry.asset.path)
+    ).toEqual(['assets/images/splash-icon.png']);
   });
 
   it('rejects a splash asset that reuses launcher icon bytes', () => {
@@ -193,6 +196,34 @@ describe('asset-image-quality-gate', () => {
       }
       expect(separationFailure.errors.join(' ')).toContain(
         'assets/images/splash-icon.png must not reuse assets/images/android-icon-background.png'
+      );
+    } finally {
+      cleanupTempRoot(rootDir);
+    }
+  });
+
+  it('rejects a splash asset with hidden RGB data in transparent pixels', () => {
+    const rootDir = createTempRoot();
+
+    try {
+      copyCriticalAssets(rootDir);
+      fs.writeFileSync(
+        path.join(rootDir, 'assets/images/splash-icon.png'),
+        createSolidPng(6, Buffer.from([255, 255, 255, 0]))
+      );
+
+      const result = assetImageQualityGate.runAssetImageQualityGate(rootDir);
+      const transparentRgbFailure = result.failures.find(
+        (entry: { asset?: { path: string } }): boolean =>
+          entry.asset?.path === 'assets/images/splash-icon.png'
+      );
+
+      expect(result.ok).toBe(false);
+      if (!transparentRgbFailure) {
+        throw new Error('expected transparent RGB failure');
+      }
+      expect(transparentRgbFailure.errors.join(' ')).toContain(
+        'transparent pixels with hidden RGB data'
       );
     } finally {
       cleanupTempRoot(rootDir);

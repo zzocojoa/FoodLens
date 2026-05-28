@@ -21,7 +21,8 @@ const SPLASH_IMAGE_PATH = "./assets/images/splash-icon.png";
 const SPLASH_IMAGE_WIDTH = 240;
 const SPLASH_RESIZE_MODE = "contain";
 const SPLASH_BACKGROUND_COLOR = "#FFFFFF";
-const SPLASH_DARK_BACKGROUND_COLOR = "#020617";
+const IOS_SPLASH_DARK_BACKGROUND_COLOR = SPLASH_BACKGROUND_COLOR;
+const ANDROID_SPLASH_DARK_BACKGROUND_COLOR = "#020617";
 
 const EAS_PROJECT_ID = "dab80641-3ca1-4633-a381-36ddbb37a22e";
 
@@ -51,13 +52,22 @@ const EXPO_BUILD_IDENTITY = {
   gitDirty: buildIdentity.gitDirty,
   builtAtIso: buildIdentity.builtAtIso,
 };
-const SPLASH_SCREEN_CONFIG = {
+const IOS_SPLASH_SCREEN_CONFIG = {
   image: SPLASH_IMAGE_PATH,
   imageWidth: SPLASH_IMAGE_WIDTH,
   resizeMode: SPLASH_RESIZE_MODE,
   backgroundColor: SPLASH_BACKGROUND_COLOR,
   dark: {
-    backgroundColor: SPLASH_DARK_BACKGROUND_COLOR,
+    backgroundColor: IOS_SPLASH_DARK_BACKGROUND_COLOR,
+  },
+};
+const ANDROID_SPLASH_SCREEN_CONFIG = {
+  image: SPLASH_IMAGE_PATH,
+  imageWidth: SPLASH_IMAGE_WIDTH,
+  resizeMode: SPLASH_RESIZE_MODE,
+  backgroundColor: SPLASH_BACKGROUND_COLOR,
+  dark: {
+    backgroundColor: ANDROID_SPLASH_DARK_BACKGROUND_COLOR,
   },
 };
 
@@ -122,8 +132,8 @@ module.exports = {
       [
         "expo-splash-screen",
         {
-          ios: SPLASH_SCREEN_CONFIG,
-          android: SPLASH_SCREEN_CONFIG,
+          ios: IOS_SPLASH_SCREEN_CONFIG,
+          android: ANDROID_SPLASH_SCREEN_CONFIG,
         },
       ],
       [
