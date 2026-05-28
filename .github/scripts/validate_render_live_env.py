@@ -56,6 +56,24 @@ DEFAULT_LIVE_MANAGED_ENV_KEYS: tuple[str, ...] = (
     "AUTH_TOKEN_HASH_SECRET",
     "MEDIA_RENDER_SIGNING_SECRET",
 )
+MEDIA_RENDER_SIGNING_SECRET_KEY = "MEDIA_RENDER_SIGNING_SECRET"
+MEDIA_RENDER_SIGNING_SECRET_MIN_BYTES = 32
+MEDIA_RENDER_KNOWN_WEAK_SECRET_VALUES: frozenset[str] = frozenset(
+    {
+        "",
+        "auth_state_key",
+        "change-me",
+        "changeme",
+        "default",
+        "dev",
+        "development",
+        "foodlens-media-dev-secret",
+        "password",
+        "secret",
+        "test",
+        "unit-test-secret",
+    }
+)
 
 
 JsonRequester = Callable[[str, str, str], object]
@@ -80,6 +98,7 @@ class ServiceEnvCheck:
     key: str
     present: bool
     empty: bool
+    weak_secret: bool
     matches_blueprint: bool | None
 
 
@@ -87,6 +106,12 @@ class ServiceEnvCheck:
 class PaginatedItems:
     items: list[dict[str, Any]]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class LiveEnvVar:
+    value: str | None
+    source: str
 
 
 def _unquote(value: str) -> str:
@@ -299,8 +324,8 @@ def _service_ids_by_name(
     return service_ids
 
 
-def _live_env_vars(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, str | None]:
-    live_env: dict[str, str | None] = {}
+def _live_env_vars(api_key: str, service_id: str, request_json: JsonRequester) -> dict[str, LiveEnvVar]:
+    live_env: dict[str, LiveEnvVar] = {}
     path = f"/services/{service_id}/env-vars"
     for item in _paginated_get(api_key, path, request_json):
         env_var = _env_var_payload(item)
@@ -310,11 +335,11 @@ def _live_env_vars(api_key: str, service_id: str, request_json: JsonRequester) -
         value = env_var.get("value")
         value_preview = env_var.get("valuePreview")
         if isinstance(value, str):
-            live_env[key] = value
+            live_env[key] = LiveEnvVar(value=value, source="value")
         elif isinstance(value_preview, str):
-            live_env[key] = value_preview
+            live_env[key] = LiveEnvVar(value=value_preview, source="valuePreview")
         else:
-            live_env[key] = None
+            live_env[key] = LiveEnvVar(value=None, source="missing")
     return live_env
 
 
@@ -347,30 +372,55 @@ def _required_env_contract(services: list[BlueprintService], all_blueprint_env: 
     return contract
 
 
+def _is_redacted_live_env_preview(value: str) -> bool:
+    normalized = value.strip()
+    if not normalized:
+        return False
+    return all(char in {"*", "x", "X", "•"} for char in normalized)
+
+
+def _is_weak_media_render_signing_secret(value: str) -> bool:
+    normalized = value.strip()
+    if len(normalized.encode("utf-8")) < MEDIA_RENDER_SIGNING_SECRET_MIN_BYTES:
+        return True
+    return normalized.lower() in MEDIA_RENDER_KNOWN_WEAK_SECRET_VALUES
+
+
+def _check_media_render_secret_strength(key: str, live_var: LiveEnvVar | None) -> bool:
+    if key != MEDIA_RENDER_SIGNING_SECRET_KEY or live_var is None or live_var.value is None:
+        return False
+    if live_var.source == "valuePreview" and _is_redacted_live_env_preview(live_var.value):
+        return False
+    return _is_weak_media_render_signing_secret(live_var.value)
+
+
 def _check_service_env(
     service_name: str,
     blueprint_env: dict[str, BlueprintEnvVar],
-    live_env: dict[str, str | None],
+    live_env: dict[str, LiveEnvVar],
     check_values: bool,
 ) -> list[ServiceEnvCheck]:
     checks: list[ServiceEnvCheck] = []
     for key, blueprint_var in blueprint_env.items():
+        live_var = live_env.get(key)
         present = key in live_env
         empty = (
             present
             and key in DEFAULT_LIVE_MANAGED_ENV_KEYS
             and blueprint_var.sync == "false"
-            and not (live_env.get(key) or "").strip()
+            and not ((live_var.value if live_var is not None else None) or "").strip()
         )
+        weak_secret = present and _check_media_render_secret_strength(key, live_var)
         matches_blueprint: bool | None = None
         if check_values and present and blueprint_var.value is not None and blueprint_var.sync != "false":
-            matches_blueprint = live_env[key] == blueprint_var.value
+            matches_blueprint = live_var is not None and live_var.value == blueprint_var.value
         checks.append(
             ServiceEnvCheck(
                 service_name=service_name,
                 key=key,
                 present=present,
                 empty=empty,
+                weak_secret=weak_secret,
                 matches_blueprint=matches_blueprint,
             )
         )
@@ -386,6 +436,7 @@ def _print_check(check: ServiceEnvCheck) -> None:
         "[RenderLiveEnvGate] "
         f"service={check.service_name} key={check.key} "
         f"present={str(check.present).lower()} empty={str(check.empty).lower()} "
+        f"weak_secret={str(check.weak_secret).lower()} "
         f"matches_blueprint={match_status}"
     )
 
@@ -424,13 +475,14 @@ def run_gate(
 
     missing_count = sum(1 for check in checks if not check.present)
     empty_count = sum(1 for check in checks if check.empty)
+    weak_secret_count = sum(1 for check in checks if check.weak_secret)
     mismatch_count = sum(1 for check in checks if check.matches_blueprint is False)
-    if missing_services or missing_count > 0 or empty_count > 0 or mismatch_count > 0:
+    if missing_services or missing_count > 0 or empty_count > 0 or weak_secret_count > 0 or mismatch_count > 0:
         print(
             "[RenderLiveEnvGate] live env contract failed: "
             f"services_checked={len(contract) - len(missing_services)} "
             f"missing_services={len(missing_services)} missing_keys={missing_count} "
-            f"empty_keys={empty_count} "
+            f"empty_keys={empty_count} weak_secret_keys={weak_secret_count} "
             f"mismatched_values={mismatch_count} action=update Render Dashboard env keys or render.yaml",
             file=sys.stderr,
         )

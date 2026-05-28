@@ -257,7 +257,11 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         live_env_by_service: dict[str, dict[str, str]] = {}
         for service_name, service_contract in contract.items():
             live_env_by_service[service_name] = {
-                key: env_var.value if env_var.value is not None else "present-without-value"
+                key: "M" * 48
+                if key == "MEDIA_RENDER_SIGNING_SECRET" and env_var.value is None
+                else env_var.value
+                if env_var.value is not None
+                else "present-without-value"
                 for key, env_var in service_contract.items()
             }
         return live_env_by_service
@@ -378,6 +382,26 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("empty=true", output)
         self.assertIn("empty_keys=2", output)
         self.assertNotIn("present-without-value", output)
+
+    def test_render_live_env_check_rejects_weak_media_render_secret_without_printing_value(self) -> None:
+        module = _load_render_live_env_module()
+        weak_secret = "change-me"
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        live_env_by_service["foodlens-api"]["MEDIA_RENDER_SIGNING_SECRET"] = weak_secret
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key=MEDIA_RENDER_SIGNING_SECRET", output)
+        self.assertIn("weak_secret=true", output)
+        self.assertIn("weak_secret_keys=1", output)
+        self.assertNotIn(weak_secret, output)
+
+    def test_render_live_env_check_skips_strength_check_for_redacted_preview(self) -> None:
+        module = _load_render_live_env_module()
+        live_var = module.LiveEnvVar(value="********", source="valuePreview")
+
+        self.assertFalse(module._check_media_render_secret_strength("MEDIA_RENDER_SIGNING_SECRET", live_var))
 
     def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:
         module = _load_render_live_env_module()
