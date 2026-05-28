@@ -79,6 +79,13 @@ const ICON_SPLASH_SEPARATION_PAIRS = [
     comparisonPath: 'assets/images/android-icon-foreground.png',
   },
 ];
+const TRANSPARENT_RGB_ASSETS = [
+  {
+    path: 'assets/images/splash-icon.png',
+    format: 'png',
+    maxHiddenRgbPixels: 0,
+  },
+];
 
 const createCrc32Table = () => {
   const table = [];
@@ -660,16 +667,69 @@ const createAssetSeparationResult = (pair, rootDir) => {
   };
 };
 
+const countTransparentPixelsWithRgbData = (buffer) => {
+  const { metadata, bytesPerPixel, pixelData } = readPngPixelData(buffer);
+  let hiddenRgbPixelCount = 0;
+
+  for (let y = 0; y < metadata.height; y += 1) {
+    for (let x = 0; x < metadata.width; x += 1) {
+      const pixel = readPngPixel(pixelData, metadata, bytesPerPixel, x, y);
+      if (pixel.alpha === 0 && (pixel.red !== 0 || pixel.green !== 0 || pixel.blue !== 0)) {
+        hiddenRgbPixelCount += 1;
+      }
+    }
+  }
+
+  return hiddenRgbPixelCount;
+};
+
+const createTransparentRgbResult = (asset, rootDir) => {
+  const assetPath = path.join(rootDir, asset.path);
+  if (!fs.existsSync(assetPath)) {
+    return {
+      asset,
+      ok: false,
+      errors: [`missing asset: ${asset.path}`],
+    };
+  }
+
+  const errors = [];
+  let hiddenRgbPixelCount = 0;
+  try {
+    hiddenRgbPixelCount = countTransparentPixelsWithRgbData(fs.readFileSync(assetPath));
+    if (hiddenRgbPixelCount > asset.maxHiddenRgbPixels) {
+      errors.push(
+        `transparent pixels with hidden RGB data ${hiddenRgbPixelCount}, expected at most ${asset.maxHiddenRgbPixels}`
+      );
+    }
+  } catch (error) {
+    errors.push(`invalid transparent RGB metadata: ${error.message}`);
+  }
+
+  return {
+    asset,
+    ok: errors.length === 0,
+    hiddenRgbPixelCount,
+    errors,
+  };
+};
+
 const runAssetImageQualityGate = (rootDir) => {
   const results = CRITICAL_ASSETS.map((asset) => createAssetResult(asset, rootDir));
   const separationResults = ICON_SPLASH_SEPARATION_PAIRS.map((pair) =>
     createAssetSeparationResult(pair, rootDir)
   );
-  const failures = [...results, ...separationResults].filter((result) => !result.ok);
+  const transparentRgbResults = TRANSPARENT_RGB_ASSETS.map((asset) =>
+    createTransparentRgbResult(asset, rootDir)
+  );
+  const failures = [...results, ...separationResults, ...transparentRgbResults].filter(
+    (result) => !result.ok
+  );
   return {
     ok: failures.length === 0,
     results,
     separationResults,
+    transparentRgbResults,
     failures,
   };
 };
@@ -697,6 +757,16 @@ const main = () => {
       `[asset-image-quality] ${entry.pair.primaryPath}: distinct from ${entry.pair.comparisonPath}`
     );
   });
+  result.transparentRgbResults.forEach((entry) => {
+    if (!entry.ok) {
+      console.error(`[asset-image-quality] ${entry.asset.path}: ${entry.errors.join('; ')}`);
+      return;
+    }
+
+    console.log(
+      `[asset-image-quality] ${entry.asset.path}: transparent RGB pixels ${entry.hiddenRgbPixelCount}`
+    );
+  });
 
   if (!result.ok) {
     throw new Error(`Asset image quality gate failed: ${result.failures.length} failure(s)`);
@@ -715,8 +785,10 @@ if (require.main === module) {
 module.exports = {
   CRITICAL_ASSETS,
   ICON_SPLASH_SEPARATION_PAIRS,
+  TRANSPARENT_RGB_ASSETS,
   compareImageFingerprint,
   createAssetSeparationResult,
+  createTransparentRgbResult,
   createImageFingerprint,
   readImageDimensions,
   readJpegFingerprintData,
