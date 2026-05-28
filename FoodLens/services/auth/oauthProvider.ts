@@ -14,8 +14,6 @@ type OAuthGrant = {
   code: string;
   state: string;
   redirectUri: string;
-  email?: string;
-  providerUserId?: string;
 };
 
 type OAuthPendingState = {
@@ -160,8 +158,6 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
     code: `mock-${provider}-code-${now}-${nonce}`,
     state: `mock-${provider}-state-${now}`,
     redirectUri: `foodlens://${CALLBACK_PATH_BY_PROVIDER[provider]}`,
-    email: `mock+${provider}@foodlens.local`,
-    providerUserId: `mock-${provider}-user-${nonce}`,
   };
 };
 
@@ -372,8 +368,6 @@ const parseCallbackGrant = (
     code,
     state,
     redirectUri,
-    email: readParam('email'),
-    providerUserId: readParam('provider_user_id', 'providerUserId'),
   };
 };
 

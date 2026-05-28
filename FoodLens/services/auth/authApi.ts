@@ -415,8 +415,6 @@ export const AuthApi = {
     code: string;
     state: string;
     redirectUri: string;
-    email?: string;
-    providerUserId?: string;
     locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
@@ -424,8 +422,6 @@ export const AuthApi = {
       code: input.code,
       state: input.state,
       redirect_uri: input.redirectUri,
-      email: input.email,
-      provider_user_id: input.providerUserId,
       locale: input.locale,
       device_id: input.deviceId,
     });
@@ -436,8 +432,6 @@ export const AuthApi = {
     code: string;
     state: string;
     redirectUri: string;
-    email?: string;
-    providerUserId?: string;
     locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
@@ -445,8 +439,6 @@ export const AuthApi = {
       code: input.code,
       state: input.state,
       redirect_uri: input.redirectUri,
-      email: input.email,
-      provider_user_id: input.providerUserId,
       locale: input.locale,
       device_id: input.deviceId,
     });

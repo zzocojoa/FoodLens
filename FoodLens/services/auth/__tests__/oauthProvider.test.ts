@@ -181,14 +181,16 @@ describe('oauthProvider', () => {
     });
 
     expect(mockedAuthApi.loginWithGoogle).toHaveBeenCalledTimes(1);
-    expect(mockedAuthApi.loginWithGoogle).toHaveBeenCalledWith(
+    const googleInput = mockedAuthApi.loginWithGoogle.mock.calls[0][0];
+    expect(googleInput).toEqual(
       expect.objectContaining({
         redirectUri: 'foodlens://oauth/google-callback',
-        email: 'mock+google@foodlens.local',
         locale: 'ja-JP',
         deviceId: undefined,
       })
     );
+    expect(googleInput).not.toHaveProperty('email');
+    expect(googleInput).not.toHaveProperty('providerUserId');
     expect(mockSafeStorageSet).not.toHaveBeenCalled();
     expect(mockSafeStorageRemove).not.toHaveBeenCalled();
     expect(result.user.id).toBe('usr_google');
@@ -503,16 +505,17 @@ describe('oauthProvider', () => {
 
     const result = await AuthOAuthProvider.loginWithOAuthProvider('kakao');
 
-    expect(mockedAuthApi.loginWithKakao).toHaveBeenCalledWith(
+    const kakaoInput = mockedAuthApi.loginWithKakao.mock.calls[0][0];
+    expect(kakaoInput).toEqual(
       expect.objectContaining({
         code: 'code-123',
         state: stateFromAuthUrl(mockedWebBrowser.openAuthSessionAsync.mock.calls[0][0] as string),
         redirectUri: 'foodlens://oauth/kakao-callback',
-        email: 'ka@example.com',
-        providerUserId: 'kakao-user',
         deviceId: 'ios-oauth-device-1',
       })
     );
+    expect(kakaoInput).not.toHaveProperty('email');
+    expect(kakaoInput).not.toHaveProperty('providerUserId');
     expect(result.user.id).toBe('usr_kakao');
   });
 
@@ -533,15 +536,16 @@ describe('oauthProvider', () => {
 
     const result = await AuthOAuthProvider.loginWithOAuthProvider('kakao');
 
-    expect(mockedAuthApi.loginWithKakao).toHaveBeenCalledWith(
+    const kakaoInput = mockedAuthApi.loginWithKakao.mock.calls[0][0];
+    expect(kakaoInput).toEqual(
       expect.objectContaining({
         code: 'frag-code-123',
         state: stateFromAuthUrl(mockedWebBrowser.openAuthSessionAsync.mock.calls[0][0] as string),
         redirectUri: 'foodlens://oauth/kakao-callback',
-        email: 'frag@example.com',
-        providerUserId: 'frag-kakao-user',
       })
     );
+    expect(kakaoInput).not.toHaveProperty('email');
+    expect(kakaoInput).not.toHaveProperty('providerUserId');
     expect(result.user.id).toBe('usr_kakao_fragment');
   });
 });
