@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Crypto from 'expo-crypto';
 
 import { SafeStorage } from '@/services/storage';
 
@@ -65,18 +66,11 @@ const toHex = (bytes: Uint8Array): string =>
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('');
 
-const fnv1a32 = (text: string): string => {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return `fnv1a-${hash.toString(16)}`;
-};
-
 export const sha256Hex = async (text: string): Promise<string> => {
   const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return fnv1a32(text);
+  if (!subtle) {
+    return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
+  }
 
   const encoder = new TextEncoder();
   const digest = await subtle.digest('SHA-256', encoder.encode(text));

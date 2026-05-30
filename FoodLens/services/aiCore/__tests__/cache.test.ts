@@ -8,6 +8,7 @@ import {
 } from '../cache';
 
 const mockMemoryStore = new Map<string, unknown>();
+const mockDigestStringAsync = jest.fn();
 
 jest.mock('@/services/storage', () => ({
   SafeStorage: {
@@ -23,9 +24,17 @@ jest.mock('@/services/storage', () => ({
   },
 }));
 
+jest.mock('expo-crypto', () => ({
+  digestStringAsync: (...args: unknown[]): Promise<string> => mockDigestStringAsync(...args),
+  CryptoDigestAlgorithm: {
+    SHA256: 'SHA-256',
+  },
+}));
+
 describe('aiCore cache', () => {
   beforeEach(() => {
     mockMemoryStore.clear();
+    mockDigestStringAsync.mockResolvedValue('expo-sha256-digest');
   });
 
   it('builds deterministic barcode cache key without raw sensitive values', async () => {
@@ -125,14 +134,15 @@ describe('aiCore cache', () => {
     dateSpy.mockRestore();
   });
 
-  it('falls back when subtle crypto is unavailable', async () => {
+  it('uses Expo Crypto SHA-256 when WebCrypto subtle is unavailable', async () => {
     const originalCrypto = globalThis.crypto;
     Object.defineProperty(globalThis, 'crypto', {
       value: undefined,
       configurable: true,
     });
     const digest = await sha256Hex('abc');
-    expect(digest.startsWith('fnv1a-')).toBe(true);
+    expect(digest).toBe('expo-sha256-digest');
+    expect(mockDigestStringAsync).toHaveBeenCalledWith('SHA-256', 'abc');
 
     Object.defineProperty(globalThis, 'crypto', {
       value: originalCrypto,
