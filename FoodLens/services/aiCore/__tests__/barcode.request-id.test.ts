@@ -137,4 +137,25 @@ describe('lookupBarcodeWithAllergyContext request ids', () => {
       total: 320,
     });
   });
+
+  it('does not log raw barcode values for long or short barcodes', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    global.fetch = jest.fn().mockResolvedValue(response(200, { found: false, message: 'ok' })) as unknown as typeof fetch;
+
+    await lookupBarcodeWithAllergyContext('8801043015981');
+    await lookupBarcodeWithAllergyContext('abcd');
+
+    const serializedLogs = JSON.stringify([
+      ...consoleLogSpy.mock.calls,
+      ...consoleWarnSpy.mock.calls,
+    ]);
+    expect(serializedLogs).not.toContain('8801043015981');
+    expect(serializedLogs).not.toContain('abcd');
+    expect(serializedLogs).toContain('***5981');
+    expect(serializedLogs).toContain('***');
+
+    consoleLogSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
 });

@@ -28,32 +28,63 @@ describe('aiCore cache', () => {
     mockMemoryStore.clear();
   });
 
-  it('builds deterministic barcode cache key', () => {
-    const key = buildBarcodeCacheKey({
+  it('builds deterministic barcode cache key without raw sensitive values', async () => {
+    const key = await buildBarcodeCacheKey({
       barcode: '8801234567890',
       allergyInfo: 'Soy, Wheat',
       locale: 'ko-KR',
     });
-    expect(key).toContain('8801234567890');
-    expect(key).toContain('soy, wheat');
+    expect(key).toContain('barcode|b:');
+    expect(key).toContain('|a:');
     expect(key).toContain('ko-kr');
+    expect(key).not.toContain('8801234567890');
+    expect(key).not.toContain('soy, wheat');
   });
 
-  it('builds deterministic image cache key', () => {
-    const key = buildImageCacheKey({
+  it('builds deterministic image cache key without raw allergy context', async () => {
+    const key = await buildImageCacheKey({
       endpoint: '/analyze/label',
       imageHash: 'hash123',
       allergyInfo: 'None',
       locale: 'en-US',
       isoCountryCode: 'us',
     });
-    expect(key).toBe('img|/analyze/label|hash123|none|en-us|US');
+    expect(key).toMatch(/^img\|\/analyze\/label\|hash123\|a:[a-z0-9-]+\|en-us\|US$/);
+    expect(key).not.toContain('|none|');
   });
 
   it('stores and retrieves cached value', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     await setAiCacheValue('k1', { value: 1 }, { ttlSeconds: 60, maxEntries: 10 });
     const cached = await getAiCacheValue<{ value: number }>('k1');
     expect(cached).toEqual({ value: 1 });
+    consoleLogSpy.mockRestore();
+  });
+
+  it('does not log raw AI cache keys on cache hit', async () => {
+    const key = await buildBarcodeCacheKey({
+      barcode: '8801234567890',
+      allergyInfo: 'Soy, Wheat',
+      locale: 'ko-KR',
+    });
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await setAiCacheValue(key, { value: 1 }, { ttlSeconds: 60, maxEntries: 10 });
+    const cached = await getAiCacheValue<{ value: number }>(key);
+
+    expect(cached).toEqual({ value: 1 });
+    const serializedLogs = JSON.stringify(consoleLogSpy.mock.calls);
+    expect(serializedLogs).not.toContain(key);
+    expect(serializedLogs).not.toContain('8801234567890');
+    expect(serializedLogs).not.toContain('soy, wheat');
+    expect(serializedLogs).toContain('barcode');
+    consoleLogSpy.mockRestore();
+  });
+
+  it('rejects legacy sensitive AI cache key formats', async () => {
+    await expect(
+      setAiCacheValue('barcode|8801234567890|soy, wheat|ko-kr', { value: 1 }, { ttlSeconds: 60, maxEntries: 10 })
+    ).rejects.toThrow('legacy sensitive format');
   });
 
   it('clears cached values', async () => {

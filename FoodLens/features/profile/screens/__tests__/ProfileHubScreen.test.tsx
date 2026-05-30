@@ -11,7 +11,7 @@ const mockSetTravelerLangModalVisible = jest.fn();
 const mockSetUiLangModalVisible = jest.fn();
 const mockAuthLogout = jest.fn();
 const mockReadSession = jest.fn();
-const mockClearSession = jest.fn();
+const mockClearLocalLogoutFootprint = jest.fn();
 const mockProviderLogout = jest.fn();
 const mockDispatchPhase2SyncQueue = jest.fn();
 const mockTranslate = jest.fn((key: string, fallback?: string): string => mockEnTranslations[key] ?? fallback ?? key);
@@ -151,8 +151,8 @@ jest.mock('@/services/auth/secureSessionStore', () => ({
     },
 }));
 
-jest.mock('@/services/auth/sessionManager', () => ({
-    clearSession: (...args: unknown[]) => mockClearSession(...args),
+jest.mock('@/services/auth/localFootprint', () => ({
+    clearLocalLogoutFootprint: (...args: unknown[]) => mockClearLocalLogoutFootprint(...args),
 }));
 
 jest.mock('@/services/auth/providerLogout', () => ({
@@ -309,7 +309,7 @@ describe('ProfileHubScreen', () => {
             },
         });
         mockAuthLogout.mockResolvedValue(undefined);
-        mockClearSession.mockResolvedValue(undefined);
+        mockClearLocalLogoutFootprint.mockResolvedValue(undefined);
         mockProviderLogout.mockResolvedValue(undefined);
         mockDispatchPhase2SyncQueue.mockResolvedValue(undefined);
         Object.assign(mockBuildFingerprint, {
@@ -458,7 +458,7 @@ describe('ProfileHubScreen', () => {
 
         expect(mockCapturedLogoutDialogProps?.visible).toBe(false);
         expect(mockAuthLogout).not.toHaveBeenCalled();
-        expect(mockClearSession).not.toHaveBeenCalled();
+        expect(mockClearLocalLogoutFootprint).not.toHaveBeenCalled();
         expect(mockReplace).not.toHaveBeenCalled();
     });
 
@@ -480,8 +480,37 @@ describe('ProfileHubScreen', () => {
             refreshToken: 'rtk_profile_hub',
         });
         expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
-        expect(mockClearSession).toHaveBeenCalledTimes(1);
+        expect(mockClearLocalLogoutFootprint).toHaveBeenCalledTimes(1);
         expect(mockReplace).toHaveBeenCalledWith('/login');
         expect(mockProviderLogout).toHaveBeenCalledWith('google');
+    });
+
+    it('does not route to login when local logout footprint clear fails', async () => {
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        mockClearLocalLogoutFootprint.mockRejectedValueOnce(new Error('local wipe failed'));
+        const { getByLabelText } = render(<ProfileHubScreen />);
+
+        fireEvent.press(getByLabelText(mockEnTranslations['profileHub.menu.logout.title']));
+
+        await act(async () => {
+            mockCapturedLogoutDialogProps?.onConfirm();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(mockAuthLogout).toHaveBeenCalledTimes(1);
+        expect(mockClearLocalLogoutFootprint).toHaveBeenCalledTimes(1);
+        expect(mockReplace).not.toHaveBeenCalled();
+        expect(mockProviderLogout).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            '[AuthSession] Local logout footprint wipe failed',
+            expect.objectContaining({
+                request_id: expect.stringMatching(/^auth-logout-/),
+                provider: 'google',
+                error: 'local wipe failed',
+            }),
+        );
+
+        consoleErrorSpy.mockRestore();
     });
 });

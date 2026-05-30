@@ -11,6 +11,7 @@ import {
   BARCODE_LOOKUP_TIMEOUT_MS,
 } from '../constants';
 import { buildBarcodeCacheKey, getAiCacheValue, setAiCacheValue } from '../cache';
+import { maskBarcodeForLog } from './barcodeLog';
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
@@ -22,12 +23,6 @@ const inflightBarcodeLookups = new Map<string, Promise<BarcodeLookupResult>>();
 
 export const clearInflightBarcodeLookups = (): void => {
   inflightBarcodeLookups.clear();
-};
-
-const maskBarcode = (barcode: string): string => {
-  if (!barcode) return 'unknown';
-  if (barcode.length <= 4) return barcode;
-  return `***${barcode.slice(-4)}`;
 };
 
 const extractHost = (url: string): string => {
@@ -95,7 +90,7 @@ const fetchBarcodeWithTimeout = async (
   try {
     console.log(`${TRACE_TAG} request:start`, {
       attempt: meta.attempt,
-      barcode: maskBarcode(meta.barcode),
+      barcode: maskBarcodeForLog(meta.barcode),
       rootRequestId: meta.rootRequestId,
       attemptRequestId: meta.attemptRequestId,
       timeoutMs,
@@ -113,7 +108,7 @@ const fetchBarcodeWithTimeout = async (
     const elapsedMs = Date.now() - startedAt;
     console.warn(`${TRACE_TAG} request:error`, {
       attempt: meta.attempt,
-      barcode: maskBarcode(meta.barcode),
+      barcode: maskBarcodeForLog(meta.barcode),
       rootRequestId: meta.rootRequestId,
       attemptRequestId: meta.attemptRequestId,
       elapsedMs,
@@ -137,8 +132,8 @@ export const lookupBarcodeWithAllergyContext = async (
   const allergyString = await getAllergyString();
   const locale = await resolveRequestLocale();
   const rootRequestId = createRequestId();
-  const maskedBarcode = maskBarcode(barcode);
-  const cacheKey = buildBarcodeCacheKey({
+  const maskedBarcode = maskBarcodeForLog(barcode);
+  const cacheKey = await buildBarcodeCacheKey({
     barcode,
     allergyInfo: allergyString,
     locale,

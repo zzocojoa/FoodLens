@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -6,7 +7,7 @@ import { useI18n } from '@/features/i18n';
 import LogoutConfirmationDialog from '@/features/profile/components/LogoutConfirmationDialog';
 import { AuthApi } from '@/services/auth/authApi';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
-import { clearSession } from '@/services/auth/sessionManager';
+import { clearLocalLogoutFootprint } from '@/services/auth/localFootprint';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
 import ProfileSheetView from './profileSheet/components/ProfileSheetView';
@@ -132,7 +133,23 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
       }
 
       const provider = storedSession?.user?.provider;
-      await clearSession();
+      try {
+        await clearLocalLogoutFootprint();
+      } catch (error) {
+        console.error('[AuthSession] Local logout footprint wipe failed', {
+          request_id: requestId,
+          provider: provider ?? 'none',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        Alert.alert(
+          t('profileSheet.logout.localClearFailed.title', 'Logout incomplete'),
+          t(
+            'profileSheet.logout.localClearFailed.message',
+            'This device could not be cleared. Please try logging out again before handing over the device.',
+          ),
+        );
+        return;
+      }
       router.replace('/login');
       void logoutFromOAuthProvider(provider).catch((error) => {
         console.warn('[AuthSession] Provider logout failed', {
@@ -145,7 +162,7 @@ export default function ProfileSheet({ isOpen, onClose, userId, onUpdate }: Prof
     } finally {
       setLogoutLoading(false);
     }
-  }, [logoutLoading, router]);
+  }, [logoutLoading, router, t]);
 
   const handleConfirmLogoutDialog = React.useCallback((): void => {
     setLogoutDialogVisible(false);

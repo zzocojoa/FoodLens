@@ -15,7 +15,6 @@ const normalizeCacheContext = (context?: string): string => {
   return normalized.length > 0 ? normalized : 'default';
 };
 
-// Lightweight non-crypto hash to avoid storing raw allergy strings in cache keys.
 const hashContext = (input: string): string => {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -26,8 +25,9 @@ const hashContext = (input: string): string => {
 };
 
 const buildBarcodeCacheKey = (barcode: string, context?: string): string => {
+  const barcodeHash = hashContext(barcode.trim());
   const contextHash = hashContext(normalizeCacheContext(context));
-  return `${BARCODE_CACHE_KEY_PREFIX}${barcode}_${contextHash}`;
+  return `${BARCODE_CACHE_KEY_PREFIX}${barcodeHash}_${contextHash}`;
 };
 
 export const BarcodeCache = {

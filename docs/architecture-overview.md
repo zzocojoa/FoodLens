@@ -63,7 +63,9 @@ FoodLens-project/
 - 삭제/retention
   - Delete My Data / Delete Account 요청은 별도 queue/status store를 통해 처리됩니다.
   - 모바일은 삭제 완료 후 secure session, SafeStorage(MMKV/AsyncStorage), 분석 backup, pending analysis, AI/barcode cache, Phase2 sync queue, managed image directory를 로컬에서 함께 지웁니다.
+  - 로그아웃도 secure session만 지우지 않고 동일한 강한 로컬 footprint wipe를 완료한 뒤 로그인 화면으로 이동합니다.
   - 로컬 wipe 실패 시 삭제 완료 화면이 성공처럼 진행되지 않고, 사용자가 기기 정리 실패를 볼 수 있어야 합니다.
+  - AI/barcode cache key와 cache-hit 로그에는 raw barcode 또는 allergy context를 남기지 않습니다.
 
 ## 4. Deployment Topology
 
