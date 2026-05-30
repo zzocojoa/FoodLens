@@ -52,9 +52,7 @@ class UserDeletionHandler:
                 logger.info(
                     "[Deletion] completed",
                     extra={
-                        "queue_id": item.queue_id,
                         "target": item.target.value,
-                        "user_id": item.user_id,
                         "request_id": item.request_id,
                         "reason": item.reason,
                         "deleted_history_count": reset_summary.get("deleted_history_count", 0),
@@ -81,9 +79,7 @@ class UserDeletionHandler:
                     logger.info(
                         "[Deletion] completed",
                         extra={
-                            "queue_id": item.queue_id,
                             "target": item.target.value,
-                            "user_id": item.user_id,
                             "request_id": item.request_id,
                             "reason": item.reason,
                             "deleted_history_count": 0,
@@ -100,9 +96,7 @@ class UserDeletionHandler:
                 logger.info(
                     "[Deletion] completed",
                     extra={
-                        "queue_id": item.queue_id,
                         "target": item.target.value,
-                        "user_id": item.user_id,
                         "request_id": item.request_id,
                         "reason": item.reason,
                         "deleted_history_count": account_summary.get("deleted_history_count", 0),
@@ -123,12 +117,11 @@ class UserDeletionHandler:
             logger.warning(
                 "[Deletion] failed",
                 extra={
-                    "queue_id": item.queue_id,
                     "target": item.target.value,
-                    "user_id": item.user_id,
                     "request_id": item.request_id,
                     "reason": item.reason,
-                    "error": error_message,
+                    "error_type": type(error).__name__,
+                    "error_code": _deletion_error_code(error),
                 },
             )
             return DeletionResult(
@@ -234,6 +227,13 @@ def _deletion_error_message(error: Exception) -> str:
     if isinstance(error, AuthServiceError):
         return f"{error.code}: {error.message}"
     return str(error)
+
+
+def _deletion_error_code(error: Exception) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code.strip():
+        return code.strip()
+    return "DELETION_HANDLER_ERROR"
 
 
 def _is_media_asset_object_key(

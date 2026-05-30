@@ -17,7 +17,9 @@ export AUTH_KAKAO_CODE_VERIFY_ENABLED=0
 "$PYTHON_BIN" -m unittest -v \
   backend.tests.runtime.test_auth_email_delivery \
   backend.tests.runtime.test_auth_phase1 \
+  backend.tests.runtime.test_auth_phase2_data.AuthPhase2DataRuntimeTests.test_latest_deletion_request_masks_internal_failure_error \
   backend.tests.runtime.test_auth_service_rotation \
-  backend.tests.runtime.test_auth_state_snapshot
+  backend.tests.runtime.test_auth_state_snapshot \
+  backend.tests.runtime.test_phase5_logging_hygiene.Phase5LoggingHygieneTests.test_deletion_failure_log_masks_sensitive_error_fields
 
 echo "[CI Gate] Phase 1 auth runtime gate passed."

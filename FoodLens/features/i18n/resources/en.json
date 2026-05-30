@@ -369,6 +369,7 @@
   "profile.health.addTypedItem": "Add typed item",
   "profile.deletion.description": "Submit a deletion request for your account or your stored FoodLens data. You will see the latest request status here.",
   "profile.deletion.updatedAt": "Last updated",
+  "profile.deletion.requestId": "Request ID",
   "profile.deletion.loading": "Loading latest request status...",
   "profile.deletion.error.title": "Request failed",
   "profile.deletion.error.generic": "We could not load your deletion request status.",

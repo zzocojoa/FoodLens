@@ -369,6 +369,7 @@
   "profile.health.addTypedItem": "入力された項目を追加する",
   "profile.deletion.description": "アカウントまたは保存されている FoodLens データの削除リクエストを送信します。最新のリクエストステータスがここに表示されます。",
   "profile.deletion.updatedAt": "最終更新日",
+  "profile.deletion.requestId": "リクエストID",
   "profile.deletion.loading": "最新のリクエストステータスを読み込んでいます...",
   "profile.deletion.error.title": "リクエストが失敗しました",
   "profile.deletion.error.generic": "削除リクエストのステータスを読み込むことができませんでした。",

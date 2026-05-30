@@ -48,6 +48,7 @@ from backend.modules.ops.data_retention import (
 from backend.modules.ops.data_retention import RetentionPolicyConfig
 from backend.modules.ops.deletion_queue import (
     DEFAULT_DELETION_RETRY_POLICY,
+    DeletionStatus,
     DeletionStatusSnapshot,
     DeletionTarget,
     DeletionQueueConsumer,
@@ -3077,17 +3078,25 @@ class DeletionRequestCreateRequest(BaseModel):
     target: Literal["account", "data"]
 
 
+DeletionFailureCode: TypeAlias = Literal["DELETION_REQUEST_FAILED"]
+DeletionFailureMessage: TypeAlias = Literal[
+    "Deletion request failed. Please retry or contact support with request_id."
+]
+PUBLIC_DELETION_FAILURE_CODE: Final[DeletionFailureCode] = "DELETION_REQUEST_FAILED"
+PUBLIC_DELETION_FAILURE_MESSAGE: Final[DeletionFailureMessage] = (
+    "Deletion request failed. Please retry or contact support with request_id."
+)
+
+
 class DeletionStatusPayload(BaseModel):
-    queue_id: str
-    request_id: str | None = None
-    target: Literal["account", "data", "request"]
+    request_id: str | None
+    target: Literal["account", "data"]
     status: Literal["pending", "in_progress", "done", "failed"]
-    created_at: str
-    updated_at: str
-    reason: str
-    error: str | None = None
-    retry_count: int
-    next_attempt_at: str | None = None
+    requested_at: str
+    completed_at: str | None
+    retryable: bool
+    failure_code: DeletionFailureCode | None
+    message: DeletionFailureMessage | None
 
 
 class DeletionRequestStatusResponse(BaseModel):
@@ -3111,21 +3120,41 @@ def _serialize_deletion_status(snapshot: DeletionStatusSnapshot | None) -> dict[
     if snapshot is None:
         return None
     return {
-        "queue_id": snapshot.queue_id,
         "request_id": snapshot.request_id,
         "target": snapshot.target.value,
         "status": snapshot.status.value,
-        "created_at": snapshot.created_at.isoformat().replace("+00:00", "Z"),
-        "updated_at": snapshot.updated_at.isoformat().replace("+00:00", "Z"),
-        "reason": snapshot.reason,
-        "error": snapshot.error,
-        "retry_count": snapshot.retry_count,
-        "next_attempt_at": (
-            snapshot.next_attempt_at.isoformat().replace("+00:00", "Z")
-            if snapshot.next_attempt_at is not None
-            else None
-        ),
+        "requested_at": _serialize_deletion_timestamp(snapshot.created_at),
+        "completed_at": _serialize_deletion_completed_at(snapshot),
+        "retryable": _serialize_deletion_retryable(snapshot),
+        "failure_code": _serialize_deletion_failure_code(snapshot),
+        "message": _serialize_deletion_message(snapshot),
     }
+
+
+def _serialize_deletion_timestamp(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _serialize_deletion_completed_at(snapshot: DeletionStatusSnapshot) -> str | None:
+    if snapshot.status in {DeletionStatus.DONE, DeletionStatus.FAILED}:
+        return _serialize_deletion_timestamp(snapshot.updated_at)
+    return None
+
+
+def _serialize_deletion_retryable(snapshot: DeletionStatusSnapshot) -> bool:
+    return snapshot.status == DeletionStatus.FAILED or snapshot.next_attempt_at is not None
+
+
+def _serialize_deletion_failure_code(snapshot: DeletionStatusSnapshot) -> DeletionFailureCode | None:
+    if snapshot.status == DeletionStatus.FAILED:
+        return PUBLIC_DELETION_FAILURE_CODE
+    return None
+
+
+def _serialize_deletion_message(snapshot: DeletionStatusSnapshot) -> DeletionFailureMessage | None:
+    if _serialize_deletion_failure_code(snapshot) is not None:
+        return PUBLIC_DELETION_FAILURE_MESSAGE
+    return None
 
 
 def _register_media_retention_record(
@@ -3574,23 +3603,43 @@ async def _deletion_queue_loop() -> None:
                         _deletion_queue_lease_seconds(),
                     )
             except Exception as error:
-                logger.warning("[Deletion] queue_stale_requeue_failed error=%s", str(error))
+                _log_deletion_queue_operation_failed(operation="requeue_stale", error=error)
             for _ in range(_deletion_queue_max_batch()):
                 try:
                     result = await run_in_threadpool(consumer.consume_once)
                 except Exception as error:
-                    logger.warning("[Deletion] queue_process_failed error=%s", str(error))
+                    _log_deletion_queue_operation_failed(operation="consume_once", error=error)
                     break
                 if result is None:
                     break
                 logger.info(
-                    "[Deletion] queue_processed queue_id=%s target=%s status=%s",
-                    result.queue_id,
-                    result.target.value,
-                    result.status.value,
+                    "[Deletion] queue_processed",
+                    extra={
+                        "request_id": result.request_id,
+                        "target": result.target.value,
+                        "status": result.status.value,
+                    },
                 )
     except asyncio.CancelledError:
         return
+
+
+def _log_deletion_queue_operation_failed(*, operation: str, error: Exception) -> None:
+    logger.warning(
+        "[Deletion] queue_operation_failed",
+        extra={
+            "operation": operation,
+            "error_type": type(error).__name__,
+            "error_code": _deletion_queue_error_code(error),
+        },
+    )
+
+
+def _deletion_queue_error_code(error: Exception) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code.strip():
+        return code.strip()
+    return "DELETION_QUEUE_ERROR"
 
 
 def _parent_request_id(request: Request) -> str | None:

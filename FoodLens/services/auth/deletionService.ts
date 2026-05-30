@@ -8,7 +8,7 @@ import {
 } from './authApi';
 import { clearSession, restoreSession } from './sessionManager';
 
-const locallySubmittedDeletionRequestQueueIds: Set<string> = new Set();
+const locallySubmittedDeletionRequestIds: Set<string> = new Set();
 
 const restoreAuthenticatedSession = async (): Promise<AuthSessionTokens> => {
   const session = await restoreSession({
@@ -27,7 +27,9 @@ const restoreAuthenticatedSession = async (): Promise<AuthSessionTokens> => {
 const rememberLocallySubmittedDeletionRequest = (
   deletionRequest: AuthDeletionRequest
 ): AuthDeletionRequest => {
-  locallySubmittedDeletionRequestQueueIds.add(deletionRequest.queueId);
+  if (deletionRequest.requestId) {
+    locallySubmittedDeletionRequestIds.add(deletionRequest.requestId);
+  }
   return deletionRequest;
 };
 
@@ -60,16 +62,16 @@ export const consumeDeletionRequestFinalization = (
     return false;
   }
 
-  if (!locallySubmittedDeletionRequestQueueIds.has(deletionRequest.queueId)) {
+  if (!deletionRequest.requestId || !locallySubmittedDeletionRequestIds.has(deletionRequest.requestId)) {
     return false;
   }
 
-  locallySubmittedDeletionRequestQueueIds.delete(deletionRequest.queueId);
+  locallySubmittedDeletionRequestIds.delete(deletionRequest.requestId);
   return true;
 };
 
 export const clearLocalDeletionFootprint = async (): Promise<void> => {
-  locallySubmittedDeletionRequestQueueIds.clear();
+  locallySubmittedDeletionRequestIds.clear();
   await clearSession();
   await SafeStorage.clearAll();
 };

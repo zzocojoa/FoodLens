@@ -397,11 +397,17 @@ export default function AccountDataScreen() {
                                 {deletionStatusCopy.title}
                             </Text>
                             <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
-                                {t('profile.deletion.updatedAt', 'Last updated')}: {formatDeletionTimestamp(deletionRequest.updatedAt, locale)}
+                                {t('profile.deletion.updatedAt', 'Last updated')}:{' '}
+                                {formatDeletionTimestamp(deletionRequest.completedAt ?? deletionRequest.requestedAt, locale)}
                             </Text>
-                            {deletionRequest.error ? (
+                            {deletionRequest.message ? (
                                 <Text style={{ color: deletionStatusColors.textColor, fontSize: 13, lineHeight: 18 }}>
-                                    {deletionRequest.error}
+                                    {deletionRequest.message}
+                                </Text>
+                            ) : null}
+                            {deletionRequest.status === 'failed' && deletionRequest.requestId ? (
+                                <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 17 }}>
+                                    {t('profile.deletion.requestId', 'Request ID')}: {deletionRequest.requestId}
                                 </Text>
                             ) : null}
                         </View>

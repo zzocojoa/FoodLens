@@ -41,15 +41,22 @@ export type AuthPasswordResetChallenge = {
 
 export type AuthDeletionRequestTarget = 'account' | 'data';
 export type AuthDeletionRequestStatus = 'pending' | 'in_progress' | 'done' | 'failed';
+export type AuthDeletionFailureCode = 'DELETION_REQUEST_FAILED';
+export type AuthDeletionFailureMessage =
+  'Deletion request failed. Please retry or contact support with request_id.';
+const PUBLIC_DELETION_FAILURE_CODE: AuthDeletionFailureCode = 'DELETION_REQUEST_FAILED';
+const PUBLIC_DELETION_FAILURE_MESSAGE: AuthDeletionFailureMessage =
+  'Deletion request failed. Please retry or contact support with request_id.';
 
 export type AuthDeletionRequest = {
-  queueId: string;
+  requestId: string | null;
   target: AuthDeletionRequestTarget;
   status: AuthDeletionRequestStatus;
-  createdAt: string;
-  updatedAt: string;
-  reason: string;
-  error?: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+  retryable: boolean;
+  failureCode: AuthDeletionFailureCode | null;
+  message: AuthDeletionFailureMessage | null;
 };
 
 type AuthPayload = {
@@ -75,13 +82,14 @@ type AuthPayload = {
 };
 
 type AuthDeletionRequestPayload = {
-  queue_id?: string;
+  request_id?: string | null;
   target?: AuthDeletionRequestTarget;
   status?: AuthDeletionRequestStatus;
-  created_at?: string;
-  updated_at?: string;
-  reason?: string;
-  error?: string | null;
+  requested_at?: string;
+  completed_at?: string | null;
+  retryable?: boolean;
+  failure_code?: string | null;
+  message?: string | null;
 };
 
 type AuthDeletionRequestEnvelope = {
@@ -182,12 +190,10 @@ const toDeletionRequest = (
   }
 
   if (
-    !payload.queue_id ||
     !payload.target ||
     !payload.status ||
-    !payload.created_at ||
-    !payload.updated_at ||
-    !payload.reason
+    !payload.requested_at ||
+    typeof payload.retryable !== 'boolean'
   ) {
     throw new AuthApiError(
       'Deletion request response is missing required fields.',
@@ -197,15 +203,38 @@ const toDeletionRequest = (
     );
   }
 
+  const failureCode = toDeletionFailureCode(payload.status, payload.failure_code);
+
   return {
-    queueId: payload.queue_id,
+    requestId: payload.request_id ?? null,
     target: payload.target,
     status: payload.status,
-    createdAt: payload.created_at,
-    updatedAt: payload.updated_at,
-    reason: payload.reason,
-    error: payload.error ?? null,
+    requestedAt: payload.requested_at,
+    completedAt: payload.completed_at ?? null,
+    retryable: payload.retryable,
+    failureCode,
+    message: toDeletionFailureMessage(payload.status, failureCode),
   };
+};
+
+const toDeletionFailureCode = (
+  status: AuthDeletionRequestStatus,
+  failureCode: string | null | undefined
+): AuthDeletionFailureCode | null => {
+  if (status === 'failed' && failureCode === PUBLIC_DELETION_FAILURE_CODE) {
+    return PUBLIC_DELETION_FAILURE_CODE;
+  }
+  return null;
+};
+
+const toDeletionFailureMessage = (
+  status: AuthDeletionRequestStatus,
+  failureCode: AuthDeletionFailureCode | null
+): AuthDeletionFailureMessage | null => {
+  if (status === 'failed' && failureCode === PUBLIC_DELETION_FAILURE_CODE) {
+    return PUBLIC_DELETION_FAILURE_MESSAGE;
+  }
+  return null;
 };
 
 const parseErrorResponse = async (response: Response): Promise<AuthApiError> => {

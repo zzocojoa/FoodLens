@@ -57,13 +57,14 @@ describe('deletionService finalization replay guard', () => {
       },
     });
     mockCreateDeletionRequest.mockResolvedValue({
-      queueId: 'queue-account-1',
+      requestId: 'req-account-1',
       target: 'account',
       status: 'done',
-      createdAt: '2026-03-29T00:00:00Z',
-      updatedAt: '2026-03-29T00:00:02Z',
-      reason: 'user_requested',
-      error: null,
+      requestedAt: '2026-03-29T00:00:00Z',
+      completedAt: '2026-03-29T00:00:02Z',
+      retryable: false,
+      failureCode: null,
+      message: null,
     });
     mockClearSession.mockResolvedValue(undefined);
     mockClearAll.mockResolvedValue(undefined);
@@ -71,13 +72,14 @@ describe('deletionService finalization replay guard', () => {
 
   it('does not finalize a completed request that was not submitted locally', () => {
     const shouldFinalize = consumeDeletionRequestFinalization({
-      queueId: 'queue-old-1',
+      requestId: 'req-old-1',
       target: 'data',
       status: 'done',
-      createdAt: '2026-03-29T00:00:00Z',
-      updatedAt: '2026-03-29T00:10:00Z',
-      reason: 'user_requested',
-      error: null,
+      requestedAt: '2026-03-29T00:00:00Z',
+      completedAt: '2026-03-29T00:10:00Z',
+      retryable: false,
+      failureCode: null,
+      message: null,
     });
 
     expect(shouldFinalize).toBe(false);
@@ -86,27 +88,29 @@ describe('deletionService finalization replay guard', () => {
   it('finalizes a completed request once after it is submitted locally', async () => {
     const deletionRequest = await createDeletionRequest('account');
 
-    expect(deletionRequest.queueId).toBe('queue-account-1');
+    expect(deletionRequest.requestId).toBe('req-account-1');
     expect(
       consumeDeletionRequestFinalization({
-        queueId: 'queue-account-1',
+        requestId: 'req-account-1',
         target: 'account',
         status: 'done',
-        createdAt: '2026-03-29T00:00:00Z',
-        updatedAt: '2026-03-29T00:00:02Z',
-        reason: 'user_requested',
-        error: null,
+        requestedAt: '2026-03-29T00:00:00Z',
+        completedAt: '2026-03-29T00:00:02Z',
+        retryable: false,
+        failureCode: null,
+        message: null,
       })
     ).toBe(true);
     expect(
       consumeDeletionRequestFinalization({
-        queueId: 'queue-account-1',
+        requestId: 'req-account-1',
         target: 'account',
         status: 'done',
-        createdAt: '2026-03-29T00:00:00Z',
-        updatedAt: '2026-03-29T00:00:02Z',
-        reason: 'user_requested',
-        error: null,
+        requestedAt: '2026-03-29T00:00:00Z',
+        completedAt: '2026-03-29T00:00:02Z',
+        retryable: false,
+        failureCode: null,
+        message: null,
       })
     ).toBe(false);
   });
@@ -120,13 +124,14 @@ describe('deletionService finalization replay guard', () => {
     expect(mockClearAll).toHaveBeenCalledTimes(1);
     expect(
       consumeDeletionRequestFinalization({
-        queueId: 'queue-account-1',
+        requestId: 'req-account-1',
         target: 'account',
         status: 'done',
-        createdAt: '2026-03-29T00:00:00Z',
-        updatedAt: '2026-03-29T00:00:02Z',
-        reason: 'user_requested',
-        error: null,
+        requestedAt: '2026-03-29T00:00:00Z',
+        completedAt: '2026-03-29T00:00:02Z',
+        retryable: false,
+        failureCode: null,
+        message: null,
       })
     ).toBe(false);
   });

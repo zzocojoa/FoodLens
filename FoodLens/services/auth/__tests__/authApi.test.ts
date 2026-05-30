@@ -28,6 +28,13 @@ const mockAuthResponse = (): Response => (
   } as unknown as Response
 );
 
+const mockJsonResponse = (payload: object): Response => (
+  {
+    ok: true,
+    json: jest.fn(async () => payload),
+  } as unknown as Response
+);
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedServerConfig.getServerUrl.mockResolvedValue('https://api.example.com');
@@ -83,5 +90,70 @@ describe('AuthApi OAuth payloads', () => {
     });
     expect(requestBody).not.toHaveProperty('email');
     expect(requestBody).not.toHaveProperty('provider_user_id');
+  });
+});
+
+describe('AuthApi deletion request payloads', () => {
+  it('parses the public-safe deletion status contract', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse({
+        request_id: 'req-latest-http',
+        deletion_request: {
+          request_id: 'req-delete-1',
+          target: 'data',
+          status: 'failed',
+          requested_at: '2026-03-29T00:00:00Z',
+          completed_at: '2026-03-29T00:00:05Z',
+          retryable: true,
+          failure_code: 'DELETION_REQUEST_FAILED',
+          message: 'Deletion request failed. Please retry or contact support with request_id.',
+        },
+      })
+    );
+
+    const deletionRequest = await AuthApi.getLatestDeletionRequest({
+      accessToken: 'access-token',
+    });
+
+    expect(deletionRequest).toEqual({
+      requestId: 'req-delete-1',
+      target: 'data',
+      status: 'failed',
+      requestedAt: '2026-03-29T00:00:00Z',
+      completedAt: '2026-03-29T00:00:05Z',
+      retryable: true,
+      failureCode: 'DELETION_REQUEST_FAILED',
+      message: 'Deletion request failed. Please retry or contact support with request_id.',
+    });
+  });
+
+  it('does not pass through unsafe deletion failure messages', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse({
+        request_id: 'req-latest-http',
+        deletion_request: {
+          request_id: 'req-delete-unsafe',
+          target: 'data',
+          status: 'failed',
+          requested_at: '2026-03-29T00:00:00Z',
+          completed_at: '2026-03-29T00:00:05Z',
+          retryable: true,
+          failure_code: 'DELETION_REQUEST_FAILED',
+          message: 'Traceback SELECT * FROM deletion_statuses gs://foodlens-private/user/original.jpg',
+        },
+      })
+    );
+
+    const deletionRequest = await AuthApi.getLatestDeletionRequest({
+      accessToken: 'access-token',
+    });
+
+    expect(deletionRequest?.failureCode).toBe('DELETION_REQUEST_FAILED');
+    expect(deletionRequest?.message).toBe(
+      'Deletion request failed. Please retry or contact support with request_id.'
+    );
+    expect(deletionRequest?.message).not.toContain('Traceback');
+    expect(deletionRequest?.message).not.toContain('SELECT *');
+    expect(deletionRequest?.message).not.toContain('gs://foodlens-private');
   });
 });

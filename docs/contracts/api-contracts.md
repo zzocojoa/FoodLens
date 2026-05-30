@@ -412,7 +412,12 @@
 
 출력:
 
-- `deletion_request { queue_id, request_id, target, status, created_at, updated_at, reason, error, retry_count, next_attempt_at }`
+- `{ request_id, deletion_request: { request_id, target, status, requested_at, completed_at, retryable, failure_code, message } | null }`
+- 실패 응답은 public-safe allowlist만 반환합니다.
+  - `retryable`: 사용자가 재시도할 수 있거나 서버 재시도가 예약된 경우 `true`
+  - `failure_code`: `DELETION_REQUEST_FAILED` 또는 `null`
+  - `message`: `Deletion request failed. Please retry or contact support with request_id.` 또는 `null`
+  - 내부 `queue_id`, raw `error`, `error_detail`, `failure_reason`, `reason`, `retry_count`, `next_attempt_at`, storage path, SQL detail, provider/internal identifier는 반환하지 않습니다.
 
 상태값:
 

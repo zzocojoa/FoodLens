@@ -6,7 +6,7 @@ from backend.modules.auth.email_sender import LoggingEmailVerificationSender
 from backend.modules.auth.service import AuthServiceError
 from backend.modules.ops.deletion_queue import DeletionRequest, DeletionTarget
 from backend.modules.ops.privacy_deletion import UserDeletionHandler
-from backend.server import _log_email_verification_event
+from backend.server import _log_deletion_queue_operation_failed, _log_email_verification_event
 
 
 class _RecordHandler(logging.Handler):
@@ -92,6 +92,23 @@ class _MismatchedMediaAuthService(_FakeAuthService):
         ]
 
 
+class _SensitiveFailureAuthService(_FakeAuthService):
+    def list_media_assets_for_user(self, *, user_id: str) -> list[dict[str, str]]:
+        raise AuthServiceError(
+            code="AUTH_PROVIDER_FAILURE",
+            message=(
+                "provider failed "
+                "access_token=raw-access-value "
+                "refresh_token=raw-refresh-value "
+                "client_secret: raw-client-value "
+                "private_key='raw-private-value with spaces' "
+                "Authorization: Bearer raw-bearer-value"
+            ),
+            status_code=502,
+            user_id=user_id,
+        )
+
+
 class Phase5LoggingHygieneTests(unittest.TestCase):
     def test_httpx_info_logs_are_suppressed(self) -> None:
         self.assertGreaterEqual(logging.getLogger("httpx").level, logging.WARNING)
@@ -175,6 +192,81 @@ class Phase5LoggingHygieneTests(unittest.TestCase):
         self.assertIn("MEDIA_OBJECT_KEY_MISMATCH", str(result.error))
         self.assertEqual(analysis_job_store.scrubbed_user_ids, ["usr_owner"])
         self.assertEqual(media_storage.deleted, [])
+
+    def test_deletion_failure_log_masks_sensitive_error_fields(self) -> None:
+        logger = logging.getLogger("foodlens.deletion")
+        handler = _RecordHandler()
+        logger.addHandler(handler)
+        logger.setLevel(logging.WARNING)
+        try:
+            deletion_handler = UserDeletionHandler(
+                auth_service=_SensitiveFailureAuthService(),
+                analysis_job_store=_FakeAnalysisJobStore(),
+                media_storage=_FakeMediaStorage(),
+                retention_store=_FakeRetentionStore(),
+            )
+
+            result = deletion_handler.handle(
+                DeletionRequest(
+                    queue_id="del-sensitive-failure",
+                    created_at=datetime.now(timezone.utc),
+                    target=DeletionTarget.DATA,
+                    user_id="usr_sensitive",
+                    request_id="req_sensitive",
+                    reason="user_requested",
+                )
+            )
+
+            self.assertEqual(result.status.value, "failed")
+            self.assertEqual(len(handler.records), 1)
+            record = handler.records[0]
+            self.assertEqual(getattr(record, "error_type", None), "AuthServiceError")
+            self.assertEqual(getattr(record, "error_code", None), "AUTH_PROVIDER_FAILURE")
+            self.assertIsNone(getattr(record, "error", None))
+            self.assertIsNone(getattr(record, "queue_id", None))
+            self.assertIsNone(getattr(record, "user_id", None))
+            record_payload = str(record.__dict__)
+            for sensitive_value in (
+                "raw-access-value",
+                "raw-refresh-value",
+                "raw-client-value",
+                "raw-private-value",
+                "with spaces",
+                "raw-bearer-value",
+            ):
+                self.assertNotIn(sensitive_value, record_payload)
+        finally:
+            logger.removeHandler(handler)
+
+    def test_deletion_queue_failure_log_omits_raw_exception_text(self) -> None:
+        logger = logging.getLogger("foodlens")
+        handler = _RecordHandler()
+        logger.addHandler(handler)
+        logger.setLevel(logging.WARNING)
+        try:
+            _log_deletion_queue_operation_failed(
+                operation="consume_once",
+                error=RuntimeError(
+                    "Traceback SELECT * FROM deletion_statuses gs://foodlens-private/user/original.jpg"
+                ),
+            )
+
+            self.assertEqual(len(handler.records), 1)
+            record = handler.records[0]
+            self.assertEqual(record.getMessage(), "[Deletion] queue_operation_failed")
+            self.assertEqual(getattr(record, "operation", None), "consume_once")
+            self.assertEqual(getattr(record, "error_type", None), "RuntimeError")
+            self.assertEqual(getattr(record, "error_code", None), "DELETION_QUEUE_ERROR")
+            record_payload = str(record.__dict__)
+            for internal_text in (
+                "Traceback",
+                "SELECT *",
+                "deletion_statuses",
+                "gs://foodlens-private",
+            ):
+                self.assertNotIn(internal_text, record_payload)
+        finally:
+            logger.removeHandler(handler)
 
     def test_logging_sender_masks_email_and_never_logs_code(self) -> None:
         logger = logging.getLogger("foodlens.auth.email")

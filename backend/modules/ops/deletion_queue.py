@@ -59,6 +59,7 @@ class DeletionResult:
     status: DeletionStatus
     target: DeletionTarget
     error: str | None = None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -844,7 +845,7 @@ class DeletionQueueConsumer:
                 )
             )
             self.storage.complete(item.queue_id)
-            return result
+            return _deletion_result_with_request_id(result=result, request_id=item.request_id)
         if result.status == DeletionStatus.FAILED:
             retry_count = in_progress_snapshot.retry_count + 1
             now = datetime.now(timezone.utc)
@@ -865,7 +866,7 @@ class DeletionQueueConsumer:
                     )
                 )
                 self.storage.complete(item.queue_id)
-                return result
+                return _deletion_result_with_request_id(result=result, request_id=item.request_id)
             self.storage.save_status(
                 DeletionStatusSnapshot(
                     queue_id=item.queue_id,
@@ -890,6 +891,7 @@ class DeletionQueueConsumer:
                 status=DeletionStatus.PENDING,
                 target=item.target,
                 error=result.error,
+                request_id=item.request_id,
             )
         raise ValueError(f"Unsupported deletion handler status: {result.status.value}")
 
@@ -905,6 +907,16 @@ def _row_to_request(row: tuple[object, ...]) -> DeletionRequest:
         user_id=str(row[3]) if row[3] is not None else None,
         request_id=str(row[4]) if row[4] is not None else None,
         reason=str(row[5]),
+    )
+
+
+def _deletion_result_with_request_id(*, result: DeletionResult, request_id: str | None) -> DeletionResult:
+    return DeletionResult(
+        queue_id=result.queue_id,
+        status=result.status,
+        target=result.target,
+        error=result.error,
+        request_id=request_id,
     )
 
 
