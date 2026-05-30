@@ -81,7 +81,10 @@ Atomic OAuth state store 확인:
 - `failure_code=AUTH_PROVIDER_INVALID_STATE` 급증: login CSRF, 잘못된 모바일 start URL, stale callback 가능성 확인
 - `failure_code=AUTH_PROVIDER_STATE_EXPIRED` 급증: 모바일 중단/재시작, TTL 과소 설정, provider authorize 지연 확인
 - `failure_code=AUTH_PROVIDER_STATE_REUSED` 발생: replayed callback 또는 중복 POST 가능성 확인
+- `failure_code=AUTH_PROVIDER_ID_TOKEN_MISSING|AUTH_PROVIDER_ID_TOKEN_INVALID|AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING|AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING` 급증: Google token response 또는 ID token claim shape가 계약과 맞지 않는다. Google OAuth scope, client ID/audience, issuer/expiry 검증 실패, provider 응답 변경 여부를 확인하고 사용자는 새 OAuth flow로 재시도하게 한다.
 - `failure_code=AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH` 발생: Google ID token이 현재 pending OAuth state에서 생성한 nonce와 일치하지 않는다. 사용자는 새 OAuth flow로 재시도해야 하며, 운영자는 replayed callback, stale deep link, provider redirect 설정 drift를 확인한다.
+- `failure_code=AUTH_PROVIDER_PENDING_NONCE_MISSING` 발생: Google pending OAuth state가 nonce 없이 저장되었다. 현재 backend revision, auth state backend 저장 schema, start route의 nonce persistence를 확인하고 rollout을 중지한다.
+- `failure_code=AUTH_PROVIDER_ID_TOKEN_VERIFY_UNAVAILABLE` 급증: Google ID token verifier가 인증서/키 조회 또는 transport 단계에서 실패했다. egress, DNS, provider availability를 확인하고 클라이언트 재시도를 허용한다.
 - `provider` 한쪽에만 집중: provider별 redirect 설정과 앱 start URL 확인
 - `state_age_bucket=unknown` 집중: pending state 저장 실패 또는 client-supplied state 경로 확인
 

@@ -2053,15 +2053,18 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             mocked_get.assert_not_called()
 
     def test_google_id_token_claims_accepts_matching_nonce(self):
-        with patch(
-            "backend.server.google_id_token.verify_oauth2_token",
-            return_value={
-                "sub": "google-oidc-subject",
-                "nonce": "google-id-token-nonce",
-                "email": "verified-google@example.com",
-                "email_verified": True,
-            },
-        ) as mocked_verify:
+        with (
+            patch.dict(os.environ, {"AUTH_PROVIDER_TIMEOUT_SECONDS": "2.5"}, clear=False),
+            patch(
+                "backend.server.google_id_token.verify_oauth2_token",
+                return_value={
+                    "sub": "google-oidc-subject",
+                    "nonce": "google-id-token-nonce",
+                    "email": "verified-google@example.com",
+                    "email_verified": True,
+                },
+            ) as mocked_verify,
+        ):
             claims = server_module._verify_google_id_token_claims(
                 id_token_value=" google-id-token-stub ",
                 client_id="google-client-id-test",
@@ -2074,6 +2077,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             call_args = mocked_verify.call_args
             self.assertEqual(call_args.args[0], "google-id-token-stub")
             self.assertEqual(call_args.kwargs["audience"], "google-client-id-test")
+            self.assertEqual(call_args.args[1].keywords["timeout"], 2.5)
             self.assertEqual(
                 call_args.kwargs["clock_skew_in_seconds"],
                 server_module.GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS,
@@ -2107,6 +2111,46 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         self.assertNotIn("google-id-token-stub", serialized_record)
         self.assertNotIn("google-pending-nonce", serialized_record)
         self.assertNotIn("google-id-token-nonce-from-token", serialized_record)
+
+    def test_google_id_token_claims_rejects_nonce_whitespace_mismatch(self):
+        with patch(
+            "backend.server.google_id_token.verify_oauth2_token",
+            return_value={
+                "sub": "google-oidc-subject",
+                "nonce": " google-pending-nonce ",
+            },
+        ):
+            with (
+                self.assertLogs("foodlens.api", level="WARNING") as captured,
+                self.assertRaises(AuthServiceError) as context,
+            ):
+                server_module._verify_google_id_token_claims(
+                    id_token_value="google-id-token-stub",
+                    client_id="google-client-id-test",
+                    expected_nonce="google-pending-nonce",
+                    request_id="req-google-id-token-whitespace-mismatch",
+                )
+
+        self.assertEqual(context.exception.code, "AUTH_PROVIDER_REJECTED")
+        self.assertEqual(getattr(captured.records[0], "failure_code"), "AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH")
+
+    def test_google_id_token_claims_rejects_missing_id_token_without_verifier_call(self):
+        with patch("backend.server.google_id_token.verify_oauth2_token") as mocked_verify:
+            with (
+                self.assertLogs("foodlens.api", level="WARNING") as captured,
+                self.assertRaises(AuthServiceError) as context,
+            ):
+                server_module._verify_google_id_token_claims(
+                    id_token_value=" ",
+                    client_id="google-client-id-test",
+                    expected_nonce="google-pending-nonce",
+                    request_id="req-google-id-token-missing",
+                )
+
+        self.assertEqual(context.exception.code, "AUTH_PROVIDER_REJECTED")
+        self.assertEqual(captured.records[0].getMessage(), "[OAuthGoogle] id token rejected")
+        self.assertEqual(getattr(captured.records[0], "failure_code"), "AUTH_PROVIDER_ID_TOKEN_MISSING")
+        mocked_verify.assert_not_called()
 
     def test_google_id_token_claims_rejects_missing_nonce(self):
         with patch(
@@ -2552,6 +2596,68 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(mocked_verify.call_count, 1)
             mocked_get.assert_not_called()
 
+    def test_google_oauth_live_verification_rejects_non_string_id_token_subject(self):
+        mocked_token_response = Mock()
+        mocked_token_response.status_code = 200
+        mocked_token_response.json.return_value = {
+            "access_token": "google-access-token",
+            "id_token": "google-id-token",
+            "token_type": "Bearer",
+        }
+
+        verified_google_claims = {
+            "sub": 12345,
+            "email": "verified-google@example.com",
+            "email_verified": True,
+            "nonce": self._oauth_test_state("google-nonce"),
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server.requests.post", return_value=mocked_token_response) as mocked_post,
+            patch("backend.server.google_id_token.verify_oauth2_token", return_value=verified_google_claims) as mocked_verify,
+            patch("backend.server.requests.get") as mocked_get,
+            TestClient(app) as client,
+        ):
+            google_state = self._seed_oauth_pending_state(
+                provider="google",
+                redirect_uri="foodlens://oauth/google-callback",
+                state=self._oauth_test_state("google-id-token-non-string-subject"),
+                code_verifier="T" * 43,
+            )
+            with self.assertLogs("foodlens.api", level="WARNING") as captured:
+                response = client.post(
+                    "/auth/google",
+                    json={
+                        "code": "google-code-live-non-string-subject",
+                        "state": google_state,
+                        "redirect_uri": "foodlens://oauth/google-callback",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"]["code"], "AUTH_PROVIDER_REJECTED")
+            id_token_logs = [
+                record
+                for record in captured.records
+                if record.getMessage() == "[OAuthGoogle] id token rejected"
+            ]
+            self.assertEqual(len(id_token_logs), 1)
+            self.assertEqual(getattr(id_token_logs[0], "failure_code"), "AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING")
+            self.assertEqual(mocked_post.call_count, 1)
+            self.assertEqual(mocked_verify.call_count, 1)
+            mocked_get.assert_not_called()
+            provider_subjects = app.state.auth_service._provider_subject_to_user_id
+            self.assertNotIn("google:12345", provider_subjects)
+
     def test_google_oauth_live_verification_invalid_grant_maps_error(self):
         mocked_token_response = Mock()
         mocked_token_response.status_code = 400
@@ -2644,6 +2750,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(kakao_pending_state["app_redirect_uri"], "foodlens://oauth/kakao-callback")
             self.assertEqual(kakao_pending_state["code_challenge"], kakao_query["code_challenge"][0])
             self.assertIsInstance(kakao_pending_state["code_verifier"], str)
+            self.assertIsNone(kakao_pending_state["nonce"])
+            self.assertNotIn("nonce", kakao_query)
             self.assertEqual(kakao_query["code_challenge_method"][0], "S256")
             self.assertEqual(kakao_query["state"][0], kakao_state)
 

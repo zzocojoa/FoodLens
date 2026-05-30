@@ -277,7 +277,7 @@
 - `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
   - 성공, provider cancel/error, invalid code 모두 같은 state를 다시 사용할 수 없다.
   - 같은 state 재사용, 만료 state, unknown/tampered state, 다른 provider state는 인증 실패로 처리된다.
-  - Google은 token response에 검증 가능한 ID token이 없거나 ID token `nonce`가 pending state와 다르면 `AUTH_PROVIDER_REJECTED`로 실패한다. 운영 로그의 `failure_code`는 `AUTH_PROVIDER_ID_TOKEN_MISSING`, `AUTH_PROVIDER_ID_TOKEN_INVALID`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH`처럼 원인을 구분하되 token/nonce 값은 기록하지 않는다.
+  - Google은 token response에 검증 가능한 ID token이 없거나 ID token `nonce`가 pending state와 다르면 `AUTH_PROVIDER_REJECTED`로 실패한다. 운영 로그의 `failure_code`는 `AUTH_PROVIDER_ID_TOKEN_MISSING`, `AUTH_PROVIDER_ID_TOKEN_INVALID`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH`, `AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING`, `AUTH_PROVIDER_PENDING_NONCE_MISSING`처럼 원인을 구분하되 token/nonce 값은 기록하지 않는다. Google ID token 검증 transport가 실패하면 `AUTH_PROVIDER_UNAVAILABLE`로 실패하고 `failure_code=AUTH_PROVIDER_ID_TOKEN_VERIFY_UNAVAILABLE`을 기록한다.
 - callback deep link와 POST body의 `state`는 opaque state handle이다. app redirect URI를 state 문자열에서 파싱하거나 신뢰하지 않는다.
 - 정상 bridge 예시:
   - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars`

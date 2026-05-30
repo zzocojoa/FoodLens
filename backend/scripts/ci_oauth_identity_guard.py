@@ -100,9 +100,13 @@ def main() -> int:
         "AUTH_PROVIDER_ID_TOKEN_MISSING",
         "AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING",
         "AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH",
+        "partial(google_auth_requests.Request(), timeout=_provider_timeout_seconds())",
+        "normalized_expected_nonce = expected_nonce if isinstance(expected_nonce, str) else \"\"",
+        "token_nonce = raw_nonce if isinstance(raw_nonce, str) else \"\"",
         "hmac.compare_digest(token_nonce, normalized_expected_nonce)",
         "expected_nonce=expected_nonce",
-        'provider_user_id = str(id_info.get("sub", "")).strip()',
+        'raw_provider_user_id = id_info.get("sub")',
+        'provider_user_id = raw_provider_user_id.strip() if isinstance(raw_provider_user_id, str) else ""',
     ]
     for snippet in google_required_snippets:
         if snippet not in google_block:

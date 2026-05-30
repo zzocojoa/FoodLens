@@ -14,6 +14,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Mapping as MappingABC
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Final, Literal, Mapping, TypeAlias, TypeVar
 import requests
@@ -2730,17 +2731,18 @@ def _verify_google_id_token_claims(
             failure_code="AUTH_PROVIDER_ID_TOKEN_MISSING",
         )
 
-    normalized_expected_nonce = (expected_nonce or "").strip()
-    if not normalized_expected_nonce:
+    normalized_expected_nonce = expected_nonce if isinstance(expected_nonce, str) else ""
+    if not normalized_expected_nonce.strip():
         raise _google_id_token_rejected_error(
             request_id=request_id,
             failure_code="AUTH_PROVIDER_PENDING_NONCE_MISSING",
         )
 
+    google_auth_request = partial(google_auth_requests.Request(), timeout=_provider_timeout_seconds())
     try:
         id_info = google_id_token.verify_oauth2_token(
             normalized_id_token,
-            google_auth_requests.Request(),
+            google_auth_request,
             audience=client_id,
             clock_skew_in_seconds=GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS,
         )
@@ -2761,8 +2763,8 @@ def _verify_google_id_token_claims(
         )
 
     raw_nonce = id_info.get("nonce")
-    token_nonce = raw_nonce.strip() if isinstance(raw_nonce, str) else ""
-    if not token_nonce:
+    token_nonce = raw_nonce if isinstance(raw_nonce, str) else ""
+    if not token_nonce.strip():
         raise _google_id_token_rejected_error(
             request_id=request_id,
             failure_code="AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING",
@@ -2986,7 +2988,8 @@ def _verify_google_identity(
         request_id=request_id,
     )
 
-    provider_user_id = str(id_info.get("sub", "")).strip()
+    raw_provider_user_id = id_info.get("sub")
+    provider_user_id = raw_provider_user_id.strip() if isinstance(raw_provider_user_id, str) else ""
     if not provider_user_id:
         raise _google_id_token_rejected_error(
             request_id=request_id,
