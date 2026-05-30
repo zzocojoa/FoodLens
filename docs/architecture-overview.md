@@ -62,6 +62,8 @@ FoodLens-project/
   - 업로드 자산은 storage backend에 저장되고, 앱은 signed render URL로만 서버 자산을 다시 읽습니다.
 - 삭제/retention
   - Delete My Data / Delete Account 요청은 별도 queue/status store를 통해 처리됩니다.
+  - 모바일은 삭제 완료 후 secure session, SafeStorage(MMKV/AsyncStorage), 분석 backup, pending analysis, AI/barcode cache, Phase2 sync queue, managed image directory를 로컬에서 함께 지웁니다.
+  - 로컬 wipe 실패 시 삭제 완료 화면이 성공처럼 진행되지 않고, 사용자가 기기 정리 실패를 볼 수 있어야 합니다.
 
 ## 4. Deployment Topology
 
