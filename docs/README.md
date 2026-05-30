@@ -6,6 +6,7 @@
 
 - 제품 정의(PRD): [`/docs/product/project.md`](./product/project.md)
 - 사업 방향: [`/docs/product/business_plan.md`](./product/business_plan.md)
+- 릴리스 노트: [`/CHANGELOG.md`](../CHANGELOG.md)
 - API 계약: [`/docs/contracts/api-contracts.md`](./contracts/api-contracts.md)
 - OAuth 보안 운영 런북: [`/docs/operations/oauth-security-runbook.md`](./operations/oauth-security-runbook.md)
 - 아키텍처 요약: [`/docs/architecture-overview.md`](./architecture-overview.md)

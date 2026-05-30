@@ -4,10 +4,10 @@
 
 ### Added
 
-- Bound Google and Kakao mobile OAuth callbacks to the app-start session with a one-time callback proof.
-- Added backend proof validation that rejects missing or mismatched callback verifiers before session issuance.
-- Added regression coverage for valid proof, missing verifier, mismatched verifier, retry after a bad verifier, and ignored client-supplied identity fields.
+- Google and Kakao mobile sign-in now ties the provider callback to the app-start session with a one-time callback proof.
+- Backend login now rejects missing or mismatched callback verifiers before it can issue a session.
+- Regression tests now cover valid proof, missing verifier, mismatched verifier, retry after a bad verifier, and ignored client-supplied identity fields.
 
 ### Changed
 
-- Updated OAuth API contracts and dry-run smoke checks to include app proof challenge parameters.
+- OAuth API contracts and dry-run smoke checks now document and exercise app proof challenge parameters.
