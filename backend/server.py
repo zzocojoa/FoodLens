@@ -1982,6 +1982,11 @@ DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
 DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
 DEFAULT_OAUTH_STATE_TTL_SECONDS = 600
 GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS = 0
+OAUTH_CALLBACK_PROOF_METHOD = "S256"
+OAUTH_CALLBACK_PROOF_CHALLENGE_LENGTH = 43
+OAUTH_CALLBACK_PROOF_VERIFIER_MIN_LENGTH = 43
+OAUTH_CALLBACK_PROOF_VERIFIER_MAX_LENGTH = 128
+OAUTH_CALLBACK_PROOF_ALLOWED_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 OAUTH_STATE_MIN_LENGTH = 32
 OAUTH_STATE_MAX_LENGTH = 256
 OAUTH_STATE_MIN_UNIQUE_CHARACTERS = 8
@@ -1991,6 +1996,7 @@ OAUTH_STATE_FAILURE_CODES = frozenset(
         "AUTH_PROVIDER_INVALID_STATE",
         "AUTH_PROVIDER_STATE_REUSED",
         "AUTH_PROVIDER_STATE_EXPIRED",
+        "AUTH_PROVIDER_INVALID_CALLBACK_PROOF",
     }
 )
 OAUTH_STATE_REDIRECT_FAILURE_CODE = "AUTH_REDIRECT_URI_MISMATCH"
@@ -2550,6 +2556,72 @@ def _pkce_code_challenge(*, code_verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
+def _oauth_callback_proof_error() -> AuthServiceError:
+    return AuthServiceError(
+        code="AUTH_PROVIDER_INVALID_CALLBACK_PROOF",
+        message="OAuth callback proof is missing or invalid.",
+        status_code=400,
+    )
+
+
+def _is_oauth_callback_proof_value(value: str, *, expected_length: int | None) -> bool:
+    if expected_length is not None and len(value) != expected_length:
+        return False
+    return all(character in OAUTH_CALLBACK_PROOF_ALLOWED_CHARACTERS for character in value)
+
+
+def _resolve_oauth_app_proof(
+    *,
+    app_proof_challenge: str | None,
+    app_proof_method: str | None,
+) -> tuple[str, str]:
+    normalized_challenge = (app_proof_challenge or "").strip()
+    normalized_method = (app_proof_method or "").strip()
+    if normalized_method != OAUTH_CALLBACK_PROOF_METHOD:
+        raise _oauth_callback_proof_error()
+    if not _is_oauth_callback_proof_value(
+        normalized_challenge,
+        expected_length=OAUTH_CALLBACK_PROOF_CHALLENGE_LENGTH,
+    ):
+        raise _oauth_callback_proof_error()
+    return normalized_challenge, normalized_method
+
+
+def _build_oauth_callback_challenge(*, callback_verifier: str) -> str:
+    try:
+        digest = hashlib.sha256(callback_verifier.encode("ascii")).digest()
+    except UnicodeEncodeError as error:
+        raise _oauth_callback_proof_error() from error
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _verify_oauth_callback_proof(
+    *,
+    pending_state: dict[str, object],
+    callback_verifier: str | None,
+) -> None:
+    pending_challenge = pending_state.get("app_proof_challenge")
+    pending_method = pending_state.get("app_proof_method")
+    expected_challenge = pending_challenge if isinstance(pending_challenge, str) and pending_challenge.strip() else None
+    expected_method = pending_method if isinstance(pending_method, str) and pending_method.strip() else None
+    if not expected_challenge and not expected_method:
+        return
+    if expected_method != OAUTH_CALLBACK_PROOF_METHOD or not expected_challenge:
+        raise _oauth_callback_proof_error()
+
+    normalized_verifier = (callback_verifier or "").strip()
+    if len(normalized_verifier) < OAUTH_CALLBACK_PROOF_VERIFIER_MIN_LENGTH:
+        raise _oauth_callback_proof_error()
+    if len(normalized_verifier) > OAUTH_CALLBACK_PROOF_VERIFIER_MAX_LENGTH:
+        raise _oauth_callback_proof_error()
+    if not _is_oauth_callback_proof_value(normalized_verifier, expected_length=None):
+        raise _oauth_callback_proof_error()
+
+    actual_challenge = _build_oauth_callback_challenge(callback_verifier=normalized_verifier)
+    if not hmac.compare_digest(actual_challenge, expected_challenge):
+        raise _oauth_callback_proof_error()
+
+
 def _build_oauth_authorize_url(
     *,
     provider: str,
@@ -3064,6 +3136,7 @@ class OAuthProviderRequest(BaseModel):
     code: str | None = None
     state: str | None = None
     redirect_uri: str | None = None
+    callback_verifier: str | None = None
     error: str | None = None
     locale: str | None = None
     device_id: str | None = None
@@ -4319,12 +4392,18 @@ def _build_provider_start_redirect(
     provider: str,
     redirect_uri: str | None,
     state: str | None,
+    app_proof_challenge: str | None,
+    app_proof_method: str | None,
 ) -> RedirectResponse:
     request_id = _request_id(request)
     auth_service = _service("auth_service")
     try:
         app_redirect_uri = _resolve_app_redirect_uri(provider=provider, requested_uri=redirect_uri)
         state_handle = _resolve_oauth_state_handle(state)
+        resolved_app_proof_challenge, resolved_app_proof_method = _resolve_oauth_app_proof(
+            app_proof_challenge=app_proof_challenge,
+            app_proof_method=app_proof_method,
+        )
         nonce = _generate_oauth_state_handle() if _provider_uses_nonce(provider) else None
         code_verifier = _generate_pkce_code_verifier() if _provider_uses_pkce(provider) else None
         code_challenge = _pkce_code_challenge(code_verifier=code_verifier) if code_verifier else None
@@ -4336,6 +4415,8 @@ def _build_provider_start_redirect(
             nonce=nonce,
             code_verifier=code_verifier,
             code_challenge=code_challenge,
+            app_proof_challenge=resolved_app_proof_challenge,
+            app_proof_method=resolved_app_proof_method,
             ttl_seconds=_oauth_state_ttl_seconds(),
         )
         provider_callback_uri = _resolve_provider_callback_uri(request=request, provider=provider)
@@ -4532,6 +4613,15 @@ def _build_oauth_provider_login_result(
     request: Request,
 ) -> dict[str, Any]:
     try:
+        pending_state = auth_service.verify_oauth_pending_state(
+            provider=provider,
+            state=payload.state,
+            app_redirect_uri=payload.redirect_uri,
+        )
+        _verify_oauth_callback_proof(
+            pending_state=pending_state,
+            callback_verifier=payload.callback_verifier,
+        )
         pending_state = auth_service.consume_oauth_pending_state(
             provider=provider,
             state=payload.state,
@@ -5081,6 +5171,8 @@ async def auth_google_start(
     request: Request,
     redirect_uri: str | None = None,
     state: str | None = None,
+    app_proof_challenge: str | None = None,
+    app_proof_method: str | None = None,
 ):
     await _apply_public_auth_rate_limit(
         request=request,
@@ -5091,6 +5183,8 @@ async def auth_google_start(
         provider="google",
         redirect_uri=redirect_uri,
         state=state,
+        app_proof_challenge=app_proof_challenge,
+        app_proof_method=app_proof_method,
     )
 
 
@@ -5144,6 +5238,8 @@ async def auth_kakao_start(
     request: Request,
     redirect_uri: str | None = None,
     state: str | None = None,
+    app_proof_challenge: str | None = None,
+    app_proof_method: str | None = None,
 ):
     await _apply_public_auth_rate_limit(
         request=request,
@@ -5154,6 +5250,8 @@ async def auth_kakao_start(
         provider="kakao",
         redirect_uri=redirect_uri,
         state=state,
+        app_proof_challenge=app_proof_challenge,
+        app_proof_method=app_proof_method,
     )
 
 

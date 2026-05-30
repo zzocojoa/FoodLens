@@ -2219,6 +2219,17 @@
       },
       "OAuthProviderRequest": {
         "properties": {
+          "callback_verifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Verifier"
+          },
           "code": {
             "anyOf": [
               {
@@ -3752,6 +3763,38 @@
               ],
               "title": "State"
             }
+          },
+          {
+            "in": "query",
+            "name": "app_proof_challenge",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Proof Challenge"
+            }
+          },
+          {
+            "in": "query",
+            "name": "app_proof_method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Proof Method"
+            }
           }
         ],
         "responses": {
@@ -4225,6 +4268,38 @@
                 }
               ],
               "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "app_proof_challenge",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Proof Challenge"
+            }
+          },
+          {
+            "in": "query",
+            "name": "app_proof_method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App Proof Method"
             }
           }
         ],

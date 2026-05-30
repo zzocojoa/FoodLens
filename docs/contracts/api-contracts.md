@@ -155,8 +155,9 @@
 - `POST /auth/email/password/reset/confirm`
   - `email`, `code`, `new_password`
 - `POST /auth/google|kakao`
-  - `code`, `state`, `redirect_uri?`, `locale?`, `device_id?`
+  - `code`, `state`, `redirect_uri?`, `callback_verifier?`, `locale?`, `device_id?`
   - `state`는 `/auth/{provider}/start`에서 생성/저장된 pending OAuth state와 일치해야 한다. `state` 생략 시 서버 생성은 `/auth/{provider}/start` query에만 적용되며, POST 단계에서는 callback deep link로 받은 opaque state handle을 그대로 전달해야 한다.
+  - live bridge flow에서는 `/auth/{provider}/start`에 전달한 `app_proof_challenge`와 같은 verifier에서 계산되는 `callback_verifier`를 POST에 전달해야 한다.
   - client가 보낸 `email` / `provider_user_id`는 public OAuth login 계약이 아니며 legacy 앱 호환을 위해 ignored 처리합니다. FoodLens 사용자 매핑은 provider code exchange로 검증된 provider-verified subject만 사용합니다.
 - `POST /auth/refresh`
   - `refresh_token`
@@ -172,6 +173,7 @@
 - `AUTH_PROVIDER_CANCELLED`
 - `AUTH_PROVIDER_INVALID_CODE`
 - `AUTH_PROVIDER_INVALID_STATE`
+- `AUTH_PROVIDER_INVALID_CALLBACK_PROOF`
 - `AUTH_PROVIDER_STATE_EXPIRED`
 - `AUTH_PROVIDER_STATE_REUSED`
 - `AUTH_REDIRECT_URI_MISMATCH`
@@ -262,6 +264,7 @@
 - `/auth/{provider}/start`는 provider, app redirect URI, request_id, 생성/만료 시각을 포함한 pending OAuth state를 서버 auth state backend에 저장한다.
   - `state` query가 없으면 서버가 opaque state handle을 생성한다.
   - 모바일이 `state` query를 전달하면 32~256자 URL-safe 고엔트로피 값이어야 한다. 허용 문자는 `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`이다.
+  - 모바일은 앱 시작 세션에서 생성한 `callback_verifier`의 `base64url(SHA256(callback_verifier))` 값을 `app_proof_challenge`로, `S256`을 `app_proof_method`로 전달해야 한다. 서버는 challenge/method를 pending state에 저장한다.
   - 기본 TTL은 10분(`600`초)이다. `AUTH_OAUTH_STATE_TTL_SECONDS`로 조정할 수 있으나 서버는 최종 TTL을 `60`~`600`초 범위로 제한한다.
   - 동일 state handle이 이미 pending backend에 있으면 새 pending state를 만들지 않고 `AUTH_PROVIDER_STATE_REUSED`로 거절한다.
 - Google 시작 URL에는 PKCE `code_challenge`와 `code_challenge_method=S256`, OIDC `nonce`가 포함된다. 서버는 같은 pending state에 `code_verifier`와 `nonce`를 저장하고, Google code exchange 시 `code_verifier`를 사용한다. Google session identity는 token response의 ID token을 서명/issuer/audience/expiry 검증한 뒤 ID token `nonce` claim이 pending state의 `nonce`와 일치할 때만 사용한다.
@@ -274,18 +277,21 @@
 - live DB 호출 없는 테스트 범위에서는 SQL shape와 service delegation만 검증한다. 다중 instance 운영 전에는 배포된 revision에서 concurrency smoke를 별도 수행하거나, 그 전까지 `backend/scripts/ci_auth_state_backend_smoke.py --expected-backend postgres --require-shared-state --require-single-render-instance`로 `foodlens-api` instance count `1` 운영 guard를 유지한다.
 - live provider bridge smoke는 `/auth/{provider}/start` 호출 때 client-supplied `state`를 보내지 않고 서버 생성 state가 32~256자 URL-safe 고엔트로피 형식인지 검증한다. Provider redirect는 따라가지 않는다.
 - `/auth/{provider}/callback`은 callback 시점에 pending state가 존재하고 만료되지 않았으며 provider가 일치하는지 확인한다. 저장된 app redirect URI는 allowlist로 다시 확인하고, callback에 `redirect_uri`가 제공되면 pending state의 app redirect URI와도 비교한다. 이 단계에서는 state를 소비하지 않는다.
-- `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
+- `POST /auth/google|kakao`는 pending state의 callback proof를 확인한 뒤 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
+  - pending state에 `app_proof_challenge`가 있으면 POST body의 `callback_verifier`에서 `base64url(SHA256(callback_verifier))`를 계산하고 constant-time 비교로 일치해야 한다.
+  - `callback_verifier` 누락/불일치 시 `AUTH_PROVIDER_INVALID_CALLBACK_PROOF`로 실패하며 pending state를 consume하지 않는다. 클라이언트는 같은 state와 올바른 verifier로 재시도할 수 있다.
   - 성공, provider cancel/error, invalid code 모두 같은 state를 다시 사용할 수 없다.
   - 같은 state 재사용, 만료 state, unknown/tampered state, 다른 provider state는 인증 실패로 처리된다.
   - Google은 token response에 검증 가능한 ID token이 없거나 ID token `nonce`가 pending state와 다르면 `AUTH_PROVIDER_REJECTED`로 실패한다. 운영 로그의 `failure_code`는 `AUTH_PROVIDER_ID_TOKEN_MISSING`, `AUTH_PROVIDER_ID_TOKEN_INVALID`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH`, `AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING`, `AUTH_PROVIDER_PENDING_NONCE_MISSING`처럼 원인을 구분하되 token/nonce 값은 기록하지 않는다. Google ID token 검증 transport가 실패하면 `AUTH_PROVIDER_UNAVAILABLE`로 실패하고 `failure_code=AUTH_PROVIDER_ID_TOKEN_VERIFY_UNAVAILABLE`을 기록한다.
 - callback deep link와 POST body의 `state`는 opaque state handle이다. app redirect URI를 state 문자열에서 파싱하거나 신뢰하지 않는다.
 - 정상 bridge 예시:
-  - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars`
+  - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars&app_proof_challenge=base64urlSha256Verifier&app_proof_method=S256`
   - 서버는 pending state를 저장하고 Google authorize URL로 `302` redirect한다.
   - `GET /auth/google/callback?code=provider-code&state=clientGeneratedStateValueWithAtLeast32Chars`는 앱 redirect URI로 `code`, `state`, `request_id`를 붙여 `302` redirect한다.
-  - 앱은 같은 `state`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
+  - 앱은 같은 `state`와 `callback_verifier`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
 - State 에러 코드 예시:
   - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, start의 client-supplied state 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
+  - `AUTH_PROVIDER_INVALID_CALLBACK_PROOF`: start proof challenge/method가 누락 또는 잘못되었거나, POST callback verifier가 pending challenge와 일치하지 않는다.
   - `AUTH_PROVIDER_STATE_EXPIRED`: pending state가 TTL을 초과했다. 클라이언트는 `/auth/{provider}/start`부터 다시 시작해야 한다.
   - `AUTH_PROVIDER_STATE_REUSED`: 이미 consume된 state 또는 아직 pending backend에 남아 있는 동일 state를 재사용했다. 클라이언트는 같은 state로 재시도하지 말고 새 OAuth flow를 시작해야 한다.
   - `AUTH_REDIRECT_URI_MISMATCH`: start의 app redirect URI가 allowlist에 없거나 callback/POST의 `redirect_uri`가 pending state의 app redirect URI와 다르다.

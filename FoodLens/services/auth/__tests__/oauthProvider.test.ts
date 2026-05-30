@@ -8,6 +8,7 @@ const mockSafeStorageGet = jest.fn();
 const mockSafeStorageSet = jest.fn();
 const mockSafeStorageRemove = jest.fn();
 const mockGetRandomBytes = jest.fn();
+const mockDigestStringAsync = jest.fn();
 
 jest.mock('../authApi', () => ({
   AuthApi: {
@@ -44,6 +45,13 @@ jest.mock('expo-linking', () => ({
 
 jest.mock('expo-crypto', () => ({
   getRandomBytes: (byteCount: number): Uint8Array => mockGetRandomBytes(byteCount),
+  digestStringAsync: (...args: unknown[]): Promise<string> => mockDigestStringAsync(...args),
+  CryptoDigestAlgorithm: {
+    SHA256: 'SHA-256',
+  },
+  CryptoEncoding: {
+    BASE64: 'base64',
+  },
 }));
 
 jest.mock('expo-web-browser', () => ({
@@ -79,6 +87,8 @@ const GOOGLE_BACKEND_START_URL = 'https://api.foodlens.example.com/auth/google/s
 const KAKAO_BACKEND_START_URL = 'https://api.foodlens.example.com/auth/kakao/start';
 const GOOGLE_DIRECT_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test';
 const KAKAO_DIRECT_AUTHORIZE_URL = 'https://kauth.kakao.com/oauth/authorize?client_id=test';
+const CALLBACK_PROOF_DIGEST_BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno+/=';
+const CALLBACK_PROOF_CHALLENGE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno-_';
 const CALLBACK_URI_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'foodlens://oauth/google-callback',
   kakao: 'foodlens://oauth/kakao-callback',
@@ -149,6 +159,7 @@ beforeEach(() => {
   mockSafeStorageGet.mockResolvedValue(null);
   mockSafeStorageSet.mockResolvedValue(undefined);
   mockSafeStorageRemove.mockResolvedValue(undefined);
+  mockDigestStringAsync.mockResolvedValue(CALLBACK_PROOF_DIGEST_BASE64);
   process.env = { ...ORIGINAL_ENV };
   delete process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'];
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'];
@@ -244,12 +255,20 @@ describe('oauthProvider', () => {
     );
     const authUrl = mockedWebBrowser.openAuthSessionAsync.mock.calls[0][0] as string;
     expect(authUrl).toContain('state=');
+    expect(authUrl).toContain(`app_proof_challenge=${encodeURIComponent(CALLBACK_PROOF_CHALLENGE)}`);
+    expect(authUrl).toContain('app_proof_method=S256');
+    expect(mockDigestStringAsync).toHaveBeenCalledWith(
+      'SHA-256',
+      expect.any(String),
+      { encoding: 'base64' }
+    );
     expect(mockSafeStorageSet).toHaveBeenCalledWith(
       '@foodlens_oauth_pending_state_google',
       expect.objectContaining({
         provider: 'google',
         redirectUri: 'foodlens://oauth/google-callback',
         state: stateFromAuthUrl(authUrl),
+        callbackVerifier: expect.any(String),
       })
     );
     expect(mockSafeStorageRemove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_google');
@@ -511,6 +530,7 @@ describe('oauthProvider', () => {
         code: 'code-123',
         state: stateFromAuthUrl(mockedWebBrowser.openAuthSessionAsync.mock.calls[0][0] as string),
         redirectUri: 'foodlens://oauth/kakao-callback',
+        callbackVerifier: expect.any(String),
         deviceId: 'ios-oauth-device-1',
       })
     );
@@ -542,6 +562,7 @@ describe('oauthProvider', () => {
         code: 'frag-code-123',
         state: stateFromAuthUrl(mockedWebBrowser.openAuthSessionAsync.mock.calls[0][0] as string),
         redirectUri: 'foodlens://oauth/kakao-callback',
+        callbackVerifier: expect.any(String),
       })
     );
     expect(kakaoInput).not.toHaveProperty('email');

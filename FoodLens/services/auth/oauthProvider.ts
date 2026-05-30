@@ -14,18 +14,27 @@ type OAuthGrant = {
   code: string;
   state: string;
   redirectUri: string;
+  callbackVerifier?: string;
 };
 
 type OAuthPendingState = {
   provider: OAuthProvider;
   state: string;
   redirectUri: string;
+  callbackVerifier?: string;
   createdAt: number;
   expiresAt: number;
 };
 
+type OAuthCallbackProof = {
+  verifier: string;
+  challenge: string;
+  method: 'S256';
+};
+
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const OAUTH_PENDING_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_CALLBACK_PROOF_METHOD: OAuthCallbackProof['method'] = 'S256';
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
@@ -161,13 +170,13 @@ const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {
   };
 };
 
-const generateLiveOAuthState = (): string => {
+const secureRandomHex = (byteCount: number, purpose: string): string => {
   let bytes: Uint8Array;
   try {
-    bytes = Crypto.getRandomBytes(32);
+    bytes = Crypto.getRandomBytes(byteCount);
   } catch (error) {
     throw new AuthApiError(
-      `Secure random source is unavailable for OAuth state generation: ${
+      `Secure random source is unavailable for ${purpose}: ${
         error instanceof Error ? error.message : 'unknown error'
       }`,
       'AUTH_PROVIDER_MISCONFIGURED',
@@ -180,15 +189,52 @@ const generateLiveOAuthState = (): string => {
     .join('');
 };
 
+const generateLiveOAuthState = (): string => secureRandomHex(32, 'OAuth state generation');
+
+const base64UrlFromBase64 = (value: string): string => (
+  value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+);
+
+const buildCallbackChallenge = async (callbackVerifier: string): Promise<string> => {
+  try {
+    const digest = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      callbackVerifier,
+      { encoding: Crypto.CryptoEncoding.BASE64 }
+    );
+    return base64UrlFromBase64(digest);
+  } catch (error) {
+    throw new AuthApiError(
+      `OAuth callback proof challenge generation failed: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+};
+
+const createCallbackProof = async (): Promise<OAuthCallbackProof> => {
+  const verifier = secureRandomHex(32, 'OAuth callback proof generation');
+  const challenge = await buildCallbackChallenge(verifier);
+  return {
+    verifier,
+    challenge,
+    method: OAUTH_CALLBACK_PROOF_METHOD,
+  };
+};
+
 const createPendingOAuthState = (
   provider: OAuthProvider,
   redirectUri: string,
+  callbackVerifier: string,
   createdAt: number
 ): OAuthPendingState => {
   return {
     provider,
     state: generateLiveOAuthState(),
     redirectUri,
+    callbackVerifier,
     createdAt,
     expiresAt: createdAt + OAUTH_PENDING_STATE_TTL_MS,
   };
@@ -223,6 +269,7 @@ const isOAuthPendingState = (value: unknown): value is OAuthPendingState => {
     isOAuthProvider(value['provider']) &&
     typeof value['state'] === 'string' &&
     typeof value['redirectUri'] === 'string' &&
+    (typeof value['callbackVerifier'] === 'string' || value['callbackVerifier'] === undefined) &&
     typeof value['createdAt'] === 'number' &&
     typeof value['expiresAt'] === 'number'
   );
@@ -275,7 +322,12 @@ const assertBackendStartUrl = (provider: OAuthProvider, startUrl: string): void 
   );
 };
 
-const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string, state: string): string => {
+const buildLiveAuthUrl = (
+  provider: OAuthProvider,
+  redirectUri: string,
+  state: string,
+  callbackProof: OAuthCallbackProof
+): string => {
   let startUrl = getExpoPublicProviderStartUrl(provider).trim();
   if (!startUrl) {
     const baseUrl = getExpoPublicAnalysisServerUrl().trim().replace(/\/+$/, '');
@@ -295,7 +347,13 @@ const buildLiveAuthUrl = (provider: OAuthProvider, redirectUri: string, state: s
   assertBackendStartUrl(provider, startUrl);
 
   const delimiter = startUrl.includes('?') ? '&' : '?';
-  return `${startUrl}${delimiter}redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+  const params = new URLSearchParams({
+    redirect_uri: redirectUri,
+    state,
+    app_proof_challenge: callbackProof.challenge,
+    app_proof_method: callbackProof.method,
+  });
+  return `${startUrl}${delimiter}${params.toString()}`;
 };
 
 const assertCallbackStateMatches = (
@@ -368,6 +426,7 @@ const parseCallbackGrant = (
     code,
     state,
     redirectUri,
+    callbackVerifier: pendingState.callbackVerifier,
   };
 };
 
@@ -375,8 +434,9 @@ const requestLiveGrant = async (provider: OAuthProvider): Promise<OAuthGrant> =>
   const redirectUri = buildRedirectUri(provider);
   const now = Date.now();
   await cleanupStalePendingOAuthStates(now);
-  const pendingState = createPendingOAuthState(provider, redirectUri, now);
-  const authUrl = buildLiveAuthUrl(provider, redirectUri, pendingState.state);
+  const callbackProof = await createCallbackProof();
+  const pendingState = createPendingOAuthState(provider, redirectUri, callbackProof.verifier, now);
+  const authUrl = buildLiveAuthUrl(provider, redirectUri, pendingState.state, callbackProof);
   await writePendingOAuthState(pendingState);
 
   try {
@@ -408,21 +468,21 @@ const resolveOAuthDeviceId = async (): Promise<string | undefined> => {
 
 export const loginWithOAuthProvider = async (
   provider: OAuthProvider,
-  options: OAuthLoginOptions = {},
+  options?: OAuthLoginOptions,
 ): Promise<AuthSessionTokens> => {
   const grant = await requestGrant(provider);
   const deviceId = await resolveOAuthDeviceId();
   if (provider === 'google') {
     return AuthApi.loginWithGoogle({
       ...grant,
-      locale: options.locale,
+      locale: options?.locale,
       deviceId,
     });
   }
 
   return AuthApi.loginWithKakao({
     ...grant,
-    locale: options.locale,
+    locale: options?.locale,
     deviceId,
   });
 };

@@ -169,6 +169,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
             nonce="snapshot-oauth-nonce-0000000000000000000000",
             code_verifier=code_verifier,
             code_challenge=code_challenge,
+            app_proof_challenge="snapshot-app-proof-challenge-0000000000000",
+            app_proof_method="S256",
             ttl_seconds=600,
         )
 
@@ -198,6 +200,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
         self.assertEqual(restored["nonce"], "snapshot-oauth-nonce-0000000000000000000000")
         self.assertEqual(restored["code_verifier"], code_verifier)
         self.assertEqual(restored["code_challenge"], code_challenge)
+        self.assertEqual(restored["app_proof_challenge"], "snapshot-app-proof-challenge-0000000000000")
+        self.assertEqual(restored["app_proof_method"], "S256")
 
         consumed = service_b.consume_oauth_pending_state(
             provider="google",
@@ -236,6 +240,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
             nonce="snapshot-oauth-nonce-race-00000000000000000000",
             code_verifier="snapshot-code-verifier-race-0000000000000000",
             code_challenge="snapshot-code-challenge-race-000000000000",
+            app_proof_challenge=None,
+            app_proof_method=None,
             ttl_seconds=600,
         )
 
@@ -347,6 +353,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
                 nonce="nonce-create",
                 code_verifier="verifier-create",
                 code_challenge="challenge-create",
+                app_proof_challenge="app-proof-challenge-create",
+                app_proof_method="S256",
             )
 
         self.assertTrue(inserted)
@@ -375,6 +383,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
                 nonce=None,
                 code_verifier=None,
                 code_challenge=None,
+                app_proof_challenge=None,
+                app_proof_method=None,
             )
 
         self.assertFalse(inserted)
@@ -393,6 +403,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
             "nonce-get",
             "verifier-get",
             "challenge-get",
+            "app-proof-challenge-get",
+            "S256",
         )
         fake_connection = _FakePostgresConnection(rowcounts=[], fetchone_results=[row])
 
@@ -425,6 +437,8 @@ class AuthStateSnapshotTests(unittest.TestCase):
             "nonce-consume",
             "verifier-consume",
             "challenge-consume",
+            "app-proof-challenge-consume",
+            "S256",
         )
         fake_connection = _FakePostgresConnection(rowcounts=[1], fetchone_results=[row])
 

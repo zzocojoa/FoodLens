@@ -486,6 +486,8 @@ class OAuthPendingStateRecord:
     nonce: str | None
     code_verifier: str | None
     code_challenge: str | None
+    app_proof_challenge: str | None
+    app_proof_method: str | None
     created_at: datetime
     expires_at: datetime
     consumed_at: datetime | None
@@ -984,6 +986,9 @@ class InMemoryAuthSessionService:
             klass = AUTH_STATE_DATACLASSES.get(data_class_name)
             if klass is None:
                 raise AuthStateStoreError(f"Unknown dataclass marker in auth state snapshot: {data_class_name}")
+            if data_class_name == "OAuthPendingStateRecord":
+                payload.setdefault("app_proof_challenge", None)
+                payload.setdefault("app_proof_method", None)
             return klass(**payload)
         return raw
 
@@ -1411,6 +1416,8 @@ class InMemoryAuthSessionService:
             "nonce": record.nonce,
             "code_verifier": record.code_verifier,
             "code_challenge": record.code_challenge,
+            "app_proof_challenge": record.app_proof_challenge,
+            "app_proof_method": record.app_proof_method,
             "created_at": _to_iso8601(record.created_at),
             "expires_at": _to_iso8601(record.expires_at),
             "consumed_at": _to_iso8601(record.consumed_at) if record.consumed_at is not None else None,
@@ -1492,6 +1499,14 @@ class InMemoryAuthSessionService:
             code_challenge=self._optional_oauth_pending_state_payload_string(
                 payload=payload,
                 field_name="code_challenge",
+            ),
+            app_proof_challenge=self._optional_oauth_pending_state_payload_string(
+                payload=payload,
+                field_name="app_proof_challenge",
+            ),
+            app_proof_method=self._optional_oauth_pending_state_payload_string(
+                payload=payload,
+                field_name="app_proof_method",
             ),
             created_at=self._required_oauth_pending_state_payload_datetime(payload=payload, field_name="created_at"),
             expires_at=self._required_oauth_pending_state_payload_datetime(payload=payload, field_name="expires_at"),
@@ -1592,6 +1607,8 @@ class InMemoryAuthSessionService:
         nonce: str | None,
         code_verifier: str | None,
         code_challenge: str | None,
+        app_proof_challenge: str | None,
+        app_proof_method: str | None,
         ttl_seconds: int,
     ) -> dict[str, object]:
         provider_normalized = provider.strip().lower()
@@ -1622,6 +1639,8 @@ class InMemoryAuthSessionService:
             nonce=(nonce or "").strip() or None,
             code_verifier=(code_verifier or "").strip() or None,
             code_challenge=(code_challenge or "").strip() or None,
+            app_proof_challenge=(app_proof_challenge or "").strip() or None,
+            app_proof_method=(app_proof_method or "").strip() or None,
             created_at=now,
             expires_at=expires_at,
             consumed_at=None,
@@ -1638,6 +1657,8 @@ class InMemoryAuthSessionService:
                 nonce=record.nonce,
                 code_verifier=record.code_verifier,
                 code_challenge=record.code_challenge,
+                app_proof_challenge=record.app_proof_challenge,
+                app_proof_method=record.app_proof_method,
             )
             if not created:
                 raise AuthServiceError(

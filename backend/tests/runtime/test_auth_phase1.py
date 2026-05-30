@@ -85,6 +85,8 @@ class _AtomicOAuthPendingStateStore:
         nonce: str | None,
         code_verifier: str | None,
         code_challenge: str | None,
+        app_proof_challenge: str | None,
+        app_proof_method: str | None,
     ) -> bool:
         self.create_calls += 1
         if state in self.records:
@@ -97,6 +99,8 @@ class _AtomicOAuthPendingStateStore:
             "nonce": nonce,
             "code_verifier": code_verifier,
             "code_challenge": code_challenge,
+            "app_proof_challenge": app_proof_challenge,
+            "app_proof_method": app_proof_method,
             "created_at": created_at,
             "expires_at": expires_at,
             "consumed_at": None,
@@ -232,6 +236,14 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
     def _oauth_test_state(self, label: str) -> str:
         return f"test-oauth-state-{label}-000000000000000000000000"
 
+    def _oauth_callback_verifier(self, label: str) -> str:
+        return f"callback-proof-verifier-{label}-000000000000000000000000"
+
+    def _oauth_callback_challenge(self, label: str) -> str:
+        return server_module._build_oauth_callback_challenge(
+            callback_verifier=self._oauth_callback_verifier(label),
+        )
+
     def _oauth_state_failure_record(
         self,
         records: list[logging.LogRecord],
@@ -283,6 +295,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             nonce=self._oauth_test_state(f"{provider}-nonce"),
             code_verifier=code_verifier,
             code_challenge=server_module._pkce_code_challenge(code_verifier=code_verifier) if code_verifier else None,
+            app_proof_challenge=None,
+            app_proof_method=None,
             ttl_seconds=600,
         )
         return state
@@ -295,7 +309,11 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
         redirect_uri: str,
         state: str | None = None,
     ) -> tuple[str, dict[str, list[str]]]:
-        params = {"redirect_uri": redirect_uri}
+        params = {
+            "redirect_uri": redirect_uri,
+            "app_proof_challenge": self._oauth_callback_challenge(f"{provider}-start"),
+            "app_proof_method": "S256",
+        }
         if state is not None:
             params["state"] = state
         response = client.get(f"/auth/{provider}/start", params=params, follow_redirects=False)
@@ -1459,6 +1477,84 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(wrong_provider.status_code, 400)
             self.assertEqual(wrong_provider.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_STATE")
 
+    def test_oauth_callback_proof_blocks_missing_and_mismatch_without_consuming_state(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server._verify_google_identity", return_value=("google-proof-user", "proof@example.com")) as mocked_verify,
+            TestClient(app) as client,
+        ):
+            state = self._oauth_test_state("google-callback-proof")
+            verifier = self._oauth_callback_verifier("google-callback-proof")
+            app.state.auth_service.create_oauth_pending_state(
+                provider="google",
+                app_redirect_uri="foodlens://oauth/google-callback",
+                state=state,
+                request_id="req-google-callback-proof",
+                nonce=self._oauth_test_state("google-callback-proof-nonce"),
+                code_verifier="callback-proof-code-verifier-000000000000",
+                code_challenge="callback-proof-code-challenge-00000000000",
+                app_proof_challenge=server_module._build_oauth_callback_challenge(callback_verifier=verifier),
+                app_proof_method="S256",
+                ttl_seconds=600,
+            )
+
+            missing = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-proof-code",
+                    "state": state,
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                },
+            )
+            self.assertEqual(missing.status_code, 400)
+            self.assertEqual(missing.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_CALLBACK_PROOF")
+            mocked_verify.assert_not_called()
+            pending_after_missing = app.state.auth_service.verify_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/google-callback",
+            )
+            self.assertIsNone(pending_after_missing["consumed_at"])
+
+            mismatch = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-proof-code",
+                    "state": state,
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "callback_verifier": self._oauth_callback_verifier("google-callback-proof-wrong"),
+                },
+            )
+            self.assertEqual(mismatch.status_code, 400)
+            self.assertEqual(mismatch.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_CALLBACK_PROOF")
+            mocked_verify.assert_not_called()
+            pending_after_mismatch = app.state.auth_service.verify_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/google-callback",
+            )
+            self.assertIsNone(pending_after_mismatch["consumed_at"])
+
+            success = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-proof-code",
+                    "state": state,
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "callback_verifier": verifier,
+                },
+            )
+            self.assertEqual(success.status_code, 200)
+            self.assertEqual(success.json()["user"]["provider"], "google")
+            mocked_verify.assert_called_once()
+
     def test_oauth_pending_state_uses_atomic_store_capability(self):
         atomic_store = _AtomicOAuthPendingStateStore()
         service = InMemoryAuthSessionService(
@@ -1475,6 +1571,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             nonce=self._oauth_test_state("atomic-store-nonce"),
             code_verifier="atomic-store-code-verifier-000000000000000000",
             code_challenge="atomic-store-code-challenge-00000000000000000",
+            app_proof_challenge=None,
+            app_proof_method=None,
             ttl_seconds=600,
         )
 
@@ -1765,6 +1863,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     params={
                         "redirect_uri": "foodlens://oauth/google-callback",
                         "state": self._oauth_test_state("start-limit-google-1"),
+                        "app_proof_challenge": self._oauth_callback_challenge("start-limit-google-1"),
+                        "app_proof_method": "S256",
                     },
                     headers={
                         "X-Forwarded-For": "8.8.4.4",
@@ -1779,6 +1879,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     params={
                         "redirect_uri": "foodlens://oauth/google-callback",
                         "state": self._oauth_test_state("start-limit-google-2"),
+                        "app_proof_challenge": self._oauth_callback_challenge("start-limit-google-2"),
+                        "app_proof_method": "S256",
                     },
                     headers={
                         "X-Forwarded-For": "8.8.4.4",
@@ -2510,6 +2612,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 nonce=None,
                 code_verifier="M" * 43,
                 code_challenge=server_module._pkce_code_challenge(code_verifier="M" * 43),
+                app_proof_challenge=None,
+                app_proof_method=None,
                 ttl_seconds=600,
             )
             with self.assertLogs("foodlens.api", level="WARNING") as captured:
@@ -2738,6 +2842,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(google_pending_state["app_redirect_uri"], "foodlens://oauth/google-callback")
             self.assertEqual(google_pending_state["code_challenge"], google_query["code_challenge"][0])
             self.assertEqual(google_pending_state["nonce"], google_query["nonce"][0])
+            self.assertEqual(google_pending_state["app_proof_challenge"], self._oauth_callback_challenge("google-start"))
+            self.assertEqual(google_pending_state["app_proof_method"], "S256")
             self.assertIsInstance(google_pending_state["code_verifier"], str)
             self.assertIn("nonce", google_query)
 
@@ -2749,6 +2855,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(kakao_pending_state["provider"], "kakao")
             self.assertEqual(kakao_pending_state["app_redirect_uri"], "foodlens://oauth/kakao-callback")
             self.assertEqual(kakao_pending_state["code_challenge"], kakao_query["code_challenge"][0])
+            self.assertEqual(kakao_pending_state["app_proof_challenge"], self._oauth_callback_challenge("kakao-start"))
+            self.assertEqual(kakao_pending_state["app_proof_method"], "S256")
             self.assertIsInstance(kakao_pending_state["code_verifier"], str)
             self.assertIsNone(kakao_pending_state["nonce"])
             self.assertNotIn("nonce", kakao_query)
@@ -2774,12 +2882,39 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 params={
                     "redirect_uri": "foodlens://oauth/google-callback",
                     "state": low_diversity_state,
+                    "app_proof_challenge": self._oauth_callback_challenge("low-diversity"),
+                    "app_proof_method": "S256",
                 },
                 follow_redirects=False,
             )
 
             self.assertEqual(start.status_code, 400)
             self.assertEqual(start.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_STATE")
+
+    def test_oauth_start_requires_callback_proof(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "state": self._oauth_test_state("missing-callback-proof"),
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 400)
+            self.assertEqual(start.json()["detail"]["code"], "AUTH_PROVIDER_INVALID_CALLBACK_PROOF")
 
     def test_google_oauth_web_bridge_start_and_callback(self):
         with (
@@ -2799,6 +2934,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 params={
                     "redirect_uri": "foodlens://oauth/google-callback",
                     "state": self._oauth_test_state("web-google"),
+                    "app_proof_challenge": self._oauth_callback_challenge("web-google"),
+                    "app_proof_method": "S256",
                 },
                 follow_redirects=False,
             )
@@ -2857,6 +2994,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 params={
                     "redirect_uri": "foodlens://oauth/kakao-callback",
                     "state": self._oauth_test_state("web-kakao-no-scope"),
+                    "app_proof_challenge": self._oauth_callback_challenge("web-kakao-no-scope"),
+                    "app_proof_method": "S256",
                 },
                 follow_redirects=False,
             )
@@ -2890,6 +3029,8 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 params={
                     "redirect_uri": "foodlens://oauth/kakao-callback",
                     "state": self._oauth_test_state("web-kakao-scope"),
+                    "app_proof_challenge": self._oauth_callback_challenge("web-kakao-scope"),
+                    "app_proof_method": "S256",
                 },
                 follow_redirects=False,
             )
