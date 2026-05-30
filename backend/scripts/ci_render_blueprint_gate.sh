@@ -55,6 +55,7 @@ def parse_env_vars(block: list[str]) -> dict[str, dict[str, str | None]]:
         key_match = re.match(r"^\s+- key:\s*([A-Z0-9_]+)\s*$", line)
         if key_match is not None:
             current_key = key_match.group(1)
+            require(current_key not in env_vars, f"duplicate env key: {current_key}")
             env_vars[current_key] = {"value": None, "sync": None}
             continue
         if current_key is None:
@@ -401,6 +402,7 @@ def main() -> None:
         "GEMINI_LABEL_PRO_THINKING_BUDGET": "128",
         "GEMINI_BARCODE_ALLERGEN_MAX_OUTPUT_TOKENS": "512",
         "GEMINI_BARCODE_ALLERGEN_THINKING_BUDGET": "0",
+        "OPENAPI_EXPORT_ONLY": "0",
         "AI_COST_GUARDRAIL_ENABLED": "1",
         "AI_COST_GUARDRAIL_STORAGE_BACKEND": "postgres",
         "AI_COST_GUARDRAIL_USAGE_TABLE": "ai_monthly_usage",
@@ -420,8 +422,10 @@ def main() -> None:
         "BARCODE_ALLERGEN_ESTIMATED_TOKENS_PER_REQUEST": "500",
         "AUTH_GOOGLE_OAUTH_PROMPT": "select_account",
         "LABEL_ROLLOUT_PERCENTAGE": "100",
+        "MEDIA_RENDER_SIGN_BUCKET_SECONDS": "3600",
         "MEDIA_RENDER_WEBP_METHOD": "4",
         "MEDIA_RENDER_MAX_CONCURRENT_MISSES": "2",
+        "SENTRY_ENVIRONMENT": "production",
         "ANALYSIS_JOB_EMBEDDED_WORKER_ENABLED": "0",
         "ANALYSIS_RATE_LIMIT_BACKEND": "postgres",
         "ANALYSIS_RATE_LIMIT_TABLE": "analysis_rate_limit_events",
