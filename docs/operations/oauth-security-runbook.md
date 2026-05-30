@@ -81,10 +81,11 @@ Atomic OAuth state store 확인:
 - `failure_code=AUTH_PROVIDER_INVALID_STATE` 급증: login CSRF, 잘못된 모바일 start URL, stale callback 가능성 확인
 - `failure_code=AUTH_PROVIDER_STATE_EXPIRED` 급증: 모바일 중단/재시작, TTL 과소 설정, provider authorize 지연 확인
 - `failure_code=AUTH_PROVIDER_STATE_REUSED` 발생: replayed callback 또는 중복 POST 가능성 확인
+- `failure_code=AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH` 발생: Google ID token이 현재 pending OAuth state에서 생성한 nonce와 일치하지 않는다. 사용자는 새 OAuth flow로 재시도해야 하며, 운영자는 replayed callback, stale deep link, provider redirect 설정 drift를 확인한다.
 - `provider` 한쪽에만 집중: provider별 redirect 설정과 앱 start URL 확인
 - `state_age_bucket=unknown` 집중: pending state 저장 실패 또는 client-supplied state 경로 확인
 
-로그에는 OAuth `state`, provider token, provider user id, email, `nonce`, `code_verifier`, `code_challenge`를 포함하지 않는다.
+로그에는 OAuth `state`, provider token, Google ID token, decoded ID token claims, provider user id, email, `nonce`, `code_verifier`, `code_challenge`를 포함하지 않는다.
 
 ## Smoke 실행 범위
 

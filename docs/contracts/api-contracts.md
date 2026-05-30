@@ -264,7 +264,7 @@
   - 모바일이 `state` query를 전달하면 32~256자 URL-safe 고엔트로피 값이어야 한다. 허용 문자는 `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`이다.
   - 기본 TTL은 10분(`600`초)이다. `AUTH_OAUTH_STATE_TTL_SECONDS`로 조정할 수 있으나 서버는 최종 TTL을 `60`~`600`초 범위로 제한한다.
   - 동일 state handle이 이미 pending backend에 있으면 새 pending state를 만들지 않고 `AUTH_PROVIDER_STATE_REUSED`로 거절한다.
-- Google 시작 URL에는 PKCE `code_challenge`와 `code_challenge_method=S256`, OIDC `nonce`가 포함된다. 서버는 같은 pending state에 `code_verifier`를 저장하고, Google code exchange 시 `code_verifier`를 사용한다.
+- Google 시작 URL에는 PKCE `code_challenge`와 `code_challenge_method=S256`, OIDC `nonce`가 포함된다. 서버는 같은 pending state에 `code_verifier`와 `nonce`를 저장하고, Google code exchange 시 `code_verifier`를 사용한다. Google session identity는 token response의 ID token을 서명/issuer/audience/expiry 검증한 뒤 ID token `nonce` claim이 pending state의 `nonce`와 일치할 때만 사용한다.
 - Kakao PKCE 결정(확인일: 2026-05-25 KST):
   - 공식 Kakao Developers OIDC Discovery 문서가 `authorization_endpoint=https://kauth.kakao.com/oauth/authorize`, `token_endpoint=https://kauth.kakao.com/oauth/token`, `code_challenge_methods_supported=["S256"]`를 문서화하므로 Kakao도 S256 PKCE 적용 대상으로 분류한다.
   - bridge 런타임은 Kakao authorize URL에도 `code_challenge`와 `code_challenge_method=S256`을 포함하고, token exchange 요청 body에 pending state의 `code_verifier`를 사용한다. 테스트는 provider 호출 없이 mock/stub으로 검증한다.
@@ -277,6 +277,7 @@
 - `POST /auth/google|kakao`는 provider token exchange 또는 session 발급 전에 pending state를 one-time consume한다.
   - 성공, provider cancel/error, invalid code 모두 같은 state를 다시 사용할 수 없다.
   - 같은 state 재사용, 만료 state, unknown/tampered state, 다른 provider state는 인증 실패로 처리된다.
+  - Google은 token response에 검증 가능한 ID token이 없거나 ID token `nonce`가 pending state와 다르면 `AUTH_PROVIDER_REJECTED`로 실패한다. 운영 로그의 `failure_code`는 `AUTH_PROVIDER_ID_TOKEN_MISSING`, `AUTH_PROVIDER_ID_TOKEN_INVALID`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH`처럼 원인을 구분하되 token/nonce 값은 기록하지 않는다.
 - callback deep link와 POST body의 `state`는 opaque state handle이다. app redirect URI를 state 문자열에서 파싱하거나 신뢰하지 않는다.
 - 정상 bridge 예시:
   - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars`
