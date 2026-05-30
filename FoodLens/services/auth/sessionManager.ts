@@ -2,6 +2,7 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 import { AuthSecureSessionStore } from './secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser';
 import { clearOAuthPendingStates } from './oauthProvider';
+import { clearStoredAnalysesForUser } from '../analysis/storage';
 import { clearAiCache } from '../aiCore/cache';
 import { BarcodeCache } from '../aiCore/internal/barcodeCache';
 import { clearInflightBarcodeLookups } from '../aiCore/internal/barcodeLookup';
@@ -13,7 +14,7 @@ import { SafeStorage } from '../storage';
 import {
   clearPhase2RuntimeCaches,
   clearPhase2SyncQueueForUser,
-} from '../sync/phase2SyncQueue';
+} from '../sync/phase2SyncLocalState';
 import { USER_STORAGE_KEY } from '../user/constants';
 
 const REFRESH_SKEW_MS = 30_000;
@@ -109,10 +110,6 @@ const clearAccountSwitchLocalFootprint = async (previousUserId: string): Promise
       run: () => dataStore.clear(),
     },
     {
-      name: 'clearLegacyProfileSnapshot',
-      run: clearLegacyProfileSnapshot,
-    },
-    {
       name: 'clearOAuthPendingStates',
       run: clearOAuthPendingStates,
     },
@@ -135,6 +132,16 @@ const clearAccountSwitchLocalFootprint = async (previousUserId: string): Promise
     {
       name: 'clearManagedImagesForUser',
       run: () => clearManagedImagesForUser(previousUserId),
+    },
+  ]);
+  await runAccountSwitchWipeTasks([
+    {
+      name: 'clearStoredAnalysesForUser',
+      run: () => clearStoredAnalysesForUser(previousUserId),
+    },
+    {
+      name: 'clearLegacyProfileSnapshot',
+      run: clearLegacyProfileSnapshot,
     },
   ]);
 };

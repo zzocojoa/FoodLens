@@ -190,53 +190,65 @@ export default function AccountDataScreen() {
         [t],
     );
 
-    const clearDeviceAfterDeletion = React.useCallback(async () => {
+    const alertLocalClearFailure = React.useCallback((error: unknown) => {
+        const message =
+            error instanceof Error
+                ? error.message
+                : t(
+                      'profile.deletion.localClearFailed.message',
+                      'We could not clear this device. Please try again before continuing.',
+                  );
+        setDeletionStatusError(message);
+        Alert.alert(
+            t('profile.deletion.localClearFailed.title', 'Device clear failed'),
+            message,
+        );
+    }, [t]);
+
+    const clearDeviceAfterDeletion = React.useCallback(async (): Promise<boolean> => {
         try {
             await clearLocalDeletionFootprint();
-            router.replace('/login');
+            return true;
         } catch (error) {
-            const message =
-                error instanceof Error
-                    ? error.message
-                    : t(
-                          'profile.deletion.localClearFailed.message',
-                          'We could not clear this device. Please try again before continuing.',
-                      );
-            setDeletionStatusError(message);
-            Alert.alert(
-                t('profile.deletion.localClearFailed.title', 'Device clear failed'),
-                message,
-            );
+            alertLocalClearFailure(error);
+            return false;
         }
-    }, [router, t]);
+    }, [alertLocalClearFailure]);
 
     const finalizeDeletedRequest = React.useCallback(
         (request: AuthDeletionRequest) => {
-            Alert.alert(
-                request.target === 'account'
-                    ? t('profile.deletion.accountDeleted.title', 'Account deleted')
-                    : t('profile.deletion.dataDeleted.title', 'Data deleted'),
-                request.target === 'account'
-                    ? t(
-                          'profile.deletion.accountDeleted.message',
-                          'Your account deletion request is complete. This device will now be cleared and signed out.',
-                      )
-                    : t(
-                          'profile.deletion.dataDeleted.message',
-                          'Your data deletion request is complete. This device will now be cleared to prevent deleted data from being restored.',
-                      ),
-                [
-                    {
-                        text: t('common.continue', 'Continue'),
-                        onPress: () => {
-                            void clearDeviceAfterDeletion();
+            void (async () => {
+                const cleared = await clearDeviceAfterDeletion();
+                if (!cleared) {
+                    return;
+                }
+
+                Alert.alert(
+                    request.target === 'account'
+                        ? t('profile.deletion.accountDeleted.title', 'Account deleted')
+                        : t('profile.deletion.dataDeleted.title', 'Data deleted'),
+                    request.target === 'account'
+                        ? t(
+                              'profile.deletion.accountDeleted.message',
+                              'Your account deletion request is complete. This device will now be cleared and signed out.',
+                          )
+                        : t(
+                              'profile.deletion.dataDeleted.message',
+                              'Your data deletion request is complete. This device will now be cleared to prevent deleted data from being restored.',
+                          ),
+                    [
+                        {
+                            text: t('common.continue', 'Continue'),
+                            onPress: () => {
+                                router.replace('/login');
+                            },
                         },
-                    },
-                ],
-                { cancelable: false },
-            );
+                    ],
+                    { cancelable: false },
+                );
+            })();
         },
-        [clearDeviceAfterDeletion, t],
+        [clearDeviceAfterDeletion, router, t],
     );
 
     React.useEffect(() => {
@@ -262,10 +274,36 @@ export default function AccountDataScreen() {
             return;
         }
 
-        if (consumeDeletionRequestFinalization(deletionRequest)) {
-            finalizeDeletedRequest(deletionRequest);
-        }
-    }, [deletionRequest, finalizeDeletedRequest]);
+        let isCancelled = false;
+
+        const finalizeIfNeeded = async (): Promise<void> => {
+            try {
+                const shouldFinalize = await consumeDeletionRequestFinalization(deletionRequest);
+                if (shouldFinalize && !isCancelled) {
+                    finalizeDeletedRequest(deletionRequest);
+                }
+            } catch (error) {
+                if (isCancelled) {
+                    return;
+                }
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : t('profile.deletion.error.generic', 'We could not load your deletion request status.');
+                setDeletionStatusError(message);
+                Alert.alert(
+                    t('profile.deletion.error.title', 'Request failed'),
+                    message,
+                );
+            }
+        };
+
+        void finalizeIfNeeded();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [deletionRequest, finalizeDeletedRequest, t]);
 
     const submitDeletionRequest = React.useCallback(
         async (target: AuthDeletionRequestTarget) => {

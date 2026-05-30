@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { getStoredAnalyses } from './analysis/storage';
+import { ANALYSES_STORAGE_KEY, ANALYSES_STORAGE_KEY_PREFIX } from './analysis/types';
 import {
   buildManagedImageUri,
   createManagedFilename,
@@ -9,7 +10,7 @@ import {
   isManagedImageReference,
 } from './imageStorage.helpers';
 import { SafeStorage } from './storage';
-import { getUserStorageKey, USER_STORAGE_KEY } from './user/constants';
+import { getUserStorageKey, USER_STORAGE_KEY, USER_STORAGE_KEY_PREFIX } from './user/constants';
 import { UserProfile } from '../models/User';
 import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
 
@@ -63,20 +64,79 @@ const resolveManagedImagePath = (stored: string | undefined | null): string | nu
     return buildManagedImageUri(stored);
 };
 
+const extractAnalysisImageReferences = (records: unknown): Array<string | undefined | null> => {
+    if (!Array.isArray(records)) return [];
+    return records.map((record) => {
+        if (!record || typeof record !== 'object') return null;
+        const item = record as { imageUri?: unknown };
+        return typeof item.imageUri === 'string' ? item.imageUri : null;
+    });
+};
+
 const collectUserManagedImagePaths = async (userId: string): Promise<string[]> => {
     const normalizedUserId = normalizeUserId(userId);
     const analyses = await getStoredAnalyses(normalizedUserId);
+    const legacyAnalyses = await SafeStorage.get<unknown>(ANALYSES_STORAGE_KEY, []);
     const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(normalizedUserId), null);
     const legacyProfile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
     const matchingLegacyProfile = legacyProfile?.uid === normalizedUserId ? legacyProfile : null;
     const references = [
         ...analyses.map((analysis) => analysis.imageUri),
+        ...extractAnalysisImageReferences(legacyAnalyses),
         profile?.profileImage,
         profile?.photoURL,
         matchingLegacyProfile?.profileImage,
         matchingLegacyProfile?.photoURL,
     ];
     return [...new Set(references.map(resolveManagedImagePath).filter((path): path is string => Boolean(path)))];
+};
+
+const collectManagedImagePathsFromReferences = (
+    references: Array<string | undefined | null>
+): Set<string> => new Set(
+    references
+        .map(resolveManagedImagePath)
+        .filter((path): path is string => Boolean(path))
+);
+
+const extractProfileImageReferences = (profile: unknown): Array<string | undefined | null> => {
+    if (!profile || typeof profile !== 'object') return [];
+    const item = profile as Partial<UserProfile>;
+    return [item.profileImage, item.photoURL];
+};
+
+const collectOtherUserManagedImagePaths = async (userId: string): Promise<Set<string>> => {
+    const normalizedUserId = normalizeUserId(userId);
+    const keys = await SafeStorage.getAllKeys();
+    const sharedPaths = new Set<string>();
+
+    for (const key of keys) {
+        if (key.startsWith(ANALYSES_STORAGE_KEY_PREFIX)) {
+            const keyUserId = key.slice(ANALYSES_STORAGE_KEY_PREFIX.length);
+            if (keyUserId && keyUserId !== normalizedUserId) {
+                const records = await SafeStorage.get<unknown>(key, []);
+                collectManagedImagePathsFromReferences(extractAnalysisImageReferences(records))
+                    .forEach((path) => sharedPaths.add(path));
+            }
+        }
+
+        if (key.startsWith(USER_STORAGE_KEY_PREFIX)) {
+            const keyUserId = key.slice(USER_STORAGE_KEY_PREFIX.length);
+            if (keyUserId && keyUserId !== normalizedUserId) {
+                const profile = await SafeStorage.get<unknown>(key, null);
+                collectManagedImagePathsFromReferences(extractProfileImageReferences(profile))
+                    .forEach((path) => sharedPaths.add(path));
+            }
+        }
+    }
+
+    const legacyProfile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+    if (legacyProfile && legacyProfile.uid !== normalizedUserId) {
+        collectManagedImagePathsFromReferences(extractProfileImageReferences(legacyProfile))
+            .forEach((path) => sharedPaths.add(path));
+    }
+
+    return sharedPaths;
 };
 
 const deleteManagedImagePath = async (path: string): Promise<void> => {
@@ -237,9 +297,11 @@ export const clearManagedImageDirectory = async (): Promise<void> => {
 
 export const clearManagedImagesForUser = async (userId: string): Promise<void> => {
     const paths = await collectUserManagedImagePaths(userId);
+    const sharedPaths = await collectOtherUserManagedImagePaths(userId);
+    const pathsToDelete = paths.filter((path) => !sharedPaths.has(path));
     const failures: unknown[] = [];
 
-    for (const path of paths) {
+    for (const path of pathsToDelete) {
         try {
             await deleteManagedImagePath(path);
         } catch (error) {

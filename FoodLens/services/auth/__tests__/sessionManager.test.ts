@@ -57,6 +57,7 @@ const mockClearAiCache = jest.fn();
 const mockBarcodeCacheClear = jest.fn();
 const mockClearInflightBarcodeLookups = jest.fn();
 const mockClearPendingAnalysisJobForUser = jest.fn();
+const mockClearStoredAnalysesForUser = jest.fn();
 const mockClearPhase2RuntimeCaches = jest.fn();
 const mockClearPhase2SyncQueueForUser = jest.fn();
 
@@ -88,9 +89,16 @@ jest.mock('../../aiCore/pendingAnalysisStore', () => ({
   clearPendingAnalysisJobForUser: (...args: unknown[]) => mockClearPendingAnalysisJobForUser(...args),
 }));
 
+jest.mock('../../analysis/storage', () => ({
+  clearStoredAnalysesForUser: (...args: unknown[]) => mockClearStoredAnalysesForUser(...args),
+}));
+
 jest.mock('../../sync/phase2SyncQueue', () => ({
   enqueuePhase2Sync: jest.fn(),
   dispatchPhase2SyncQueue: jest.fn(),
+}));
+
+jest.mock('../../sync/phase2SyncLocalState', () => ({
   clearPhase2RuntimeCaches: (...args: unknown[]) => mockClearPhase2RuntimeCaches(...args),
   clearPhase2SyncQueueForUser: (...args: unknown[]) => mockClearPhase2SyncQueueForUser(...args),
 }));
@@ -139,6 +147,7 @@ beforeEach(() => {
   mockClearAiCache.mockResolvedValue(undefined);
   mockBarcodeCacheClear.mockResolvedValue(undefined);
   mockClearPendingAnalysisJobForUser.mockResolvedValue(undefined);
+  mockClearStoredAnalysesForUser.mockResolvedValue(undefined);
   mockClearPhase2SyncQueueForUser.mockResolvedValue(undefined);
 });
 
@@ -180,10 +189,25 @@ describe('sessionManager', () => {
     expect(mockBarcodeCacheClear).toHaveBeenCalledTimes(1);
     expect(mockClearPhase2SyncQueueForUser).toHaveBeenCalledWith('usr_old');
     expect(mockClearManagedImagesForUser).toHaveBeenCalledWith('usr_old');
+    expect(mockClearStoredAnalysesForUser).toHaveBeenCalledWith('usr_old');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_google');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_kakao');
     expect(mockedSetCurrentUserId).toHaveBeenCalledWith('usr_1');
+  });
+
+  it('preserves previous user reference stores when managed image cleanup fails during account switch', async () => {
+    mockedHasAuthenticatedUser.mockReturnValue(true);
+    mockedGetCurrentUserId.mockReturnValue('usr_old');
+    mockClearManagedImagesForUser.mockRejectedValue(new Error('managed image cleanup failed'));
+
+    await expect(persistSession(activeSession)).rejects.toThrow('clearManagedImagesForUser');
+
+    expect(mockClearManagedImagesForUser).toHaveBeenCalledWith('usr_old');
+    expect(mockClearStoredAnalysesForUser).not.toHaveBeenCalled();
+    expect(mockedSafeStorage.remove).not.toHaveBeenCalledWith('@foodlens_user_profile');
+    expect(mockedStore.write).not.toHaveBeenCalled();
+    expect(mockedSetCurrentUserId).not.toHaveBeenCalledWith('usr_1');
   });
 
   it('keeps query cache when same authenticated user persists session', async () => {

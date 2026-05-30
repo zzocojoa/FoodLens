@@ -254,6 +254,41 @@ export const SafeStorage = {
             });
             throw new Error(`SafeStorage removeByPrefix failed for backends: ${failedBackends.join(', ')}`);
         }
+    },
+
+    async getAllKeys(): Promise<string[]> {
+        const failures: StorageClearFailure[] = [];
+        const keys = new Set<string>();
+        const activeStorage = getStorageInstance();
+
+        if (activeStorage) {
+            try {
+                activeStorage.getAllKeys().forEach((key) => keys.add(key));
+            } catch (error) {
+                failures.push({ backend: 'mmkv', error });
+            }
+        }
+
+        try {
+            const asyncStorageKeys = await AsyncStorage.getAllKeys();
+            asyncStorageKeys.forEach((key) => keys.add(key));
+        } catch (error) {
+            failures.push({ backend: 'async_storage', error });
+        }
+
+        if (failures.length > 0) {
+            const failedBackends = failures.map((failure) => failure.backend);
+            console.error(`${LOG_PREFIX} Error listing storage keys`, {
+                failedBackends,
+                errors: failures.map((failure) => ({
+                    backend: failure.backend,
+                    error: extractErrorMessage(failure.error),
+                })),
+            });
+            throw new Error(`SafeStorage getAllKeys failed for backends: ${failedBackends.join(', ')}`);
+        }
+
+        return [...keys];
     }
 };
 

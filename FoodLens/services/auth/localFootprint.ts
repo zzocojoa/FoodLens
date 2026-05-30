@@ -5,7 +5,7 @@ import { clearAllPendingAnalysisJobs } from '@/services/aiCore/pendingAnalysisSt
 import { dataStore } from '@/services/dataStore';
 import { clearManagedImageDirectory } from '@/services/imageStorage';
 import { SafeStorage } from '@/services/storage';
-import { clearPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
+import { clearPhase2SyncQueue } from '@/services/sync/phase2SyncLocalState';
 
 import { clearSession } from './sessionManager';
 

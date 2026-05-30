@@ -141,6 +141,16 @@ describe('AnalysisService barcode dedupe', () => {
     expect(mockedSaveAnalyses).not.toHaveBeenCalled();
     expect(mockedEnqueueHistorySync).not.toHaveBeenCalled();
     expect(mockedDispatchPhase2SyncQueue).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith(
+      '',
+      '[Dedupe] Skipping duplicate barcode save in short window',
+      expect.objectContaining({ barcode: '***2619' })
+    );
+    expect(console.log).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ barcode: '8801073212619' })
+    );
   });
 
   it('updates history query cache immediately after a successful save', async () => {

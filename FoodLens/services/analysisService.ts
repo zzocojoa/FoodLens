@@ -3,6 +3,7 @@ import { deleteImage } from './imageStorage';
 import { generateId, resolveRecordTimestamp } from './analysis/helpers';
 import { getStoredAnalyses, saveAnalyses } from './analysis/storage';
 import { AnalysisRecord } from './analysis/types';
+import { maskBarcodeForLog } from './aiCore/internal/barcodeLog';
 import { logger } from './logger';
 import { SafeStorage } from './storage';
 import { Phase2Api, Phase2SyncApiError } from './sync/phase2Api';
@@ -398,7 +399,7 @@ export const AnalysisService = {
             })) {
               logger.info('[Dedupe] Skipping duplicate barcode save in short window', {
                 user_id: userId,
-                barcode: extractBarcodeMarker(data.raw_data) || 'unknown',
+                barcode: maskBarcodeForLog(extractBarcodeMarker(data.raw_data) || ''),
               });
               return latest;
             }

@@ -116,6 +116,19 @@ describe('SafeStorage', () => {
     await expect(SafeStorage.clearAll()).rejects.toThrow('async_storage');
   });
 
+  it('lists keys from MMKV and AsyncStorage without duplicates', async () => {
+    const mmkvInstance = createMmkvInstanceMock();
+    const { asyncStorage, SafeStorage } = loadStorageModule(() => mmkvInstance);
+    mmkvInstance.getAllKeys.mockReturnValue(['@foodlens_user_profile', '@foodlens_analyses:usr_a']);
+    asyncStorage.getAllKeys.mockResolvedValue(['@foodlens_user_profile', '@foodlens_analyses:usr_b']);
+
+    await expect(SafeStorage.getAllKeys()).resolves.toEqual([
+      '@foodlens_user_profile',
+      '@foodlens_analyses:usr_a',
+      '@foodlens_analyses:usr_b',
+    ]);
+  });
+
   it('migrates legacy AsyncStorage keys into MMKV', async () => {
     const { asyncStorage, getMmkvInstance, initializeSafeStorage } = loadStorageModule(createMmkvInstanceMock);
     asyncStorage.getAllKeys.mockResolvedValue(['@foodlens_user_profile']);

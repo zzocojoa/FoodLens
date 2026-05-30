@@ -51,7 +51,7 @@ jest.mock('@/services/aiCore/internal/barcodeCache', () => ({
   },
 }));
 
-jest.mock('@/services/sync/phase2SyncQueue', () => ({
+jest.mock('@/services/sync/phase2SyncLocalState', () => ({
   clearPhase2SyncQueue: (...args: unknown[]) => mockClearPhase2SyncQueue(...args),
 }));
 
