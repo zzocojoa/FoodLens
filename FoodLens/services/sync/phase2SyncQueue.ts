@@ -203,6 +203,13 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
 const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
 const mediaCooldownKey = (userId: string, scope: 'profile' | 'history'): string =>
   `${userId}:${scope}`;
+const assertUserId = (userId: string): string => {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) {
+    throw new Error('User id is required to clear Phase 2 sync state.');
+  }
+  return normalizedUserId;
+};
 const historyQueryKey = (userId: string): readonly [string, string] => ['history', userId] as const;
 const sortHistoryByRecentTimestamp = (records: AnalysisRecord[]): AnalysisRecord[] =>
   [...records].sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
@@ -241,6 +248,29 @@ const upsertPendingEntityOperation = async (
     queue.push(item);
   }
   await saveQueue(pruneQueue(queue));
+};
+
+export const clearPhase2RuntimeCaches = (): void => {
+  mediaUploadCooldownUntil.clear();
+  settingsDispatchDedupeCache.clear();
+  dispatchInFlight = null;
+};
+
+export const clearPhase2SyncQueue = async (): Promise<void> => {
+  clearPhase2RuntimeCaches();
+  await saveQueue([]);
+};
+
+export const clearPhase2SyncQueueForUser = async (userId: string): Promise<void> => {
+  const normalizedUserId = assertUserId(userId);
+  const queue = await loadQueue();
+  try {
+    await saveQueue(queue.filter((item) => item.userId !== normalizedUserId));
+  } finally {
+    mediaUploadCooldownUntil.delete(mediaCooldownKey(normalizedUserId, 'profile'));
+    mediaUploadCooldownUntil.delete(mediaCooldownKey(normalizedUserId, 'history'));
+    settingsDispatchDedupeCache.delete(normalizedUserId);
+  }
 };
 
 type DispatchResult = {
@@ -499,6 +529,7 @@ const uploadMediaSource = async (
 
   const prepared = await prepareUploadSource(rawUri);
   if (!prepared) return null;
+  let uploadError: unknown = null;
   try {
     const result = await Phase2Api.postMediaUpload({
       fileUri: prepared.fileUri,
@@ -512,6 +543,7 @@ const uploadMediaSource = async (
       renderUrl: result.asset.render_url,
     };
   } catch (error) {
+    uploadError = error;
     if (error instanceof Phase2SyncApiError) {
       const code = (error.code || '').trim().toUpperCase();
       if (error.status === 503 || code.startsWith('MEDIA_')) {
@@ -532,7 +564,17 @@ const uploadMediaSource = async (
     throw error;
   } finally {
     if (prepared.cleanup) {
-      await prepared.cleanup().catch(() => {});
+      try {
+        await prepared.cleanup();
+      } catch (cleanupError) {
+        logger.warn('[Phase2Sync] media upload temp cleanup failed', {
+          scope,
+          code: cleanupError instanceof Error ? cleanupError.message : 'MEDIA_TEMP_CLEANUP_FAILED',
+        });
+        if (!uploadError) {
+          throw cleanupError;
+        }
+      }
     }
   }
 };
@@ -1008,6 +1050,9 @@ const resolveActiveUserId = async (): Promise<string | null> => {
   return normalized.length > 0 ? normalized : null;
 };
 
+const isCurrentAuthenticatedUser = async (userId: string): Promise<boolean> =>
+  (await resolveActiveUserId()) === userId;
+
 export const dispatchPhase2SyncQueue = async (
   options: { force?: boolean } = {}
 ): Promise<void> =>
@@ -1044,6 +1089,9 @@ export const dispatchPhase2SyncQueue = async (
 
       try {
         const result = await dispatchOperation(sending);
+        if (!(await isCurrentAuthenticatedUser(sending.userId))) {
+          continue;
+        }
         const synced: Phase2SyncOperation = {
           ...sending,
           state: 'synced',

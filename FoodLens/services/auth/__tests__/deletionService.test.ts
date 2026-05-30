@@ -8,6 +8,13 @@ const mockCreateDeletionRequest = jest.fn();
 const mockClearSession = jest.fn();
 const mockRestoreSession = jest.fn();
 const mockClearAll = jest.fn();
+const mockDataStoreClear = jest.fn();
+const mockClearManagedImageDirectory = jest.fn();
+const mockClearAllPendingAnalysisJobs = jest.fn();
+const mockClearAiCache = jest.fn();
+const mockClearPhase2SyncQueue = jest.fn();
+const mockClearInflightBarcodeLookups = jest.fn();
+const mockBarcodeCacheClear = jest.fn();
 
 jest.mock('../authApi', () => {
   class MockAuthApiError extends Error {
@@ -43,6 +50,38 @@ jest.mock('@/services/storage', () => ({
   },
 }));
 
+jest.mock('@/services/dataStore', () => ({
+  dataStore: {
+    clear: (...args: unknown[]) => mockDataStoreClear(...args),
+  },
+}));
+
+jest.mock('@/services/imageStorage', () => ({
+  clearManagedImageDirectory: (...args: unknown[]) => mockClearManagedImageDirectory(...args),
+}));
+
+jest.mock('@/services/aiCore/pendingAnalysisStore', () => ({
+  clearAllPendingAnalysisJobs: (...args: unknown[]) => mockClearAllPendingAnalysisJobs(...args),
+}));
+
+jest.mock('@/services/aiCore/cache', () => ({
+  clearAiCache: (...args: unknown[]) => mockClearAiCache(...args),
+}));
+
+jest.mock('@/services/aiCore/internal/barcodeLookup', () => ({
+  clearInflightBarcodeLookups: (...args: unknown[]) => mockClearInflightBarcodeLookups(...args),
+}));
+
+jest.mock('@/services/aiCore/internal/barcodeCache', () => ({
+  BarcodeCache: {
+    clear: (...args: unknown[]) => mockBarcodeCacheClear(...args),
+  },
+}));
+
+jest.mock('@/services/sync/phase2SyncQueue', () => ({
+  clearPhase2SyncQueue: (...args: unknown[]) => mockClearPhase2SyncQueue(...args),
+}));
+
 describe('deletionService finalization replay guard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -68,6 +107,12 @@ describe('deletionService finalization replay guard', () => {
     });
     mockClearSession.mockResolvedValue(undefined);
     mockClearAll.mockResolvedValue(undefined);
+    mockDataStoreClear.mockResolvedValue(undefined);
+    mockClearManagedImageDirectory.mockResolvedValue(undefined);
+    mockClearAllPendingAnalysisJobs.mockResolvedValue(undefined);
+    mockClearAiCache.mockResolvedValue(undefined);
+    mockClearPhase2SyncQueue.mockResolvedValue(undefined);
+    mockBarcodeCacheClear.mockResolvedValue(undefined);
   });
 
   it('does not finalize a completed request that was not submitted locally', () => {
@@ -121,6 +166,13 @@ describe('deletionService finalization replay guard', () => {
     await clearLocalDeletionFootprint();
 
     expect(mockClearSession).toHaveBeenCalledTimes(1);
+    expect(mockDataStoreClear).toHaveBeenCalledTimes(1);
+    expect(mockClearManagedImageDirectory).toHaveBeenCalledTimes(1);
+    expect(mockClearAllPendingAnalysisJobs).toHaveBeenCalledTimes(1);
+    expect(mockClearAiCache).toHaveBeenCalledTimes(1);
+    expect(mockBarcodeCacheClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    expect(mockClearInflightBarcodeLookups).toHaveBeenCalledTimes(1);
     expect(mockClearAll).toHaveBeenCalledTimes(1);
     expect(
       consumeDeletionRequestFinalization({
@@ -134,5 +186,14 @@ describe('deletionService finalization replay guard', () => {
         message: null,
       })
     ).toBe(false);
+  });
+
+  it('rejects when any local deletion footprint cleanup fails', async () => {
+    mockClearManagedImageDirectory.mockRejectedValue(new Error('managed image cleanup failed'));
+
+    await expect(clearLocalDeletionFootprint()).rejects.toThrow('clearManagedImageDirectory');
+
+    expect(mockClearSession).toHaveBeenCalledTimes(1);
+    expect(mockClearAll).toHaveBeenCalledTimes(1);
   });
 });

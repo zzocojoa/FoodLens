@@ -11,6 +11,7 @@ import { subscribeUserProfileUpdated } from '@/services/user/userProfileStore';
 import { Phase2Api, Phase2SyncApiError } from '../phase2Api';
 import {
   __resetPhase2SettingsDispatchDedupeForTests,
+  clearPhase2SyncQueueForUser,
   dispatchPhase2SyncQueue,
   enqueueHistoryTimestampPatch,
   enqueuePhase2Sync,
@@ -227,6 +228,14 @@ describe('phase2SyncQueue', () => {
     expect(userA?.state).toBe('synced');
     expect(userA?.requestId).toBe('req-profile-a');
     expect(userB?.state).toBe('pending');
+  });
+
+  it('clears queued operations for the selected user only', async () => {
+    queueState = [pendingProfileOperation('op-a', 'usr_a'), pendingProfileOperation('op-b', 'usr_b')];
+
+    await clearPhase2SyncQueueForUser('usr_a');
+
+    expect(queueState.map((item) => item.id)).toEqual(['op-b']);
   });
 
   it('publishes sync_apply after applying server profile version locally', async () => {
@@ -1080,6 +1089,37 @@ describe('phase2SyncQueue', () => {
       idempotency_key: 'analysis_1',
     });
     expect(queueState[0].state).toBe('synced');
+  });
+
+  it('keeps history sync failed when temporary media cleanup fails after upload', async () => {
+    const historyOp: Phase2SyncOperation = {
+      id: 'op-history-temp-cleanup',
+      userId: 'usr_a',
+      entity: 'history',
+      payload: {
+        kind: 'create',
+        entry: {
+          id: 'analysis_cleanup_1',
+          foodName: 'Soup',
+          imageUri: 'data:image/jpeg;base64,Zm9vYmFy',
+        },
+      },
+      idempotencyKey: 'analysis_cleanup_1',
+      attempts: 0,
+      state: 'pending',
+      nextAttemptAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    queueState = [historyOp];
+    mockedFileSystem.deleteAsync.mockRejectedValueOnce(new Error('temp cleanup failed'));
+
+    await dispatchPhase2SyncQueue();
+
+    expect(mockedPhase2Api.postMediaUpload).toHaveBeenCalledTimes(1);
+    expect(mockedPhase2Api.postHistory).not.toHaveBeenCalled();
+    expect(queueState[0].state).toBe('failed');
+    expect(queueState[0].lastError).toBe('temp cleanup failed');
   });
 
   it('treats bare managed history filenames as local upload candidates without sending them as render urls', async () => {

@@ -2,8 +2,18 @@ import { AuthApi, AuthApiError, AuthSessionTokens } from './authApi';
 import { AuthSecureSessionStore } from './secureSessionStore';
 import { clearCurrentUserId, getCurrentUserId, hasAuthenticatedUser, setCurrentUserId } from './currentUser';
 import { clearOAuthPendingStates } from './oauthProvider';
+import { clearAiCache } from '../aiCore/cache';
+import { BarcodeCache } from '../aiCore/internal/barcodeCache';
+import { clearInflightBarcodeLookups } from '../aiCore/internal/barcodeLookup';
+import { clearPendingAnalysisJobForUser } from '../aiCore/pendingAnalysisStore';
+import { dataStore } from '../dataStore';
+import { clearManagedImagesForUser } from '../imageStorage';
 import { queryClient } from '../queryClient';
 import { SafeStorage } from '../storage';
+import {
+  clearPhase2RuntimeCaches,
+  clearPhase2SyncQueueForUser,
+} from '../sync/phase2SyncQueue';
 import { USER_STORAGE_KEY } from '../user/constants';
 
 const REFRESH_SKEW_MS = 30_000;
@@ -20,6 +30,16 @@ const clearSessionScopedCaches = (): void => {
 
 const clearLegacyProfileSnapshot = async (): Promise<void> => {
   await SafeStorage.remove(USER_STORAGE_KEY);
+};
+
+type AccountSwitchWipeTask = {
+  name: string;
+  run: () => Promise<void>;
+};
+
+type AccountSwitchWipeFailure = {
+  name: string;
+  error: unknown;
 };
 
 type PersistSessionOptions = {
@@ -53,15 +73,79 @@ const shouldForceClearOnRefreshFailure = (error: unknown): boolean => {
 
 let refreshInFlight: Promise<AuthSessionTokens | null> | null = null;
 
+const runAccountSwitchWipeTasks = async (tasks: AccountSwitchWipeTask[]): Promise<void> => {
+  const failures: AccountSwitchWipeFailure[] = [];
+
+  for (const task of tasks) {
+    try {
+      await task.run();
+    } catch (error) {
+      failures.push({
+        name: task.name,
+        error,
+      });
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error('[AuthSession] Account switch local footprint wipe failed', {
+      failedTasks: failures.map((failure) => failure.name),
+      errors: failures.map((failure) => ({
+        task: failure.name,
+        error: failure.error instanceof Error ? failure.error.message : String(failure.error),
+      })),
+    });
+    throw new Error(`Account switch local footprint wipe failed: ${failures.map((failure) => failure.name).join(', ')}`);
+  }
+};
+
+const clearAccountSwitchLocalFootprint = async (previousUserId: string): Promise<void> => {
+  clearSessionScopedCaches();
+  clearInflightBarcodeLookups();
+  clearPhase2RuntimeCaches();
+  await runAccountSwitchWipeTasks([
+    {
+      name: 'dataStore.clear',
+      run: () => dataStore.clear(),
+    },
+    {
+      name: 'clearLegacyProfileSnapshot',
+      run: clearLegacyProfileSnapshot,
+    },
+    {
+      name: 'clearOAuthPendingStates',
+      run: clearOAuthPendingStates,
+    },
+    {
+      name: 'clearPendingAnalysisJobForUser',
+      run: () => clearPendingAnalysisJobForUser(previousUserId),
+    },
+    {
+      name: 'clearAiCache',
+      run: clearAiCache,
+    },
+    {
+      name: 'BarcodeCache.clear',
+      run: () => BarcodeCache.clear(),
+    },
+    {
+      name: 'clearPhase2SyncQueueForUser',
+      run: () => clearPhase2SyncQueueForUser(previousUserId),
+    },
+    {
+      name: 'clearManagedImagesForUser',
+      run: () => clearManagedImagesForUser(previousUserId),
+    },
+  ]);
+};
+
 export const persistSession = async (
   session: AuthSessionTokens,
   options: PersistSessionOptions = {}
 ): Promise<void> => {
   const persist = options.rememberMe !== false;
   if (hasAuthenticatedUser() && getCurrentUserId() !== session.user.id) {
-    clearSessionScopedCaches();
-    await clearLegacyProfileSnapshot();
-    await clearOAuthPendingStates();
+    await clearAccountSwitchLocalFootprint(getCurrentUserId());
   }
   if (persist) {
     await AuthSecureSessionStore.write(session);

@@ -20,6 +20,10 @@ const isAbortError = (error: unknown): boolean =>
 const TRACE_TAG = '[AI][BarcodeLookup]';
 const inflightBarcodeLookups = new Map<string, Promise<BarcodeLookupResult>>();
 
+export const clearInflightBarcodeLookups = (): void => {
+  inflightBarcodeLookups.clear();
+};
+
 const maskBarcode = (barcode: string): string => {
   if (!barcode) return 'unknown';
   if (barcode.length <= 4) return barcode;

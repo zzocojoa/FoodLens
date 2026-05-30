@@ -190,6 +190,26 @@ export default function AccountDataScreen() {
         [t],
     );
 
+    const clearDeviceAfterDeletion = React.useCallback(async () => {
+        try {
+            await clearLocalDeletionFootprint();
+            router.replace('/login');
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : t(
+                          'profile.deletion.localClearFailed.message',
+                          'We could not clear this device. Please try again before continuing.',
+                      );
+            setDeletionStatusError(message);
+            Alert.alert(
+                t('profile.deletion.localClearFailed.title', 'Device clear failed'),
+                message,
+            );
+        }
+    }, [router, t]);
+
     const finalizeDeletedRequest = React.useCallback(
         (request: AuthDeletionRequest) => {
             Alert.alert(
@@ -209,16 +229,14 @@ export default function AccountDataScreen() {
                     {
                         text: t('common.continue', 'Continue'),
                         onPress: () => {
-                            void clearLocalDeletionFootprint().finally(() => {
-                                router.replace('/login');
-                            });
+                            void clearDeviceAfterDeletion();
                         },
                     },
                 ],
                 { cancelable: false },
             );
         },
-        [router, t],
+        [clearDeviceAfterDeletion, t],
     );
 
     React.useEffect(() => {

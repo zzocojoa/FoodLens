@@ -1,5 +1,6 @@
 import { AnalysisService } from '../analysisService';
 import { getStoredAnalyses, saveAnalyses } from '../analysis/storage';
+import { deleteImage } from '../imageStorage';
 import { enqueueHistorySync, dispatchPhase2SyncQueue } from '../sync/phase2SyncQueue';
 import { queryClient } from '../queryClient';
 import { Phase2Api, Phase2SyncApiError } from '../sync/phase2Api';
@@ -58,6 +59,7 @@ const mockedGetStoredAnalyses = getStoredAnalyses as jest.MockedFunction<typeof 
 const mockedSaveAnalyses = saveAnalyses as jest.MockedFunction<typeof saveAnalyses>;
 const mockedEnqueueHistorySync = enqueueHistorySync as jest.MockedFunction<typeof enqueueHistorySync>;
 const mockedDispatchPhase2SyncQueue = dispatchPhase2SyncQueue as jest.MockedFunction<typeof dispatchPhase2SyncQueue>;
+const mockedDeleteImage = deleteImage as jest.MockedFunction<typeof deleteImage>;
 const mockedGetHistory = Phase2Api.getHistory as jest.MockedFunction<typeof Phase2Api.getHistory>;
 const mockedMergeRemoteHistory = mergeRemoteHistory as jest.MockedFunction<typeof mergeRemoteHistory>;
 const mockedGetCurrentUserId = getCurrentUserId as jest.MockedFunction<typeof getCurrentUserId>;
@@ -277,6 +279,26 @@ describe('AnalysisService barcode dedupe', () => {
     expect(mockedSaveAnalyses).toHaveBeenCalledWith('usr_test', [remoteRecord]);
     expect(queryClient.getQueryData(['history', 'usr_test'])).toEqual([remoteRecord]);
     expect(result).toEqual([remoteRecord]);
+  });
+
+  it('rejects analysis deletion when managed image deletion fails', async () => {
+    const record = {
+      id: 'record-with-image',
+      foodName: 'Soup',
+      safetyStatus: 'SAFE',
+      ingredients: [],
+      imageUri: 'photo_a.jpg',
+      timestamp: new Date('2026-03-02T14:05:09.000Z'),
+    } as any;
+    mockedGetStoredAnalyses.mockResolvedValue([record]);
+    mockedDeleteImage.mockRejectedValueOnce(new Error('image delete failed'));
+
+    await expect(AnalysisService.deleteAnalyses('usr_test', ['record-with-image'])).rejects.toThrow(
+      'Failed to delete images for analyses: record-with-image'
+    );
+
+    expect(mockedSaveAnalyses).not.toHaveBeenCalled();
+    expect(mockedEnqueueHistorySync).not.toHaveBeenCalled();
   });
 
   it('preserves local records created while a cloud history pull is in flight', async () => {

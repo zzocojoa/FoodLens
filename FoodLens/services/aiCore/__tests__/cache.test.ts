@@ -1,6 +1,7 @@
 import {
   buildBarcodeCacheKey,
   buildImageCacheKey,
+  clearAiCache,
   getAiCacheValue,
   setAiCacheValue,
   sha256Hex,
@@ -15,6 +16,9 @@ jest.mock('@/services/storage', () => ({
     ),
     set: jest.fn(async (key: string, value: unknown) => {
       mockMemoryStore.set(key, value);
+    }),
+    remove: jest.fn(async (key: string) => {
+      mockMemoryStore.delete(key);
     }),
   },
 }));
@@ -50,6 +54,15 @@ describe('aiCore cache', () => {
     await setAiCacheValue('k1', { value: 1 }, { ttlSeconds: 60, maxEntries: 10 });
     const cached = await getAiCacheValue<{ value: number }>('k1');
     expect(cached).toEqual({ value: 1 });
+  });
+
+  it('clears cached values', async () => {
+    await setAiCacheValue('k-clear', { value: 1 }, { ttlSeconds: 60, maxEntries: 10 });
+
+    await clearAiCache();
+
+    const cached = await getAiCacheValue('k-clear');
+    expect(cached).toBeNull();
   });
 
   it('expires cached value by ttl', async () => {

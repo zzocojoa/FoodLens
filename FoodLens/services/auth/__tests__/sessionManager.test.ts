@@ -51,9 +51,48 @@ jest.mock('../../storage', () => ({
   },
 }));
 
+const mockDataStoreClear = jest.fn();
+const mockClearManagedImagesForUser = jest.fn();
+const mockClearAiCache = jest.fn();
+const mockBarcodeCacheClear = jest.fn();
+const mockClearInflightBarcodeLookups = jest.fn();
+const mockClearPendingAnalysisJobForUser = jest.fn();
+const mockClearPhase2RuntimeCaches = jest.fn();
+const mockClearPhase2SyncQueueForUser = jest.fn();
+
+jest.mock('../../dataStore', () => ({
+  dataStore: {
+    clear: (...args: unknown[]) => mockDataStoreClear(...args),
+  },
+}));
+
+jest.mock('../../imageStorage', () => ({
+  clearManagedImagesForUser: (...args: unknown[]) => mockClearManagedImagesForUser(...args),
+}));
+
+jest.mock('../../aiCore/cache', () => ({
+  clearAiCache: (...args: unknown[]) => mockClearAiCache(...args),
+}));
+
+jest.mock('../../aiCore/internal/barcodeCache', () => ({
+  BarcodeCache: {
+    clear: (...args: unknown[]) => mockBarcodeCacheClear(...args),
+  },
+}));
+
+jest.mock('../../aiCore/internal/barcodeLookup', () => ({
+  clearInflightBarcodeLookups: (...args: unknown[]) => mockClearInflightBarcodeLookups(...args),
+}));
+
+jest.mock('../../aiCore/pendingAnalysisStore', () => ({
+  clearPendingAnalysisJobForUser: (...args: unknown[]) => mockClearPendingAnalysisJobForUser(...args),
+}));
+
 jest.mock('../../sync/phase2SyncQueue', () => ({
   enqueuePhase2Sync: jest.fn(),
   dispatchPhase2SyncQueue: jest.fn(),
+  clearPhase2RuntimeCaches: (...args: unknown[]) => mockClearPhase2RuntimeCaches(...args),
+  clearPhase2SyncQueueForUser: (...args: unknown[]) => mockClearPhase2SyncQueueForUser(...args),
 }));
 
 jest.mock('../oauthProvider', () => ({
@@ -95,6 +134,12 @@ beforeEach(() => {
   jest.resetAllMocks();
   mockedHasAuthenticatedUser.mockReturnValue(false);
   mockedGetCurrentUserId.mockReturnValue('auth-required');
+  mockDataStoreClear.mockResolvedValue(undefined);
+  mockClearManagedImagesForUser.mockResolvedValue(undefined);
+  mockClearAiCache.mockResolvedValue(undefined);
+  mockBarcodeCacheClear.mockResolvedValue(undefined);
+  mockClearPendingAnalysisJobForUser.mockResolvedValue(undefined);
+  mockClearPhase2SyncQueueForUser.mockResolvedValue(undefined);
 });
 
 describe('sessionManager', () => {
@@ -127,6 +172,14 @@ describe('sessionManager', () => {
     await persistSession(activeSession);
 
     expect(mockedQueryClient.clear).toHaveBeenCalledTimes(1);
+    expect(mockDataStoreClear).toHaveBeenCalledTimes(1);
+    expect(mockClearInflightBarcodeLookups).toHaveBeenCalledTimes(1);
+    expect(mockClearPhase2RuntimeCaches).toHaveBeenCalledTimes(1);
+    expect(mockClearPendingAnalysisJobForUser).toHaveBeenCalledWith('usr_old');
+    expect(mockClearAiCache).toHaveBeenCalledTimes(1);
+    expect(mockBarcodeCacheClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPhase2SyncQueueForUser).toHaveBeenCalledWith('usr_old');
+    expect(mockClearManagedImagesForUser).toHaveBeenCalledWith('usr_old');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_user_profile');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_google');
     expect(mockedSafeStorage.remove).toHaveBeenCalledWith('@foodlens_oauth_pending_state_kakao');
@@ -140,6 +193,7 @@ describe('sessionManager', () => {
     await persistSession(activeSession);
 
     expect(mockedQueryClient.clear).not.toHaveBeenCalled();
+    expect(mockDataStoreClear).not.toHaveBeenCalled();
   });
 
   it('restores non-expired session without refresh', async () => {

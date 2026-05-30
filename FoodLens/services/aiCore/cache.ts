@@ -29,6 +29,10 @@ const saveStore = async (store: AiCacheStore): Promise<void> => {
   await SafeStorage.set(CACHE_STORAGE_KEY, store);
 };
 
+export const clearAiCache = async (): Promise<void> => {
+  await SafeStorage.remove(CACHE_STORAGE_KEY);
+};
+
 const normalizeStore = (store: AiCacheStore): AiCacheStore => {
   if (!store || typeof store !== 'object' || !store.entries || typeof store.entries !== 'object') {
     return emptyStore();

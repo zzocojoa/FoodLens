@@ -67,7 +67,6 @@ export const BarcodeCache = {
    * Clear all barcode cache (optional utility)
    */
   async clear(): Promise<void> {
-    // Note: SafeStorage doesn't support prefix-based removal easily yet, 
-    // but we can clear individual keys or leave it for automatic expiry.
+    await SafeStorage.removeByPrefix(BARCODE_CACHE_KEY_PREFIX);
   }
 };

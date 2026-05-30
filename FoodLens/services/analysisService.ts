@@ -33,6 +33,11 @@ type HistoryServerSyncResult =
   | { status: 'auth_required'; errorCode: string; requestId?: string }
   | { status: 'failed'; errorCode: string; requestId?: string };
 
+type AnalysisImageDeleteFailure = {
+  analysisId: string;
+  error: unknown;
+};
+
 const HISTORY_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_history_migrated:';
 const HISTORY_DELETE_TOMBSTONE_PREFIX = '@foodlens_phase2_history_deleted_ids:';
 const HISTORY_SERVER_PULL_COOLDOWN_MS = 15_000;
@@ -83,6 +88,35 @@ const getHistoryDeleteSet = async (userId: string): Promise<Set<string>> => {
 
 const saveHistoryDeleteSet = async (userId: string, deleteSet: Set<string>): Promise<void> => {
   await SafeStorage.set(historyDeleteTombstoneKey(userId), [...deleteSet]);
+};
+
+const deleteAnalysisImagesOrThrow = async (records: AnalysisRecord[]): Promise<void> => {
+  const failures: AnalysisImageDeleteFailure[] = [];
+
+  for (const record of records) {
+    try {
+      await deleteImage(record.imageUri);
+    } catch (error) {
+      failures.push({
+        analysisId: record.id,
+        error,
+      });
+    }
+  }
+
+  if (failures.length > 0) {
+    logger.error(
+      'Failed to delete analysis images',
+      {
+        analysisIds: failures.map((failure) => failure.analysisId),
+        errors: failures.map((failure) =>
+          failure.error instanceof Error ? failure.error.message : String(failure.error)
+        ),
+      },
+      'AnalysisService'
+    );
+    throw new Error(`Failed to delete images for analyses: ${failures.map((failure) => failure.analysisId).join(', ')}`);
+  }
 };
 
 const getPendingHistoryMergeHints = async (
@@ -531,9 +565,7 @@ export const AnalysisService = {
             
             // Clean up associated image files
             const deleted = analyses.filter(a => idsToDelete.has(a.id));
-            for (const record of deleted) {
-                await deleteImage(record.imageUri).catch(() => {});
-            }
+            await deleteAnalysisImagesOrThrow(deleted);
             
             if (filtered.length !== analyses.length) {
                 await saveAnalyses(userId, filtered);
