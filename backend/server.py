@@ -12,10 +12,15 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Mapping as MappingABC
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from urllib.parse import urlencode, urlparse
 from typing import Any, Awaitable, Callable, Final, Literal, Mapping, TypeAlias, TypeVar
 import requests
+from google.auth import exceptions as google_auth_exceptions
+from google.auth.transport import requests as google_auth_requests
+from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, ConfigDict
 from PIL import Image, ImageOps
 
@@ -1976,6 +1981,7 @@ OAUTH_PROVIDER_CONFIG = {
 DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
 DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
 DEFAULT_OAUTH_STATE_TTL_SECONDS = 600
+GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS = 0
 OAUTH_STATE_MIN_LENGTH = 32
 OAUTH_STATE_MAX_LENGTH = 256
 OAUTH_STATE_MIN_UNIQUE_CHARACTERS = 8
@@ -2671,6 +2677,107 @@ def _provider_timeout_seconds() -> float:
     return parsed if parsed > 0 else DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS
 
 
+def _google_id_token_rejected_error(
+    *,
+    request_id: str,
+    failure_code: str,
+) -> AuthServiceError:
+    logger.warning(
+        "[OAuthGoogle] id token rejected",
+        extra={
+            "request_id": request_id,
+            "provider": "google",
+            "failure_code": failure_code,
+        },
+    )
+    return AuthServiceError(
+        code="AUTH_PROVIDER_REJECTED",
+        message="Provider login failed.",
+        status_code=400,
+    )
+
+
+def _google_id_token_unavailable_error(
+    *,
+    request_id: str,
+    failure_code: str,
+) -> AuthServiceError:
+    logger.warning(
+        "[OAuthGoogle] id token unavailable",
+        extra={
+            "request_id": request_id,
+            "provider": "google",
+            "failure_code": failure_code,
+        },
+    )
+    return AuthServiceError(
+        code="AUTH_PROVIDER_UNAVAILABLE",
+        message="Provider request failed.",
+        status_code=502,
+    )
+
+
+def _verify_google_id_token_claims(
+    *,
+    id_token_value: str,
+    client_id: str,
+    expected_nonce: str | None,
+    request_id: str,
+) -> Mapping[str, Any]:
+    normalized_id_token = id_token_value.strip()
+    if not normalized_id_token:
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_MISSING",
+        )
+
+    normalized_expected_nonce = expected_nonce if isinstance(expected_nonce, str) else ""
+    if not normalized_expected_nonce.strip():
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_PENDING_NONCE_MISSING",
+        )
+
+    google_auth_request = partial(google_auth_requests.Request(), timeout=_provider_timeout_seconds())
+    try:
+        id_info = google_id_token.verify_oauth2_token(
+            normalized_id_token,
+            google_auth_request,
+            audience=client_id,
+            clock_skew_in_seconds=GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS,
+        )
+    except google_auth_exceptions.TransportError as error:
+        raise _google_id_token_unavailable_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_VERIFY_UNAVAILABLE",
+        ) from error
+    except (google_auth_exceptions.GoogleAuthError, KeyError, ValueError) as error:
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_INVALID",
+        ) from error
+    if not isinstance(id_info, MappingABC):
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_INVALID",
+        )
+
+    raw_nonce = id_info.get("nonce")
+    token_nonce = raw_nonce if isinstance(raw_nonce, str) else ""
+    if not token_nonce.strip():
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING",
+        )
+    if not hmac.compare_digest(token_nonce, normalized_expected_nonce):
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH",
+        )
+
+    return dict(id_info)
+
+
 def _verify_kakao_identity(*, request: Request, code: str, code_verifier: str | None) -> tuple[str, str | None]:
     client_id = os.environ.get("AUTH_KAKAO_CLIENT_ID", "").strip()
     if not client_id:
@@ -2801,7 +2908,14 @@ def _verify_kakao_identity(*, request: Request, code: str, code_verifier: str | 
     return provider_user_id, email
 
 
-def _verify_google_identity(*, request: Request, code: str, code_verifier: str | None) -> tuple[str, str | None]:
+def _verify_google_identity(
+    *,
+    request: Request,
+    code: str,
+    code_verifier: str | None,
+    expected_nonce: str | None,
+) -> tuple[str, str | None]:
+    request_id = _request_id(request)
     client_id = os.environ.get("AUTH_GOOGLE_CLIENT_ID", "").strip()
     if not client_id:
         raise AuthServiceError(
@@ -2865,61 +2979,27 @@ def _verify_google_identity(*, request: Request, code: str, code_verifier: str |
             status_code=400,
         )
 
-    access_token = str(token_payload.get("access_token", "")).strip()
-    if not access_token:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_REJECTED",
-            message="Provider login failed.",
-            status_code=400,
-        )
+    raw_id_token = token_payload.get("id_token")
+    id_token_value = raw_id_token.strip() if isinstance(raw_id_token, str) else ""
+    id_info = _verify_google_id_token_claims(
+        id_token_value=id_token_value,
+        client_id=client_id,
+        expected_nonce=expected_nonce,
+        request_id=request_id,
+    )
 
-    try:
-        profile_response = requests.get(
-            "https://openidconnect.googleapis.com/v1/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=timeout_seconds,
-        )
-    except requests.Timeout as error:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_TIMEOUT",
-            message="Provider request timed out.",
-            status_code=504,
-        ) from error
-    except requests.RequestException as error:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_UNAVAILABLE",
-            message="Provider request failed.",
-            status_code=502,
-        ) from error
-
-    try:
-        profile_payload = profile_response.json()
-    except ValueError as error:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_REJECTED",
-            message="Provider login failed.",
-            status_code=400,
-        ) from error
-
-    if profile_response.status_code >= 400:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_REJECTED",
-            message="Provider login failed.",
-            status_code=400,
-        )
-
-    provider_user_id = str(profile_payload.get("sub", "")).strip()
+    raw_provider_user_id = id_info.get("sub")
+    provider_user_id = raw_provider_user_id.strip() if isinstance(raw_provider_user_id, str) else ""
     if not provider_user_id:
-        raise AuthServiceError(
-            code="AUTH_PROVIDER_REJECTED",
-            message="Provider login failed.",
-            status_code=400,
+        raise _google_id_token_rejected_error(
+            request_id=request_id,
+            failure_code="AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING",
         )
 
     email: str | None = None
-    raw_email_verified = profile_payload.get("email_verified")
+    raw_email_verified = id_info.get("email_verified")
     if raw_email_verified in {True, "true", "True", "1", 1}:
-        raw_email = profile_payload.get("email")
+        raw_email = id_info.get("email")
         if isinstance(raw_email, str):
             email = raw_email.strip() or None
 
@@ -4470,6 +4550,8 @@ def _build_oauth_provider_login_result(
     pending_redirect_uri = str(pending_state["app_redirect_uri"])
     code_verifier = pending_state.get("code_verifier")
     pending_code_verifier = code_verifier if isinstance(code_verifier, str) and code_verifier.strip() else None
+    nonce = pending_state.get("nonce")
+    pending_nonce = nonce if isinstance(nonce, str) and nonce.strip() else None
     provider_user_id: str | None = None
     email: str | None = None
     if _should_verify_provider_identity(
@@ -4482,6 +4564,7 @@ def _build_oauth_provider_login_result(
                 request=request,
                 code=payload.code,
                 code_verifier=pending_code_verifier,
+                expected_nonce=pending_nonce,
             )
             provider_user_id = verified_provider_user_id
             email = verified_email

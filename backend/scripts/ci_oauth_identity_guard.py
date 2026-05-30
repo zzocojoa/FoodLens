@@ -79,6 +79,40 @@ def main() -> int:
     for snippet in verified_identity_snippets:
         if snippet not in result_block:
             return _fail(f"missing verified oauth identity assignment: {snippet}")
+    for snippet in ("pending_nonce", "expected_nonce=pending_nonce"):
+        if snippet not in result_block:
+            return _fail(f"missing Google OAuth pending nonce propagation: {snippet}")
+
+    google_start = server_source.find("def _verify_google_id_token_claims(")
+    if google_start < 0:
+        return _fail("_verify_google_id_token_claims definition not found.")
+
+    google_end = server_source.find("\ndef resolve_prompt_country_code(", google_start)
+    if google_end < 0:
+        return _fail("resolve_prompt_country_code definition not found after _verify_google_identity.")
+
+    google_block = server_source[google_start:google_end]
+    google_required_snippets = [
+        'raw_id_token = token_payload.get("id_token")',
+        "google_id_token.verify_oauth2_token(",
+        "audience=client_id",
+        "clock_skew_in_seconds=GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS",
+        "AUTH_PROVIDER_ID_TOKEN_MISSING",
+        "AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING",
+        "AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH",
+        "partial(google_auth_requests.Request(), timeout=_provider_timeout_seconds())",
+        "normalized_expected_nonce = expected_nonce if isinstance(expected_nonce, str) else \"\"",
+        "token_nonce = raw_nonce if isinstance(raw_nonce, str) else \"\"",
+        "hmac.compare_digest(token_nonce, normalized_expected_nonce)",
+        "expected_nonce=expected_nonce",
+        'raw_provider_user_id = id_info.get("sub")',
+        'provider_user_id = raw_provider_user_id.strip() if isinstance(raw_provider_user_id, str) else ""',
+    ]
+    for snippet in google_required_snippets:
+        if snippet not in google_block:
+            return _fail(f"missing Google ID token nonce verification snippet: {snippet}")
+    if "openidconnect.googleapis.com/v1/userinfo" in google_block:
+        return _fail("Google OAuth identity must come from verified ID token claims, not userinfo fallback.")
 
     decision_start = server_source.find("def _should_verify_provider_identity(")
     if decision_start < 0:
@@ -119,6 +153,14 @@ def main() -> int:
         return _fail("API contracts must document provider-verified subject identity behavior.")
     if "ignored" not in docs:
         return _fail("API contracts must document legacy client identity fields are ignored.")
+    google_nonce_docs_snippets = [
+        "Google session identity",
+        "ID token `nonce` claim",
+        "AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH",
+    ]
+    for snippet in google_nonce_docs_snippets:
+        if snippet not in docs:
+            return _fail(f"API contracts must document Google ID token nonce behavior: {snippet}")
 
     print("[OAuth Identity Guard] PASS")
     return 0
