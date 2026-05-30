@@ -749,6 +749,33 @@ class MediaRenderRuntimeTests(unittest.TestCase):
             self.assertEqual(expired_response.headers["x-media-render-cache"], "miss")
             self.assertNotIn("x-media-render-duration-ms", invalid_response.headers)
 
+    def test_media_render_rejects_signed_url_with_far_future_expiration(self) -> None:
+        with TestClient(server.app) as client:
+            asset_id = "asset_far_future"
+            media_storage = _SuccessfulFetchMediaStorage(bytes_data=_create_jpeg_bytes())
+            server.app.state.auth_service = _FakeAuthService(
+                object_key=f"media/usr_render/profile/{asset_id}/original.jpg",
+            )
+            server.app.state.media_storage = media_storage
+            self._prime_media_render_runtime(media_public_base_url="http://testserver")
+            server.app.state.media_render_url_ttl_seconds = 3600
+            now_ts = 1_700_000_000
+            far_future_exp = now_ts + 3600 + server.MEDIA_RENDER_EXPIRATION_CLOCK_SKEW_SECONDS + 1
+            sig = server._media_render_signature(asset_id, 512, 75, "auto", far_future_exp)
+
+            with patch("backend.server.time.time", return_value=now_ts):
+                response = client.get(
+                    f"/media/render/{asset_id}?w=512&q=75&fmt=auto&exp={far_future_exp}&sig={sig}",
+                    headers={"X-Request-Id": "req-far-future-exp"},
+                )
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(media_storage.fetch_count, 0)
+            self.assertNotIn(sig, response.text)
+            self.assertNotIn("unit-test-secret", response.text)
+            self.assertEqual(response.headers["x-request-id"], "req-far-future-exp")
+            self.assertEqual(response.headers["x-media-render-cache"], "miss")
+
     def test_media_render_storage_errors_return_detail_code_and_request_id(self) -> None:
         cases: list[tuple[str, int]] = [
             ("MEDIA_GCS_PERMISSION_DENIED", 503),

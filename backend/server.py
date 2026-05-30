@@ -261,6 +261,7 @@ class MediaRenderSigningSecretError(RuntimeError):
 MEDIA_RENDER_SIGNING_SECRET_ENV_NAME: Final[str] = "MEDIA_RENDER_SIGNING_SECRET"
 MEDIA_RENDER_DEV_SIGNING_SECRET: Final[str] = "foodlens-media-dev-secret"
 MEDIA_RENDER_SIGNING_SECRET_MIN_BYTES: Final[int] = 32
+MEDIA_RENDER_EXPIRATION_CLOCK_SKEW_SECONDS: Final[int] = 300
 MEDIA_RENDER_PRODUCTION_ENVIRONMENTS: Final[frozenset[str]] = frozenset(
     {
         "prod",
@@ -2089,6 +2090,14 @@ def _compute_media_render_expiration(
     if exp <= now_ts:
         return fallback_exp
     return exp
+
+
+def _is_media_render_expiration_within_allowed_window(*, exp: int, now_ts: int) -> bool:
+    if exp < now_ts:
+        return False
+    ttl_seconds = max(60, int(getattr(app.state, "media_render_url_ttl_seconds", 86_400)))
+    max_allowed_exp = now_ts + ttl_seconds + MEDIA_RENDER_EXPIRATION_CLOCK_SKEW_SECONDS
+    return exp <= max_allowed_exp
 
 
 def _media_render_variant_key(
@@ -5537,7 +5546,7 @@ async def get_media_render(
     request_id = _request_id(request)
     try:
         now_ts = int(time.time())
-        if not exp or not sig or exp < now_ts:
+        if not exp or not sig or not _is_media_render_expiration_within_allowed_window(exp=exp, now_ts=now_ts):
             raise HTTPException(
                 status_code=403,
                 detail={
