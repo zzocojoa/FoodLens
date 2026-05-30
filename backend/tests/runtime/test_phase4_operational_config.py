@@ -397,11 +397,39 @@ class RenderLiveEnvValidationTests(unittest.TestCase):
         self.assertIn("weak_secret_keys=1", output)
         self.assertNotIn(weak_secret, output)
 
+    def test_render_live_env_check_rejects_media_render_auth_state_key_reuse_without_printing_value(self) -> None:
+        module = _load_render_live_env_module()
+        shared_secret = "S" * 48
+        live_env_by_service = self._live_env_from_blueprint(module, False)
+        live_env_by_service["foodlens-api"]["MEDIA_RENDER_SIGNING_SECRET"] = shared_secret
+        live_env_by_service["foodlens-api"]["AUTH_STATE_KEY"] = shared_secret
+
+        exit_code, output = self._run_gate(module, live_env_by_service, False, False, 100)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key=MEDIA_RENDER_SIGNING_SECRET", output)
+        self.assertIn("auth_state_key_reuse=true", output)
+        self.assertIn("auth_state_key_reuse_keys=1", output)
+        self.assertNotIn(shared_secret, output)
+
     def test_render_live_env_check_skips_strength_check_for_redacted_preview(self) -> None:
         module = _load_render_live_env_module()
         live_var = module.LiveEnvVar(value="********", source="valuePreview")
 
         self.assertFalse(module._check_media_render_secret_strength("MEDIA_RENDER_SIGNING_SECRET", live_var))
+
+    def test_render_live_env_check_skips_auth_state_key_reuse_for_redacted_preview(self) -> None:
+        module = _load_render_live_env_module()
+        media_secret = module.LiveEnvVar(value="********", source="valuePreview")
+        live_env = {"AUTH_STATE_KEY": module.LiveEnvVar(value="********", source="valuePreview")}
+
+        self.assertFalse(
+            module._check_media_render_secret_auth_state_key_reuse(
+                "MEDIA_RENDER_SIGNING_SECRET",
+                media_secret,
+                live_env,
+            )
+        )
 
     def test_render_live_env_all_blueprint_env_checks_non_guardrail_keys(self) -> None:
         module = _load_render_live_env_module()
