@@ -114,9 +114,11 @@
 - 삭제 요청 API:
   - `POST /me/deletion-requests`
     - 요청 본문: `target` (`account` | `data`)
-    - 응답 본문: `deletion_request { queue_id, target, status, created_at, updated_at, reason, error, retry_count, next_attempt_at }`, `request_id`
+    - 응답 본문: `deletion_request { request_id, target, status, requested_at, completed_at, retryable, failure_code, message }`, `request_id`
   - `GET /me/deletion-requests/latest`
     - 최근 삭제 요청 상태를 조회하며, 요청이 없으면 `deletion_request: null`, `request_id`
+  - 실패 응답은 public-safe 필드만 반환하며 내부 `queue_id`, raw `error`, storage path, SQL detail, provider/internal identifier는 반환하지 않는다.
+  - `retryable`은 사용자가 재시도할 수 있거나 서버 재시도가 예약된 삭제 상태에서 `true`이다.
 - 삭제 의미:
   - `data`: 계정은 유지, 사용자 데이터와 개인화 상태를 초기화
   - `account`: 계정 자체를 제거하고 세션까지 무효화

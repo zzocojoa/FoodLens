@@ -10,6 +10,9 @@ npm run test -- --runInBand \
   features/auth/login/components/__tests__/LoginAuthScreen.test.tsx \
   features/auth/login/components/__tests__/LoginWelcomeScreen.test.tsx \
   features/auth/login/screens/__tests__/LoginScreen.test.tsx \
+  features/profile/screens/__tests__/AccountDataScreen.test.tsx \
+  services/auth/__tests__/authApi.test.ts \
+  services/auth/__tests__/deletionService.test.ts \
   services/auth/__tests__/oauthProvider.test.ts \
   services/auth/__tests__/providerLogout.test.ts \
   services/auth/__tests__/sessionManager.test.ts

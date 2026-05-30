@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import types
@@ -7,6 +8,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from backend.modules.ops.deletion_queue import DeletionStatus, DeletionStatusSnapshot, DeletionTarget
 
 os.environ["OPENAPI_EXPORT_ONLY"] = "1"
 os.environ["AUTH_STATE_BACKEND"] = "memory"
@@ -681,6 +683,78 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertIn("request_id", latest_body)
             self.assertIsNone(latest_body["deletion_request"])
 
+    def test_latest_deletion_request_masks_internal_failure_error(self):
+        with TestClient(app) as client:
+            session = self._signup_and_verify(client, email=self._unique_email("phase5-failure-mask"))
+            headers = _auth_headers(session["access_token"])
+            user_id = str(session["user"]["id"])
+            requested_at = datetime.now(timezone.utc)
+            deletion_request_id = "req-phase5-deletion-mask"
+            raw_internal_error = (
+                "RuntimeError: Traceback (most recent call last): "
+                'File "/var/tmp/foodlens/storage/user-123/media-asset-456.py", line 42 '
+                "SELECT * FROM deletion_statuses WHERE user_id='user-123' "
+                "DELETE FROM media_assets WHERE object_key='gs://foodlens-private/user-123/original.jpg'"
+            )
+            app.state.deletion_queue_storage.save_status(
+                DeletionStatusSnapshot(
+                    queue_id="queue-internal-failure-mask",
+                    created_at=requested_at,
+                    updated_at=requested_at,
+                    status=DeletionStatus.FAILED,
+                    target=DeletionTarget.DATA,
+                    user_id=user_id,
+                    request_id=deletion_request_id,
+                    reason="user_requested",
+                    error=raw_internal_error,
+                    retry_count=3,
+                    next_attempt_at=None,
+                )
+            )
+            latest_request_id = "req-phase5-latest-mask"
+
+            latest = client.get(
+                "/me/deletion-requests/latest",
+                headers={**headers, "X-Request-Id": latest_request_id},
+            )
+
+            self.assertEqual(latest.status_code, 200)
+            latest_body = latest.json()
+            deletion_request = latest_body["deletion_request"]
+            self.assertEqual(latest_body["request_id"], latest_request_id)
+            self.assertEqual(deletion_request["request_id"], deletion_request_id)
+            self.assertEqual(deletion_request["target"], "data")
+            self.assertEqual(deletion_request["status"], "failed")
+            self.assertEqual(deletion_request["failure_code"], "DELETION_REQUEST_FAILED")
+            self.assertTrue(deletion_request["retryable"])
+            self.assertEqual(
+                deletion_request["message"],
+                "Deletion request failed. Please retry or contact support with request_id.",
+            )
+            self.assertNotIn("queue_id", deletion_request)
+            self.assertNotIn("reason", deletion_request)
+            self.assertNotIn("error", deletion_request)
+            self.assertNotIn("error_detail", deletion_request)
+            self.assertNotIn("failure_reason", deletion_request)
+            self.assertNotIn("retry_count", deletion_request)
+            self.assertNotIn("next_attempt_at", deletion_request)
+
+            payload_text = json.dumps(latest_body, sort_keys=True)
+            for forbidden_text in (
+                raw_internal_error,
+                "RuntimeError",
+                "Traceback (most recent call last)",
+                'File "/var/tmp/foodlens',
+                ".py\", line",
+                "SELECT *",
+                "DELETE FROM",
+                "WHERE user_id",
+                "gs://foodlens-private",
+                "media-asset-456",
+                "queue-internal-failure-mask",
+            ):
+                self.assertNotIn(forbidden_text, payload_text)
+
     def test_data_deletion_request_clears_user_data_and_updates_latest_status(self):
         with TestClient(app) as client:
             email = self._unique_email("phase5-data-delete")
@@ -759,8 +833,11 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(deletion_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(deletion_body["deletion_request"]["target"], "data")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
-            self.assertEqual(deletion_body["deletion_request"]["retry_count"], 0)
-            self.assertIsNone(deletion_body["deletion_request"]["next_attempt_at"])
+            self.assertIn("requested_at", deletion_body["deletion_request"])
+            self.assertIsNotNone(deletion_body["deletion_request"]["completed_at"])
+            self.assertFalse(deletion_body["deletion_request"]["retryable"])
+            self.assertIsNone(deletion_body["deletion_request"]["failure_code"])
+            self.assertIsNone(deletion_body["deletion_request"]["message"])
             self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)
 
             latest = client.get("/me/deletion-requests/latest", headers=headers)
@@ -777,7 +854,6 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             latest = client.get("/me/deletion-requests/latest", headers=latest_headers)
             self.assertEqual(latest.status_code, 200)
             latest_body = latest.json()
-            self.assertEqual(latest_body["deletion_request"]["queue_id"], deletion_body["deletion_request"]["queue_id"])
             self.assertEqual(latest_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(latest_body["deletion_request"]["status"], "done")
 
@@ -835,6 +911,8 @@ class AuthPhase2DataRuntimeTests(unittest.TestCase):
             self.assertEqual(deletion_body["deletion_request"]["request_id"], deletion_request_id)
             self.assertEqual(deletion_body["deletion_request"]["target"], "account")
             self.assertEqual(deletion_body["deletion_request"]["status"], "done")
+            self.assertFalse(deletion_body["deletion_request"]["retryable"])
+            self.assertIsNone(deletion_body["deletion_request"]["failure_code"])
             self._assert_analysis_job_user_data_scrubbed(job_id=analysis_job_id)
 
             profile = client.get("/me/profile", headers=headers)

@@ -101,6 +101,7 @@ jobs:
         run: |
           python -m unittest backend.tests.contracts.test_analysis_contract_snapshot
           python -m unittest backend.tests.contracts.test_barcode_contract_snapshot
+          python -m unittest backend.tests.contracts.test_deletion_contract_snapshot
           python -m unittest backend.tests.contracts.test_media_contract_snapshot
 
   frontend-contracts:

@@ -369,6 +369,7 @@
   "profile.health.addTypedItem": "添加键入的项目",
   "profile.deletion.description": "提交对您的帐户或存储的 FoodLens 数据的删除请求。您将在此处看到最新的请求状态。",
   "profile.deletion.updatedAt": "最后更新",
+  "profile.deletion.requestId": "请求 ID",
   "profile.deletion.loading": "正在加载最新请求状态...",
   "profile.deletion.error.title": "请求失败",
   "profile.deletion.error.generic": "我们无法加载您的删除请求状态。",

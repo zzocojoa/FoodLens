@@ -9,7 +9,7 @@ const mockGetLatestDeletionRequest = jest.fn();
 const mockCreateDeletionRequest = jest.fn();
 const mockClearLocalDeletionFootprint = jest.fn();
 const mockConsumeDeletionRequestFinalization = jest.fn();
-const submittedQueueIds = new Set<string>();
+const submittedRequestIds = new Set<string>();
 
 jest.mock('expo-router', () => ({
     useRouter: () => ({
@@ -76,19 +76,20 @@ jest.mock('../../components/ProfileHeader', () => {
 describe('AccountDataScreen deletion requests', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        submittedQueueIds.clear();
+        submittedRequestIds.clear();
         mockGetLatestDeletionRequest.mockResolvedValue(null);
         mockCreateDeletionRequest.mockImplementation(async (target: 'account' | 'data') => {
             const nextDeletionRequest = {
-                queueId: 'queue-1',
+                requestId: 'req-1',
                 target,
                 status: 'pending',
-                createdAt: '2026-03-29T00:00:00Z',
-                updatedAt: '2026-03-29T00:00:00Z',
-                reason: 'user_requested',
-                error: null,
+                requestedAt: '2026-03-29T00:00:00Z',
+                completedAt: null,
+                retryable: false,
+                failureCode: null,
+                message: null,
             };
-            submittedQueueIds.add(nextDeletionRequest.queueId);
+            submittedRequestIds.add(nextDeletionRequest.requestId);
             return nextDeletionRequest;
         });
         mockClearLocalDeletionFootprint.mockResolvedValue(undefined);
@@ -97,11 +98,11 @@ describe('AccountDataScreen deletion requests', () => {
                 return false;
             }
 
-            if (!submittedQueueIds.has(deletionRequest.queueId)) {
+            if (!submittedRequestIds.has(deletionRequest.requestId)) {
                 return false;
             }
 
-            submittedQueueIds.delete(deletionRequest.queueId);
+            submittedRequestIds.delete(deletionRequest.requestId);
             return true;
         });
     });
@@ -133,15 +134,16 @@ describe('AccountDataScreen deletion requests', () => {
 
     it('clears the session and routes to login after account deletion is completed', async () => {
         mockCreateDeletionRequest.mockResolvedValue({
-            queueId: 'queue-account-1',
+            requestId: 'req-account-1',
             target: 'account',
             status: 'done',
-            createdAt: '2026-03-29T00:00:00Z',
-            updatedAt: '2026-03-29T00:00:02Z',
-            reason: 'user_requested',
-            error: null,
+            requestedAt: '2026-03-29T00:00:00Z',
+            completedAt: '2026-03-29T00:00:02Z',
+            retryable: false,
+            failureCode: null,
+            message: null,
         });
-        submittedQueueIds.add('queue-account-1');
+        submittedRequestIds.add('req-account-1');
 
         const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
             const destructiveButton = buttons?.find((button) => button.text === 'Delete Account');
@@ -174,43 +176,47 @@ describe('AccountDataScreen deletion requests', () => {
 
     it('renders an existing failed deletion request returned by the server', async () => {
         mockGetLatestDeletionRequest.mockResolvedValue({
-            queueId: 'queue-failed-1',
+            requestId: 'req-failed-1',
             target: 'data',
             status: 'failed',
-            createdAt: '2026-03-29T00:00:00Z',
-            updatedAt: '2026-03-29T00:10:00Z',
-            reason: 'user_requested',
-            error: 'Deletion queue failed.',
+            requestedAt: '2026-03-29T00:00:00Z',
+            completedAt: '2026-03-29T00:10:00Z',
+            retryable: true,
+            failureCode: 'DELETION_REQUEST_FAILED',
+            message: 'Deletion request failed. Please retry or contact support with request_id.',
         });
 
         const { findByText } = render(<AccountDataScreen />);
 
         expect(await findByText('Failed')).toBeTruthy();
-        expect(await findByText('Deletion queue failed.')).toBeTruthy();
+        expect(await findByText('Deletion request failed. Please retry or contact support with request_id.')).toBeTruthy();
+        expect(await findByText('Request ID: req-failed-1')).toBeTruthy();
     });
 
     it('does not clear the device when an older completed deletion request is loaded on mount', async () => {
         mockGetLatestDeletionRequest.mockResolvedValue({
-            queueId: 'queue-done-1',
+            requestId: 'req-done-1',
             target: 'data',
             status: 'done',
-            createdAt: '2026-03-29T00:00:00Z',
-            updatedAt: '2026-03-29T00:10:00Z',
-            reason: 'user_requested',
-            error: null,
+            requestedAt: '2026-03-29T00:00:00Z',
+            completedAt: '2026-03-29T00:10:00Z',
+            retryable: false,
+            failureCode: null,
+            message: null,
         });
 
         const { findByText } = render(<AccountDataScreen />);
 
         expect(await findByText('Completed')).toBeTruthy();
         expect(mockConsumeDeletionRequestFinalization).toHaveBeenCalledWith({
-            queueId: 'queue-done-1',
+            requestId: 'req-done-1',
             target: 'data',
             status: 'done',
-            createdAt: '2026-03-29T00:00:00Z',
-            updatedAt: '2026-03-29T00:10:00Z',
-            reason: 'user_requested',
-            error: null,
+            requestedAt: '2026-03-29T00:00:00Z',
+            completedAt: '2026-03-29T00:10:00Z',
+            retryable: false,
+            failureCode: null,
+            message: null,
         });
         expect(mockClearLocalDeletionFootprint).not.toHaveBeenCalled();
         expect(mockReplace).not.toHaveBeenCalled();

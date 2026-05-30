@@ -1557,11 +1557,7 @@
       },
       "DeletionStatusPayload": {
         "properties": {
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "error": {
+          "completed_at": {
             "anyOf": [
               {
                 "type": "string"
@@ -1570,26 +1566,31 @@
                 "type": "null"
               }
             ],
-            "title": "Error"
+            "title": "Completed At"
           },
-          "next_attempt_at": {
+          "failure_code": {
             "anyOf": [
               {
+                "const": "DELETION_REQUEST_FAILED",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Next Attempt At"
+            "title": "Failure Code"
           },
-          "queue_id": {
-            "title": "Queue Id",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
+          "message": {
+            "anyOf": [
+              {
+                "const": "Deletion request failed. Please retry or contact support with request_id.",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
           },
           "request_id": {
             "anyOf": [
@@ -1602,9 +1603,13 @@
             ],
             "title": "Request Id"
           },
-          "retry_count": {
-            "title": "Retry Count",
-            "type": "integer"
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -1619,25 +1624,21 @@
           "target": {
             "enum": [
               "account",
-              "data",
-              "request"
+              "data"
             ],
             "title": "Target",
-            "type": "string"
-          },
-          "updated_at": {
-            "title": "Updated At",
             "type": "string"
           }
         },
         "required": [
-          "queue_id",
+          "request_id",
           "target",
           "status",
-          "created_at",
-          "updated_at",
-          "reason",
-          "retry_count"
+          "requested_at",
+          "completed_at",
+          "retryable",
+          "failure_code",
+          "message"
         ],
         "title": "DeletionStatusPayload",
         "type": "object"

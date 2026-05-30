@@ -369,6 +369,7 @@
   "profile.health.addTypedItem": "입력한 항목 추가",
   "profile.deletion.description": "계정 또는 저장된 FoodLens 데이터에 대한 삭제 요청을 제출할 수 있습니다. 최신 요청 상태도 여기에서 확인할 수 있습니다.",
   "profile.deletion.updatedAt": "마지막 업데이트",
+  "profile.deletion.requestId": "요청 ID",
   "profile.deletion.loading": "최신 요청 상태를 불러오는 중...",
   "profile.deletion.error.title": "요청 실패",
   "profile.deletion.error.generic": "삭제 요청 상태를 불러오지 못했습니다.",
