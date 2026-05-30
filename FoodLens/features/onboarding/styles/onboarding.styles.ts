@@ -29,9 +29,19 @@ export const onboardingStyles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
+  stepScroll: {
+    flex: 1,
+  },
   stepScrollContent: {
     paddingHorizontal: 24,
     paddingTop: 8,
+  },
+  destinationStepContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    gap: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
   },
   heroArea: {
     alignItems: 'center',
