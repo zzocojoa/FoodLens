@@ -5,7 +5,7 @@
 ## 안전 원칙
 
 - 기본 검증은 live provider, provider callback, token exchange, webhook, credential 검증을 호출하지 않는다.
-- URL, DSN, token, OAuth `state`, `nonce`, `code_verifier`, `code_challenge` 값은 로그나 터미널 출력에 남기지 않는다.
+- URL, DSN, token, OAuth `state`, `nonce`, `code_verifier`, `code_challenge`, `callback_verifier`, `app_proof_challenge` 값은 로그나 터미널 출력에 남기지 않는다.
 - staging/live에서 수동 smoke를 수행하더라도 provider redirect를 따라가지 않는다. 확인 범위는 FoodLens `/auth/{provider}/start`와 `/auth/{provider}/logout/start`의 `302 Location` 헤더까지다.
 - OAuth callback과 `POST /auth/{provider}` code exchange는 mock/stub 테스트에서만 검증한다.
 

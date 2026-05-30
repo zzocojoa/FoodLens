@@ -51,6 +51,7 @@ describe('AuthApi OAuth payloads', () => {
       code: 'google-code',
       state: 'google-state',
       redirectUri: 'foodlens://oauth/google-callback',
+      callbackVerifier: 'google-callback-verifier',
       locale: 'ko-KR',
       deviceId: 'ios-device-1',
       email: 'injected@example.com',
@@ -62,6 +63,7 @@ describe('AuthApi OAuth payloads', () => {
       code: 'google-code',
       state: 'google-state',
       redirect_uri: 'foodlens://oauth/google-callback',
+      callback_verifier: 'google-callback-verifier',
       locale: 'ko-KR',
       device_id: 'ios-device-1',
     });
@@ -74,6 +76,7 @@ describe('AuthApi OAuth payloads', () => {
       code: 'kakao-code',
       state: 'kakao-state',
       redirectUri: 'foodlens://oauth/kakao-callback',
+      callbackVerifier: 'kakao-callback-verifier',
       locale: 'ja-JP',
       deviceId: 'ios-device-2',
       email: 'injected@example.com',
@@ -85,6 +88,7 @@ describe('AuthApi OAuth payloads', () => {
       code: 'kakao-code',
       state: 'kakao-state',
       redirect_uri: 'foodlens://oauth/kakao-callback',
+      callback_verifier: 'kakao-callback-verifier',
       locale: 'ja-JP',
       device_id: 'ios-device-2',
     });

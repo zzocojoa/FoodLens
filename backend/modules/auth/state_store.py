@@ -37,6 +37,8 @@ class OAuthPendingStateStore(Protocol):
         nonce: str | None,
         code_verifier: str | None,
         code_challenge: str | None,
+        app_proof_challenge: str | None,
+        app_proof_method: str | None,
     ) -> bool:
         ...
 
@@ -126,6 +128,8 @@ class PostgresAuthStateStore:
         nonce: str | None,
         code_verifier: str | None,
         code_challenge: str | None,
+        app_proof_challenge: str | None,
+        app_proof_method: str | None,
     ) -> bool:
         connect = self._load_connect()
         try:
@@ -140,8 +144,8 @@ class PostgresAuthStateStore:
                         (
                             f"INSERT INTO {self._oauth_pending_state_table_name()} "
                             "(state, provider, app_redirect_uri, request_id, created_at, expires_at, "
-                            "nonce, code_verifier, code_challenge) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "nonce, code_verifier, code_challenge, app_proof_challenge, app_proof_method) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                             "ON CONFLICT (state) DO NOTHING "
                             "RETURNING state"
                         ),
@@ -155,6 +159,8 @@ class PostgresAuthStateStore:
                             nonce,
                             code_verifier,
                             code_challenge,
+                            app_proof_challenge,
+                            app_proof_method,
                         ),
                     )
                     return cursor.fetchone() is not None
@@ -259,10 +265,14 @@ class PostgresAuthStateStore:
                     "consumed_at TIMESTAMPTZ NULL,"
                     "nonce TEXT NULL,"
                     "code_verifier TEXT NULL,"
-                    "code_challenge TEXT NULL"
+                    "code_challenge TEXT NULL,"
+                    "app_proof_challenge TEXT NULL,"
+                    "app_proof_method TEXT NULL"
                     ")"
                 )
             )
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS app_proof_challenge TEXT NULL")
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS app_proof_method TEXT NULL")
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {table_name}_provider_expires_idx ON {table_name} "
                 "(provider, expires_at)"
@@ -291,14 +301,14 @@ class PostgresAuthStateStore:
     def _oauth_pending_state_columns() -> str:
         return (
             "state, provider, app_redirect_uri, request_id, created_at, expires_at, "
-            "consumed_at, nonce, code_verifier, code_challenge"
+            "consumed_at, nonce, code_verifier, code_challenge, app_proof_challenge, app_proof_method"
         )
 
     @staticmethod
     def _oauth_pending_state_row_to_dict(row: object) -> dict[str, object]:
         if not isinstance(row, tuple):
             raise AuthStateStoreError("Unexpected oauth pending state row type loaded from postgres.")
-        if len(row) != 10:
+        if len(row) != 12:
             raise AuthStateStoreError("Unexpected oauth pending state column count loaded from postgres.")
         return {
             "state": row[0],
@@ -311,6 +321,8 @@ class PostgresAuthStateStore:
             "nonce": row[7],
             "code_verifier": row[8],
             "code_challenge": row[9],
+            "app_proof_challenge": row[10],
+            "app_proof_method": row[11],
         }
 
 

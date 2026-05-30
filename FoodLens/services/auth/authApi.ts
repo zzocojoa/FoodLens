@@ -444,6 +444,7 @@ export const AuthApi = {
     code: string;
     state: string;
     redirectUri: string;
+    callbackVerifier?: string;
     locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
@@ -451,6 +452,7 @@ export const AuthApi = {
       code: input.code,
       state: input.state,
       redirect_uri: input.redirectUri,
+      callback_verifier: input.callbackVerifier,
       locale: input.locale,
       device_id: input.deviceId,
     });
@@ -461,6 +463,7 @@ export const AuthApi = {
     code: string;
     state: string;
     redirectUri: string;
+    callbackVerifier?: string;
     locale?: string;
     deviceId?: string;
   }): Promise<AuthSessionTokens> {
@@ -468,6 +471,7 @@ export const AuthApi = {
       code: input.code,
       state: input.state,
       redirect_uri: input.redirectUri,
+      callback_verifier: input.callbackVerifier,
       locale: input.locale,
       device_id: input.deviceId,
     });

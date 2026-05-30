@@ -31,6 +31,8 @@ if [ "$SMOKE_MODE" = "live" ] && [ -z "$BASE_URL" ]; then
 fi
 
 BASE_URL="${BASE_URL%/}"
+SMOKE_APP_PROOF_CHALLENGE="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno-_"
+SMOKE_APP_PROOF_QUERY="app_proof_challenge=${SMOKE_APP_PROOF_CHALLENGE}&app_proof_method=S256"
 REDIRECT_LOCATION=""
 STATE_VALUE=""
 
@@ -173,6 +175,11 @@ assert_dry_run_path() {
     exit 1
   fi
 
+  if [[ "$path" = "/auth/google/start?"* || "$path" = "/auth/kakao/start?"* ]] && [[ "$path" != *"app_proof_method=S256"* ]]; then
+    echo "[Smoke] ${label} dry-run path is missing the app proof method."
+    exit 1
+  fi
+
   echo "[Smoke] ${label} dry-run path OK."
 }
 
@@ -183,10 +190,10 @@ run_dry_run() {
   fi
 
   assert_dry_run_path \
-    "/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback" \
+    "/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&${SMOKE_APP_PROOF_QUERY}" \
     "google-start"
   assert_dry_run_path \
-    "/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback" \
+    "/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback&${SMOKE_APP_PROOF_QUERY}" \
     "kakao-start"
   assert_dry_run_path \
     "/auth/google/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete" \
@@ -228,7 +235,7 @@ if [ "$SMOKE_MODE" = "dry-run" ]; then
 fi
 
 assert_redirect \
-  "${BASE_URL}/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback" \
+  "${BASE_URL}/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&${SMOKE_APP_PROOF_QUERY}" \
   "accounts.google.com" \
   "google-start"
 google_start_location="$REDIRECT_LOCATION"
@@ -238,7 +245,7 @@ assert_query_param_present "$google_start_location" "code_challenge" "google-sta
 assert_query_param_equals "$google_start_location" "code_challenge_method" "S256" "google-start"
 
 assert_redirect \
-  "${BASE_URL}/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback" \
+  "${BASE_URL}/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback&${SMOKE_APP_PROOF_QUERY}" \
   "kauth.kakao.com" \
   "kakao-start"
 kakao_start_location="$REDIRECT_LOCATION"
