@@ -9,6 +9,7 @@
 - 릴리스 노트: [`/CHANGELOG.md`](../CHANGELOG.md)
 - API 계약: [`/docs/contracts/api-contracts.md`](./contracts/api-contracts.md)
 - OAuth 보안 운영 런북: [`/docs/operations/oauth-security-runbook.md`](./operations/oauth-security-runbook.md)
+- 로컬 삭제 footprint threat model: [`/docs/security/local-deletion-footprint-threat-model.md`](./security/local-deletion-footprint-threat-model.md)
 - 아키텍처 요약: [`/docs/architecture-overview.md`](./architecture-overview.md)
 - 엔지니어링 리뷰: [`/docs/architecture/plan-eng-review-2026-04-09.md`](./architecture/plan-eng-review-2026-04-09.md)
 - 스킬 요청 플레이북: [`/docs/technical/skills_usage_guide.md`](./technical/skills_usage_guide.md)

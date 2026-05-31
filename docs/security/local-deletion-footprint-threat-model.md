@@ -1,6 +1,6 @@
 # FoodLens Local Deletion Footprint Threat Model
 
-Date: 2026-05-30
+Date: 2026-05-31
 Branch: `codex/local-deletion-footprint-wipe`
 
 ## Scope
@@ -13,7 +13,7 @@ This model covers local privacy residue after account deletion, data deletion, l
 - The attacker can observe app-visible screens and may have access to development or diagnostic device logs.
 - The attacker cannot bypass OS app sandboxing, extract SecureStore directly, compromise the backend, or force live deletion status to lie.
 - App-managed image cleanup only covers `FileSystem.documentDirectory/foodlens_images/`.
-- Live authenticated manual QA was not run because live API calls are forbidden and no local mocked auth backend or seeded test session was available.
+- Authenticated Android manual QA was run after live API use was explicitly allowed for this release check.
 
 ## Assets
 
@@ -40,7 +40,7 @@ This model covers local privacy residue after account deletion, data deletion, l
 
 | ID | Scenario | Current mitigation | Residual risk |
 | --- | --- | --- | --- |
-| TM-001 | Deletion completes but local wipe partially fails | `clearLocalDeletionFootprint()` delegates to a throwing strong wipe. Account Data screen does not route to login on local clear failure. | Manual device QA still needs a non-live authenticated environment. |
+| TM-001 | Deletion completes but local wipe partially fails | `clearLocalDeletionFootprint()` delegates to a throwing strong wipe. Account Data screen does not route to login on local clear failure. Android authenticated QA confirmed account deletion and data deletion completion. | Continue release-regression checks on both Android and iOS before store rollout. |
 | TM-002 | Logout leaves previous user's local analysis/cache/images | Logout now calls `clearLocalLogoutFootprint()` before routing. Wipe failure logs structured task context, alerts the user, and blocks `/login` navigation. | External photo-library assets remain outside app control. |
 | TM-003 | Account A snapshot appears after switching to account B | `persistSession()` clears previous-user local footprint before writing the new session. Tests cover A to B analysis snapshot reuse prevention. | Any auth success path that bypasses `persistSession()` would be a gap and should remain test-audited. |
 | TM-004 | MMKV migration leaves AsyncStorage legacy keys | `SafeStorage.clearAll()` clears MMKV and always clears AsyncStorage; failures are thrown. | Uninstall/reinstall behavior remains platform-dependent. |
@@ -50,7 +50,7 @@ This model covers local privacy residue after account deletion, data deletion, l
 
 ## Manual QA Status
 
-Real authenticated QA for deletion completion, account switch, and logout was not executed because the task forbids live API calls and no local mocked auth backend or seeded secure-session fixture was available. The local QA artifact is `.gstack/qa-reports/qa-report-foodlens-local-deletion-footprint-followup-2026-05-30.md`; it provides device-level pass/fail steps for account deletion, data deletion, account A to B switch, and logout.
+Authenticated Android QA was completed after live API use was allowed for release verification. The user confirmed account switch, logout, data deletion, account deletion, and travel card onboarding behavior as OK. A first scan onboarding clipping issue found during QA was fixed by making that step scrollable and reducing the preview density; the fixed APK was installed on the connected Android device for final visual recheck.
 
 ## Verification Focus
 
