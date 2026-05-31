@@ -10,6 +10,7 @@ import inspect
 import io
 import logging
 import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Mapping as MappingABC
@@ -2009,6 +2010,18 @@ OAUTH_STATE_FAILURE_CODES = frozenset(
 )
 OAUTH_STATE_REDIRECT_FAILURE_CODE = "AUTH_REDIRECT_URI_MISMATCH"
 MEDIA_ALLOWED_UPLOAD_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+APP_LINK_IOS_APP_IDS_ENV = "APP_LINK_IOS_APP_IDS"
+APP_LINK_ANDROID_PACKAGE_NAME_ENV = "APP_LINK_ANDROID_PACKAGE_NAME"
+APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS_ENV = "APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS"
+APP_LINK_ASSOCIATION_PATHS = (
+    "/oauth/google-callback",
+    "/oauth/kakao-callback",
+    "/oauth/logout-complete",
+)
+APP_LINK_CACHE_CONTROL_HEADER = "public, max-age=3600"
+ANDROID_SHA256_FINGERPRINT_PATTERN = re.compile(r"^[0-9A-F]{64}$")
+ANDROID_PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+IOS_APP_ID_PATTERN = re.compile(r"^[A-Z0-9]{10}\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 
 def _utc_now() -> datetime:
@@ -2436,6 +2449,119 @@ def _parse_csv(raw: str | None) -> set[str]:
     if not raw:
         return set()
     return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _raise_app_link_association_config_error(
+    *,
+    message: str,
+    missing_env: list[str],
+    invalid_env: list[str],
+) -> None:
+    detail: dict[str, object] = {
+        "message": message,
+        "code": "APP_LINK_ASSOCIATION_NOT_CONFIGURED",
+    }
+    if missing_env:
+        detail["missing_env"] = list(missing_env)
+    if invalid_env:
+        detail["invalid_env"] = list(invalid_env)
+    raise HTTPException(status_code=503, detail=detail)
+
+
+def _required_app_link_csv_env(*, env: Mapping[str, str], name: str) -> list[str]:
+    values = sorted(_parse_csv(env.get(name)))
+    if not values:
+        _raise_app_link_association_config_error(
+            message=f"{name} must be configured before serving app-link association files.",
+            missing_env=[name],
+            invalid_env=[],
+        )
+    return values
+
+
+def _required_app_link_env(*, env: Mapping[str, str], name: str) -> str:
+    value = (env.get(name) or "").strip()
+    if not value:
+        _raise_app_link_association_config_error(
+            message=f"{name} must be configured before serving app-link association files.",
+            missing_env=[name],
+            invalid_env=[],
+        )
+    return value
+
+
+def _validated_ios_app_ids(*, env: Mapping[str, str]) -> list[str]:
+    app_ids = _required_app_link_csv_env(env=env, name=APP_LINK_IOS_APP_IDS_ENV)
+    invalid_app_ids = [app_id for app_id in app_ids if IOS_APP_ID_PATTERN.fullmatch(app_id) is None]
+    if invalid_app_ids:
+        _raise_app_link_association_config_error(
+            message=f"{APP_LINK_IOS_APP_IDS_ENV} must contain Apple Team ID prefixed app ids.",
+            missing_env=[],
+            invalid_env=[APP_LINK_IOS_APP_IDS_ENV],
+        )
+    return app_ids
+
+
+def _validated_android_package_name(*, env: Mapping[str, str]) -> str:
+    package_name = _required_app_link_env(env=env, name=APP_LINK_ANDROID_PACKAGE_NAME_ENV)
+    if ANDROID_PACKAGE_NAME_PATTERN.fullmatch(package_name) is None:
+        _raise_app_link_association_config_error(
+            message=f"{APP_LINK_ANDROID_PACKAGE_NAME_ENV} must be an Android package name.",
+            missing_env=[],
+            invalid_env=[APP_LINK_ANDROID_PACKAGE_NAME_ENV],
+        )
+    return package_name
+
+
+def _normalize_android_sha256_fingerprint(value: str) -> str:
+    compact = value.strip().replace(":", "").upper()
+    if ANDROID_SHA256_FINGERPRINT_PATTERN.fullmatch(compact) is None:
+        _raise_app_link_association_config_error(
+            message=f"{APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS_ENV} must contain SHA-256 certificate fingerprints.",
+            missing_env=[],
+            invalid_env=[APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS_ENV],
+        )
+    return ":".join(compact[index : index + 2] for index in range(0, len(compact), 2))
+
+
+def _validated_android_sha256_fingerprints(*, env: Mapping[str, str]) -> list[str]:
+    fingerprints = _required_app_link_csv_env(env=env, name=APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS_ENV)
+    return [_normalize_android_sha256_fingerprint(fingerprint) for fingerprint in fingerprints]
+
+
+def _build_apple_app_site_association(*, env: Mapping[str, str]) -> dict[str, object]:
+    return {
+        "applinks": {
+            "apps": [],
+            "details": [
+                {
+                    "appIDs": _validated_ios_app_ids(env=env),
+                    "components": [{"/": path} for path in APP_LINK_ASSOCIATION_PATHS],
+                }
+            ],
+        }
+    }
+
+
+def _build_android_asset_links(*, env: Mapping[str, str]) -> list[dict[str, object]]:
+    return [
+        {
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": _validated_android_package_name(env=env),
+                "sha256_cert_fingerprints": _validated_android_sha256_fingerprints(env=env),
+            },
+        }
+    ]
+
+
+def _app_link_json_response(content: object) -> JSONResponse:
+    return JSONResponse(
+        content=content,
+        headers={"Cache-Control": APP_LINK_CACHE_CONTROL_HEADER},
+        media_type="application/json",
+    )
 
 
 def _oauth_redirect_origin_from_env(*, env_key: str) -> str | None:
@@ -5080,6 +5206,16 @@ def _raise_if_analysis_job_privacy_scrubbed(*, request_id: str, record: dict[str
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Food Lens API is running"}
+
+
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+def apple_app_site_association() -> JSONResponse:
+    return _app_link_json_response(_build_apple_app_site_association(env=os.environ))
+
+
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
+def android_asset_links() -> JSONResponse:
+    return _app_link_json_response(_build_android_asset_links(env=os.environ))
 
 
 @app.get("/health/ready")

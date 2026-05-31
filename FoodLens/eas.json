@@ -20,6 +20,7 @@
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_ANALYSIS_SERVER_URL": "https://foodlens-2-w1xu.onrender.com",
+        "EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL": "https://foodlens-2-w1xu.onrender.com",
         "EXPO_PUBLIC_AUTH_OAUTH_MODE": "live",
         "EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED": "0",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBw09_wBmLUgcZ20UwJIP0B6V4oS_ahbVQ"
@@ -30,6 +31,7 @@
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_ANALYSIS_SERVER_URL": "https://foodlens-2-w1xu.onrender.com",
+        "EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL": "https://foodlens-2-w1xu.onrender.com",
         "EXPO_PUBLIC_AUTH_OAUTH_MODE": "live",
         "EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED": "0",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBw09_wBmLUgcZ20UwJIP0B6V4oS_ahbVQ"

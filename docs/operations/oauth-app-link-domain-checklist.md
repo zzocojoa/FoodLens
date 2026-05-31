@@ -1,30 +1,33 @@
 # OAuth App Link Domain Checklist
 
-이 문서는 운영 OAuth callback을 `foodlens://` custom scheme에서 HTTPS Universal Links/App Links로 전환할 때 필요한 도메인 설정 항목을 정리한다. 실제 `.well-known/apple-app-site-association` 또는 `.well-known/assetlinks.json` 배포 파일은 이 저장소에 만들지 않는다.
+이 문서는 운영 OAuth callback을 `foodlens://` custom scheme에서 HTTPS Universal Links/App Links로 전환할 때 필요한 도메인 설정 항목을 정리한다. 현재 운영 앱링크 origin은 backend Render URL인 `https://foodlens-2-w1xu.onrender.com`이다. backend가 `.well-known/apple-app-site-association`와 `.well-known/assetlinks.json`을 직접 제공한다.
 
 ## 정책 요약
 
 | 환경 | 앱 return callback | Backend allowlist | 실패 시 동작 |
 | --- | --- | --- | --- |
 | Local/dev | `foodlens://oauth/google-callback`, `foodlens://oauth/kakao-callback`, `foodlens://oauth/logout-complete` | `AUTH_APP_ALLOWED_REDIRECT_URIS`, `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`에 custom scheme을 명시할 때만 허용 | 개발자가 env를 고쳐 재시도 |
-| Production | `https://<verified-app-link-domain>/oauth/google-callback`, `https://<verified-app-link-domain>/oauth/kakao-callback`, `https://<verified-app-link-domain>/oauth/logout-complete` | `AUTH_OAUTH_REDIRECT_BASE_URL`에서 HTTPS URI를 파생한다. 명시 allowlist가 필요하면 HTTPS URI만 넣는다 | rollout 중단. `foodlens://` fallback 금지 |
+| Production | `https://foodlens-2-w1xu.onrender.com/oauth/google-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/kakao-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/logout-complete` | `AUTH_OAUTH_REDIRECT_BASE_URL`에서 HTTPS URI를 파생한다. 명시 allowlist가 필요하면 HTTPS URI만 넣는다 | rollout 중단. `foodlens://` fallback 금지 |
 
 운영에서 App/Universal Links 검증이 실패하면 로그인 완료가 앱으로 돌아오지 않을 수 있다. 이 경우에도 custom scheme을 임시 fallback으로 열지 않는다. 도메인 association, provider console, env 값을 고친 뒤 다시 검증한다.
 
 ## 운영 환경 변수
 
 - Mobile:
-  - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`
-  - `EXPO_PUBLIC_ANALYSIS_SERVER_URL=https://<backend-domain>`
+  - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`
+  - `EXPO_PUBLIC_ANALYSIS_SERVER_URL=https://foodlens-2-w1xu.onrender.com`
   - `EXPO_PUBLIC_AUTH_OAUTH_MODE=live`
 - Backend:
-  - `AUTH_PUBLIC_BASE_URL=https://<backend-domain>`
-  - `AUTH_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`
+  - `AUTH_PUBLIC_BASE_URL=https://foodlens-2-w1xu.onrender.com`
+  - `AUTH_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`
+  - `APP_LINK_IOS_APP_IDS=9ZL3RJ73M7.com.hoihou.foodlens`
+  - `APP_LINK_ANDROID_PACKAGE_NAME=com.hoihou.foodlens`
+  - `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS=<ANDROID_RELEASE_CERT_SHA256_FINGERPRINT>`
   - `AUTH_APP_ALLOWED_REDIRECT_URIS`는 비워두면 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 provider별 HTTPS callback을 파생한다. 명시할 때도 Google 요청은 `/oauth/google-callback`, Kakao 요청은 `/oauth/kakao-callback`만 통과해야 한다.
   - `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`는 비워두면 `AUTH_OAUTH_REDIRECT_BASE_URL/oauth/logout-complete`를 파생한다.
 - GitHub Actions / EAS:
-  - repository variable 또는 secret `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`를 설정한다.
-  - Phase1 live provider smoke와 Phase6 postdeploy smoke 실행 시 `oauth_redirect_base_url=https://<verified-app-link-domain>` 입력을 전달한다.
+  - repository variable 또는 secret `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`를 설정한다.
+  - Phase1 live provider smoke와 Phase6 postdeploy smoke 실행 시 `oauth_redirect_base_url=https://foodlens-2-w1xu.onrender.com` 입력을 전달한다.
 
 운영에서 custom scheme을 허용하지 않는다. 로컬/dev에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS=foodlens://oauth/logout-complete`를 명시적으로 설정한다.
 
@@ -33,24 +36,24 @@
 운영 빌드의 `app.config.js` 결과에 다음 entitlement가 들어가야 한다.
 
 ```text
-applinks:<verified-app-link-domain>
+applinks:foodlens-2-w1xu.onrender.com
 ```
 
-운영자는 Apple Developer App ID와 provisioning profile이 Associated Domains capability를 포함하는지 확인한다. `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`에 path, port, query, fragment를 넣지 않는다. 예시는 `https://links.foodlens.example.com`처럼 origin만 사용한다.
+운영자는 Apple Developer App ID와 provisioning profile이 Associated Domains capability를 포함하는지 확인한다. `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`에 path, port, query, fragment를 넣지 않는다. 현재 값은 `https://foodlens-2-w1xu.onrender.com`처럼 origin만 사용한다.
 
 ## OAuth Provider Console
 
 Google/Kakao provider console에는 FoodLens backend callback만 등록한다.
 
-- Google: `https://<backend-domain>/auth/google/callback`
-- Kakao: `https://<backend-domain>/auth/kakao/callback`
-- Kakao logout redirect를 사용할 때: `https://<backend-domain>/auth/kakao/logout/callback`
+- Google: `https://foodlens-2-w1xu.onrender.com/auth/google/callback`
+- Kakao: `https://foodlens-2-w1xu.onrender.com/auth/kakao/callback`
+- Kakao logout redirect를 사용할 때: `https://foodlens-2-w1xu.onrender.com/auth/kakao/logout/callback`
 
 Provider console에 등록하지 않는 값:
 
-- `https://<verified-app-link-domain>/oauth/google-callback`
-- `https://<verified-app-link-domain>/oauth/kakao-callback`
-- `https://<verified-app-link-domain>/oauth/logout-complete`
+- `https://foodlens-2-w1xu.onrender.com/oauth/google-callback`
+- `https://foodlens-2-w1xu.onrender.com/oauth/kakao-callback`
+- `https://foodlens-2-w1xu.onrender.com/oauth/logout-complete`
 - `foodlens://oauth/google-callback`
 - `foodlens://oauth/kakao-callback`
 - `foodlens://oauth/logout-complete`
@@ -59,7 +62,7 @@ Provider console에 등록하지 않는 값:
 
 ## Apple AASA 필드
 
-운영 도메인의 `https://<verified-app-link-domain>/.well-known/apple-app-site-association`에 다음 형태의 JSON을 배포한다. `Content-Type`은 `application/json`이어야 하며 redirect 없이 200으로 응답해야 한다.
+운영 도메인의 `https://foodlens-2-w1xu.onrender.com/.well-known/apple-app-site-association`는 backend가 다음 형태의 JSON으로 응답한다. `Content-Type`은 `application/json`이어야 하며 redirect 없이 200으로 응답해야 한다.
 
 ```json
 {
@@ -68,7 +71,7 @@ Provider console에 등록하지 않는 값:
     "details": [
       {
         "appIDs": [
-          "<APPLE_TEAM_ID>.com.hoihou.foodlens"
+          "9ZL3RJ73M7.com.hoihou.foodlens"
         ],
         "components": [
           { "/": "/oauth/google-callback" },
@@ -86,12 +89,12 @@ Provider console에 등록하지 않는 값:
 - 파일명은 `apple-app-site-association`이며 확장자가 없다.
 - HTTPS 인증서가 유효해야 한다.
 - `/.well-known/apple-app-site-association` 요청은 `301` 또는 `302` 없이 `200`으로 응답해야 한다.
-- `appIDs` 값은 `<APPLE_TEAM_ID>.<IOS_BUNDLE_IDENTIFIER>` 형식이다. 운영 기본 bundle id는 `com.hoihou.foodlens`다.
+- `appIDs` 값은 `<APPLE_TEAM_ID>.<IOS_BUNDLE_IDENTIFIER>` 형식이다. 운영 값은 `9ZL3RJ73M7.com.hoihou.foodlens`다.
 - `components`에는 OAuth app return path만 포함한다.
 
 ## Android Asset Links 필드
 
-운영 도메인의 `https://<verified-app-link-domain>/.well-known/assetlinks.json`에 다음 형태의 JSON 배열을 배포한다. `Content-Type`은 `application/json`이어야 하며 redirect 없이 200으로 응답해야 한다.
+운영 도메인의 `https://foodlens-2-w1xu.onrender.com/.well-known/assetlinks.json`는 backend가 다음 형태의 JSON 배열로 응답한다. `Content-Type`은 `application/json`이어야 하며 redirect 없이 200으로 응답해야 한다.
 
 ```json
 [
@@ -113,12 +116,12 @@ Provider console에 등록하지 않는 값:
 - `package_name`은 운영 Android package인 `com.hoihou.foodlens`와 일치해야 한다.
 - `sha256_cert_fingerprints`는 release signing certificate fingerprint다. Play App Signing을 쓰는 경우 Play Console의 app signing certificate SHA-256을 사용한다.
 - Android build manifest에는 `scheme=https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true`, `BROWSABLE`, `DEFAULT`가 포함되어야 한다.
-- `assetlinks.json`은 `https://<verified-app-link-domain>/.well-known/assetlinks.json`에서 직접 `200`으로 응답해야 한다.
+- `assetlinks.json`은 `https://foodlens-2-w1xu.onrender.com/.well-known/assetlinks.json`에서 직접 `200`으로 응답해야 한다.
 
 ## 배포 전 확인
 
-- `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`와 `AUTH_OAUTH_REDIRECT_BASE_URL`는 같은 verified app-link origin이다.
-- iOS build config에 `associatedDomains=["applinks:<verified-app-link-domain>"]`가 포함된다.
+- `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`와 `AUTH_OAUTH_REDIRECT_BASE_URL`는 `https://foodlens-2-w1xu.onrender.com`이다.
+- iOS build config에 `associatedDomains=["applinks:foodlens-2-w1xu.onrender.com"]`가 포함된다.
 - Android build config에 `scheme=https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true` intent filter가 포함된다.
 - backend `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 비어 있거나 HTTPS URI만 포함한다.
 - provider console에는 backend callback URI만 등록되어 있고 `foodlens://` custom scheme URI가 운영 앱 항목에 남아 있지 않다.
@@ -131,9 +134,11 @@ Provider console에 등록하지 않는 값:
 ```bash
 cd FoodLens
 npx jest --runInBand services/auth/__tests__/oauthProvider.test.ts services/auth/__tests__/providerLogout.test.ts scripts/__tests__/appConfigLinks.test.ts
-EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain> npm run release:env:gate
+EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com npm run release:env:gate
 cd ..
 ./.venv/bin/python -m unittest \
+  backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_apple_app_site_association_uses_configured_app_ids \
+  backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_android_assetlinks_uses_configured_package_and_fingerprints \
   backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_oauth_web_bridge_uses_https_redirect_base_url_allowlist \
   backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_oauth_web_bridge_rejects_custom_scheme_without_explicit_allowlist \
   backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_oauth_post_rejects_pending_custom_scheme_without_consuming_state \
@@ -145,7 +150,7 @@ AUTH_PROVIDER_SMOKE_MODE=dry-run bash backend/scripts/ci_auth_live_provider_smok
 운영 도메인 검증:
 
 ```bash
-APP_LINK_DOMAIN="<verified-app-link-domain>"
+APP_LINK_DOMAIN="foodlens-2-w1xu.onrender.com"
 curl -fsSI "https://${APP_LINK_DOMAIN}/.well-known/apple-app-site-association"
 curl -fsS "https://${APP_LINK_DOMAIN}/.well-known/apple-app-site-association"
 curl -fsSI "https://${APP_LINK_DOMAIN}/.well-known/assetlinks.json"
