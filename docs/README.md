@@ -15,6 +15,7 @@
 - 엔지니어링 리뷰: [`/docs/architecture/plan-eng-review-2026-04-09.md`](./architecture/plan-eng-review-2026-04-09.md)
 - 스킬 요청 플레이북: [`/docs/technical/skills_usage_guide.md`](./technical/skills_usage_guide.md)
 - 출시 게이트/운영 리허설: [`/docs/roadmap/phase-6-release-gate-execution.md`](./roadmap/phase-6-release-gate-execution.md)
+- PR #173 모바일 롤아웃 증거/결정: [`/docs/operations/pr173-mobile-rollout-decision-2026-05-31.md`](./operations/pr173-mobile-rollout-decision-2026-05-31.md)
 - 개인정보처리방침: [`/docs/privacy-policy/index.md`](./privacy-policy/index.md)
   - 언어별 문서: [`en`](./privacy-policy/en/index.md), [`ja`](./privacy-policy/ja/index.md), [`zh-Hans`](./privacy-policy/zh-Hans/index.md)
 - 이용약관: [`/docs/terms-of-service/index.md`](./terms-of-service/index.md)
