@@ -10,6 +10,7 @@ const IS_DEV = buildIdentity.appVariant === "development";
 const APP_SLUG = "FoodLens";
 const APP_VERSION = "1.0.0";
 const APP_SCHEME = "foodlens";
+const OAUTH_REDIRECT_BASE_URL_ENV = "EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL";
 
 const DEV_PLIST_PATH = "./Dev.plist";
 const PROD_PLIST_PATH = "./Prod.plist";
@@ -34,6 +35,61 @@ const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
 const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
 const ONBOARDING_PREVIEW_ENABLED =
   (process.env.EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED || "0").trim();
+const OAUTH_REDIRECT_PATH_PREFIX = "/oauth/";
+
+const resolveOAuthRedirectOrigin = (rawBaseUrl) => {
+  const normalizedBaseUrl = (rawBaseUrl || "").trim();
+  if (!normalizedBaseUrl) {
+    return "";
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(normalizedBaseUrl);
+  } catch (error) {
+    throw new Error(`${OAUTH_REDIRECT_BASE_URL_ENV} must be a valid HTTPS origin.`);
+  }
+
+  const hasPath = parsed.pathname !== "" && parsed.pathname !== "/";
+  if (
+    parsed.protocol !== "https:" ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    hasPath ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be an HTTPS origin without credentials, port, path, query, or fragment.`
+    );
+  }
+
+  return parsed.origin.replace(/\/+$/, "");
+};
+
+const OAUTH_REDIRECT_ORIGIN = resolveOAuthRedirectOrigin(
+  process.env[OAUTH_REDIRECT_BASE_URL_ENV]
+);
+const OAUTH_APP_LINK_HOST = OAUTH_REDIRECT_ORIGIN ? new URL(OAUTH_REDIRECT_ORIGIN).hostname : "";
+const IOS_ASSOCIATED_DOMAINS = OAUTH_APP_LINK_HOST ? [`applinks:${OAUTH_APP_LINK_HOST}`] : undefined;
+const ANDROID_INTENT_FILTERS = OAUTH_APP_LINK_HOST
+  ? [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [
+          {
+            scheme: "https",
+            host: OAUTH_APP_LINK_HOST,
+            pathPrefix: OAUTH_REDIRECT_PATH_PREFIX,
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ]
+  : undefined;
 
 const EXPO_BUILD_IDENTITY = {
   appName: buildIdentity.appName,
@@ -85,7 +141,7 @@ module.exports = {
     version: APP_VERSION,
     orientation: "portrait",
     icon: ICON_PATH,
-    scheme: APP_SCHEME,
+    ...(IS_DEV ? { scheme: APP_SCHEME } : {}),
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
@@ -93,6 +149,7 @@ module.exports = {
       icon: IOS_ICON_PATH,
       bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
       googleServicesFile: IOS_GOOGLE_SERVICES_FILE,
+      ...(IOS_ASSOCIATED_DOMAINS ? { associatedDomains: IOS_ASSOCIATED_DOMAINS } : {}),
       entitlements: {
         "keychain-access-groups": [`$(AppIdentifierPrefix)${IOS_BUNDLE_IDENTIFIER}`],
       },
@@ -106,6 +163,7 @@ module.exports = {
     },
     android: {
       package: ANDROID_APP_PACKAGE,
+      ...(ANDROID_INTENT_FILTERS ? { intentFilters: ANDROID_INTENT_FILTERS } : {}),
       config: {
         googleMaps: {
           apiKey: ANDROID_GOOGLE_MAPS_API_KEY || FALLBACK_GOOGLE_MAPS_API_KEY,

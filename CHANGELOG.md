@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.5.0] - 2026-05-31
+
+### Added
+
+- Production OAuth login can now return through verified Universal Links/App Links instead of the development-only `foodlens://` custom scheme.
+- Release gates now require the production OAuth app-link origin, iOS associated domains, Android verified intent filters, and Render OAuth redirect configuration.
+- OAuth app-link rollout documentation now lists the DNS, AASA, assetlinks, provider console, smoke-test, and rollback checks operators need before release.
+
+### Changed
+
+- Mobile Google/Kakao login and provider logout now build HTTPS app-link callbacks when `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL` is configured.
+- Backend OAuth start, callback, and login flows now require explicit app return URIs and derive production callbacks from `AUTH_OAUTH_REDIRECT_BASE_URL`.
+- OAuth provider smoke checks now exercise HTTPS app-link callbacks and reject production custom-scheme fallback.
+
+### Fixed
+
+- Backend OAuth app redirect validation now rejects cross-provider callback mismatches, such as a Google flow trying to return through the Kakao callback path.
+
 ## [0.0.4.0] - 2026-05-31
 
 ### Added

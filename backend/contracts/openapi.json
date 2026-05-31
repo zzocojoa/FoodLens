@@ -2283,6 +2283,7 @@
                 "type": "null"
               }
             ],
+            "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
             "title": "Redirect Uri"
           },
           "state": {
@@ -3551,6 +3552,7 @@
             }
           },
           {
+            "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -3563,6 +3565,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           }
@@ -3645,6 +3648,7 @@
         "operationId": "auth_google_logout_callback_auth_google_logout_callback_get",
         "parameters": [
           {
+            "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "app_redirect_uri",
             "required": false,
@@ -3657,6 +3661,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
               "title": "App Redirect Uri"
             }
           }
@@ -3689,6 +3694,7 @@
         "operationId": "auth_google_logout_start_auth_google_logout_start_get",
         "parameters": [
           {
+            "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -3701,6 +3707,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           }
@@ -3733,6 +3740,7 @@
         "operationId": "auth_google_start_auth_google_start_get",
         "parameters": [
           {
+            "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -3745,6 +3753,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           },
@@ -4025,6 +4034,7 @@
             }
           },
           {
+            "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -4037,6 +4047,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           }
@@ -4119,6 +4130,7 @@
         "operationId": "auth_kakao_logout_callback_auth_kakao_logout_callback_get",
         "parameters": [
           {
+            "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "app_redirect_uri",
             "required": false,
@@ -4131,6 +4143,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
               "title": "App Redirect Uri"
             }
           },
@@ -4195,6 +4208,7 @@
         "operationId": "auth_kakao_logout_start_auth_kakao_logout_start_get",
         "parameters": [
           {
+            "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -4207,6 +4221,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App logout return redirect URI. Production uses the HTTPS logout App Link derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. Custom scheme logout redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           }
@@ -4239,6 +4254,7 @@
         "operationId": "auth_kakao_start_auth_kakao_start_get",
         "parameters": [
           {
+            "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
             "in": "query",
             "name": "redirect_uri",
             "required": false,
@@ -4251,6 +4267,7 @@
                   "type": "null"
                 }
               ],
+              "description": "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. Custom scheme redirects are development-only and must be explicitly allowlisted.",
               "title": "Redirect Uri"
             }
           },

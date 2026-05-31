@@ -51,6 +51,7 @@ FoodLens-project/
 
 - 인증/세션
   - `/auth/*`는 백엔드가 소유하고, 모바일은 access/refresh token을 secure storage에 저장합니다.
+  - 운영 OAuth app return은 verified Universal Links/App Links HTTPS callback을 사용하고, `foodlens://` custom scheme은 개발 build에서만 명시 allowlist로 허용합니다.
   - 계정 소유권은 항상 `user_id` 기준입니다.
 - 개인화/동기화
   - `/me/profile`, `/me/allergies`, `/me/settings`, `/me/history`가 서버 source of truth입니다.

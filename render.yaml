@@ -204,6 +204,8 @@ services:
         sync: false
       - key: AUTH_PUBLIC_BASE_URL
         sync: false
+      - key: AUTH_OAUTH_REDIRECT_BASE_URL
+        sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false
       - key: MEDIA_STORAGE_BACKEND
@@ -582,6 +584,8 @@ services:
         sync: false
       - key: AUTH_PUBLIC_BASE_URL
         sync: false
+      - key: AUTH_OAUTH_REDIRECT_BASE_URL
+        sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false
       - key: MEDIA_STORAGE_BACKEND
@@ -959,6 +963,8 @@ services:
       - key: GCP_SERVICE_ACCOUNT_JSON
         sync: false
       - key: AUTH_PUBLIC_BASE_URL
+        sync: false
+      - key: AUTH_OAUTH_REDIRECT_BASE_URL
         sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false

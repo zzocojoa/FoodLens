@@ -416,7 +416,14 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
 
     def test_oauth_new_user_resolves_locale_from_accept_language(self):
         with (
-            patch.dict(os.environ, {"AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1"}, clear=False),
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                },
+                clear=False,
+            ),
             patch("backend.server._verify_google_identity", return_value=("google-locale-user", None)),
             TestClient(app) as client,
         ):
@@ -1227,6 +1234,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                     "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
                     "AUTH_KAKAO_CODE_VERIFY_ENABLED": "1",
                     "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
                 },
                 clear=False,
             ),
@@ -1394,6 +1402,7 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
                 {
                     "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "0",
                     "AUTH_GOOGLE_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback",
                 },
                 clear=False,
             ),
@@ -3060,6 +3069,203 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             body = start.json()
             self.assertEqual(body["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
 
+    def test_oauth_web_bridge_uses_https_redirect_base_url_allowlist(self):
+        oauth_redirect_base_url = "https://links.foodlens.example.com"
+        google_redirect_uri = f"{oauth_redirect_base_url}/oauth/google-callback"
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": oauth_redirect_base_url,
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": google_redirect_uri,
+                    "state": self._oauth_test_state("https-redirect-base"),
+                    "app_proof_challenge": self._oauth_callback_challenge("https-redirect-base"),
+                    "app_proof_method": "S256",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 302)
+            query = parse_qs(urlparse(start.headers["location"]).query)
+            state_handle = query["state"][0]
+            pending_state = app.state.auth_service.verify_oauth_pending_state(
+                provider="google",
+                state=state_handle,
+                app_redirect_uri=google_redirect_uri,
+            )
+            self.assertEqual(pending_state["app_redirect_uri"], google_redirect_uri)
+
+    def test_oauth_web_bridge_rejects_provider_mismatched_https_redirect_base_url(self):
+        oauth_redirect_base_url = "https://links.foodlens.example.com"
+        kakao_redirect_uri = f"{oauth_redirect_base_url}/oauth/kakao-callback"
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": oauth_redirect_base_url,
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": kakao_redirect_uri,
+                    "state": self._oauth_test_state("https-provider-mismatch"),
+                    "app_proof_challenge": self._oauth_callback_challenge("https-provider-mismatch"),
+                    "app_proof_method": "S256",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 400)
+            self.assertEqual(start.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+
+    def test_oauth_web_bridge_rejects_provider_mismatched_explicit_allowlist_uri(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": "foodlens://oauth/kakao-callback",
+                    "state": self._oauth_test_state("explicit-provider-mismatch"),
+                    "app_proof_challenge": self._oauth_callback_challenge("explicit-provider-mismatch"),
+                    "app_proof_method": "S256",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 400)
+            self.assertEqual(start.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+
+    def test_oauth_web_bridge_rejects_custom_scheme_without_explicit_allowlist(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_GOOGLE_CLIENT_ID": "google-client-id-test",
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": "https://links.foodlens.example.com",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/start",
+                params={
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                    "state": self._oauth_test_state("custom-scheme-rejected"),
+                    "app_proof_challenge": self._oauth_callback_challenge("custom-scheme-rejected"),
+                    "app_proof_method": "S256",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(start.status_code, 400)
+            self.assertEqual(start.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+
+    def test_oauth_post_rejects_pending_custom_scheme_without_consuming_state(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": "https://links.foodlens.example.com",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            patch("backend.server._verify_google_identity", return_value=("google-custom-rejected", None)) as verify_identity,
+            TestClient(app) as client,
+        ):
+            state = self._seed_oauth_pending_state(
+                provider="google",
+                redirect_uri="foodlens://oauth/google-callback",
+                state=self._oauth_test_state("pending-custom-scheme-rejected"),
+            )
+            response = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-code-custom-scheme",
+                    "state": state,
+                    "redirect_uri": "foodlens://oauth/google-callback",
+                },
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+            verify_identity.assert_not_called()
+            pending_state = app.state.auth_service.verify_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/google-callback",
+            )
+            self.assertEqual(pending_state["app_redirect_uri"], "foodlens://oauth/google-callback")
+
+    def test_oauth_post_rejects_provider_mismatched_pending_redirect_without_consuming_state(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_GOOGLE_CODE_VERIFY_ENABLED": "1",
+                    "AUTH_APP_ALLOWED_REDIRECT_URIS": "foodlens://oauth/google-callback,foodlens://oauth/kakao-callback",
+                },
+                clear=False,
+            ),
+            patch("backend.server._verify_google_identity", return_value=("google-mismatched-redirect", None)) as verify_identity,
+            TestClient(app) as client,
+        ):
+            state = self._seed_oauth_pending_state(
+                provider="google",
+                redirect_uri="foodlens://oauth/kakao-callback",
+                state=self._oauth_test_state("pending-provider-mismatch"),
+            )
+            response = client.post(
+                "/auth/google",
+                json={
+                    "code": "google-code-provider-mismatch",
+                    "state": state,
+                    "redirect_uri": "foodlens://oauth/kakao-callback",
+                },
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+            verify_identity.assert_not_called()
+            pending_state = app.state.auth_service.verify_oauth_pending_state(
+                provider="google",
+                state=state,
+                app_redirect_uri="foodlens://oauth/kakao-callback",
+            )
+            self.assertEqual(pending_state["app_redirect_uri"], "foodlens://oauth/kakao-callback")
+
     def test_google_logout_web_bridge_start_and_callback(self):
         with (
             patch.dict(
@@ -3154,6 +3360,57 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             self.assertEqual(rejected.status_code, 400)
             body = rejected.json()
             self.assertEqual(body["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
+
+    def test_logout_bridge_uses_https_redirect_base_url_allowlist(self):
+        oauth_redirect_base_url = "https://links.foodlens.example.com"
+        logout_redirect_uri = f"{oauth_redirect_base_url}/oauth/logout-complete"
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": oauth_redirect_base_url,
+                    "AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            start = client.get(
+                "/auth/google/logout/start",
+                params={"redirect_uri": logout_redirect_uri},
+                follow_redirects=False,
+            )
+            self.assertEqual(start.status_code, 302)
+
+            callback = client.get(
+                "/auth/google/logout/callback",
+                params={"app_redirect_uri": logout_redirect_uri},
+                follow_redirects=False,
+            )
+            self.assertEqual(callback.status_code, 302)
+            self.assertTrue(callback.headers["location"].startswith(logout_redirect_uri))
+
+    def test_logout_bridge_rejects_custom_scheme_without_explicit_allowlist(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AUTH_PUBLIC_BASE_URL": self.AUTH_PUBLIC_BASE_URL,
+                    "AUTH_OAUTH_REDIRECT_BASE_URL": "https://links.foodlens.example.com",
+                    "AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS": "",
+                },
+                clear=False,
+            ),
+            TestClient(app) as client,
+        ):
+            rejected = client.get(
+                "/auth/google/logout/start",
+                params={"redirect_uri": "foodlens://oauth/logout-complete"},
+                follow_redirects=False,
+            )
+            self.assertEqual(rejected.status_code, 400)
+            self.assertEqual(rejected.json()["detail"]["code"], "AUTH_REDIRECT_URI_MISMATCH")
 
     def test_account_switch_keeps_profiles_isolated(self):
         with TestClient(app) as client:

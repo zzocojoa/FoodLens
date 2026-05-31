@@ -35,6 +35,7 @@ type OAuthCallbackProof = {
 const DEVICE_ID_KEY = '@foodlens_device_id';
 const OAUTH_PENDING_STATE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_CALLBACK_PROOF_METHOD: OAuthCallbackProof['method'] = 'S256';
+const OAUTH_REDIRECT_BASE_URL_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL';
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
@@ -73,6 +74,12 @@ const getExpoPublicAnalysisServerUrl = (): string => {
   const runtime = readRuntimeEnv('EXPO_PUBLIC_ANALYSIS_SERVER_URL');
   if (runtime) return runtime;
   return process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] ?? '';
+};
+
+const getExpoPublicOAuthRedirectBaseUrl = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_REDIRECT_BASE_URL_ENV);
+  if (runtime) return runtime;
+  return process.env[OAUTH_REDIRECT_BASE_URL_ENV] ?? '';
 };
 
 const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
@@ -156,7 +163,58 @@ const getOAuthMode = (): OAuthMode => {
 
 const buildRedirectUri = (provider: OAuthProvider): string => {
   const path = CALLBACK_PATH_BY_PROVIDER[provider];
+  const redirectBaseUrl = resolveOAuthRedirectBaseUrl();
+  if (redirectBaseUrl) {
+    return `${redirectBaseUrl}/${path}`;
+  }
+
+  if (!isDevelopmentRuntime()) {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be configured with an HTTPS origin for production OAuth redirects.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
   return Linking.createURL(path);
+};
+
+const resolveOAuthRedirectBaseUrl = (): string | undefined => {
+  const rawBaseUrl = getExpoPublicOAuthRedirectBaseUrl().trim();
+  if (!rawBaseUrl) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBaseUrl);
+  } catch {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be a valid HTTPS origin.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  const hasPath = parsed.pathname !== '' && parsed.pathname !== '/';
+  if (
+    parsed.protocol !== 'https:' ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    hasPath ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be an HTTPS origin without credentials, port, path, query, or fragment.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  return parsed.origin.replace(/\/+$/, '');
 };
 
 const buildMockGrant = (provider: OAuthProvider): OAuthGrant => {

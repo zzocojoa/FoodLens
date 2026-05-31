@@ -31,10 +31,37 @@ if [ "$SMOKE_MODE" = "live" ] && [ -z "$BASE_URL" ]; then
 fi
 
 BASE_URL="${BASE_URL%/}"
+APP_REDIRECT_BASE_URL="${AUTH_OAUTH_REDIRECT_BASE_URL:-}"
+if [ "$SMOKE_MODE" = "live" ] && [ -z "$APP_REDIRECT_BASE_URL" ]; then
+  echo "AUTH_OAUTH_REDIRECT_BASE_URL is required."
+  exit 1
+fi
+if [ -z "$APP_REDIRECT_BASE_URL" ]; then
+  APP_REDIRECT_BASE_URL="https://app-links.example.com"
+fi
+APP_REDIRECT_BASE_URL="${APP_REDIRECT_BASE_URL%/}"
 SMOKE_APP_PROOF_CHALLENGE="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno-_"
 SMOKE_APP_PROOF_QUERY="app_proof_challenge=${SMOKE_APP_PROOF_CHALLENGE}&app_proof_method=S256"
 REDIRECT_LOCATION=""
 STATE_VALUE=""
+
+url_encode() {
+  local value="$1"
+
+  "$PYTHON_BIN" - "$value" <<'PY'
+import sys
+from urllib.parse import quote
+
+print(quote(sys.argv[1], safe=""))
+PY
+}
+
+GOOGLE_APP_REDIRECT_URI="${APP_REDIRECT_BASE_URL}/oauth/google-callback"
+KAKAO_APP_REDIRECT_URI="${APP_REDIRECT_BASE_URL}/oauth/kakao-callback"
+APP_LOGOUT_REDIRECT_URI="${APP_REDIRECT_BASE_URL}/oauth/logout-complete"
+GOOGLE_APP_REDIRECT_URI_ENCODED="$(url_encode "$GOOGLE_APP_REDIRECT_URI")"
+KAKAO_APP_REDIRECT_URI_ENCODED="$(url_encode "$KAKAO_APP_REDIRECT_URI")"
+APP_LOGOUT_REDIRECT_URI_ENCODED="$(url_encode "$APP_LOGOUT_REDIRECT_URI")"
 
 describe_url() {
   local value="$1"
@@ -170,8 +197,13 @@ assert_dry_run_path() {
     exit 1
   fi
 
-  if [[ "$path" != *"redirect_uri=foodlens%3A%2F%2Foauth%2F"* ]]; then
-    echo "[Smoke] ${label} dry-run path is missing the encoded app redirect URI."
+  if [[ "$path" != *"redirect_uri=https%3A%2F%2F"* ]]; then
+    echo "[Smoke] ${label} dry-run path is missing the encoded HTTPS app redirect URI."
+    exit 1
+  fi
+
+  if [[ "$path" == *"foodlens%3A%2F%2F"* ]]; then
+    echo "[Smoke] ${label} dry-run path must not use the custom scheme."
     exit 1
   fi
 
@@ -190,16 +222,16 @@ run_dry_run() {
   fi
 
   assert_dry_run_path \
-    "/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&${SMOKE_APP_PROOF_QUERY}" \
+    "/auth/google/start?redirect_uri=${GOOGLE_APP_REDIRECT_URI_ENCODED}&${SMOKE_APP_PROOF_QUERY}" \
     "google-start"
   assert_dry_run_path \
-    "/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback&${SMOKE_APP_PROOF_QUERY}" \
+    "/auth/kakao/start?redirect_uri=${KAKAO_APP_REDIRECT_URI_ENCODED}&${SMOKE_APP_PROOF_QUERY}" \
     "kakao-start"
   assert_dry_run_path \
-    "/auth/google/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete" \
+    "/auth/google/logout/start?redirect_uri=${APP_LOGOUT_REDIRECT_URI_ENCODED}" \
     "google-logout-start"
   assert_dry_run_path \
-    "/auth/kakao/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete" \
+    "/auth/kakao/logout/start?redirect_uri=${APP_LOGOUT_REDIRECT_URI_ENCODED}" \
     "kakao-logout-start"
 
   echo "[Smoke] Dry-run scope: start/logout redirects only; no callback, token exchange, webhook, credential, or provider HTTP request."
@@ -235,7 +267,7 @@ if [ "$SMOKE_MODE" = "dry-run" ]; then
 fi
 
 assert_redirect \
-  "${BASE_URL}/auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&${SMOKE_APP_PROOF_QUERY}" \
+  "${BASE_URL}/auth/google/start?redirect_uri=${GOOGLE_APP_REDIRECT_URI_ENCODED}&${SMOKE_APP_PROOF_QUERY}" \
   "accounts.google.com" \
   "google-start"
 google_start_location="$REDIRECT_LOCATION"
@@ -245,7 +277,7 @@ assert_query_param_present "$google_start_location" "code_challenge" "google-sta
 assert_query_param_equals "$google_start_location" "code_challenge_method" "S256" "google-start"
 
 assert_redirect \
-  "${BASE_URL}/auth/kakao/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fkakao-callback&${SMOKE_APP_PROOF_QUERY}" \
+  "${BASE_URL}/auth/kakao/start?redirect_uri=${KAKAO_APP_REDIRECT_URI_ENCODED}&${SMOKE_APP_PROOF_QUERY}" \
   "kauth.kakao.com" \
   "kakao-start"
 kakao_start_location="$REDIRECT_LOCATION"
@@ -260,12 +292,12 @@ if [ "$google_start_state" = "$kakao_start_state" ]; then
 fi
 
 assert_redirect \
-  "${BASE_URL}/auth/google/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete" \
+  "${BASE_URL}/auth/google/logout/start?redirect_uri=${APP_LOGOUT_REDIRECT_URI_ENCODED}" \
   "accounts.google.com" \
   "google-logout-start"
 
 assert_redirect \
-  "${BASE_URL}/auth/kakao/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete" \
+  "${BASE_URL}/auth/kakao/logout/start?redirect_uri=${APP_LOGOUT_REDIRECT_URI_ENCODED}" \
   "kauth.kakao.com" \
   "kakao-logout-start"
 

@@ -4,6 +4,8 @@ const path = require("node:path");
 
 const PRODUCTION_ANDROID_PACKAGE = "com.hoihou.foodlens";
 const PRODUCTION_IOS_BUNDLE_IDENTIFIER = "com.hoihou.foodlens";
+const OAUTH_REDIRECT_BASE_URL_ENV = "EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL";
+const OAUTH_REDIRECT_PATH_PREFIX = "/oauth/";
 const GOOGLE_MOBILE_ADS_PACKAGE_NAME = "react-native-google-mobile-ads";
 const GOOGLE_MOBILE_ADS_PACKAGE_LOCK_PATH = `node_modules/${GOOGLE_MOBILE_ADS_PACKAGE_NAME}`;
 const FORBIDDEN_EAS_ENV_MARKERS = ["ADMOB", "GOOGLE_ADS", "GOOGLE_MOBILE_ADS", "ca-app-pub"];
@@ -81,6 +83,101 @@ const pluginName = (plugin) => {
   return plugin;
 };
 
+const resolveHttpsOrigin = (value) => {
+  const rawValue = trimValue(value);
+  if (!rawValue) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(rawValue);
+    const hasPath = parsed.pathname !== "" && parsed.pathname !== "/";
+    if (
+      parsed.protocol !== "https:" ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port ||
+      hasPath ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return "";
+    }
+    return parsed.origin.replace(/\/+$/, "");
+  } catch (error) {
+    return "";
+  }
+};
+
+const hasProductionOAuthIntentFilter = (androidConfig, host) => {
+  const intentFilters = androidConfig.intentFilters;
+  if (!Array.isArray(intentFilters)) {
+    return false;
+  }
+
+  return intentFilters.some((intentFilter) => {
+    if (!intentFilter || typeof intentFilter !== "object") {
+      return false;
+    }
+    const categories = intentFilter.category;
+    const data = intentFilter.data;
+    const hasRequiredCategories =
+      Array.isArray(categories) &&
+      categories.includes("BROWSABLE") &&
+      categories.includes("DEFAULT");
+    const hasRequiredData =
+      Array.isArray(data) &&
+      data.some(
+        (entry) =>
+          entry &&
+          entry.scheme === "https" &&
+          entry.host === host &&
+          entry.pathPrefix === OAUTH_REDIRECT_PATH_PREFIX
+      );
+    return (
+      intentFilter.action === "VIEW" &&
+      intentFilter.autoVerify === true &&
+      hasRequiredCategories &&
+      hasRequiredData
+    );
+  });
+};
+
+const collectOAuthAppLinkConfigErrors = (expo, processEnv) => {
+  const errors = [];
+  const oauthRedirectOrigin = resolveHttpsOrigin(processEnv[OAUTH_REDIRECT_BASE_URL_ENV]);
+  if (!oauthRedirectOrigin) {
+    errors.push(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be configured as an HTTPS origin for production OAuth app links.`
+    );
+    return errors;
+  }
+
+  if (expo.scheme) {
+    errors.push("production Expo config must not register a custom URL scheme.");
+  }
+
+  const host = new URL(oauthRedirectOrigin).hostname;
+  const iosConfig = expo.ios || {};
+  const associatedDomains = iosConfig.associatedDomains;
+  if (
+    !Array.isArray(associatedDomains) ||
+    !associatedDomains.includes(`applinks:${host}`)
+  ) {
+    errors.push(`production iOS associatedDomains must include applinks:${host}.`);
+  }
+
+  const androidConfig = expo.android || {};
+  if (!hasProductionOAuthIntentFilter(androidConfig, host)) {
+    errors.push(
+      `production Android intentFilters must include verified HTTPS App Links for ${host}${OAUTH_REDIRECT_PATH_PREFIX}.`
+    );
+  }
+
+  return errors;
+};
+
 const collectExpoConfigErrors = (expoConfig, processEnv) => {
   const errors = [];
   const expo = expoConfig.expo || {};
@@ -94,6 +191,7 @@ const collectExpoConfigErrors = (expoConfig, processEnv) => {
   if ((expo.ios || {}).bundleIdentifier !== expectedIosBundleIdentifier) {
     errors.push(`production iOS bundle identifier must be ${expectedIosBundleIdentifier}.`);
   }
+  errors.push(...collectOAuthAppLinkConfigErrors(expo, processEnv));
 
   for (const plugin of expo.plugins || []) {
     if (pluginName(plugin) !== "react-native-google-mobile-ads") {
@@ -235,6 +333,7 @@ if (require.main === module) {
 
 module.exports = {
   collectBuildProfileEnvErrors,
+  collectOAuthAppLinkConfigErrors,
   collectExpoConfigErrors,
   collectPackageConfigErrors,
   collectPackageLockConfigErrors,

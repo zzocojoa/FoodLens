@@ -261,6 +261,13 @@
 
 ### F. OAuth state / PKCE 보안 계약
 
+- 운영 OAuth app return callback은 Universal Links/App Links 기반 HTTPS URI를 기본 정책으로 사용한다.
+  - 모바일 운영 build는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`을 설정하고 `https://<verified-app-link-domain>/oauth/google-callback`, `https://<verified-app-link-domain>/oauth/kakao-callback`, `https://<verified-app-link-domain>/oauth/logout-complete`를 사용한다.
+  - backend는 `AUTH_APP_ALLOWED_REDIRECT_URIS`가 있으면 그 값을 우선 allowlist로 사용하되, 현재 provider와 일치하는 `/oauth/{provider}-callback` URI만 허용한다. 비어 있으면 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 현재 provider의 HTTPS callback URI를 파생한다. 둘 다 없으면 app redirect allowlist는 비어 있고 `/auth/{provider}/start`와 `POST /auth/{provider}`는 `AUTH_REDIRECT_URI_MISMATCH`로 거절한다.
+  - logout return callback도 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 있으면 우선 사용하고, 비어 있으면 `AUTH_OAUTH_REDIRECT_BASE_URL/oauth/logout-complete`를 파생한다. 둘 다 없으면 logout bridge redirect를 거절한다.
+  - `foodlens://oauth/...` custom scheme은 개발 build 전용이다. backend에서 custom scheme을 허용해야 하는 로컬/dev 환경은 `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`에 명시적으로 넣어야 한다.
+  - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`와 `AUTH_OAUTH_REDIRECT_BASE_URL`은 `https://host` origin 형태만 허용한다. path, port, credentials, query, fragment가 포함되면 misconfiguration으로 처리한다.
+  - iOS는 `app.config.js`가 `applinks:<host>` associated domain을 생성한다. Android는 `https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true` intent filter를 생성한다.
 - `/auth/{provider}/start`는 provider, app redirect URI, request_id, 생성/만료 시각을 포함한 pending OAuth state를 서버 auth state backend에 저장한다.
   - `state` query가 없으면 서버가 opaque state handle을 생성한다.
   - 모바일이 `state` query를 전달하면 32~256자 URL-safe 고엔트로피 값이어야 한다. 허용 문자는 `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`이다.
@@ -285,10 +292,11 @@
   - Google은 token response에 검증 가능한 ID token이 없거나 ID token `nonce`가 pending state와 다르면 `AUTH_PROVIDER_REJECTED`로 실패한다. 운영 로그의 `failure_code`는 `AUTH_PROVIDER_ID_TOKEN_MISSING`, `AUTH_PROVIDER_ID_TOKEN_INVALID`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISSING`, `AUTH_PROVIDER_ID_TOKEN_NONCE_MISMATCH`, `AUTH_PROVIDER_ID_TOKEN_SUBJECT_MISSING`, `AUTH_PROVIDER_PENDING_NONCE_MISSING`처럼 원인을 구분하되 token/nonce 값은 기록하지 않는다. Google ID token 검증 transport가 실패하면 `AUTH_PROVIDER_UNAVAILABLE`로 실패하고 `failure_code=AUTH_PROVIDER_ID_TOKEN_VERIFY_UNAVAILABLE`을 기록한다.
 - callback deep link와 POST body의 `state`는 opaque state handle이다. app redirect URI를 state 문자열에서 파싱하거나 신뢰하지 않는다.
 - 정상 bridge 예시:
-  - `GET /auth/google/start?redirect_uri=foodlens%3A%2F%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars&app_proof_challenge=base64urlSha256Verifier&app_proof_method=S256`
+  - `GET /auth/google/start?redirect_uri=https%3A%2F%2F<verified-app-link-domain>%2Foauth%2Fgoogle-callback&state=clientGeneratedStateValueWithAtLeast32Chars&app_proof_challenge=base64urlSha256Verifier&app_proof_method=S256`
   - 서버는 pending state를 저장하고 Google authorize URL로 `302` redirect한다.
   - `GET /auth/google/callback?code=provider-code&state=clientGeneratedStateValueWithAtLeast32Chars`는 앱 redirect URI로 `code`, `state`, `request_id`를 붙여 `302` redirect한다.
   - 앱은 같은 `state`와 `callback_verifier`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
+  - 개발 build에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`처럼 명시 allowlist를 두고 custom scheme을 사용할 수 있다.
 - State 에러 코드 예시:
   - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, start의 client-supplied state 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
   - `AUTH_PROVIDER_INVALID_CALLBACK_PROOF`: start proof challenge/method가 누락 또는 잘못되었거나, POST callback verifier가 pending challenge와 일치하지 않는다.
