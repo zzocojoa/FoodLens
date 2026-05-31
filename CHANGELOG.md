@@ -6,7 +6,7 @@
 
 - Logout now preserves the local session when the FoodLens server revoke call fails, so users can retry instead of being routed to a cleared local state.
 - Profile logout screens now show retryable server revoke failure alerts with request context.
-- Auth API logout handling now requires the explicit success marker from the server response before local logout proceeds.
+- Logout no longer treats an incomplete server response as success before local cleanup proceeds.
 
 ### Changed
 

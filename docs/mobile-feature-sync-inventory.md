@@ -36,7 +36,7 @@ FoodLens 모바일 앱의 사용자 기능이 `완전 sync`, `부분 sync`, `로
 | 결과 화면 전체 | `FoodLens/hooks/result/useAutoSave.ts`, `FoodLens/features/result/hooks/useResultSideEffects.ts` | 결과 생성과 날짜 수정은 sync되지만, 결과 화면의 사진 저장과 일부 화면 상태는 로컬 only다. |
 | 지도 표시 기능 | `FoodLens/features/history/screens/HistoryScreen.tsx`, `FoodLens/hooks/useHistoryData.ts` | 지도에 쓰는 데이터는 sync-backed history지만, 지도 사용 가능 여부와 UI 상태는 디바이스/빌드 의존이다. |
 | 인증 기능 | `FoodLens/services/auth/sessionManager.ts`, `FoodLens/features/auth/login/hooks/useLoginScreen.ts` | 계정 인증은 서버 기반이지만, 세션 저장은 디바이스 local secure storage이고 로그인 화면 UI state는 로컬이다. |
-| 계정 삭제 / 로그아웃 / 계정 전환 로컬 footprint | `FoodLens/services/auth/deletionService.ts`, `FoodLens/services/auth/localFootprint.ts`, `FoodLens/services/auth/sessionManager.ts`, `FoodLens/services/storage.ts`, `FoodLens/services/imageStorage.ts` | 삭제 요청 상태는 서버와 연동되지만, 완료 후 기기에서는 secure session, MMKV/AsyncStorage, 분석 backup, pending analysis, AI/barcode cache, sync queue, managed image를 로컬에서 지운다. 로그아웃도 같은 강한 로컬 wipe 후 로그인 화면으로 이동한다. 계정 전환은 이전 사용자 snapshot/cache와 이전 사용자 참조 managed image를 지운다. |
+| 계정 삭제 / 로그아웃 / 계정 전환 로컬 footprint | `FoodLens/services/auth/deletionService.ts`, `FoodLens/services/auth/localFootprint.ts`, `FoodLens/services/auth/sessionManager.ts`, `FoodLens/services/storage.ts`, `FoodLens/services/imageStorage.ts` | 삭제 요청 상태는 서버와 연동되지만, 완료 후 기기에서는 secure session, MMKV/AsyncStorage, 분석 backup, pending analysis, AI/barcode cache, sync queue, managed image를 로컬에서 지운다. 로그아웃은 백엔드 revoke가 성공한 뒤 같은 강한 로컬 wipe를 실행하고 로그인 화면으로 이동하며, revoke 실패 시 로컬 세션을 보존해 재시도 가능 상태를 유지한다. 계정 전환은 이전 사용자 snapshot/cache와 이전 사용자 참조 managed image를 지운다. |
 
 ## 로컬 only
 
