@@ -206,6 +206,12 @@ services:
         sync: false
       - key: AUTH_OAUTH_REDIRECT_BASE_URL
         sync: false
+      - key: APP_LINK_IOS_APP_IDS
+        sync: false
+      - key: APP_LINK_ANDROID_PACKAGE_NAME
+        sync: false
+      - key: APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS
+        sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false
       - key: MEDIA_STORAGE_BACKEND
@@ -586,6 +592,12 @@ services:
         sync: false
       - key: AUTH_OAUTH_REDIRECT_BASE_URL
         sync: false
+      - key: APP_LINK_IOS_APP_IDS
+        sync: false
+      - key: APP_LINK_ANDROID_PACKAGE_NAME
+        sync: false
+      - key: APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS
+        sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false
       - key: MEDIA_STORAGE_BACKEND
@@ -965,6 +977,12 @@ services:
       - key: AUTH_PUBLIC_BASE_URL
         sync: false
       - key: AUTH_OAUTH_REDIRECT_BASE_URL
+        sync: false
+      - key: APP_LINK_IOS_APP_IDS
+        sync: false
+      - key: APP_LINK_ANDROID_PACKAGE_NAME
+        sync: false
+      - key: APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS
         sync: false
       - key: MEDIA_PUBLIC_BASE_URL
         sync: false

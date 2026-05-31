@@ -168,6 +168,15 @@ def _auth_headers(access_token: str) -> dict[str, str]:
 
 class AuthPhase1RuntimeTests(unittest.TestCase):
     AUTH_PUBLIC_BASE_URL = "https://api.example.com"
+    APP_LINK_IOS_APP_ID = "ABCDE12345.com.hoihou.foodlens"
+    APP_LINK_ANDROID_PACKAGE = "com.hoihou.foodlens"
+    APP_LINK_ANDROID_FINGERPRINT = (
+        "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"
+    )
+    APP_LINK_ANDROID_FINGERPRINT_COLON = (
+        "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:"
+        "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"
+    )
 
     def _signup_email(self, client: TestClient, **payload):
         response = client.post("/auth/email/signup", json=payload)
@@ -217,6 +226,91 @@ class AuthPhase1RuntimeTests(unittest.TestCase):
             device_id=device_id,
         )
         return signup_body, session_body
+
+    def test_apple_app_site_association_uses_configured_app_ids(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_LINK_IOS_APP_IDS": self.APP_LINK_IOS_APP_ID,
+            },
+            clear=False,
+        ):
+            client = TestClient(app)
+            response = client.get("/.well-known/apple-app-site-association", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("application/json"))
+        self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
+        body = response.json()
+        self.assertEqual(
+            body,
+            {
+                "applinks": {
+                    "apps": [],
+                    "details": [
+                        {
+                            "appIDs": [self.APP_LINK_IOS_APP_ID],
+                            "components": [
+                                {"/": "/oauth/google-callback"},
+                                {"/": "/oauth/kakao-callback"},
+                                {"/": "/oauth/logout-complete"},
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_android_assetlinks_uses_configured_package_and_fingerprints(self):
+        with patch.dict(
+            os.environ,
+            {
+                "APP_LINK_ANDROID_PACKAGE_NAME": self.APP_LINK_ANDROID_PACKAGE,
+                "APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS": self.APP_LINK_ANDROID_FINGERPRINT,
+            },
+            clear=False,
+        ):
+            client = TestClient(app)
+            response = client.get("/.well-known/assetlinks.json", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("application/json"))
+        self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
+        self.assertEqual(
+            response.json(),
+            [
+                {
+                    "relation": ["delegate_permission/common.handle_all_urls"],
+                    "target": {
+                        "namespace": "android_app",
+                        "package_name": self.APP_LINK_ANDROID_PACKAGE,
+                        "sha256_cert_fingerprints": [
+                            self.APP_LINK_ANDROID_FINGERPRINT_COLON,
+                        ],
+                    },
+                }
+            ],
+        )
+
+    def test_app_link_association_files_fail_closed_without_required_env(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("APP_LINK_IOS_APP_IDS", None)
+            os.environ.pop("APP_LINK_ANDROID_PACKAGE_NAME", None)
+            os.environ.pop("APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS", None)
+            client = TestClient(app)
+            apple_response = client.get("/.well-known/apple-app-site-association")
+            android_response = client.get("/.well-known/assetlinks.json")
+
+        self.assertEqual(apple_response.status_code, 503)
+        self.assertEqual(android_response.status_code, 503)
+        self.assertEqual(
+            apple_response.json()["detail"]["code"],
+            "APP_LINK_ASSOCIATION_NOT_CONFIGURED",
+        )
+        self.assertEqual(
+            android_response.json()["detail"]["code"],
+            "APP_LINK_ASSOCIATION_NOT_CONFIGURED",
+        )
 
     def _assert_auth_rate_limited_response(
         self,
