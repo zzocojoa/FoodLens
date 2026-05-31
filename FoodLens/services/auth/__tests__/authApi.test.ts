@@ -97,6 +97,67 @@ describe('AuthApi OAuth payloads', () => {
   });
 });
 
+describe('AuthApi logout payloads', () => {
+  it('requires the server logout success marker', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse({
+        request_id: 'req-logout-failed-contract',
+        ok: false,
+      })
+    );
+
+    await expect(
+      AuthApi.logout({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      })
+    ).rejects.toMatchObject({
+      code: 'AUTH_INVALID_RESPONSE',
+      status: 502,
+      requestId: 'req-logout-failed-contract',
+    });
+  });
+
+  it('sends logout tokens and accepts explicit server success', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse({
+        request_id: 'req-logout-ok',
+        ok: true,
+      })
+    );
+
+    await AuthApi.logout({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+
+    const requestBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    const requestHeaders = (global.fetch as jest.Mock).mock.calls[0][1].headers;
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://api.example.com/auth/logout');
+    expect(requestBody).toEqual({ refresh_token: 'refresh-token' });
+    expect(requestHeaders).toMatchObject({ Authorization: 'Bearer access-token' });
+  });
+
+  it('rejects logout responses without the server success marker', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse({
+        request_id: 'req-logout-missing-ok',
+      })
+    );
+
+    await expect(
+      AuthApi.logout({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      })
+    ).rejects.toMatchObject({
+      code: 'AUTH_INVALID_RESPONSE',
+      status: 502,
+      requestId: 'req-logout-missing-ok',
+    });
+  });
+});
+
 describe('AuthApi deletion request payloads', () => {
   it('parses the public-safe deletion status contract', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(

@@ -81,6 +81,11 @@ type AuthPayload = {
   sessions_revoked?: number;
 };
 
+type AuthLogoutPayload = {
+  ok?: boolean;
+  request_id?: string;
+};
+
 type AuthDeletionRequestPayload = {
   request_id?: string | null;
   target?: AuthDeletionRequestTarget;
@@ -134,6 +139,17 @@ const toSessionTokens = (payload: AuthPayload): AuthSessionTokens => {
     issuedAt: Date.now(),
     user: payload.user,
   };
+};
+
+const requireLogoutSuccess = (payload: AuthLogoutPayload): void => {
+  if (payload.ok !== true) {
+    throw new AuthApiError(
+      'Logout response is missing success confirmation.',
+      'AUTH_INVALID_RESPONSE',
+      502,
+      payload.request_id
+    );
+  }
 };
 
 const toEmailVerificationChallenge = (payload: AuthPayload): AuthEmailVerificationChallenge => {
@@ -486,7 +502,12 @@ export const AuthApi = {
   },
 
   async logout(input: { accessToken?: string; refreshToken?: string }): Promise<void> {
-    await postJson<{ ok: boolean }>('/auth/logout', { refresh_token: input.refreshToken }, { accessToken: input.accessToken });
+    const payload = await postJson<AuthLogoutPayload>(
+      '/auth/logout',
+      { refresh_token: input.refreshToken },
+      { accessToken: input.accessToken }
+    );
+    requireLogoutSuccess(payload);
   },
 
   async getLatestDeletionRequest(input: { accessToken: string }): Promise<AuthDeletionRequest | null> {
