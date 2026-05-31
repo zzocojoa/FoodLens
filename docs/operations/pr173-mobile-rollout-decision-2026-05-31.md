@@ -3,17 +3,19 @@
 Date: 2026-05-31
 Branch checked: `codex/release-logout-ui-mobile`
 Commit checked: `4bbaf7044df95ffc7ad830bb7ab7cc5b210ad4c8`
-Scope: backend deploy evidence, Android internal draft evidence, mobile logout UI rollout decision
+Scope: backend deploy evidence, Android-only internal draft evidence, mobile logout UI rollout decision
 
 ## Decision
 
-Status: PARTIAL GO.
+Status: ANDROID-ONLY INTERNAL GO.
 
-Android internal draft evidence is GO for the PR #173 logout UI build. Broad mobile rollout is still NO-GO until iOS build/TestFlight evidence, current real-device E2E evidence, staged rollout hold points, and rollback readiness evidence are attached.
+Android internal draft evidence is GO for the PR #173 logout UI build. This release is explicitly scoped to Android only. iOS build/TestFlight evidence is not required for this Android-only internal release and must not be claimed as available.
+
+Broad Android rollout beyond internal draft is still NO-GO until current Android real-device E2E evidence, staged rollout hold points, and rollback readiness evidence are attached.
 
 Backend status is GO: PR #173 is merged to `main`, Render deploy `dep-d8dvf6brjlhs73bj2310` is live, and `/health/ready` returned HTTP 200 with `ready=true` in `.gstack/deploy-reports/2026-05-31-pr173-deploy.md`.
 
-Mobile UI status is rollout-required: the logout failure UX changes are client-side React Native changes and require a new EAS build plus TestFlight/Play Internal or store rollout before users receive them. Android now has current-sha EAS build and Play internal draft submission evidence. iOS still needs TestFlight or equivalent evidence.
+Mobile UI status is rollout-required: the logout failure UX changes are client-side React Native changes and require a new EAS build plus Play Internal or store rollout before Android users receive them. Android now has current-sha EAS build and Play internal draft submission evidence. iOS is out of scope for this release.
 
 ## Local Evidence
 
@@ -53,14 +55,14 @@ Mobile UI status is rollout-required: the logout failure UX changes are client-s
 
 ## Pending Gates
 
-1. Produce iOS EAS build and TestFlight/Internal evidence for commit `4bbaf70`, or explicitly scope this release to Android only.
-2. Run and attach `npm run phase6:mobile-e2e:release-gate` from `FoodLens/` with current iOS and Android real-device evidence URIs, or explicitly accept the risk if this remains internal-only.
-3. Run actual staging integration smoke from `main` or `release/**` if this release is promoted beyond internal Android draft.
-4. Run current postdeploy live smoke with rollback rehearsal reference before broad release.
-5. Decide staged rollout hold points before promotion: 1%, 5%, 20%, 100%.
-6. Confirm rollback path before rollout: stop staged rollout, keep the previous app build available, and verify backend health remains green.
-7. Tighten branch protection/ruleset required checks to include `i18n-release-gate` before relying on release branch protection as the only gate.
+1. Run and attach current Android real-device E2E evidence before promoting beyond Android internal draft.
+2. Run actual staging integration smoke from `main` or `release/**` if this release is promoted beyond Android internal draft.
+3. Run current postdeploy live smoke with rollback rehearsal reference before broad Android release.
+4. Decide Android staged rollout hold points before promotion: 1%, 5%, 20%, 100%.
+5. Confirm Android rollback path before rollout: stop staged rollout in Play Console, keep the previous app build available, and verify backend health remains green.
+6. Tighten branch protection/ruleset required checks to include `i18n-release-gate` before relying on release branch protection as the only gate.
+7. Update `npm run phase6:mobile-e2e:release-gate` if future Android-only releases should enforce Android real-device evidence without also requiring iOS evidence.
 
 ## Release Call
 
-Proceed with backend as already deployed. Android internal draft evidence for the logout UI change is complete. Do not promote beyond Android internal draft, and do not claim iOS user availability, until the pending gates above are complete or explicitly waived.
+Proceed with backend as already deployed. Android internal draft evidence for the logout UI change is complete. Do not promote beyond Android internal draft until the pending Android gates above are complete or explicitly waived. Do not claim iOS user availability for this release.
