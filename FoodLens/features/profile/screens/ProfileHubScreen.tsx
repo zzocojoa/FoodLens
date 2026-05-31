@@ -18,12 +18,12 @@ import { homeDashboardColors } from '@/features/home/components/homeDashboardTok
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage';
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
-import { AuthApi } from '@/services/auth/authApi';
-import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
-import { clearLocalLogoutFootprint } from '@/services/auth/localFootprint';
-import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
+import {
+    runFoodLensLogoutFlow,
+    startProviderLogoutAfterFoodLensLogout,
+} from '@/services/auth/logoutFlow';
+import type { FoodLensLogoutFailure } from '@/services/auth/logoutFlow';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
-import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
 import LogoutConfirmationDialog from '@/features/profile/components/LogoutConfirmationDialog';
 import { isOnboardingPreviewEnabled } from '@/features/onboarding/services/onboardingPreviewService';
 
@@ -344,75 +344,47 @@ export default function ProfileHubScreen(): React.JSX.Element {
         setLogoutDialogVisible(false);
     }, []);
 
-    const handleLogout = React.useCallback(async () => {
+    const showLogoutFailure = React.useCallback((failure: FoodLensLogoutFailure): void => {
+        if (failure.reason === 'server_logout_failed') {
+            Alert.alert(
+                t('profileHub.logout.serverLogoutFailed.title', 'Logout failed'),
+                t(
+                    'profileHub.logout.serverLogoutFailed.message',
+                    'FoodLens could not revoke your session. You are still signed in. Check your connection and try again.',
+                ),
+            );
+            return;
+        }
+
+        Alert.alert(
+            t('profileHub.logout.localClearFailed.title', 'Logout incomplete'),
+            t(
+                'profileHub.logout.localClearFailed.message',
+                'This device could not be cleared. Please try logging out again before handing over the device.',
+            ),
+        );
+    }, [t]);
+
+    const handleLogout = React.useCallback(async (): Promise<void> => {
         if (logoutLoading) {
             return;
         }
 
-        const requestId = `auth-logout-${Date.now().toString(36)}`;
         setLogoutLoading(true);
 
-        let currentUserId = 'unknown';
-
         try {
-            const storedSession = await AuthSecureSessionStore.read();
-            currentUserId = storedSession?.user?.id ?? 'unknown';
-
-            try {
-                await dispatchPhase2SyncQueue();
-            } catch (error) {
-                console.warn('[Phase2Sync] Pre-logout queue flush failed', {
-                    request_id: requestId,
-                    user_id: currentUserId,
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            }
-
-            try {
-                await AuthApi.logout({
-                    accessToken: storedSession?.accessToken,
-                    refreshToken: storedSession?.refreshToken,
-                });
-            } catch (error) {
-                console.warn('[AuthSession] Backend logout failed', {
-                    request_id: requestId,
-                    user_id: currentUserId,
-                    provider: storedSession?.user?.provider ?? 'none',
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            }
-
-            const provider = storedSession?.user?.provider;
-            try {
-                await clearLocalLogoutFootprint();
-            } catch (error) {
-                console.error('[AuthSession] Local logout footprint wipe failed', {
-                    request_id: requestId,
-                    provider: provider ?? 'none',
-                    error: error instanceof Error ? error.message : String(error),
-                });
-                Alert.alert(
-                    t('profileHub.logout.localClearFailed.title', 'Logout incomplete'),
-                    t(
-                        'profileHub.logout.localClearFailed.message',
-                        'This device could not be cleared. Please try logging out again before handing over the device.',
-                    ),
-                );
+            const result = await runFoodLensLogoutFlow();
+            if (result.status === 'failure') {
+                showLogoutFailure(result);
                 return;
             }
+
             router.replace('/login');
-            void logoutFromOAuthProvider(provider).catch((error) => {
-                console.warn('[AuthSession] Provider logout failed', {
-                    request_id: requestId,
-                    user_id: currentUserId,
-                    provider: provider ?? 'none',
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            });
+            startProviderLogoutAfterFoodLensLogout(result);
         } finally {
             setLogoutLoading(false);
         }
-    }, [logoutLoading, router, t]);
+    }, [logoutLoading, router, showLogoutFailure]);
 
     const handleConfirmLogoutDialog = React.useCallback((): void => {
         setLogoutDialogVisible(false);

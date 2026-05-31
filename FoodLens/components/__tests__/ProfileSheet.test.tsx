@@ -1,5 +1,7 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { act, render } from '@testing-library/react-native';
+import { AuthApiError } from '@/services/auth/authApi';
 import ProfileSheet from '../ProfileSheet';
 
 const mockEnTranslations = jest.requireActual('../../features/i18n/resources/en.json') as Record<string, string>;
@@ -35,6 +37,12 @@ let capturedProps: {
 } | null = null;
 let mockCapturedLogoutDialogProps: LogoutConfirmationDialogTestProps | null = null;
 
+const flushLogoutPromises = async (): Promise<void> => {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     replace: mockReplace,
@@ -59,6 +67,19 @@ jest.mock('@/features/i18n', () => ({
 jest.mock('@/services/auth/authApi', () => ({
   AuthApi: {
     logout: (...args: unknown[]) => mockAuthLogout(...args),
+  },
+  AuthApiError: class MockAuthApiError extends Error {
+    code: string;
+    status: number;
+    requestId?: string;
+
+    constructor(message: string, code: string, status: number, requestId?: string) {
+      super(message);
+      this.name = 'AuthApiError';
+      this.code = code;
+      this.status = status;
+      this.requestId = requestId;
+    }
   },
 }));
 
@@ -214,6 +235,147 @@ describe('ProfileSheet', () => {
     expect(mockClearLocalLogoutFootprint).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith('/login');
     expect(mockProviderLogout).toHaveBeenCalledWith('google');
+  });
+
+  it('keeps local session and shows retryable error when server logout fails', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockAuthLogout.mockRejectedValueOnce(new Error('server revoke failed'));
+    render(
+      <ProfileSheet
+        isOpen
+        onClose={jest.fn()}
+        userId="usr_profile"
+        onUpdate={jest.fn()}
+      />
+    );
+
+    expect(capturedProps).not.toBeNull();
+
+    await act(async () => {
+      capturedProps?.onPressLogout();
+    });
+
+    await act(async () => {
+      mockCapturedLogoutDialogProps?.onConfirm();
+      await flushLogoutPromises();
+    });
+
+    expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    expect(mockAuthLogout).toHaveBeenCalledTimes(1);
+    expect(mockClearLocalLogoutFootprint).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockProviderLogout).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith(
+      mockEnTranslations['profileSheet.logout.serverLogoutFailed.title'],
+      mockEnTranslations['profileSheet.logout.serverLogoutFailed.message'],
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[AuthSession] FoodLens server logout failed',
+      expect.objectContaining({
+        request_id: expect.stringMatching(/^auth-logout-/),
+        user_id: 'usr_profile',
+        provider: 'google',
+        phase: 'server_refresh_token_revoke',
+        error: 'server revoke failed',
+      }),
+    );
+
+    alertSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('keeps local session and shows retryable error when network logout fails', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockAuthLogout.mockRejectedValue(
+      new AuthApiError('Network unavailable.', 'AUTH_NETWORK_ERROR', 0, 'req-network'),
+    );
+    render(
+      <ProfileSheet
+        isOpen
+        onClose={jest.fn()}
+        userId="usr_profile"
+        onUpdate={jest.fn()}
+      />
+    );
+
+    expect(capturedProps).not.toBeNull();
+
+    await act(async () => {
+      capturedProps?.onPressLogout();
+    });
+
+    await act(async () => {
+      mockCapturedLogoutDialogProps?.onConfirm();
+      await flushLogoutPromises();
+    });
+
+    expect(mockDispatchPhase2SyncQueue).toHaveBeenCalledTimes(1);
+    expect(mockAuthLogout).toHaveBeenCalledTimes(2);
+    expect(mockClearLocalLogoutFootprint).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockProviderLogout).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith(
+      mockEnTranslations['profileSheet.logout.serverLogoutFailed.title'],
+      mockEnTranslations['profileSheet.logout.serverLogoutFailed.message'],
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[AuthSession] FoodLens server logout failed',
+      expect.objectContaining({
+        request_id: expect.stringMatching(/^auth-logout-/),
+        user_id: 'usr_profile',
+        provider: 'google',
+        phase: 'server_refresh_token_revoke',
+        code: 'AUTH_NETWORK_ERROR',
+        status: 0,
+        server_request_id: 'req-network',
+      }),
+    );
+
+    alertSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('routes to login when provider logout fails after server logout succeeds', async () => {
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockProviderLogout.mockRejectedValueOnce(new Error('provider bridge failed'));
+    render(
+      <ProfileSheet
+        isOpen
+        onClose={jest.fn()}
+        userId="usr_profile"
+        onUpdate={jest.fn()}
+      />
+    );
+
+    expect(capturedProps).not.toBeNull();
+
+    await act(async () => {
+      capturedProps?.onPressLogout();
+    });
+
+    await act(async () => {
+      mockCapturedLogoutDialogProps?.onConfirm();
+      await flushLogoutPromises();
+    });
+
+    expect(mockAuthLogout).toHaveBeenCalledTimes(1);
+    expect(mockClearLocalLogoutFootprint).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/login');
+    expect(mockProviderLogout).toHaveBeenCalledWith('google');
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[AuthSession] Provider logout failed after FoodLens logout',
+      expect.objectContaining({
+        request_id: expect.stringMatching(/^auth-logout-/),
+        user_id: 'usr_profile',
+        provider: 'google',
+        phase: 'provider_logout',
+        error: 'provider bridge failed',
+      }),
+    );
+
+    consoleWarnSpy.mockRestore();
   });
 
   it('does not route to login when local logout footprint clear fails', async () => {
