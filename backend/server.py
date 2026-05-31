@@ -21,7 +21,7 @@ import requests
 from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.oauth2 import id_token as google_id_token
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image, ImageOps
 
 from backend.modules.server_bootstrap import (
@@ -1961,7 +1961,6 @@ OAUTH_PROVIDER_CONFIG = {
         "client_id_env": "AUTH_GOOGLE_CLIENT_ID",
         "scope_env": "AUTH_GOOGLE_OAUTH_SCOPE",
         "scope_default": "openid email profile",
-        "default_app_redirect_uri": "foodlens://oauth/google-callback",
         "callback_path": "/auth/google/callback",
         "pkce_enabled": "1",
         "nonce_enabled": "1",
@@ -1971,14 +1970,23 @@ OAUTH_PROVIDER_CONFIG = {
         "client_id_env": "AUTH_KAKAO_CLIENT_ID",
         "scope_env": "AUTH_KAKAO_OAUTH_SCOPE",
         "scope_default": "",
-        "default_app_redirect_uri": "foodlens://oauth/kakao-callback",
         "callback_path": "/auth/kakao/callback",
         "pkce_enabled": "1",
         "nonce_enabled": "0",
     },
 }
 
-DEFAULT_APP_LOGOUT_REDIRECT_URI = "foodlens://oauth/logout-complete"
+OAUTH_REDIRECT_BASE_URL_ENV = "AUTH_OAUTH_REDIRECT_BASE_URL"
+OAUTH_APP_REDIRECT_URI_DESCRIPTION = (
+    "App return redirect URI. Production uses HTTPS Universal Links/App Links derived from "
+    "AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_REDIRECT_URIS. "
+    "Custom scheme redirects are development-only and must be explicitly allowlisted."
+)
+OAUTH_APP_LOGOUT_REDIRECT_URI_DESCRIPTION = (
+    "App logout return redirect URI. Production uses the HTTPS logout App Link derived from "
+    "AUTH_OAUTH_REDIRECT_BASE_URL or explicitly listed in AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS. "
+    "Custom scheme logout redirects are development-only and must be explicitly allowlisted."
+)
 DEFAULT_AUTH_PROVIDER_TIMEOUT_SECONDS = 15.0
 DEFAULT_OAUTH_STATE_TTL_SECONDS = 600
 GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS = 0
@@ -2430,21 +2438,80 @@ def _parse_csv(raw: str | None) -> set[str]:
     return {part.strip() for part in raw.split(",") if part.strip()}
 
 
-def _allowed_app_redirect_uris() -> set[str]:
-    configured = _parse_csv(os.environ.get("AUTH_APP_ALLOWED_REDIRECT_URIS"))
-    if configured:
-        return configured
+def _oauth_redirect_origin_from_env(*, env_key: str) -> str | None:
+    raw_base_url = os.environ.get(env_key, "").strip()
+    if not raw_base_url:
+        return None
+
+    parsed = urlparse(raw_base_url)
+    has_path = parsed.path not in {"", "/"}
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.port
+        or has_path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise AuthServiceError(
+            code="AUTH_REDIRECT_URI_MISMATCH",
+            message=f"{env_key} must be an HTTPS origin without credentials, port, path, query, or fragment.",
+            status_code=400,
+        )
+
+    return f"https://{parsed.hostname.lower()}"
+
+
+def _oauth_app_redirect_uri_from_base_url(*, base_url: str, provider: str) -> str:
+    _oauth_provider_config(provider)
+    origin = base_url.rstrip("/")
+    return f"{origin}/oauth/{provider}-callback"
+
+
+def _oauth_app_redirect_uris_from_base_url(base_url: str) -> set[str]:
     return {
-        str(config["default_app_redirect_uri"])
-        for config in OAUTH_PROVIDER_CONFIG.values()
+        _oauth_app_redirect_uri_from_base_url(base_url=base_url, provider=provider)
+        for provider in OAUTH_PROVIDER_CONFIG
     }
 
 
+def _oauth_app_redirect_uri_matches_provider(*, provider: str, uri: str) -> bool:
+    _oauth_provider_config(provider)
+    parsed = urlparse(uri)
+    expected_path = f"/oauth/{provider}-callback"
+    expected_authority_path = f"/{provider}-callback"
+    if parsed.scheme.lower() in {"http", "https"}:
+        return parsed.path == expected_path
+    if parsed.netloc == "oauth":
+        return parsed.path == expected_authority_path
+    return parsed.path == expected_path
+
+
+def _oauth_app_logout_redirect_uris_from_base_url(base_url: str) -> set[str]:
+    return {f"{base_url.rstrip('/')}/oauth/logout-complete"}
+
+
+def _allowed_app_redirect_uris(*, provider: str) -> set[str]:
+    configured = _parse_csv(os.environ.get("AUTH_APP_ALLOWED_REDIRECT_URIS"))
+    if configured:
+        return {
+            uri
+            for uri in configured
+            if _oauth_app_redirect_uri_matches_provider(provider=provider, uri=uri)
+        }
+    redirect_origin = _oauth_redirect_origin_from_env(env_key=OAUTH_REDIRECT_BASE_URL_ENV)
+    if redirect_origin:
+        return {_oauth_app_redirect_uri_from_base_url(base_url=redirect_origin, provider=provider)}
+    return set()
+
+
 def _resolve_app_redirect_uri(*, provider: str, requested_uri: str | None) -> str:
-    config = _oauth_provider_config(provider)
-    candidate = (requested_uri or "").strip() or str(config["default_app_redirect_uri"])
-    allowed = _allowed_app_redirect_uris()
-    if candidate not in allowed:
+    _oauth_provider_config(provider)
+    candidate = (requested_uri or "").strip()
+    allowed = _allowed_app_redirect_uris(provider=provider)
+    if not candidate or candidate not in allowed:
         raise AuthServiceError(
             code="AUTH_REDIRECT_URI_MISMATCH",
             message="Redirect URI mismatch.",
@@ -2457,13 +2524,16 @@ def _allowed_app_logout_redirect_uris() -> set[str]:
     configured = _parse_csv(os.environ.get("AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS"))
     if configured:
         return configured
-    return {DEFAULT_APP_LOGOUT_REDIRECT_URI}
+    redirect_origin = _oauth_redirect_origin_from_env(env_key=OAUTH_REDIRECT_BASE_URL_ENV)
+    if redirect_origin:
+        return _oauth_app_logout_redirect_uris_from_base_url(redirect_origin)
+    return set()
 
 
 def _resolve_app_logout_redirect_uri(*, requested_uri: str | None) -> str:
-    candidate = (requested_uri or "").strip() or DEFAULT_APP_LOGOUT_REDIRECT_URI
+    candidate = (requested_uri or "").strip()
     allowed = _allowed_app_logout_redirect_uris()
-    if candidate not in allowed:
+    if not candidate or candidate not in allowed:
         raise AuthServiceError(
             code="AUTH_REDIRECT_URI_MISMATCH",
             message="Redirect URI mismatch.",
@@ -3135,7 +3205,7 @@ class OAuthProviderRequest(BaseModel):
 
     code: str | None = None
     state: str | None = None
-    redirect_uri: str | None = None
+    redirect_uri: str | None = Field(default=None, description=OAUTH_APP_REDIRECT_URI_DESCRIPTION)
     callback_verifier: str | None = None
     error: str | None = None
     locale: str | None = None
@@ -4622,6 +4692,10 @@ def _build_oauth_provider_login_result(
             pending_state=pending_state,
             callback_verifier=payload.callback_verifier,
         )
+        pending_redirect_uri = _resolve_app_redirect_uri(
+            provider=provider,
+            requested_uri=str(pending_state["app_redirect_uri"]),
+        )
         pending_state = auth_service.consume_oauth_pending_state(
             provider=provider,
             state=payload.state,
@@ -4637,7 +4711,6 @@ def _build_oauth_provider_login_result(
             include_redirect_mismatch=True,
         )
         raise
-    pending_redirect_uri = str(pending_state["app_redirect_uri"])
     code_verifier = pending_state.get("code_verifier")
     pending_code_verifier = code_verifier if isinstance(code_verifier, str) and code_verifier.strip() else None
     nonce = pending_state.get("nonce")
@@ -5169,7 +5242,7 @@ async def auth_email_password_reset_confirm(payload: PasswordResetConfirmRequest
 )
 async def auth_google_start(
     request: Request,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_REDIRECT_URI_DESCRIPTION),
     state: str | None = None,
     app_proof_challenge: str | None = None,
     app_proof_method: str | None = None,
@@ -5200,7 +5273,7 @@ async def auth_google_callback(
     state: str | None = None,
     error: str | None = None,
     error_description: str | None = None,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_REDIRECT_URI_DESCRIPTION),
 ):
     try:
         await _apply_public_auth_rate_limit(
@@ -5236,7 +5309,7 @@ async def auth_google_callback(
 )
 async def auth_kakao_start(
     request: Request,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_REDIRECT_URI_DESCRIPTION),
     state: str | None = None,
     app_proof_challenge: str | None = None,
     app_proof_method: str | None = None,
@@ -5267,7 +5340,7 @@ async def auth_kakao_callback(
     state: str | None = None,
     error: str | None = None,
     error_description: str | None = None,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_REDIRECT_URI_DESCRIPTION),
 ):
     try:
         await _apply_public_auth_rate_limit(
@@ -5298,7 +5371,7 @@ async def auth_kakao_callback(
 @app.get("/auth/google/logout/start")
 async def auth_google_logout_start(
     request: Request,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_LOGOUT_REDIRECT_URI_DESCRIPTION),
 ):
     return _build_provider_logout_start_redirect(
         request=request,
@@ -5310,7 +5383,7 @@ async def auth_google_logout_start(
 @app.get("/auth/google/logout/callback")
 async def auth_google_logout_callback(
     request: Request,
-    app_redirect_uri: str | None = None,
+    app_redirect_uri: str | None = Query(default=None, description=OAUTH_APP_LOGOUT_REDIRECT_URI_DESCRIPTION),
 ):
     return _build_provider_logout_callback_redirect(
         request=request,
@@ -5322,7 +5395,7 @@ async def auth_google_logout_callback(
 @app.get("/auth/kakao/logout/start")
 async def auth_kakao_logout_start(
     request: Request,
-    redirect_uri: str | None = None,
+    redirect_uri: str | None = Query(default=None, description=OAUTH_APP_LOGOUT_REDIRECT_URI_DESCRIPTION),
 ):
     return _build_provider_logout_start_redirect(
         request=request,
@@ -5334,7 +5407,7 @@ async def auth_kakao_logout_start(
 @app.get("/auth/kakao/logout/callback")
 async def auth_kakao_logout_callback(
     request: Request,
-    app_redirect_uri: str | None = None,
+    app_redirect_uri: str | None = Query(default=None, description=OAUTH_APP_LOGOUT_REDIRECT_URI_DESCRIPTION),
     error: str | None = None,
     error_description: str | None = None,
 ):
