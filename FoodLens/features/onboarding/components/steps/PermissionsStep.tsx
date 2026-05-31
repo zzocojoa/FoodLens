@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Camera, Images, ShieldCheck } from 'lucide-react-native';
 import type { PermissionStatusMap, Translate } from '../../types/onboarding.types';
 import { onboardingStyles as styles } from '../../styles/onboarding.styles';
@@ -29,7 +29,11 @@ export default function PermissionsStep({
   onSkip,
 }: Props) {
   return (
-    <View style={[styles.stepContainer, { justifyContent: 'space-between', paddingBottom: 24 }]}>
+    <ScrollView
+      style={styles.stepScroll}
+      contentContainerStyle={styles.permissionsStepContent}
+      showsVerticalScrollIndicator={false}
+    >
       <View>
         <Text style={[styles.kickerText, { color: theme.primary }]}>
           {t('onboarding.permissions.kicker', 'First scan')}
@@ -115,6 +119,6 @@ export default function PermissionsStep({
           </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   );
 }

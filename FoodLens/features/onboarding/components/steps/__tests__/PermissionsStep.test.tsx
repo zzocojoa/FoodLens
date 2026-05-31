@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import PermissionsStep from '../PermissionsStep';
 import { Colors } from '@/constants/theme';
@@ -35,5 +36,27 @@ describe('PermissionsStep', () => {
 
     fireEvent.press(getByText('Choose from photos'));
     expect(onRequestLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps first scan actions reachable inside a scroll container', () => {
+    const { UNSAFE_getByType, getByLabelText } = render(
+      <PermissionsStep
+        theme={Colors.light}
+        t={translate}
+        permissionStatusMap={{
+          camera: 'not_requested',
+          library: 'not_requested',
+          location: 'not_requested',
+        }}
+        onRequestCamera={jest.fn()}
+        onRequestLibrary={jest.fn()}
+        onSkip={jest.fn()}
+      />
+    );
+
+    expect(UNSAFE_getByType(ScrollView)).toBeTruthy();
+    expect(getByLabelText('Open camera')).toBeTruthy();
+    expect(getByLabelText('Choose from photos')).toBeTruthy();
+    expect(getByLabelText('Scan later')).toBeTruthy();
   });
 });
