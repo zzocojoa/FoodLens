@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.3.0] - 2026-05-31
+
+### Fixed
+
+- Logout now preserves the local session when the FoodLens server revoke call fails, so users can retry instead of being routed to a cleared local state.
+- Profile logout screens now show retryable server revoke failure alerts with request context.
+- Auth API logout handling now requires the explicit success marker from the server response before local logout proceeds.
+
+### Changed
+
+- Provider logout now runs only after FoodLens server revoke and local footprint cleanup succeed, with provider-specific failures reported as warnings.
+- Pre-logout sync flush failures are now reported separately from server revoke failures.
+
 ## [0.0.2.0] - 2026-05-31
 
 ### Added
