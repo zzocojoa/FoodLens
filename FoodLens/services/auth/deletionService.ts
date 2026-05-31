@@ -1,4 +1,3 @@
-import { SafeStorage } from '@/services/storage';
 import {
   AuthApi,
   AuthApiError,
@@ -6,9 +5,44 @@ import {
   AuthDeletionRequestTarget,
   AuthSessionTokens,
 } from './authApi';
-import { clearSession, restoreSession } from './sessionManager';
+import { clearLocalDeletionPrivacyFootprint } from './localFootprint';
+import { restoreSession } from './sessionManager';
+import { SafeStorage } from '../storage';
 
+const LOCAL_DELETION_REQUEST_IDS_STORAGE_KEY = '@foodlens_deletion_finalization_request_ids';
 const locallySubmittedDeletionRequestIds: Set<string> = new Set();
+const finalizingDeletionRequestIds: Set<string> = new Set();
+
+const normalizeDeletionRequestIds = (requestIds: unknown): string[] => {
+  if (!Array.isArray(requestIds)) {
+    return [];
+  }
+  return requestIds
+    .filter((requestId): requestId is string => typeof requestId === 'string')
+    .map((requestId) => requestId.trim())
+    .filter((requestId) => requestId.length > 0);
+};
+
+const readRememberedDeletionRequestIds = async (): Promise<Set<string>> => {
+  const storedRequestIds = await SafeStorage.get<unknown>(LOCAL_DELETION_REQUEST_IDS_STORAGE_KEY, []);
+  const requestIds = new Set<string>([
+    ...locallySubmittedDeletionRequestIds,
+    ...normalizeDeletionRequestIds(storedRequestIds),
+  ]);
+  locallySubmittedDeletionRequestIds.clear();
+  requestIds.forEach((requestId) => locallySubmittedDeletionRequestIds.add(requestId));
+  return requestIds;
+};
+
+const writeRememberedDeletionRequestIds = async (requestIds: Set<string>): Promise<void> => {
+  await SafeStorage.set(LOCAL_DELETION_REQUEST_IDS_STORAGE_KEY, [...requestIds]);
+};
+
+const clearRememberedDeletionRequestIds = async (): Promise<void> => {
+  locallySubmittedDeletionRequestIds.clear();
+  finalizingDeletionRequestIds.clear();
+  await SafeStorage.remove(LOCAL_DELETION_REQUEST_IDS_STORAGE_KEY);
+};
 
 const restoreAuthenticatedSession = async (): Promise<AuthSessionTokens> => {
   const session = await restoreSession({
@@ -24,11 +58,13 @@ const restoreAuthenticatedSession = async (): Promise<AuthSessionTokens> => {
   return session;
 };
 
-const rememberLocallySubmittedDeletionRequest = (
+const rememberLocallySubmittedDeletionRequest = async (
   deletionRequest: AuthDeletionRequest
-): AuthDeletionRequest => {
+): Promise<AuthDeletionRequest> => {
   if (deletionRequest.requestId) {
-    locallySubmittedDeletionRequestIds.add(deletionRequest.requestId);
+    const requestIds = await readRememberedDeletionRequestIds();
+    requestIds.add(deletionRequest.requestId);
+    await writeRememberedDeletionRequestIds(requestIds);
   }
   return deletionRequest;
 };
@@ -51,9 +87,9 @@ export const createDeletionRequest = async (
   return rememberLocallySubmittedDeletionRequest(deletionRequest);
 };
 
-export const consumeDeletionRequestFinalization = (
+export const consumeDeletionRequestFinalization = async (
   deletionRequest: AuthDeletionRequest | null
-): boolean => {
+): Promise<boolean> => {
   if (!deletionRequest) {
     return false;
   }
@@ -63,15 +99,25 @@ export const consumeDeletionRequestFinalization = (
   }
 
   if (!deletionRequest.requestId || !locallySubmittedDeletionRequestIds.has(deletionRequest.requestId)) {
-    return false;
+    const rememberedRequestIds = await readRememberedDeletionRequestIds();
+    if (!deletionRequest.requestId || !rememberedRequestIds.has(deletionRequest.requestId)) {
+      return false;
+    }
   }
 
-  locallySubmittedDeletionRequestIds.delete(deletionRequest.requestId);
+  if (finalizingDeletionRequestIds.has(deletionRequest.requestId)) {
+    return false;
+  }
+  finalizingDeletionRequestIds.add(deletionRequest.requestId);
   return true;
 };
 
 export const clearLocalDeletionFootprint = async (): Promise<void> => {
-  locallySubmittedDeletionRequestIds.clear();
-  await clearSession();
-  await SafeStorage.clearAll();
+  try {
+    await clearLocalDeletionPrivacyFootprint();
+    await clearRememberedDeletionRequestIds();
+  } catch (error) {
+    finalizingDeletionRequestIds.clear();
+    throw error;
+  }
 };

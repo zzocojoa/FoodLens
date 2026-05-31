@@ -1,4 +1,5 @@
 import { SafeStorage } from '../../storage';
+import { sha256Hex } from '../cache';
 import { BarcodeLookupResult } from '../types';
 
 const BARCODE_CACHE_KEY_PREFIX = 'barcode_cache_';
@@ -15,19 +16,17 @@ const normalizeCacheContext = (context?: string): string => {
   return normalized.length > 0 ? normalized : 'default';
 };
 
-// Lightweight non-crypto hash to avoid storing raw allergy strings in cache keys.
-const hashContext = (input: string): string => {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16);
+const fingerprintCacheSegment = async (input: string): Promise<string> => {
+  const digest = await sha256Hex(input);
+  return digest.slice(0, 32);
 };
 
-const buildBarcodeCacheKey = (barcode: string, context?: string): string => {
-  const contextHash = hashContext(normalizeCacheContext(context));
-  return `${BARCODE_CACHE_KEY_PREFIX}${barcode}_${contextHash}`;
+const buildBarcodeCacheKey = async (barcode: string, context?: string): Promise<string> => {
+  const [barcodeHash, contextHash] = await Promise.all([
+    fingerprintCacheSegment(barcode.trim()),
+    fingerprintCacheSegment(normalizeCacheContext(context)),
+  ]);
+  return `${BARCODE_CACHE_KEY_PREFIX}${barcodeHash}_${contextHash}`;
 };
 
 export const BarcodeCache = {
@@ -35,7 +34,7 @@ export const BarcodeCache = {
    * Get cached result for a barcode
    */
   async get(barcode: string, context?: string): Promise<BarcodeLookupResult | null> {
-    const key = buildBarcodeCacheKey(barcode, context);
+    const key = await buildBarcodeCacheKey(barcode, context);
     const cached = await SafeStorage.get<CachedBarcode | null>(key, null);
     
     if (cached) {
@@ -56,7 +55,7 @@ export const BarcodeCache = {
   async set(barcode: string, result: BarcodeLookupResult, context?: string): Promise<void> {
     if (!result.found) return; // Don't cache negative results
     
-    const key = buildBarcodeCacheKey(barcode, context);
+    const key = await buildBarcodeCacheKey(barcode, context);
     await SafeStorage.set(key, {
       result,
       timestamp: Date.now(),
@@ -67,7 +66,6 @@ export const BarcodeCache = {
    * Clear all barcode cache (optional utility)
    */
   async clear(): Promise<void> {
-    // Note: SafeStorage doesn't support prefix-based removal easily yet, 
-    // but we can clear individual keys or leave it for automatic expiry.
+    await SafeStorage.removeByPrefix(BARCODE_CACHE_KEY_PREFIX);
   }
 };

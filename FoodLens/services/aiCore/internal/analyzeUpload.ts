@@ -44,7 +44,7 @@ export const performMultipartAnalysisUpload = async ({
   let cacheKey: string | null = null;
   try {
     const imageHash = await buildImageContentHash(compressedUri);
-    cacheKey = buildImageCacheKey({
+    cacheKey = await buildImageCacheKey({
       endpoint: endpointPath,
       imageHash,
       allergyInfo: allergyString,

@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { getStoredAnalyses } from './analysis/storage';
+import { ANALYSES_STORAGE_KEY, ANALYSES_STORAGE_KEY_PREFIX } from './analysis/types';
 import {
   buildManagedImageUri,
   createManagedFilename,
@@ -9,7 +10,7 @@ import {
   isManagedImageReference,
 } from './imageStorage.helpers';
 import { SafeStorage } from './storage';
-import { getUserStorageKey } from './user/constants';
+import { getUserStorageKey, USER_STORAGE_KEY, USER_STORAGE_KEY_PREFIX } from './user/constants';
 import { UserProfile } from '../models/User';
 import { getCurrentUserId, hasAuthenticatedUser } from './auth/currentUser';
 
@@ -40,6 +41,116 @@ const isExternalImageReference = (value: string): boolean => {
         normalized.startsWith('https://') ||
         normalized.startsWith('data:image/') ||
         normalized.startsWith('barcode://');
+};
+
+const normalizeUserId = (userId: string): string => {
+    const normalizedUserId = userId.trim();
+    if (!normalizedUserId) {
+        throw new Error('User id is required to clear managed images.');
+    }
+    return normalizedUserId;
+};
+
+const resolveManagedImagePath = (stored: string | undefined | null): string | null => {
+    if (!stored) return null;
+    if (isExternalImageReference(stored)) return null;
+
+    if (isManagedImageReference(stored)) {
+        const filename = extractFilename(stored);
+        return filename ? buildManagedImageUri(filename) : null;
+    }
+
+    if (isLegacyAbsoluteUri(stored)) return null;
+    return buildManagedImageUri(stored);
+};
+
+const extractAnalysisImageReferences = (records: unknown): Array<string | undefined | null> => {
+    if (!Array.isArray(records)) return [];
+    return records.map((record) => {
+        if (!record || typeof record !== 'object') return null;
+        const item = record as { imageUri?: unknown };
+        return typeof item.imageUri === 'string' ? item.imageUri : null;
+    });
+};
+
+const collectUserManagedImagePaths = async (userId: string): Promise<string[]> => {
+    const normalizedUserId = normalizeUserId(userId);
+    const analyses = await getStoredAnalyses(normalizedUserId);
+    const legacyAnalyses = await SafeStorage.get<unknown>(ANALYSES_STORAGE_KEY, []);
+    const profile = await SafeStorage.get<UserProfile | null>(getUserStorageKey(normalizedUserId), null);
+    const legacyProfile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+    const matchingLegacyProfile = legacyProfile?.uid === normalizedUserId ? legacyProfile : null;
+    const references = [
+        ...analyses.map((analysis) => analysis.imageUri),
+        ...extractAnalysisImageReferences(legacyAnalyses),
+        profile?.profileImage,
+        profile?.photoURL,
+        matchingLegacyProfile?.profileImage,
+        matchingLegacyProfile?.photoURL,
+    ];
+    return [...new Set(references.map(resolveManagedImagePath).filter((path): path is string => Boolean(path)))];
+};
+
+const collectManagedImagePathsFromReferences = (
+    references: Array<string | undefined | null>
+): Set<string> => new Set(
+    references
+        .map(resolveManagedImagePath)
+        .filter((path): path is string => Boolean(path))
+);
+
+const extractProfileImageReferences = (profile: unknown): Array<string | undefined | null> => {
+    if (!profile || typeof profile !== 'object') return [];
+    const item = profile as Partial<UserProfile>;
+    return [item.profileImage, item.photoURL];
+};
+
+const collectOtherUserManagedImagePaths = async (userId: string): Promise<Set<string>> => {
+    const normalizedUserId = normalizeUserId(userId);
+    const keys = await SafeStorage.getAllKeys();
+    const sharedPaths = new Set<string>();
+
+    for (const key of keys) {
+        if (key.startsWith(ANALYSES_STORAGE_KEY_PREFIX)) {
+            const keyUserId = key.slice(ANALYSES_STORAGE_KEY_PREFIX.length);
+            if (keyUserId && keyUserId !== normalizedUserId) {
+                const records = await SafeStorage.get<unknown>(key, []);
+                collectManagedImagePathsFromReferences(extractAnalysisImageReferences(records))
+                    .forEach((path) => sharedPaths.add(path));
+            }
+        }
+
+        if (key.startsWith(USER_STORAGE_KEY_PREFIX)) {
+            const keyUserId = key.slice(USER_STORAGE_KEY_PREFIX.length);
+            if (keyUserId && keyUserId !== normalizedUserId) {
+                const profile = await SafeStorage.get<unknown>(key, null);
+                collectManagedImagePathsFromReferences(extractProfileImageReferences(profile))
+                    .forEach((path) => sharedPaths.add(path));
+            }
+        }
+    }
+
+    const legacyProfile = await SafeStorage.get<UserProfile | null>(USER_STORAGE_KEY, null);
+    if (legacyProfile && legacyProfile.uid !== normalizedUserId) {
+        collectManagedImagePathsFromReferences(extractProfileImageReferences(legacyProfile))
+            .forEach((path) => sharedPaths.add(path));
+    }
+
+    return sharedPaths;
+};
+
+const deleteManagedImagePath = async (path: string): Promise<void> => {
+    try {
+        const info = await FileSystem.getInfoAsync(path);
+        if (!info.exists) return;
+        await FileSystem.deleteAsync(path, { idempotent: true });
+        console.log(`${LOG_PREFIX} Deleted managed image.`);
+    } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to delete managed image.`, {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+    }
 };
 
 /**
@@ -158,6 +269,55 @@ export const cleanupOrphanedImages = async (): Promise<void> => {
     }
 };
 
+export const clearManagedImageDirectory = async (): Promise<void> => {
+    if (!FileSystem.documentDirectory) {
+        throw new Error('FileSystem.documentDirectory is required to clear managed FoodLens images.');
+    }
+
+    const dir = getManagedImageDirectory();
+
+    try {
+        const info = await FileSystem.getInfoAsync(dir);
+        if (!info.exists) return;
+        if ('isDirectory' in info && info.isDirectory === false) {
+            throw new Error('Managed image path is not a directory.');
+        }
+        await FileSystem.deleteAsync(dir, { idempotent: true });
+        console.log(`${LOG_PREFIX} Managed image directory cleared.`, {
+            directory: dir,
+        });
+    } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to clear managed image directory.`, {
+            directory: dir,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+    }
+};
+
+export const clearManagedImagesForUser = async (userId: string): Promise<void> => {
+    const paths = await collectUserManagedImagePaths(userId);
+    const sharedPaths = await collectOtherUserManagedImagePaths(userId);
+    const pathsToDelete = paths.filter((path) => !sharedPaths.has(path));
+    const failures: unknown[] = [];
+
+    for (const path of pathsToDelete) {
+        try {
+            await deleteManagedImagePath(path);
+        } catch (error) {
+            failures.push(error);
+        }
+    }
+
+    if (failures.length > 0) {
+        console.error(`${LOG_PREFIX} Failed to clear managed images for user.`, {
+            failureCount: failures.length,
+            errors: failures.map((error) => (error instanceof Error ? error.message : String(error))),
+        });
+        throw new Error(`Failed to clear managed images for user: ${normalizeUserId(userId)}`);
+    }
+};
+
 /**
  * Resolve a stored image reference to an absolute URI.
  * 
@@ -186,23 +346,7 @@ export const getBarcodeImageUri = (): string => 'barcode://pattern';
  * Delete a permanently stored image.
  */
 export const deleteImage = async (stored: string | undefined | null): Promise<void> => {
-    if (!stored) return;
-    if (isExternalImageReference(stored)) return;
-
-    // Only delete files in our managed directory
-    if (isLegacyAbsoluteUri(stored)) {
-        // Legacy path — don't delete system files
-        return;
-    }
-
-    const fullPath = buildManagedImageUri(stored);
-    try {
-        const info = await FileSystem.getInfoAsync(fullPath);
-        if (info.exists) {
-            await FileSystem.deleteAsync(fullPath, { idempotent: true });
-            console.log(`${LOG_PREFIX} Deleted: ${stored}`);
-        }
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} Failed to delete:`, error);
-    }
+    const fullPath = resolveManagedImagePath(stored);
+    if (!fullPath) return;
+    await deleteManagedImagePath(fullPath);
 };

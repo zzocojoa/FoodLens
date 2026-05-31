@@ -418,7 +418,7 @@ export const runAsyncAnalysisJob = async (
   const locale = await resolveRequestLocale();
   const allergyString = await getAllergyString();
   const imageHash = await buildImageContentHash(params.imageUri);
-  const cacheKey = buildImageCacheKey({
+  const cacheKey = await buildImageCacheKey({
     endpoint: getCacheEndpointPath(params.mode),
     imageHash,
     allergyInfo: allergyString,

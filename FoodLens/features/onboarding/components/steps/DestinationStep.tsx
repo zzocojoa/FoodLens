@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ArrowRight, Check, LocateFixed, MapPin } from 'lucide-react-native';
 import type {
   DetectedOnboardingLocation,
@@ -64,7 +64,11 @@ export default function DestinationStep({
           : t('onboarding.permissions.status.notRequested', 'Not requested');
 
   return (
-    <View style={[styles.stepContainer, { justifyContent: 'space-between', paddingBottom: 24 }]}>
+    <ScrollView
+      style={styles.stepScroll}
+      contentContainerStyle={styles.destinationStepContent}
+      showsVerticalScrollIndicator={false}
+    >
       <View>
         <Text style={[styles.kickerText, { color: theme.primary }]}>
           {t('onboarding.destination.kicker', 'Travel card')}
@@ -169,6 +173,6 @@ export default function DestinationStep({
           <ArrowRight size={20} color="white" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   );
 }

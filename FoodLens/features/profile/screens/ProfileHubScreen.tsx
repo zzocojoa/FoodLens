@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useIsFocused } from '@react-navigation/native';
@@ -20,7 +20,7 @@ import { normalizeTravelerTargetLanguage } from '@/services/travelerCardLanguage
 import { getCurrentUserIdSnapshot } from '@/services/auth/currentUser';
 import { AuthApi } from '@/services/auth/authApi';
 import { AuthSecureSessionStore } from '@/services/auth/secureSessionStore';
-import { clearSession } from '@/services/auth/sessionManager';
+import { clearLocalLogoutFootprint } from '@/services/auth/localFootprint';
 import { logoutFromOAuthProvider } from '@/services/auth/providerLogout';
 import { getBuildFingerprint } from '@/services/buildFingerprint';
 import { dispatchPhase2SyncQueue } from '@/services/sync/phase2SyncQueue';
@@ -383,7 +383,23 @@ export default function ProfileHubScreen(): React.JSX.Element {
             }
 
             const provider = storedSession?.user?.provider;
-            await clearSession();
+            try {
+                await clearLocalLogoutFootprint();
+            } catch (error) {
+                console.error('[AuthSession] Local logout footprint wipe failed', {
+                    request_id: requestId,
+                    provider: provider ?? 'none',
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                Alert.alert(
+                    t('profileHub.logout.localClearFailed.title', 'Logout incomplete'),
+                    t(
+                        'profileHub.logout.localClearFailed.message',
+                        'This device could not be cleared. Please try logging out again before handing over the device.',
+                    ),
+                );
+                return;
+            }
             router.replace('/login');
             void logoutFromOAuthProvider(provider).catch((error) => {
                 console.warn('[AuthSession] Provider logout failed', {
@@ -396,7 +412,7 @@ export default function ProfileHubScreen(): React.JSX.Element {
         } finally {
             setLogoutLoading(false);
         }
-    }, [logoutLoading, router]);
+    }, [logoutLoading, router, t]);
 
     const handleConfirmLogoutDialog = React.useCallback((): void => {
         setLogoutDialogVisible(false);

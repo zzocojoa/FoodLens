@@ -174,6 +174,49 @@ describe('AccountDataScreen deletion requests', () => {
         alertSpy.mockRestore();
     });
 
+    it('does not route to login when local deletion footprint clear fails', async () => {
+        mockCreateDeletionRequest.mockResolvedValue({
+            requestId: 'req-account-1',
+            target: 'account',
+            status: 'done',
+            requestedAt: '2026-03-29T00:00:00Z',
+            completedAt: '2026-03-29T00:00:02Z',
+            retryable: false,
+            failureCode: null,
+            message: null,
+        });
+        mockClearLocalDeletionFootprint.mockRejectedValue(new Error('Local deletion footprint wipe failed'));
+        submittedRequestIds.add('req-account-1');
+
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+            const destructiveButton = buttons?.find((button) => button.text === 'Delete Account');
+            if (destructiveButton) {
+                destructiveButton.onPress?.();
+                return;
+            }
+
+            const continueButton = buttons?.find((button) => button.text === 'Continue');
+            continueButton?.onPress?.();
+        });
+
+        const { getByText } = render(<AccountDataScreen />);
+
+        await act(async () => {
+            fireEvent.press(getByText('Delete Account'));
+        });
+
+        await waitFor(() => {
+            expect(mockClearLocalDeletionFootprint).toHaveBeenCalledTimes(1);
+        });
+        expect(alertSpy).toHaveBeenCalledWith(
+            'Device clear failed',
+            'Local deletion footprint wipe failed',
+        );
+        expect(mockReplace).not.toHaveBeenCalledWith('/login');
+
+        alertSpy.mockRestore();
+    });
+
     it('renders an existing failed deletion request returned by the server', async () => {
         mockGetLatestDeletionRequest.mockResolvedValue({
             requestId: 'req-failed-1',

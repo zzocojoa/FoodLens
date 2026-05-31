@@ -30,8 +30,19 @@ import type {
   Phase2SyncEntity,
   Phase2SyncOperation,
 } from './phase2Sync.types';
+import {
+  clearPhase2RuntimeCaches,
+  clearPhase2SyncQueue,
+  clearPhase2SyncQueueForUser,
+  getPhase2MediaUploadCooldowns,
+  getPhase2SettingsDispatchDedupeCache,
+  loadPhase2SyncQueue,
+  mediaCooldownKey,
+  resetPhase2SettingsDispatchDedupeForTests,
+  runWithPhase2DispatchLock,
+  savePhase2SyncQueue,
+} from './phase2SyncLocalState';
 
-const SYNC_QUEUE_KEY = '@foodlens_phase2_sync_queue_v1';
 const MEDIA_MIGRATION_MARKER_PREFIX = '@foodlens_phase2_media_migrated:';
 const RETRY_LIMIT = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
@@ -40,16 +51,8 @@ const MEDIA_UPLOAD_COOLDOWN_MS = 5 * 60 * 1_000;
 const SETTINGS_DISPATCH_DEDUPE_WINDOW_MS = 5 * 60 * 1_000;
 
 let runtimeStarted = false;
-let dispatchInFlight: Promise<void> | null = null;
-const mediaUploadCooldownUntil = new Map<string, number>();
-const settingsDispatchDedupeCache = new Map<
-  string,
-  {
-    payloadKey: string;
-    at: number;
-    requestId?: string;
-  }
->();
+const mediaUploadCooldownUntil = getPhase2MediaUploadCooldowns();
+const settingsDispatchDedupeCache = getPhase2SettingsDispatchDedupeCache();
 
 const now = (): number => Date.now();
 
@@ -73,7 +76,7 @@ const isHistoryTimestampPatchPayload = (
   typeof payload['timestamp'] === 'string';
 
 export const __resetPhase2SettingsDispatchDedupeForTests = (): void => {
-  settingsDispatchDedupeCache.clear();
+  resetPhase2SettingsDispatchDedupeForTests();
 };
 
 type MutableEntityState = 'pending' | 'failed' | 'conflicted';
@@ -123,12 +126,8 @@ const findLatestMutableEntityOperation = (
     .filter((item) => isMutableEntityOperation(item, userId, entity))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
-const loadQueue = async (): Promise<Phase2SyncOperation[]> =>
-  SafeStorage.get<Phase2SyncOperation[]>(SYNC_QUEUE_KEY, []);
-
-const saveQueue = async (queue: Phase2SyncOperation[]): Promise<void> => {
-  await SafeStorage.set(SYNC_QUEUE_KEY, queue);
-};
+const loadQueue = loadPhase2SyncQueue;
+const saveQueue = savePhase2SyncQueue;
 
 const getQueueOperationById = async (operationId: string): Promise<Phase2SyncOperation | null> => {
   const queue = await loadQueue();
@@ -201,8 +200,6 @@ const pruneQueue = (queue: Phase2SyncOperation[]): Phase2SyncOperation[] => {
 };
 
 const mediaMigrationMarkerKey = (userId: string): string => `${MEDIA_MIGRATION_MARKER_PREFIX}${userId}`;
-const mediaCooldownKey = (userId: string, scope: 'profile' | 'history'): string =>
-  `${userId}:${scope}`;
 const historyQueryKey = (userId: string): readonly [string, string] => ['history', userId] as const;
 const sortHistoryByRecentTimestamp = (records: AnalysisRecord[]): AnalysisRecord[] =>
   [...records].sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
@@ -242,6 +239,8 @@ const upsertPendingEntityOperation = async (
   }
   await saveQueue(pruneQueue(queue));
 };
+
+export { clearPhase2RuntimeCaches, clearPhase2SyncQueue, clearPhase2SyncQueueForUser };
 
 type DispatchResult = {
   requestId?: string;
@@ -499,6 +498,7 @@ const uploadMediaSource = async (
 
   const prepared = await prepareUploadSource(rawUri);
   if (!prepared) return null;
+  let uploadError: unknown = null;
   try {
     const result = await Phase2Api.postMediaUpload({
       fileUri: prepared.fileUri,
@@ -512,6 +512,7 @@ const uploadMediaSource = async (
       renderUrl: result.asset.render_url,
     };
   } catch (error) {
+    uploadError = error;
     if (error instanceof Phase2SyncApiError) {
       const code = (error.code || '').trim().toUpperCase();
       if (error.status === 503 || code.startsWith('MEDIA_')) {
@@ -532,7 +533,17 @@ const uploadMediaSource = async (
     throw error;
   } finally {
     if (prepared.cleanup) {
-      await prepared.cleanup().catch(() => {});
+      try {
+        await prepared.cleanup();
+      } catch (cleanupError) {
+        logger.warn('[Phase2Sync] media upload temp cleanup failed', {
+          scope,
+          code: cleanupError instanceof Error ? cleanupError.message : 'MEDIA_TEMP_CLEANUP_FAILED',
+        });
+        if (!uploadError) {
+          throw cleanupError;
+        }
+      }
     }
   }
 };
@@ -972,16 +983,6 @@ const isNetworkAvailable = async (): Promise<boolean> => {
   }
 };
 
-const withDispatchLock = async (runner: () => Promise<void>): Promise<void> => {
-  while (dispatchInFlight) {
-    await dispatchInFlight;
-  }
-  dispatchInFlight = runner().finally(() => {
-    dispatchInFlight = null;
-  });
-  await dispatchInFlight;
-};
-
 const resolveActiveUserId = async (): Promise<string | null> => {
   const restoredSession = await restoreSession({
     clearCurrentUserOnMissing: false,
@@ -1008,10 +1009,13 @@ const resolveActiveUserId = async (): Promise<string | null> => {
   return normalized.length > 0 ? normalized : null;
 };
 
+const isCurrentAuthenticatedUser = async (userId: string): Promise<boolean> =>
+  (await resolveActiveUserId()) === userId;
+
 export const dispatchPhase2SyncQueue = async (
   options: { force?: boolean } = {}
 ): Promise<void> =>
-  withDispatchLock(async () => {
+  runWithPhase2DispatchLock(async () => {
     if (!options.force && !(await isNetworkAvailable())) return;
     const activeUserId = await resolveActiveUserId();
     if (!activeUserId) return;
@@ -1044,6 +1048,9 @@ export const dispatchPhase2SyncQueue = async (
 
       try {
         const result = await dispatchOperation(sending);
+        if (!(await isCurrentAuthenticatedUser(sending.userId))) {
+          continue;
+        }
         const synced: Phase2SyncOperation = {
           ...sending,
           state: 'synced',

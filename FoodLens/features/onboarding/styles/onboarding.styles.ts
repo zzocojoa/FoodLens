@@ -29,9 +29,27 @@ export const onboardingStyles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
+  stepScroll: {
+    flex: 1,
+  },
   stepScrollContent: {
     paddingHorizontal: 24,
     paddingTop: 8,
+  },
+  destinationStepContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    gap: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  permissionsStepContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    gap: 18,
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 24,
   },
   heroArea: {
     alignItems: 'center',
@@ -539,18 +557,18 @@ export const onboardingStyles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     overflow: 'hidden',
-    marginTop: 22,
+    marginTop: 18,
   },
   permissionPreviewImage: {
     width: '100%',
-    height: 230,
+    height: 188,
   },
   scanCoachmark: {
     borderTopWidth: 1,
-    padding: 16,
+    padding: 14,
   },
   scanCoachmarkTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     marginBottom: 6,
   },
@@ -559,10 +577,10 @@ export const onboardingStyles = StyleSheet.create({
     lineHeight: 19,
   },
   privacyCard: {
-    marginTop: 14,
+    marginTop: 12,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,

@@ -42,3 +42,8 @@ export const getStoredAnalyses = async (userId: string): Promise<AnalysisRecord[
 export const saveAnalyses = async (userId: string, analyses: AnalysisRecord[]): Promise<void> => {
   await SafeStorage.set(getAnalysesStorageKey(userId), analyses);
 };
+
+export const clearStoredAnalysesForUser = async (userId: string): Promise<void> => {
+  await SafeStorage.remove(getAnalysesStorageKey(userId));
+  await SafeStorage.remove(ANALYSES_STORAGE_KEY);
+};

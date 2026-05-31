@@ -52,6 +52,11 @@ const logClearError = (key: string, error: unknown): void => {
   console.error(`${LOG_PREFIX} Failed to clear key "${key}":`, error);
 };
 
+type StorageClearFailure = {
+  backend: 'mmkv' | 'async_storage';
+  error: unknown;
+};
+
 const parseStoredValue = <T>(jsonValue: string | undefined | null, fallback: T): T => {
   if (jsonValue === null || jsonValue === undefined) return fallback;
   try {
@@ -173,26 +178,117 @@ export const SafeStorage = {
             const activeStorage = getStorageInstance();
             if (activeStorage) {
                 activeStorage.delete(key);
-            } else {
-                await AsyncStorage.removeItem(key);
             }
+            await AsyncStorage.removeItem(key);
         } catch (error) {
             console.error(`${LOG_PREFIX} Error removing key "${key}":`, error);
+            throw error;
         }
     },
 
     async clearAll(): Promise<void> {
-        try {
-            const activeStorage = getStorageInstance();
-            if (activeStorage) {
+        const failures: StorageClearFailure[] = [];
+        const activeStorage = getStorageInstance();
+
+        if (activeStorage) {
+            try {
                 activeStorage.clearAll();
-            } else {
-                await AsyncStorage.clear();
+            } catch (error) {
+                failures.push({ backend: 'mmkv', error });
             }
-            console.log(`${LOG_PREFIX} All data cleared.`);
-        } catch (error) {
-            console.error(`${LOG_PREFIX} Error clearing all data:`, error);
         }
+
+        try {
+            await AsyncStorage.clear();
+        } catch (error) {
+            failures.push({ backend: 'async_storage', error });
+        }
+
+        if (failures.length > 0) {
+            const failedBackends = failures.map((failure) => failure.backend);
+            console.error(`${LOG_PREFIX} Error clearing all data`, {
+                failedBackends,
+                errors: failures.map((failure) => ({
+                    backend: failure.backend,
+                    error: extractErrorMessage(failure.error),
+                })),
+            });
+            throw new Error(`SafeStorage clearAll failed for backends: ${failedBackends.join(', ')}`);
+        }
+
+        console.log(`${LOG_PREFIX} All data cleared.`);
+    },
+
+    async removeByPrefix(prefix: string): Promise<void> {
+        const failures: StorageClearFailure[] = [];
+        const activeStorage = getStorageInstance();
+
+        if (activeStorage) {
+            try {
+                const keys = activeStorage.getAllKeys().filter((key) => key.startsWith(prefix));
+                keys.forEach((key) => activeStorage.delete(key));
+            } catch (error) {
+                failures.push({ backend: 'mmkv', error });
+            }
+        }
+
+        try {
+            const keys = await AsyncStorage.getAllKeys();
+            const matchedKeys = keys.filter((key) => key.startsWith(prefix));
+            if (matchedKeys.length > 0) {
+                await AsyncStorage.multiRemove(matchedKeys);
+            }
+        } catch (error) {
+            failures.push({ backend: 'async_storage', error });
+        }
+
+        if (failures.length > 0) {
+            const failedBackends = failures.map((failure) => failure.backend);
+            console.error(`${LOG_PREFIX} Error removing data by prefix`, {
+                prefix,
+                failedBackends,
+                errors: failures.map((failure) => ({
+                    backend: failure.backend,
+                    error: extractErrorMessage(failure.error),
+                })),
+            });
+            throw new Error(`SafeStorage removeByPrefix failed for backends: ${failedBackends.join(', ')}`);
+        }
+    },
+
+    async getAllKeys(): Promise<string[]> {
+        const failures: StorageClearFailure[] = [];
+        const keys = new Set<string>();
+        const activeStorage = getStorageInstance();
+
+        if (activeStorage) {
+            try {
+                activeStorage.getAllKeys().forEach((key) => keys.add(key));
+            } catch (error) {
+                failures.push({ backend: 'mmkv', error });
+            }
+        }
+
+        try {
+            const asyncStorageKeys = await AsyncStorage.getAllKeys();
+            asyncStorageKeys.forEach((key) => keys.add(key));
+        } catch (error) {
+            failures.push({ backend: 'async_storage', error });
+        }
+
+        if (failures.length > 0) {
+            const failedBackends = failures.map((failure) => failure.backend);
+            console.error(`${LOG_PREFIX} Error listing storage keys`, {
+                failedBackends,
+                errors: failures.map((failure) => ({
+                    backend: failure.backend,
+                    error: extractErrorMessage(failure.error),
+                })),
+            });
+            throw new Error(`SafeStorage getAllKeys failed for backends: ${failedBackends.join(', ')}`);
+        }
+
+        return [...keys];
     }
 };
 

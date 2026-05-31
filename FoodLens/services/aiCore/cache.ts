@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Crypto from 'expo-crypto';
 
 import { SafeStorage } from '@/services/storage';
 
@@ -27,6 +28,10 @@ const loadStore = async (): Promise<AiCacheStore> => {
 
 const saveStore = async (store: AiCacheStore): Promise<void> => {
   await SafeStorage.set(CACHE_STORAGE_KEY, store);
+};
+
+export const clearAiCache = async (): Promise<void> => {
+  await SafeStorage.remove(CACHE_STORAGE_KEY);
 };
 
 const normalizeStore = (store: AiCacheStore): AiCacheStore => {
@@ -61,22 +66,53 @@ const toHex = (bytes: Uint8Array): string =>
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('');
 
-const fnv1a32 = (text: string): string => {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return `fnv1a-${hash.toString(16)}`;
-};
-
 export const sha256Hex = async (text: string): Promise<string> => {
   const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return fnv1a32(text);
+  if (!subtle) {
+    return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
+  }
 
   const encoder = new TextEncoder();
   const digest = await subtle.digest('SHA-256', encoder.encode(text));
   return toHex(new Uint8Array(digest));
+};
+
+type AiCacheKeyKind = 'barcode' | 'image' | 'unknown';
+
+const fingerprintSensitiveSegment = async (value: string): Promise<string> => {
+  const digest = await sha256Hex(value);
+  return digest.slice(0, 32);
+};
+
+const getAiCacheKeyKind = (key: string): AiCacheKeyKind => {
+  if (key.startsWith('barcode|')) return 'barcode';
+  if (key.startsWith('img|')) return 'image';
+  return 'unknown';
+};
+
+const isLegacySensitiveAiCacheKey = (key: string): boolean => {
+  const segments = key.split('|');
+  if (segments[0] === 'barcode') {
+    return !segments[1]?.startsWith('b:') || !segments[2]?.startsWith('a:');
+  }
+  if (segments[0] === 'img') {
+    return !segments[3]?.startsWith('a:');
+  }
+  return false;
+};
+
+const assertSafeAiCacheKey = (key: string): void => {
+  if (!isLegacySensitiveAiCacheKey(key)) return;
+  throw new Error('AI cache key uses a legacy sensitive format');
+};
+
+const pruneLegacySensitiveKeys = (store: AiCacheStore): void => {
+  Object.entries(store.entries).forEach(([key, entry]) => {
+    const entryKey = typeof entry?.key === 'string' ? entry.key : key;
+    if (isLegacySensitiveAiCacheKey(key) || isLegacySensitiveAiCacheKey(entryKey)) {
+      delete store.entries[key];
+    }
+  });
 };
 
 export const buildImageContentHash = async (imageUri: string): Promise<string> => {
@@ -84,33 +120,39 @@ export const buildImageContentHash = async (imageUri: string): Promise<string> =
   return sha256Hex(base64);
 };
 
-export const buildImageCacheKey = (params: {
+export const buildImageCacheKey = async (params: {
   endpoint: '/analyze' | '/analyze/label' | '/analyze/smart';
   imageHash: string;
   allergyInfo: string;
   locale: string;
   isoCountryCode: string;
-}): string => {
+}): Promise<string> => {
   const normalizedAllergy = params.allergyInfo.trim().toLowerCase() || 'none';
   const normalizedLocale = params.locale.trim().toLowerCase() || 'en-us';
   const normalizedCountry = params.isoCountryCode.trim().toUpperCase() || 'US';
-  return `img|${params.endpoint}|${params.imageHash}|${normalizedAllergy}|${normalizedLocale}|${normalizedCountry}`;
+  const allergyFingerprint = await fingerprintSensitiveSegment(normalizedAllergy);
+  return `img|${params.endpoint}|${params.imageHash}|a:${allergyFingerprint}|${normalizedLocale}|${normalizedCountry}`;
 };
 
-export const buildBarcodeCacheKey = (params: {
+export const buildBarcodeCacheKey = async (params: {
   barcode: string;
   allergyInfo: string;
   locale: string;
-}): string => {
+}): Promise<string> => {
   const normalizedBarcode = params.barcode.trim();
   const normalizedAllergy = params.allergyInfo.trim().toLowerCase() || 'none';
   const normalizedLocale = params.locale.trim().toLowerCase() || 'en-us';
-  return `barcode|${normalizedBarcode}|${normalizedAllergy}|${normalizedLocale}`;
+  const [barcodeFingerprint, allergyFingerprint] = await Promise.all([
+    fingerprintSensitiveSegment(normalizedBarcode),
+    fingerprintSensitiveSegment(normalizedAllergy),
+  ]);
+  return `barcode|b:${barcodeFingerprint}|a:${allergyFingerprint}|${normalizedLocale}`;
 };
 
 export const getAiCacheValue = async <T>(key: string): Promise<T | null> => {
   const rawStore = await loadStore();
   const store = normalizeStore(rawStore);
+  pruneLegacySensitiveKeys(store);
   pruneExpired(store);
   const entry = store.entries[key];
   if (!entry) {
@@ -120,7 +162,7 @@ export const getAiCacheValue = async <T>(key: string): Promise<T | null> => {
 
   entry.accessedAt = nowMs();
   await saveStore(store);
-  console.log('[AI Cache] cache_hit=true', { key });
+  console.log('[AI Cache] cache_hit=true', { cache_key_kind: getAiCacheKeyKind(key) });
   return entry.value as T;
 };
 
@@ -129,11 +171,13 @@ export const setAiCacheValue = async (
   value: unknown,
   options?: { ttlSeconds?: number; maxEntries?: number }
 ): Promise<void> => {
+  assertSafeAiCacheKey(key);
   const ttlSeconds = options?.ttlSeconds ?? AI_CACHE_TTL_SECONDS;
   const maxEntries = options?.maxEntries ?? AI_CACHE_MAX_ENTRIES;
   const rawStore = await loadStore();
   const store = normalizeStore(rawStore);
   const current = nowMs();
+  pruneLegacySensitiveKeys(store);
   pruneExpired(store);
   store.entries[key] = {
     key,

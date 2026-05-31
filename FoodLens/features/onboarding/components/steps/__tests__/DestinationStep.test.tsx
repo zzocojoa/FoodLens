@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import { Colors } from '@/constants/theme';
 import DestinationStep from '../DestinationStep';
@@ -59,6 +60,26 @@ describe('DestinationStep', () => {
     fireEvent.press(getByLabelText('Preview card'));
 
     expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps destination actions reachable inside a scroll container', () => {
+    const { UNSAFE_getByType, getByLabelText } = render(
+      <DestinationStep
+        theme={Colors.light}
+        t={translate}
+        destination={DEFAULT_ONBOARDING_DESTINATION}
+        destinations={ONBOARDING_DESTINATIONS}
+        permissionStatusMap={permissionStatusMap}
+        detectedLocation={null}
+        locationDetecting={false}
+        onSelectDestination={jest.fn()}
+        onDetectLocation={jest.fn()}
+        onNext={jest.fn()}
+      />
+    );
+
+    expect(UNSAFE_getByType(ScrollView)).toBeTruthy();
+    expect(getByLabelText('Preview card')).toBeTruthy();
   });
 
   it('shows detected unsupported countries without changing the quick destination list', () => {
