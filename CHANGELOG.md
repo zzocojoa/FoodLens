@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.0.2.0] - 2026-05-30
+## [0.0.2.0] - 2026-05-31
 
 ### Added
 
@@ -18,6 +18,7 @@
 ### Fixed
 
 - Analysis deletion no longer hides managed image deletion failures.
+- Travel card and first scan onboarding screens no longer cut off primary actions on smaller Android viewports.
 - Temporary media upload cleanup failures are now logged and keep the sync operation retryable when cleanup fails after upload.
 - AI cache-hit and barcode cache-hit logs no longer emit full cache keys or raw barcode values.
 
