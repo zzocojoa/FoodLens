@@ -60,6 +60,16 @@ Render 운영 확인:
 - atomic OAuth state consume이 배포된 revision에서 live-concurrency 검증을 마치기 전에는 배포 전 smoke에서 `RENDER_FOODLENS_API_INSTANCE_COUNT=1`과 `--require-single-render-instance`를 함께 사용한다.
 - live-concurrency 검증 전 instance count가 `2` 이상이면 배포를 중단하고, 검증이 끝날 때까지 `1`로 되돌린다.
 
+## App/Universal Links 배포 게이트
+
+운영 OAuth app return callback은 [`OAuth App Link Domain Checklist`](./oauth-app-link-domain-checklist.md)를 기준으로 승인한다.
+
+- iOS build에는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`에서 생성된 `applinks:<verified-app-link-domain>` Associated Domains entitlements가 포함되어야 한다.
+- Android build에는 같은 host의 `https` App Links intent filter, `pathPrefix=/oauth/`, `autoVerify=true`가 포함되어야 한다.
+- 운영 도메인은 `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 HTTPS 200으로 제공해야 하며 redirect를 사용하지 않는다.
+- Google/Kakao provider console에는 backend callback URI만 등록한다. 앱 return URI인 `https://<verified-app-link-domain>/oauth/...`와 `foodlens://oauth/...`는 provider console에 등록하지 않는다.
+- App/Universal Links 검증이 실패하면 운영 OAuth rollout을 중단한다. 운영에서 `foodlens://` custom scheme fallback을 열지 않는다.
+
 Atomic OAuth state store 확인:
 
 - pending OAuth state가 provider, app redirect URI, expires_at, consumed_at, nonce, PKCE verifier를 row 단위로 저장한다.
@@ -102,8 +112,10 @@ Atomic OAuth state store 확인:
 live 모드:
 
 - `AUTH_PUBLIC_BASE_URL` 필요
+- `AUTH_OAUTH_REDIRECT_BASE_URL` 필요. 이 값은 검증된 Universal Links/App Links HTTPS origin이어야 한다.
 - FoodLens backend에만 `GET /auth/google/start`, `GET /auth/kakao/start`, `GET /auth/google/logout/start`, `GET /auth/kakao/logout/start` 요청
 - `curl` redirect follow 없음
+- start/logout 요청의 app redirect URI는 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 파생한 HTTPS `/oauth/...` callback만 사용한다. `foodlens://` custom scheme은 live smoke에서 사용하지 않는다.
 - provider authorize URL의 host, generated state, Google/Kakao PKCE `code_challenge_method=S256`을 값 노출 없이 확인
 
 live 모드는 운영자가 명시적으로 승인한 staging/prod smoke에서만 사용한다.

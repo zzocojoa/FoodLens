@@ -9,6 +9,7 @@
 - 릴리스 노트: [`/CHANGELOG.md`](../CHANGELOG.md)
 - API 계약: [`/docs/contracts/api-contracts.md`](./contracts/api-contracts.md)
 - OAuth 보안 운영 런북: [`/docs/operations/oauth-security-runbook.md`](./operations/oauth-security-runbook.md)
+- OAuth App/Universal Links 도메인 체크리스트: [`/docs/operations/oauth-app-link-domain-checklist.md`](./operations/oauth-app-link-domain-checklist.md)
 - 로그아웃 revoke/session threat model: [`/docs/security/logout-revoke-session-threat-model.md`](./security/logout-revoke-session-threat-model.md)
 - 로컬 삭제 footprint threat model: [`/docs/security/local-deletion-footprint-threat-model.md`](./security/local-deletion-footprint-threat-model.md)
 - 아키텍처 요약: [`/docs/architecture-overview.md`](./architecture-overview.md)

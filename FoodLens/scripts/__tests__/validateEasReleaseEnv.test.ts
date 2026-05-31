@@ -18,6 +18,10 @@ type EasConfig = {
 type ReleaseEnvGate = {
   collectBuildProfileEnvErrors: (easConfig: { build: Record<string, BuildProfile> }) => string[];
   collectExpoConfigErrors: (expoConfig: unknown, processEnv: Record<string, string>) => string[];
+  collectOAuthAppLinkConfigErrors: (
+    expoConfig: Record<string, unknown>,
+    processEnv: Record<string, string>
+  ) => string[];
   collectPackageConfigErrors: (packageConfig: PackageConfig) => string[];
   collectPackageLockConfigErrors: (packageLockConfig: PackageLockConfig) => string[];
   collectProductionEnvErrors: (
@@ -40,6 +44,8 @@ type PackageLockConfig = {
 };
 
 const releaseEnvGate = jest.requireActual('../validate-eas-release-env') as ReleaseEnvGate;
+const oauthRedirectBaseUrl = 'https://links.foodlens.example.com';
+const oauthRedirectHost = 'links.foodlens.example.com';
 
 const validSubmitConfig = {
   production: {
@@ -50,6 +56,37 @@ const validSubmitConfig = {
     },
   },
 };
+
+const createValidExpoConfig = (): Record<string, unknown> => ({
+  expo: {
+    android: {
+      package: 'com.hoihou.foodlens',
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          category: ['BROWSABLE', 'DEFAULT'],
+          data: [
+            {
+              scheme: 'https',
+              host: oauthRedirectHost,
+              pathPrefix: '/oauth/',
+            },
+          ],
+        },
+      ],
+    },
+    ios: {
+      bundleIdentifier: 'com.hoihou.foodlens',
+      associatedDomains: [`applinks:${oauthRedirectHost}`],
+    },
+    plugins: ['expo-router'],
+  },
+});
+
+const createValidExpoEnv = (): Record<string, string> => ({
+  EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL: oauthRedirectBaseUrl,
+});
 
 describe('validate-eas-release-env', () => {
   it('rejects removed ad integration traces in the production profile', () => {
@@ -178,20 +215,20 @@ describe('validate-eas-release-env', () => {
   });
 
   it('rejects the Google Mobile Ads config plugin in the Expo config', () => {
+    const config = createValidExpoConfig();
+    const expo = config['expo'] as {
+      plugins: unknown[];
+    };
+    expo.plugins = [
+      [
+        'react-native-google-mobile-ads',
+        {},
+      ],
+    ];
+
     const errors = releaseEnvGate.collectExpoConfigErrors(
-      {
-        expo: {
-          android: { package: 'com.hoihou.foodlens' },
-          ios: { bundleIdentifier: 'com.hoihou.foodlens' },
-          plugins: [
-            [
-              'react-native-google-mobile-ads',
-              {},
-            ],
-          ],
-        },
-      },
-      {}
+      config,
+      createValidExpoEnv()
     );
 
     expect(errors).toEqual([expect.stringContaining('react-native-google-mobile-ads')]);
@@ -199,17 +236,54 @@ describe('validate-eas-release-env', () => {
 
   it('allows Expo config without the Google Mobile Ads config plugin', () => {
     const errors = releaseEnvGate.collectExpoConfigErrors(
-      {
-        expo: {
-          android: { package: 'com.hoihou.foodlens' },
-          ios: { bundleIdentifier: 'com.hoihou.foodlens' },
-          plugins: ['expo-router'],
-        },
-      },
-      {}
+      createValidExpoConfig(),
+      createValidExpoEnv()
     );
 
     expect(errors).toEqual([]);
+  });
+
+  it('rejects production release env without an OAuth App Links redirect origin', () => {
+    const errors = releaseEnvGate.collectOAuthAppLinkConfigErrors(
+      (createValidExpoConfig()['expo'] as Record<string, unknown>),
+      {}
+    );
+
+    expect(errors).toEqual([
+      expect.stringContaining('EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'),
+    ]);
+  });
+
+  it('rejects production Expo config that still registers a custom URL scheme', () => {
+    const config = createValidExpoConfig();
+    const expo = config['expo'] as Record<string, unknown>;
+    expo['scheme'] = 'foodlens';
+
+    const errors = releaseEnvGate.collectOAuthAppLinkConfigErrors(
+      expo,
+      createValidExpoEnv()
+    );
+
+    expect(errors).toEqual([
+      expect.stringContaining('custom URL scheme'),
+    ]);
+  });
+
+  it('rejects production Expo config without matching Universal Links and App Links', () => {
+    const errors = releaseEnvGate.collectOAuthAppLinkConfigErrors(
+      {
+        android: { package: 'com.hoihou.foodlens' },
+        ios: { bundleIdentifier: 'com.hoihou.foodlens' },
+      },
+      createValidExpoEnv()
+    );
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`applinks:${oauthRedirectHost}`),
+        expect.stringContaining(`HTTPS App Links for ${oauthRedirectHost}/oauth/`),
+      ])
+    );
   });
 
   it('rejects the Google Mobile Ads package in all dependency sections', () => {

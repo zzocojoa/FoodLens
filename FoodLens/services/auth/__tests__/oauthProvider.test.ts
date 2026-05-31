@@ -87,11 +87,16 @@ const GOOGLE_BACKEND_START_URL = 'https://api.foodlens.example.com/auth/google/s
 const KAKAO_BACKEND_START_URL = 'https://api.foodlens.example.com/auth/kakao/start';
 const GOOGLE_DIRECT_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test';
 const KAKAO_DIRECT_AUTHORIZE_URL = 'https://kauth.kakao.com/oauth/authorize?client_id=test';
+const OAUTH_REDIRECT_BASE_URL = 'https://links.foodlens.example.com';
 const CALLBACK_PROOF_DIGEST_BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno+/=';
 const CALLBACK_PROOF_CHALLENGE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno-_';
 const CALLBACK_URI_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'foodlens://oauth/google-callback',
   kakao: 'foodlens://oauth/kakao-callback',
+};
+const HTTPS_CALLBACK_URI_BY_PROVIDER: Record<OAuthProvider, string> = {
+  google: `${OAUTH_REDIRECT_BASE_URL}/oauth/google-callback`,
+  kakao: `${OAUTH_REDIRECT_BASE_URL}/oauth/kakao-callback`,
 };
 
 type PendingOAuthStateFixture = {
@@ -165,6 +170,7 @@ beforeEach(() => {
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'];
   delete process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
+  delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'];
   (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
 });
 
@@ -220,6 +226,55 @@ describe('oauthProvider', () => {
     await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
         code: 'AUTH_PROVIDER_MISCONFIGURED',
       });
+  });
+
+  it('uses HTTPS redirect URI for production live google login', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'] = OAUTH_REDIRECT_BASE_URL;
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    mockedWebBrowser.openAuthSessionAsync.mockImplementation(async (authUrl: string) => ({
+      type: 'success',
+      url: `${HTTPS_CALLBACK_URI_BY_PROVIDER.google}?code=code-123&state=${encodeURIComponent(
+        stateFromAuthUrl(authUrl)
+      )}`,
+    }));
+    mockedLinking.parse.mockImplementation((url: string) => ({
+      queryParams: parseQueryParams(url),
+    }));
+    mockedAuthApi.loginWithGoogle.mockResolvedValue(mockSession('usr_google_prod'));
+
+    const result = await AuthOAuthProvider.loginWithOAuthProvider('google');
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `redirect_uri=${encodeURIComponent(HTTPS_CALLBACK_URI_BY_PROVIDER.google)}`
+      ),
+      HTTPS_CALLBACK_URI_BY_PROVIDER.google
+    );
+    expect(mockedAuthApi.loginWithGoogle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'code-123',
+        redirectUri: HTTPS_CALLBACK_URI_BY_PROVIDER.google,
+        callbackVerifier: expect.any(String),
+      })
+    );
+    expect(result.user.id).toBe('usr_google_prod');
+  });
+
+  it('rejects production live oauth when HTTPS redirect base URL is missing', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
   });
 
   it('throws misconfigured error when native secure random is unavailable', async () => {

@@ -7,9 +7,15 @@ const GOOGLE_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL';
 const KAKAO_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL';
 const KAKAO_BROWSER_LOGOUT_ENABLED_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED';
 const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
-const DEFAULT_APP_LOGOUT_REDIRECT_URI = 'foodlens://oauth/logout-complete';
+const OAUTH_REDIRECT_BASE_URL_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL';
+const LOGOUT_CALLBACK_PATH = 'oauth/logout-complete';
 
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
+
+const isDevelopmentRuntime = (): boolean => {
+  const runtime = globalThis as { __DEV__?: boolean };
+  return runtime.__DEV__ === true;
+};
 
 const isEnabledEnvValue = (value: string): boolean => {
   const normalized = value.trim().toLowerCase();
@@ -25,12 +31,68 @@ const getExpoPublicKakaoBrowserLogoutEnabled = (): string => {
   return process.env.EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED ?? '';
 };
 
-const resolveAppLogoutRedirectUri = (): string => {
-  try {
-    return Linking.createURL('oauth/logout-complete');
-  } catch {
-    return DEFAULT_APP_LOGOUT_REDIRECT_URI;
+const getExpoPublicOAuthRedirectBaseUrl = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_REDIRECT_BASE_URL_ENV);
+  if (runtime) {
+    return runtime;
   }
+
+  return process.env[OAUTH_REDIRECT_BASE_URL_ENV] ?? '';
+};
+
+const resolveOAuthRedirectBaseUrl = (): string | undefined => {
+  const rawBaseUrl = getExpoPublicOAuthRedirectBaseUrl().trim();
+  if (!rawBaseUrl) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBaseUrl);
+  } catch {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be a valid HTTPS origin.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  const hasPath = parsed.pathname !== '' && parsed.pathname !== '/';
+  if (
+    parsed.protocol !== 'https:' ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    hasPath ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be an HTTPS origin without credentials, port, path, query, or fragment.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  return parsed.origin.replace(/\/+$/, '');
+};
+
+const resolveAppLogoutRedirectUri = (): string => {
+  const redirectBaseUrl = resolveOAuthRedirectBaseUrl();
+  if (redirectBaseUrl) {
+    return `${redirectBaseUrl}/${LOGOUT_CALLBACK_PATH}`;
+  }
+
+  if (!isDevelopmentRuntime()) {
+    throw new AuthApiError(
+      `${OAUTH_REDIRECT_BASE_URL_ENV} must be configured with an HTTPS origin for production OAuth logout redirects.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  return Linking.createURL(LOGOUT_CALLBACK_PATH);
 };
 
 const getExpoPublicAnalysisServerUrl = (): string => {

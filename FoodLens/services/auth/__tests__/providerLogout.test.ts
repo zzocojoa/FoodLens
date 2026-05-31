@@ -34,20 +34,27 @@ const mockedWebBrowser = WebBrowser as unknown as {
 };
 
 const ANALYSIS_SERVER_URL = 'https://api.example.com';
+const OAUTH_REDIRECT_BASE_URL = 'https://links.foodlens.example.com';
+const HTTPS_LOGOUT_REDIRECT_URI = `${OAUTH_REDIRECT_BASE_URL}/oauth/logout-complete`;
 
 const ORIGINAL_ENV = process.env;
+const ORIGINAL_DEV_FLAG = (global as { __DEV__?: boolean }).__DEV__;
 
 beforeEach(() => {
   jest.resetAllMocks();
   process.env = { ...ORIGINAL_ENV };
+  delete process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'];
+  delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'];
+  (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
   mockedLinking.createURL.mockReturnValue('foodlens://oauth/logout-complete');
 });
 
 afterAll(() => {
   process.env = ORIGINAL_ENV;
+  (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
 });
 
 describe('providerLogout', () => {
@@ -102,6 +109,57 @@ describe('providerLogout', () => {
     expect(mockedWebBrowser.openBrowserAsync).toHaveBeenCalledWith(
       `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start?redirect_uri=foodlens%3A%2F%2Foauth%2Flogout-complete`
     );
+  });
+
+  it('uses HTTPS app link logout redirect in production runtime', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'] = OAUTH_REDIRECT_BASE_URL;
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    mockedWebBrowser.openBrowserAsync.mockResolvedValue({
+      type: 'opened',
+    });
+
+    await logoutFromOAuthProvider('kakao');
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openBrowserAsync).toHaveBeenCalledWith(
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start?redirect_uri=${encodeURIComponent(
+        HTTPS_LOGOUT_REDIRECT_URI
+      )}`
+    );
+  });
+
+  it('rejects production kakao logout when HTTPS redirect base URL is missing', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(logoutFromOAuthProvider('kakao')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-HTTPS OAuth redirect base URL for production logout', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'] = 'foodlens://oauth/logout-complete';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(logoutFromOAuthProvider('kakao')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
   });
 
   it('prefers provider-specific logout start URL over analysis server fallback', async () => {
