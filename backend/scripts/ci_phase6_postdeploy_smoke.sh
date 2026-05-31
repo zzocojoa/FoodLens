@@ -9,6 +9,7 @@ SUMMARY_PATH="${ARTIFACT_DIR}/summary.md"
 RESULTS_PATH="${ARTIFACT_DIR}/results.tsv"
 
 BASE_URL="${PHASE6_POSTDEPLOY_BASE_URL:-}"
+OAUTH_REDIRECT_BASE_URL="${PHASE6_POSTDEPLOY_OAUTH_REDIRECT_BASE_URL:-${AUTH_OAUTH_REDIRECT_BASE_URL:-}}"
 SMOKE_EMAIL="${PHASE6_POSTDEPLOY_SMOKE_EMAIL:-}"
 SMOKE_PASSWORD="${PHASE6_POSTDEPLOY_SMOKE_PASSWORD:-}"
 RELEASE_LABEL="${PHASE6_RELEASE_LABEL:-}"
@@ -671,6 +672,7 @@ mkdir -p "${ARTIFACT_DIR}"
 trap 'on_exit $?' EXIT
 
 require_env "PHASE6_POSTDEPLOY_BASE_URL" "${BASE_URL}"
+require_env "PHASE6_POSTDEPLOY_OAUTH_REDIRECT_BASE_URL" "${OAUTH_REDIRECT_BASE_URL}"
 require_env "PHASE6_POSTDEPLOY_SMOKE_EMAIL" "${SMOKE_EMAIL}"
 require_env "PHASE6_POSTDEPLOY_SMOKE_PASSWORD" "${SMOKE_PASSWORD}"
 require_env "PHASE6_RELEASE_LABEL" "${RELEASE_LABEL}"
@@ -701,7 +703,7 @@ CURRENT_STEP="root-health"
 assert_status "root-health" "${BASE_URL}/" "200" ""
 
 CURRENT_STEP="live-provider-smoke"
-AUTH_PUBLIC_BASE_URL="${BASE_URL}" bash "${ROOT_DIR}/backend/scripts/ci_auth_live_provider_smoke.sh" \
+AUTH_PUBLIC_BASE_URL="${BASE_URL}" AUTH_OAUTH_REDIRECT_BASE_URL="${OAUTH_REDIRECT_BASE_URL}" bash "${ROOT_DIR}/backend/scripts/ci_auth_live_provider_smoke.sh" \
   > "${ARTIFACT_DIR}/live-provider-smoke.log" 2>&1
 record_result "live-provider-smoke" "PASS" "google-kakao-redirects"
 

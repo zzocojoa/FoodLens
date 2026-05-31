@@ -89,6 +89,7 @@ jobs:
           PHASE6_SUBMIT_PROFILE: ${{ inputs.submit_profile }}
           PHASE6_SUBMIT_JUSTIFICATION: ${{ inputs.submit_justification }}
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ inputs.submit_enabled && (inputs.platform == 'android' || inputs.platform == 'all') && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '' }}
+          EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL: ${{ vars.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL || secrets.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: npm run phase6:mobile-store-evidence
 

@@ -11,6 +11,10 @@ on:
         description: "Deployed backend public base URL"
         required: true
         type: string
+      oauth_redirect_base_url:
+        description: "Verified OAuth App/Universal Links origin"
+        required: true
+        type: string
       rollback_rehearsal_reference:
         description: "Latest rollback rehearsal evidence reference"
         required: true
@@ -39,6 +43,7 @@ jobs:
         env:
           PHASE6_RELEASE_LABEL: ${{ inputs.release_label }}
           PHASE6_POSTDEPLOY_BASE_URL: ${{ inputs.postdeploy_base_url }}
+          PHASE6_POSTDEPLOY_OAUTH_REDIRECT_BASE_URL: ${{ inputs.oauth_redirect_base_url }}
           PHASE6_POSTDEPLOY_SMOKE_EMAIL: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_EMAIL }}
           PHASE6_POSTDEPLOY_SMOKE_PASSWORD: ${{ secrets.PHASE6_POSTDEPLOY_SMOKE_PASSWORD }}
           PHASE6_ROLLBACK_REHEARSAL_REFERENCE: ${{ inputs.rollback_rehearsal_reference }}

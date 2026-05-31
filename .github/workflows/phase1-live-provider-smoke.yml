@@ -7,6 +7,10 @@ on:
         description: "Backend public base URL (e.g. https://foodlens-2-w1xu.onrender.com)"
         required: true
         type: string
+      oauth_redirect_base_url:
+        description: "Verified OAuth App/Universal Links origin (e.g. https://links.foodlens.example.com)"
+        required: true
+        type: string
 
 jobs:
   live-provider-smoke:
@@ -19,6 +23,7 @@ jobs:
         id: smoke
         env:
           AUTH_PUBLIC_BASE_URL: ${{ inputs.auth_public_base_url }}
+          AUTH_OAUTH_REDIRECT_BASE_URL: ${{ inputs.oauth_redirect_base_url }}
         run: |
           set -o pipefail
           mkdir -p artifacts

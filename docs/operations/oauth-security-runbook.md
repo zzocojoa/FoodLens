@@ -113,6 +113,7 @@ live 모드:
 
 - `AUTH_PUBLIC_BASE_URL` 필요
 - `AUTH_OAUTH_REDIRECT_BASE_URL` 필요. 이 값은 검증된 Universal Links/App Links HTTPS origin이어야 한다.
+- GitHub Actions 수동 smoke는 같은 값을 `oauth_redirect_base_url` 입력으로 전달한다.
 - FoodLens backend에만 `GET /auth/google/start`, `GET /auth/kakao/start`, `GET /auth/google/logout/start`, `GET /auth/kakao/logout/start` 요청
 - `curl` redirect follow 없음
 - start/logout 요청의 app redirect URI는 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 파생한 HTTPS `/oauth/...` callback만 사용한다. `foodlens://` custom scheme은 live smoke에서 사용하지 않는다.

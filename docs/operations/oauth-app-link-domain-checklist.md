@@ -22,6 +22,9 @@
   - `AUTH_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`
   - `AUTH_APP_ALLOWED_REDIRECT_URIS`는 비워두면 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 provider별 HTTPS callback을 파생한다. 명시할 때도 Google 요청은 `/oauth/google-callback`, Kakao 요청은 `/oauth/kakao-callback`만 통과해야 한다.
   - `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`는 비워두면 `AUTH_OAUTH_REDIRECT_BASE_URL/oauth/logout-complete`를 파생한다.
+- GitHub Actions / EAS:
+  - repository variable 또는 secret `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://<verified-app-link-domain>`를 설정한다.
+  - Phase1 live provider smoke와 Phase6 postdeploy smoke 실행 시 `oauth_redirect_base_url=https://<verified-app-link-domain>` 입력을 전달한다.
 
 운영에서 custom scheme을 허용하지 않는다. 로컬/dev에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS=foodlens://oauth/logout-complete`를 명시적으로 설정한다.
 
