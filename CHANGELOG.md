@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.4.0] - 2026-05-31
+
+### Added
+
+- Mobile rollout evidence now records the PR #173 Android EAS production build, Play internal draft submission, and remaining gates before broad logout UI availability.
+
 ## [0.0.3.0] - 2026-05-31
 
 ### Fixed
