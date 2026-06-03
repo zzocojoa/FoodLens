@@ -37,7 +37,7 @@ const getExpoPublicOAuthRedirectBaseUrl = (): string => {
     return runtime;
   }
 
-  return process.env[OAUTH_REDIRECT_BASE_URL_ENV] ?? '';
+  return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL ?? '';
 };
 
 const resolveOAuthRedirectBaseUrl = (): string | undefined => {
@@ -101,7 +101,7 @@ const getExpoPublicAnalysisServerUrl = (): string => {
     return runtime;
   }
 
-  return process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] ?? '';
+  return process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL ?? '';
 };
 
 const getExpoPublicLogoutStartUrl = (provider: OAuthProvider): string => {
@@ -112,8 +112,8 @@ const getExpoPublicLogoutStartUrl = (provider: OAuthProvider): string => {
   }
 
   return provider === 'google'
-    ? process.env['EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL'] ?? ''
-    : process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] ?? '';
+    ? process.env.EXPO_PUBLIC_AUTH_GOOGLE_LOGOUT_START_URL ?? ''
+    : process.env.EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL ?? '';
 };
 
 const resolveLogoutStartUrl = (provider: OAuthProvider): string => {

@@ -42,7 +42,12 @@ const readOnboardingPreviewConfigValue = (): string | undefined => {
     }
   }
 
-  return process.env[ONBOARDING_PREVIEW_ENV];
+  const runtimeValue = process.env[ONBOARDING_PREVIEW_ENV];
+  if (typeof runtimeValue === 'string') {
+    return runtimeValue;
+  }
+
+  return process.env.EXPO_PUBLIC_ONBOARDING_PREVIEW_ENABLED;
 };
 
 export const isOnboardingPreviewEnabled = (): boolean =>

@@ -5,7 +5,7 @@ import { LocationData } from './types';
 import { mapPlaceToLocationData } from './locationMapper';
 import { ensureForegroundLocationPermission } from '@/services/permissions/locationPermissionService';
 
-const LOCATION_TIMEOUT_MS = Number(process.env['EXPO_PUBLIC_LOCATION_TIMEOUT_MS'] || '7000');
+const LOCATION_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_LOCATION_TIMEOUT_MS || '7000');
 const REVERSE_GEOCODE_TIMEOUT_MS = 2500;
 const LAST_KNOWN_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_LOCATION_TEXT = '';

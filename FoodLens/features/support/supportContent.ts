@@ -16,7 +16,7 @@ export type SupportFaqItem = {
   answerFallback: string;
 };
 
-const SUPPORT_EMAIL_ENV = (process.env['EXPO_PUBLIC_SUPPORT_EMAIL'] ?? '').trim();
+const SUPPORT_EMAIL_ENV = (process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? '').trim();
 
 export const SUPPORT_EMAIL_ADDRESS = SUPPORT_EMAIL_ENV || 'support@foodlens.com';
 
