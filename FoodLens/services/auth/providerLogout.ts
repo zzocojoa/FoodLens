@@ -8,6 +8,10 @@ const KAKAO_LOGOUT_START_URL_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL';
 const KAKAO_BROWSER_LOGOUT_ENABLED_ENV = 'EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED';
 const ANALYSIS_SERVER_URL_ENV = 'EXPO_PUBLIC_ANALYSIS_SERVER_URL';
 const OAUTH_REDIRECT_BASE_URL_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL';
+const OAUTH_REDIRECT_TRANSPORT_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT';
+const OAUTH_CUSTOM_REDIRECT_SCHEME_ENV = 'EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME';
+const OAUTH_CUSTOM_REDIRECT_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+const DEVELOPMENT_OAUTH_REDIRECT_SCHEME = 'foodlens';
 const LOGOUT_CALLBACK_PATH = 'oauth/logout-complete';
 
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
@@ -38,6 +42,61 @@ const getExpoPublicOAuthRedirectBaseUrl = (): string => {
   }
 
   return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL ?? '';
+};
+
+const getExpoPublicOAuthRedirectTransport = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_REDIRECT_TRANSPORT_ENV);
+  if (runtime) {
+    return runtime;
+  }
+
+  return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT ?? '';
+};
+
+const getExpoPublicOAuthCustomRedirectScheme = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_CUSTOM_REDIRECT_SCHEME_ENV);
+  if (runtime) {
+    return runtime;
+  }
+
+  return process.env.EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME ?? '';
+};
+
+const shouldUseCustomSchemeRedirect = (): boolean => {
+  const rawTransport = getExpoPublicOAuthRedirectTransport().trim().toLowerCase();
+  if (!rawTransport || rawTransport === 'app-link') {
+    return false;
+  }
+  if (rawTransport === 'custom-scheme') {
+    return true;
+  }
+
+  throw new AuthApiError(
+    `${OAUTH_REDIRECT_TRANSPORT_ENV} must be either app-link or custom-scheme.`,
+    'AUTH_PROVIDER_MISCONFIGURED',
+    500
+  );
+};
+
+const resolveOAuthCustomRedirectScheme = (): string => {
+  const scheme = getExpoPublicOAuthCustomRedirectScheme().trim();
+  if (!scheme) {
+    throw new AuthApiError(
+      `${OAUTH_CUSTOM_REDIRECT_SCHEME_ENV} must be configured when ${OAUTH_REDIRECT_TRANSPORT_ENV}=custom-scheme.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  if (!OAUTH_CUSTOM_REDIRECT_SCHEME_PATTERN.test(scheme)) {
+    throw new AuthApiError(
+      `${OAUTH_CUSTOM_REDIRECT_SCHEME_ENV} must be a valid URL scheme.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  return scheme;
 };
 
 const resolveOAuthRedirectBaseUrl = (): string | undefined => {
@@ -79,6 +138,10 @@ const resolveOAuthRedirectBaseUrl = (): string | undefined => {
 };
 
 const resolveAppLogoutRedirectUri = (): string => {
+  if (shouldUseCustomSchemeRedirect()) {
+    return `${resolveOAuthCustomRedirectScheme()}://${LOGOUT_CALLBACK_PATH}`;
+  }
+
   const redirectBaseUrl = resolveOAuthRedirectBaseUrl();
   if (redirectBaseUrl) {
     return `${redirectBaseUrl}/${LOGOUT_CALLBACK_PATH}`;
@@ -92,7 +155,7 @@ const resolveAppLogoutRedirectUri = (): string => {
     );
   }
 
-  return Linking.createURL(LOGOUT_CALLBACK_PATH);
+  return Linking.createURL(LOGOUT_CALLBACK_PATH, { scheme: DEVELOPMENT_OAUTH_REDIRECT_SCHEME });
 };
 
 const getExpoPublicAnalysisServerUrl = (): string => {

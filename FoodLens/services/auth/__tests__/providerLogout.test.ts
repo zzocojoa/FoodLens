@@ -36,6 +36,7 @@ const mockedWebBrowser = WebBrowser as unknown as {
 const ANALYSIS_SERVER_URL = 'https://api.example.com';
 const OAUTH_REDIRECT_BASE_URL = 'https://links.foodlens.example.com';
 const HTTPS_LOGOUT_REDIRECT_URI = `${OAUTH_REDIRECT_BASE_URL}/oauth/logout-complete`;
+const IOS_SIDELOAD_LOGOUT_REDIRECT_URI = 'com.hoihou.foodlens://oauth/logout-complete';
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_DEV_FLAG = (global as { __DEV__?: boolean }).__DEV__;
@@ -48,6 +49,8 @@ beforeEach(() => {
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'];
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'];
   delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'];
+  delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'];
+  delete process.env['EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME'];
   (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
   mockedLinking.createURL.mockReturnValue('foodlens://oauth/logout-complete');
 });
@@ -129,6 +132,43 @@ describe('providerLogout', () => {
         HTTPS_LOGOUT_REDIRECT_URI
       )}`
     );
+  });
+
+  it('uses explicit custom scheme logout redirect for iOS sideload runtime', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'] = OAUTH_REDIRECT_BASE_URL;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'] = 'custom-scheme';
+    process.env['EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME'] = 'com.hoihou.foodlens';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    mockedWebBrowser.openBrowserAsync.mockResolvedValue({
+      type: 'opened',
+    });
+
+    await logoutFromOAuthProvider('kakao');
+
+    expect(mockedLinking.createURL).not.toHaveBeenCalled();
+    expect(mockedWebBrowser.openBrowserAsync).toHaveBeenCalledWith(
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start?redirect_uri=${encodeURIComponent(
+        IOS_SIDELOAD_LOGOUT_REDIRECT_URI
+      )}`
+    );
+  });
+
+  it('rejects unsupported OAuth logout redirect transport values', async () => {
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_BROWSER_LOGOUT_ENABLED'] = 'true';
+    process.env['EXPO_PUBLIC_AUTH_KAKAO_LOGOUT_START_URL'] =
+      `${ANALYSIS_SERVER_URL}/auth/kakao/logout/start`;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'] = 'bridge';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(logoutFromOAuthProvider('kakao')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedWebBrowser.openBrowserAsync).not.toHaveBeenCalled();
   });
 
   it('rejects production kakao logout when HTTPS redirect base URL is missing', async () => {
