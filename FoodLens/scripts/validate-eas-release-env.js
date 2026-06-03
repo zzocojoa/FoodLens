@@ -5,6 +5,8 @@ const path = require("node:path");
 const PRODUCTION_ANDROID_PACKAGE = "com.hoihou.foodlens";
 const PRODUCTION_IOS_BUNDLE_IDENTIFIER = "com.hoihou.foodlens";
 const OAUTH_REDIRECT_BASE_URL_ENV = "EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL";
+const OAUTH_REDIRECT_TRANSPORT_ENV = "EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT";
+const OAUTH_CUSTOM_REDIRECT_SCHEME_ENV = "EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME";
 const OAUTH_REDIRECT_PATH_PREFIX = "/oauth/";
 const GOOGLE_MOBILE_ADS_PACKAGE_NAME = "react-native-google-mobile-ads";
 const GOOGLE_MOBILE_ADS_PACKAGE_LOCK_PATH = `node_modules/${GOOGLE_MOBILE_ADS_PACKAGE_NAME}`;
@@ -144,18 +146,36 @@ const hasProductionOAuthIntentFilter = (androidConfig, host) => {
   });
 };
 
+const collectOAuthRedirectTransportErrors = (processEnv) => {
+  const errors = [];
+  const redirectTransport = trimValue(processEnv[OAUTH_REDIRECT_TRANSPORT_ENV]).toLowerCase();
+  const customRedirectScheme = trimValue(processEnv[OAUTH_CUSTOM_REDIRECT_SCHEME_ENV]);
+
+  if (redirectTransport && redirectTransport !== "app-link") {
+    errors.push(
+      `${OAUTH_REDIRECT_TRANSPORT_ENV} must be empty or app-link for EAS production OAuth redirects.`
+    );
+  }
+
+  if (customRedirectScheme) {
+    errors.push(
+      `${OAUTH_CUSTOM_REDIRECT_SCHEME_ENV} must not be set for EAS production OAuth redirects.`
+    );
+  }
+
+  return errors;
+};
+
 const collectOAuthAppLinkConfigErrors = (expo, processEnv) => {
   const errors = [];
+  errors.push(...collectOAuthRedirectTransportErrors(processEnv));
+
   const oauthRedirectOrigin = resolveHttpsOrigin(processEnv[OAUTH_REDIRECT_BASE_URL_ENV]);
   if (!oauthRedirectOrigin) {
     errors.push(
       `${OAUTH_REDIRECT_BASE_URL_ENV} must be configured as an HTTPS origin for production OAuth app links.`
     );
     return errors;
-  }
-
-  if (expo.scheme) {
-    errors.push("production Expo config must not register a custom URL scheme.");
   }
 
   const host = new URL(oauthRedirectOrigin).hostname;

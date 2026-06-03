@@ -67,10 +67,11 @@ Render 운영 확인:
 - iOS build에는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`에서 생성된 `applinks:foodlens-2-w1xu.onrender.com` Associated Domains entitlements가 포함되어야 한다.
 - Android build에는 같은 host의 `https` App Links intent filter, `pathPrefix=/oauth/`, `autoVerify=true`가 포함되어야 한다.
 - 모바일 release bundle에는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`, `EXPO_PUBLIC_ANALYSIS_SERVER_URL`, `EXPO_PUBLIC_AUTH_OAUTH_MODE`가 실제 문자열로 포함되어야 한다. 앱 코드는 release-critical `EXPO_PUBLIC_*` 값을 `process.env.EXPO_PUBLIC_*` 점 표기로 읽어야 하며, 동적 bracket 접근만 남기면 Expo production bundle에서 값이 빠져 Google/Kakao provider browser가 열리기 전에 provider misconfiguration으로 실패한다.
+- EAS/App Store/TestFlight production build에는 `EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT=custom-scheme` 또는 `EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME`를 넣지 않는다. 무료 Apple ID 7일 sideload build만 Associated Domains entitlement 제한 때문에 `EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT=custom-scheme`, `EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME=com.hoihou.foodlens`를 사용할 수 있다.
 - 운영 backend는 `https://foodlens-2-w1xu.onrender.com/.well-known/apple-app-site-association`과 `https://foodlens-2-w1xu.onrender.com/.well-known/assetlinks.json`을 HTTPS 200으로 제공해야 하며 redirect를 사용하지 않는다.
 - Render `foodlens-api`에는 `APP_LINK_IOS_APP_IDS`, `APP_LINK_ANDROID_PACKAGE_NAME`, `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS`가 설정되어 있어야 한다.
-- Google/Kakao provider console에는 backend callback URI만 등록한다. 앱 return URI인 `https://<verified-app-link-domain>/oauth/...`와 `foodlens://oauth/...`는 provider console에 등록하지 않는다.
-- App/Universal Links 검증이 실패하면 운영 OAuth rollout을 중단한다. 운영에서 `foodlens://` custom scheme fallback을 열지 않는다.
+- Google/Kakao provider console에는 backend callback URI만 등록한다. 앱 return URI인 `https://<verified-app-link-domain>/oauth/...`, `foodlens://oauth/...`, `com.hoihou.foodlens://oauth/...`는 provider console에 등록하지 않는다.
+- App/Universal Links 검증이 실패하면 정식 운영 OAuth rollout을 중단한다. EAS/App Store/TestFlight production에서 `foodlens://` 또는 `com.hoihou.foodlens://` custom scheme fallback을 열지 않는다.
 
 Atomic OAuth state store 확인:
 
@@ -118,7 +119,7 @@ live 모드:
 - GitHub Actions 수동 smoke는 같은 값을 `oauth_redirect_base_url` 입력으로 전달한다.
 - FoodLens backend에만 `GET /auth/google/start`, `GET /auth/kakao/start`, `GET /auth/google/logout/start`, `GET /auth/kakao/logout/start` 요청
 - `curl` redirect follow 없음
-- start/logout 요청의 app redirect URI는 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 파생한 HTTPS `/oauth/...` callback만 사용한다. `foodlens://` custom scheme은 live smoke에서 사용하지 않는다.
+- start/logout 요청의 app redirect URI는 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 파생한 HTTPS `/oauth/...` callback만 사용한다. `foodlens://`와 `com.hoihou.foodlens://` custom scheme은 live smoke에서 사용하지 않는다.
 - provider authorize URL의 host, generated state, Google/Kakao PKCE `code_challenge_method=S256`을 값 노출 없이 확인
 
 live 모드는 운영자가 명시적으로 승인한 staging/prod smoke에서만 사용한다.

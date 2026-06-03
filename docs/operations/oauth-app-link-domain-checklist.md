@@ -1,15 +1,16 @@
 # OAuth App Link Domain Checklist
 
-이 문서는 운영 OAuth callback을 `foodlens://` custom scheme에서 HTTPS Universal Links/App Links로 전환할 때 필요한 도메인 설정 항목을 정리한다. 현재 운영 앱링크 origin은 backend Render URL인 `https://foodlens-2-w1xu.onrender.com`이다. backend가 `.well-known/apple-app-site-association`와 `.well-known/assetlinks.json`을 직접 제공한다.
+이 문서는 운영 OAuth callback을 `foodlens://` custom scheme에서 HTTPS Universal Links/App Links로 전환할 때 필요한 도메인 설정 항목을 정리한다. 현재 운영 앱링크 origin은 backend Render URL인 `https://foodlens-2-w1xu.onrender.com`이다. backend가 `.well-known/apple-app-site-association`와 `.well-known/assetlinks.json`을 직접 제공한다. 무료 Apple ID 7일 iOS sideload build만 Associated Domains entitlement 제한 때문에 `com.hoihou.foodlens://oauth/...` 예외를 사용한다.
 
 ## 정책 요약
 
 | 환경 | 앱 return callback | Backend allowlist | 실패 시 동작 |
 | --- | --- | --- | --- |
 | Local/dev | `foodlens://oauth/google-callback`, `foodlens://oauth/kakao-callback`, `foodlens://oauth/logout-complete` | `AUTH_APP_ALLOWED_REDIRECT_URIS`, `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`에 custom scheme을 명시할 때만 허용 | 개발자가 env를 고쳐 재시도 |
-| Production | `https://foodlens-2-w1xu.onrender.com/oauth/google-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/kakao-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/logout-complete` | `AUTH_OAUTH_REDIRECT_BASE_URL`에서 HTTPS URI를 파생한다. 명시 allowlist가 필요하면 HTTPS URI만 넣는다 | rollout 중단. `foodlens://` fallback 금지 |
+| iOS free-provisioning sideload | `com.hoihou.foodlens://oauth/google-callback`, `com.hoihou.foodlens://oauth/kakao-callback`, `com.hoihou.foodlens://oauth/logout-complete` | 명시 allowlist가 필요하다. Android/정식 iOS 보호를 위해 HTTPS URI도 함께 유지한다 | 7일 만료를 감수한 실기기 확인 전용. Store/TestFlight에 사용 금지 |
+| Production EAS/App Store/TestFlight | `https://foodlens-2-w1xu.onrender.com/oauth/google-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/kakao-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/logout-complete` | `AUTH_OAUTH_REDIRECT_BASE_URL`에서 HTTPS URI를 파생한다. 명시 allowlist가 필요하면 HTTPS URI만 넣는다 | rollout 중단. `foodlens://` fallback 금지 |
 
-운영에서 App/Universal Links 검증이 실패하면 로그인 완료가 앱으로 돌아오지 않을 수 있다. 이 경우에도 custom scheme을 임시 fallback으로 열지 않는다. 도메인 association, provider console, env 값을 고친 뒤 다시 검증한다.
+정식 운영에서 App/Universal Links 검증이 실패하면 로그인 완료가 앱으로 돌아오지 않을 수 있다. 이 경우에도 custom scheme을 임시 fallback으로 열지 않는다. 도메인 association, provider console, env 값을 고친 뒤 다시 검증한다.
 
 ## 운영 환경 변수
 
@@ -17,6 +18,9 @@
   - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`
   - `EXPO_PUBLIC_ANALYSIS_SERVER_URL=https://foodlens-2-w1xu.onrender.com`
   - `EXPO_PUBLIC_AUTH_OAUTH_MODE=live`
+  - EAS/App Store/TestFlight production build는 `EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT`를 비우거나 `app-link`로 둔다. `EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME`는 설정하지 않는다.
+  - 무료 Apple ID 7일 iOS sideload build만 `EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT=custom-scheme`, `EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME=com.hoihou.foodlens`를 설정한다.
+  - 앱 config는 Expo Router용 `foodlens` scheme과 sideload callback용 bundle-id scheme `com.hoihou.foodlens`를 모두 등록한다. OAuth sideload callback은 반드시 `com.hoihou.foodlens://oauth/...`를 사용한다.
   - 운영 로그인, provider logout, server URL처럼 release-critical한 `EXPO_PUBLIC_*` 값은 앱 코드에서 `process.env.EXPO_PUBLIC_*` 점 표기로 읽어야 한다. Expo production bundle은 동적 bracket 접근(`process.env['EXPO_PUBLIC_...']`)을 대체하지 않으므로, 운영 빌드에서 값이 빠지면 앱이 provider browser를 열기 전에 `AUTH_PROVIDER_MISCONFIGURED`로 멈춘다.
 - Backend:
   - `AUTH_PUBLIC_BASE_URL=https://foodlens-2-w1xu.onrender.com`
@@ -30,7 +34,7 @@
   - repository variable 또는 secret `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`를 설정한다.
   - Phase1 live provider smoke와 Phase6 postdeploy smoke 실행 시 `oauth_redirect_base_url=https://foodlens-2-w1xu.onrender.com` 입력을 전달한다.
 
-운영에서 custom scheme을 허용하지 않는다. 로컬/dev에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS=foodlens://oauth/logout-complete`를 명시적으로 설정한다.
+정식 운영에서 custom scheme을 허용하지 않는다. 로컬/dev에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS=foodlens://oauth/logout-complete`를 명시적으로 설정한다. 무료 Apple ID 7일 sideload 확인 중에는 `com.hoihou.foodlens://oauth/google-callback`, `com.hoihou.foodlens://oauth/kakao-callback`, `com.hoihou.foodlens://oauth/logout-complete`를 명시 allowlist에 추가하되, 같은 allowlist에서 HTTPS URI를 제거하지 않는다.
 
 ## iOS Associated Domains
 
@@ -58,6 +62,9 @@ Provider console에 등록하지 않는 값:
 - `foodlens://oauth/google-callback`
 - `foodlens://oauth/kakao-callback`
 - `foodlens://oauth/logout-complete`
+- `com.hoihou.foodlens://oauth/google-callback`
+- `com.hoihou.foodlens://oauth/kakao-callback`
+- `com.hoihou.foodlens://oauth/logout-complete`
 
 앱 return URI는 provider console이 아니라 backend allowlist와 앱 Universal/App Links 설정으로 제어한다. Google은 authorized redirect URI가 요청값과 정확히 일치해야 한다. Kakao는 REST API redirect URI와 logout redirect URI를 콘솔에서 별도로 등록한다.
 
@@ -125,8 +132,8 @@ Provider console에 등록하지 않는 값:
 - release-critical 모바일 env 접근은 `process.env.EXPO_PUBLIC_*` 점 표기를 사용한다. Jest/dev에서 runtime mutation이 필요한 helper는 허용하지만, 정적 fallback도 함께 있어야 한다.
 - iOS build config에 `associatedDomains=["applinks:foodlens-2-w1xu.onrender.com"]`가 포함된다.
 - Android build config에 `scheme=https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true` intent filter가 포함된다.
-- backend `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 비어 있거나 HTTPS URI만 포함한다.
-- provider console에는 backend callback URI만 등록되어 있고 `foodlens://` custom scheme URI가 운영 앱 항목에 남아 있지 않다.
+- EAS/App Store/TestFlight production 배포 전에는 backend `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 비어 있거나 HTTPS URI만 포함한다.
+- provider console에는 backend callback URI만 등록되어 있고 `foodlens://` 또는 `com.hoihou.foodlens://` custom scheme URI가 운영 앱 항목에 남아 있지 않다.
 - live provider 호출 없이 `/auth/{provider}/start`의 `302 Location` host와 query key만 검증한다. provider redirect를 follow하지 않는다.
 - Android 내부 테스트 build `28` 기준으로 `adb shell dumpsys package com.hoihou.foodlens`는 `versionCode=28`, `adb shell cmd package get-app-links com.hoihou.foodlens`는 `foodlens-2-w1xu.onrender.com: verified`를 보여야 한다.
 - 실기기에서 Google/Kakao 로그인을 각각 실행해 provider browser 전환, FoodLens 앱 복귀, 세션 생성까지 확인한다.

@@ -30,6 +30,7 @@ const EAS_PROJECT_ID = "dab80641-3ca1-4633-a381-36ddbb37a22e";
 const IOS_GOOGLE_SERVICES_FILE = IS_DEV ? DEV_PLIST_PATH : PROD_PLIST_PATH;
 const IOS_BUNDLE_IDENTIFIER = buildIdentity.iosBundleIdentifier;
 const ANDROID_APP_PACKAGE = buildIdentity.androidPackage;
+const APP_SCHEMES = [APP_SCHEME, IOS_BUNDLE_IDENTIFIER];
 const IOS_ALLOWS_LOCAL_NETWORKING = IS_DEV;
 const ANDROID_GOOGLE_MAPS_API_KEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 const FALLBACK_GOOGLE_MAPS_API_KEY = "__MISSING_GOOGLE_MAPS_API_KEY__";
@@ -141,7 +142,7 @@ module.exports = {
     version: APP_VERSION,
     orientation: "portrait",
     icon: ICON_PATH,
-    ...(IS_DEV ? { scheme: APP_SCHEME } : {}),
+    scheme: APP_SCHEMES,
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {

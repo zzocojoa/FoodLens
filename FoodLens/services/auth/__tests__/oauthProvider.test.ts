@@ -98,6 +98,10 @@ const HTTPS_CALLBACK_URI_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: `${OAUTH_REDIRECT_BASE_URL}/oauth/google-callback`,
   kakao: `${OAUTH_REDIRECT_BASE_URL}/oauth/kakao-callback`,
 };
+const IOS_SIDELOAD_CALLBACK_URI_BY_PROVIDER: Record<OAuthProvider, string> = {
+  google: 'com.hoihou.foodlens://oauth/google-callback',
+  kakao: 'com.hoihou.foodlens://oauth/kakao-callback',
+};
 
 type PendingOAuthStateFixture = {
   provider: OAuthProvider;
@@ -171,6 +175,8 @@ beforeEach(() => {
   delete process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'];
   delete process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'];
   delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'];
+  delete process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'];
+  delete process.env['EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME'];
   (global as { __DEV__?: boolean }).__DEV__ = ORIGINAL_DEV_FLAG;
 });
 
@@ -261,6 +267,80 @@ describe('oauthProvider', () => {
       })
     );
     expect(result.user.id).toBe('usr_google_prod');
+  });
+
+  it.each<OAuthProvider>(['google', 'kakao'])(
+    'uses explicit custom scheme redirect for iOS sideload %s login',
+    async (provider) => {
+      process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+      if (provider === 'google') {
+        process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+      } else {
+        process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] = KAKAO_BACKEND_START_URL;
+      }
+      process.env['EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL'] = OAUTH_REDIRECT_BASE_URL;
+      process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'] = 'custom-scheme';
+      process.env['EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME'] = 'com.hoihou.foodlens';
+      (global as { __DEV__?: boolean }).__DEV__ = false;
+      mockedWebBrowser.openAuthSessionAsync.mockImplementation(async (authUrl: string) => ({
+        type: 'success',
+        url: `${IOS_SIDELOAD_CALLBACK_URI_BY_PROVIDER[provider]}?code=code-123&state=${encodeURIComponent(
+          stateFromAuthUrl(authUrl)
+        )}`,
+      }));
+      mockedLinking.parse.mockImplementation((url: string) => ({
+        queryParams: parseQueryParams(url),
+      }));
+      const mockedProviderLogin =
+        provider === 'google' ? mockedAuthApi.loginWithGoogle : mockedAuthApi.loginWithKakao;
+      mockedProviderLogin.mockResolvedValue(mockSession(`usr_${provider}_sideload`));
+
+      const result = await AuthOAuthProvider.loginWithOAuthProvider(provider);
+
+      expect(mockedLinking.createURL).not.toHaveBeenCalled();
+      expect(mockedWebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `redirect_uri=${encodeURIComponent(IOS_SIDELOAD_CALLBACK_URI_BY_PROVIDER[provider])}`
+        ),
+        IOS_SIDELOAD_CALLBACK_URI_BY_PROVIDER[provider]
+      );
+      expect(mockedProviderLogin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'code-123',
+          redirectUri: IOS_SIDELOAD_CALLBACK_URI_BY_PROVIDER[provider],
+          callbackVerifier: expect.any(String),
+        })
+      );
+      expect(result.user.id).toBe(`usr_${provider}_sideload`);
+    }
+  );
+
+  it('rejects custom scheme transport without an explicit scheme', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'] = 'custom-scheme';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedWebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported OAuth redirect transport values', async () => {
+    process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] = 'live';
+    process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] = GOOGLE_BACKEND_START_URL;
+    process.env['EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'] = 'bridge';
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+
+    await expect(AuthOAuthProvider.loginWithOAuthProvider('google')).rejects.toMatchObject({
+      code: 'AUTH_PROVIDER_MISCONFIGURED',
+      status: 500,
+    });
+
+    expect(mockedWebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
   });
 
   it('rejects production live oauth when HTTPS redirect base URL is missing', async () => {

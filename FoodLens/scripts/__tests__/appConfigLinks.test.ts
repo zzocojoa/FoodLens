@@ -43,7 +43,7 @@ describe('app.config OAuth App Links', () => {
         category: ['BROWSABLE', 'DEFAULT'],
       },
     ]);
-    expect(expo['scheme']).toBeUndefined();
+    expect(expo['scheme']).toEqual(['foodlens', 'com.hoihou.foodlens']);
   });
 
   it('omits Universal Links and App Links when the redirect base URL is not configured', () => {
@@ -54,16 +54,16 @@ describe('app.config OAuth App Links', () => {
 
     expect(ios['associatedDomains']).toBeUndefined();
     expect(android['intentFilters']).toBeUndefined();
-    expect(expo['scheme']).toBeUndefined();
+    expect(expo['scheme']).toEqual(['foodlens', 'com.hoihou.foodlens']);
   });
 
-  it('keeps the foodlens custom scheme only for development builds', () => {
+  it('keeps the foodlens and bundle-id custom schemes for development builds', () => {
     process.env['APP_VARIANT'] = 'development';
 
     const config = loadAppConfig();
     const expo = config['expo'] as Record<string, unknown>;
 
-    expect(expo['scheme']).toBe('foodlens');
+    expect(expo['scheme']).toEqual(['foodlens', 'com.hoihou.foodlens.dev']);
   });
 
   it('rejects non-origin OAuth redirect base URLs', () => {

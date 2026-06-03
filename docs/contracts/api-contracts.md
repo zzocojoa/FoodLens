@@ -261,11 +261,12 @@
 
 ### F. OAuth state / PKCE 보안 계약
 
-- 운영 OAuth app return callback은 Universal Links/App Links 기반 HTTPS URI를 기본 정책으로 사용한다.
+- 정식 운영 OAuth app return callback은 Universal Links/App Links 기반 HTTPS URI를 기본 정책으로 사용한다.
   - 모바일 운영 build는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`을 설정하고 `https://foodlens-2-w1xu.onrender.com/oauth/google-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/kakao-callback`, `https://foodlens-2-w1xu.onrender.com/oauth/logout-complete`를 사용한다.
   - backend는 `AUTH_APP_ALLOWED_REDIRECT_URIS`가 있으면 그 값을 우선 allowlist로 사용하되, 현재 provider와 일치하는 `/oauth/{provider}-callback` URI만 허용한다. 비어 있으면 `AUTH_OAUTH_REDIRECT_BASE_URL`에서 현재 provider의 HTTPS callback URI를 파생한다. 둘 다 없으면 app redirect allowlist는 비어 있고 `/auth/{provider}/start`와 `POST /auth/{provider}`는 `AUTH_REDIRECT_URI_MISMATCH`로 거절한다.
   - logout return callback도 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 있으면 우선 사용하고, 비어 있으면 `AUTH_OAUTH_REDIRECT_BASE_URL/oauth/logout-complete`를 파생한다. 둘 다 없으면 logout bridge redirect를 거절한다.
-  - `foodlens://oauth/...` custom scheme은 개발 build 전용이다. backend에서 custom scheme을 허용해야 하는 로컬/dev 환경은 `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`에 명시적으로 넣어야 한다.
+  - 무료 Apple ID 7일 sideload build는 Associated Domains entitlement를 받을 수 없으므로 `EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT=custom-scheme`, `EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME=com.hoihou.foodlens`를 사용해 `com.hoihou.foodlens://oauth/...`로 복귀할 수 있다. 이 값은 EAS/App Store/TestFlight production build에는 설정하지 않는다.
+  - `foodlens://oauth/...` custom scheme은 개발 build 전용이다. backend에서 custom scheme을 허용해야 하는 로컬/dev 또는 무료 sideload 환경은 `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`에 명시적으로 넣어야 한다.
   - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`와 `AUTH_OAUTH_REDIRECT_BASE_URL`은 `https://host` origin 형태만 허용한다. path, port, credentials, query, fragment가 포함되면 misconfiguration으로 처리한다.
   - iOS는 `app.config.js`가 `applinks:<host>` associated domain을 생성한다. Android는 `https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true` intent filter를 생성한다.
   - backend는 `/.well-known/apple-app-site-association`과 `/.well-known/assetlinks.json`을 제공한다. `APP_LINK_IOS_APP_IDS`, `APP_LINK_ANDROID_PACKAGE_NAME`, `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS`가 없거나 형식이 틀리면 가짜 association 파일 대신 `APP_LINK_ASSOCIATION_NOT_CONFIGURED`로 503을 반환한다.
@@ -297,7 +298,7 @@
   - 서버는 pending state를 저장하고 Google authorize URL로 `302` redirect한다.
   - `GET /auth/google/callback?code=provider-code&state=clientGeneratedStateValueWithAtLeast32Chars`는 앱 redirect URI로 `code`, `state`, `request_id`를 붙여 `302` redirect한다.
   - 앱은 같은 `state`와 `callback_verifier`를 `POST /auth/google` body에 넣어 최종 session 발급을 요청한다.
-  - 개발 build에서만 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`처럼 명시 allowlist를 두고 custom scheme을 사용할 수 있다.
+  - 개발 build는 `AUTH_APP_ALLOWED_REDIRECT_URIS=foodlens://oauth/google-callback,foodlens://oauth/kakao-callback`처럼 명시 allowlist를 두고 custom scheme을 사용할 수 있다. 무료 Apple ID 7일 sideload build는 `com.hoihou.foodlens://oauth/google-callback`, `com.hoihou.foodlens://oauth/kakao-callback`을 사용한다.
 - State 에러 코드 예시:
   - `AUTH_PROVIDER_INVALID_STATE`: state 누락/공백, start의 client-supplied state 32~256자 URL-safe 검증 실패, unknown/tampered state, provider 불일치.
   - `AUTH_PROVIDER_INVALID_CALLBACK_PROOF`: start proof challenge/method가 누락 또는 잘못되었거나, POST callback verifier가 pending challenge와 일치하지 않는다.

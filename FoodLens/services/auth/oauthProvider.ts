@@ -6,6 +6,7 @@ import { SafeStorage } from '@/services/storage';
 
 export type OAuthProvider = 'google' | 'kakao';
 type OAuthMode = 'mock' | 'live';
+type OAuthRedirectTransport = 'app-link' | 'custom-scheme';
 type OAuthLoginOptions = {
   locale?: string;
 };
@@ -36,6 +37,10 @@ const DEVICE_ID_KEY = '@foodlens_device_id';
 const OAUTH_PENDING_STATE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_CALLBACK_PROOF_METHOD: OAuthCallbackProof['method'] = 'S256';
 const OAUTH_REDIRECT_BASE_URL_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL';
+const OAUTH_REDIRECT_TRANSPORT_ENV = 'EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT';
+const OAUTH_CUSTOM_REDIRECT_SCHEME_ENV = 'EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME';
+const OAUTH_CUSTOM_REDIRECT_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+const DEVELOPMENT_OAUTH_REDIRECT_SCHEME = 'foodlens';
 
 const CALLBACK_PATH_BY_PROVIDER: Record<OAuthProvider, string> = {
   google: 'oauth/google-callback',
@@ -78,6 +83,18 @@ const getExpoPublicOAuthRedirectBaseUrl = (): string => {
   const runtime = readRuntimeEnv(OAUTH_REDIRECT_BASE_URL_ENV);
   if (runtime) return runtime;
   return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL ?? '';
+};
+
+const getExpoPublicOAuthRedirectTransport = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_REDIRECT_TRANSPORT_ENV);
+  if (runtime) return runtime;
+  return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT ?? '';
+};
+
+const getExpoPublicOAuthCustomRedirectScheme = (): string => {
+  const runtime = readRuntimeEnv(OAUTH_CUSTOM_REDIRECT_SCHEME_ENV);
+  if (runtime) return runtime;
+  return process.env.EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME ?? '';
 };
 
 const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
@@ -159,7 +176,52 @@ const getOAuthMode = (): OAuthMode => {
   return 'live';
 };
 
+const resolveOAuthRedirectTransport = (): OAuthRedirectTransport => {
+  const rawTransport = getExpoPublicOAuthRedirectTransport().trim().toLowerCase();
+  if (!rawTransport || rawTransport === 'app-link') {
+    return 'app-link';
+  }
+  if (rawTransport === 'custom-scheme') {
+    return 'custom-scheme';
+  }
+
+  throw new AuthApiError(
+    `${OAUTH_REDIRECT_TRANSPORT_ENV} must be either app-link or custom-scheme.`,
+    'AUTH_PROVIDER_MISCONFIGURED',
+    500
+  );
+};
+
+const resolveOAuthCustomRedirectScheme = (): string => {
+  const scheme = getExpoPublicOAuthCustomRedirectScheme().trim();
+  if (!scheme) {
+    throw new AuthApiError(
+      `${OAUTH_CUSTOM_REDIRECT_SCHEME_ENV} must be configured when ${OAUTH_REDIRECT_TRANSPORT_ENV}=custom-scheme.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  if (!OAUTH_CUSTOM_REDIRECT_SCHEME_PATTERN.test(scheme)) {
+    throw new AuthApiError(
+      `${OAUTH_CUSTOM_REDIRECT_SCHEME_ENV} must be a valid URL scheme.`,
+      'AUTH_PROVIDER_MISCONFIGURED',
+      500
+    );
+  }
+
+  return scheme;
+};
+
+const buildCustomSchemeRedirectUri = (provider: OAuthProvider): string => {
+  return `${resolveOAuthCustomRedirectScheme()}://${CALLBACK_PATH_BY_PROVIDER[provider]}`;
+};
+
 const buildRedirectUri = (provider: OAuthProvider): string => {
+  if (resolveOAuthRedirectTransport() === 'custom-scheme') {
+    return buildCustomSchemeRedirectUri(provider);
+  }
+
   const path = CALLBACK_PATH_BY_PROVIDER[provider];
   const redirectBaseUrl = resolveOAuthRedirectBaseUrl();
   if (redirectBaseUrl) {
@@ -174,7 +236,7 @@ const buildRedirectUri = (provider: OAuthProvider): string => {
     );
   }
 
-  return Linking.createURL(path);
+  return Linking.createURL(path, { scheme: DEVELOPMENT_OAUTH_REDIRECT_SCHEME });
 };
 
 const resolveOAuthRedirectBaseUrl = (): string | undefined => {
