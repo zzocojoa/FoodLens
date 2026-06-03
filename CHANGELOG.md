@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.7.0] - 2026-06-04
+
+### Fixed
+
+- iOS free-provisioning sideload builds can return from Google/Kakao login and Kakao provider logout through the registered `com.hoihou.foodlens://oauth/...` callback while production EAS/App Store/TestFlight builds stay on verified HTTPS App Links.
+- App config now declares both the Expo Router `foodlens` scheme and the bundle-id custom scheme, preventing future sideload builds from dropping the callback scheme.
+
+### Changed
+
+- Release env gate now rejects custom-scheme OAuth transport and custom redirect scheme values for EAS production builds, keeping sideload-only settings out of store/TestFlight releases.
+- OAuth operations docs now separate local/dev, iOS 7-day sideload, and production App Link callback policies.
+
 ## [0.0.6.0] - 2026-06-03
 
 ### Fixed
