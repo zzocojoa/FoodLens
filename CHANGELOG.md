@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.6.0] - 2026-06-03
+
+### Fixed
+
+- Android production OAuth login now inlines the required Expo public environment values into the release bundle, so Google/Kakao login can open the provider browser and return through the verified App Link callback instead of stopping on a provider configuration error.
+
+### Changed
+
+- Release-critical mobile env reads now use static `process.env.EXPO_PUBLIC_*` access with runtime fallbacks for Jest/dev mutations, matching Expo's production bundle replacement behavior.
+- Android internal test build `28` was produced from this fix and verified on-device with `foodlens-2-w1xu.onrender.com` App Links still marked `verified`.
+
 ## [0.0.5.0] - 2026-05-31
 
 ### Added

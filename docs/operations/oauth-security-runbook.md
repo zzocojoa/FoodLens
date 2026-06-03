@@ -66,6 +66,7 @@ Render 운영 확인:
 
 - iOS build에는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`에서 생성된 `applinks:foodlens-2-w1xu.onrender.com` Associated Domains entitlements가 포함되어야 한다.
 - Android build에는 같은 host의 `https` App Links intent filter, `pathPrefix=/oauth/`, `autoVerify=true`가 포함되어야 한다.
+- 모바일 release bundle에는 `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`, `EXPO_PUBLIC_ANALYSIS_SERVER_URL`, `EXPO_PUBLIC_AUTH_OAUTH_MODE`가 실제 문자열로 포함되어야 한다. 앱 코드는 release-critical `EXPO_PUBLIC_*` 값을 `process.env.EXPO_PUBLIC_*` 점 표기로 읽어야 하며, 동적 bracket 접근만 남기면 Expo production bundle에서 값이 빠져 Google/Kakao provider browser가 열리기 전에 provider misconfiguration으로 실패한다.
 - 운영 backend는 `https://foodlens-2-w1xu.onrender.com/.well-known/apple-app-site-association`과 `https://foodlens-2-w1xu.onrender.com/.well-known/assetlinks.json`을 HTTPS 200으로 제공해야 하며 redirect를 사용하지 않는다.
 - Render `foodlens-api`에는 `APP_LINK_IOS_APP_IDS`, `APP_LINK_ANDROID_PACKAGE_NAME`, `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS`가 설정되어 있어야 한다.
 - Google/Kakao provider console에는 backend callback URI만 등록한다. 앱 return URI인 `https://<verified-app-link-domain>/oauth/...`와 `foodlens://oauth/...`는 provider console에 등록하지 않는다.
