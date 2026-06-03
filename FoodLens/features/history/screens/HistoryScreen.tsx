@@ -196,7 +196,7 @@ export default function HistoryScreen() {
         };
     }, [historyUserId]);
     const hasAndroidGoogleMapsApiKey =
-        (process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] ?? '').trim().length > 0;
+        (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '').trim().length > 0;
     const canRenderNativeMap = Platform.OS !== 'android' || hasAndroidGoogleMapsApiKey;
     const visibleSelectableItemIds = useMemo(() => {
         if (!ui.isEditMode) {

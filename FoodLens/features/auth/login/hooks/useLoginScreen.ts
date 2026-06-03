@@ -28,7 +28,7 @@ import {
 import { formatCountdown, getAuthCopy, validateLoginForm } from '../utils/login.utils';
 import { useLoginMotion } from './useLoginMotion';
 
-const FORCE_PHASE2_WRITE_PROBE = process.env['EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE'] === '1';
+const FORCE_PHASE2_WRITE_PROBE = process.env.EXPO_PUBLIC_PHASE2_FORCE_WRITE_PROBE === '1';
 
 const updateField = <K extends keyof LoginFormValues>(
   prev: LoginFormValues,

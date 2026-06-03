@@ -61,25 +61,23 @@ const isDevelopmentRuntime = (): boolean => {
 
 const readRuntimeEnv = (key: string): string => process.env[key] ?? '';
 
-// NOTE: Keep both runtime and static access.
-// - runtime: works in Jest/dev when process.env is mutated at runtime.
-// - static: lets Expo replace EXPO_PUBLIC_* at bundle time for Release builds.
+// 런타임 접근은 Jest/dev에서, 정적 접근은 Expo release bundle 인라인에서 필요하다.
 const getExpoPublicOAuthMode = (): string => {
   const runtime = readRuntimeEnv('EXPO_PUBLIC_AUTH_OAUTH_MODE');
   if (runtime) return runtime;
-  return process.env['EXPO_PUBLIC_AUTH_OAUTH_MODE'] ?? '';
+  return process.env.EXPO_PUBLIC_AUTH_OAUTH_MODE ?? '';
 };
 
 const getExpoPublicAnalysisServerUrl = (): string => {
   const runtime = readRuntimeEnv('EXPO_PUBLIC_ANALYSIS_SERVER_URL');
   if (runtime) return runtime;
-  return process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL'] ?? '';
+  return process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL ?? '';
 };
 
 const getExpoPublicOAuthRedirectBaseUrl = (): string => {
   const runtime = readRuntimeEnv(OAUTH_REDIRECT_BASE_URL_ENV);
   if (runtime) return runtime;
-  return process.env[OAUTH_REDIRECT_BASE_URL_ENV] ?? '';
+  return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL ?? '';
 };
 
 const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
@@ -88,8 +86,8 @@ const getExpoPublicProviderStartUrl = (provider: OAuthProvider): string => {
   );
   if (runtime) return runtime;
   return provider === 'google'
-    ? process.env['EXPO_PUBLIC_AUTH_GOOGLE_START_URL'] ?? ''
-    : process.env['EXPO_PUBLIC_AUTH_KAKAO_START_URL'] ?? '';
+    ? process.env.EXPO_PUBLIC_AUTH_GOOGLE_START_URL ?? ''
+    : process.env.EXPO_PUBLIC_AUTH_KAKAO_START_URL ?? '';
 };
 
 const normalizedQueryValue = (value: unknown): string | undefined => {

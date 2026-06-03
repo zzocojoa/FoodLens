@@ -43,13 +43,13 @@ const selectEnvValue = (
 ): string | undefined => runtimeValue ?? staticValue;
 
 const readExpoPublicAnalysisServerUrlStaticValue = (): string | undefined =>
-    normalizeServerUrl(process.env['EXPO_PUBLIC_ANALYSIS_SERVER_URL']);
+    normalizeServerUrl(process.env.EXPO_PUBLIC_ANALYSIS_SERVER_URL);
 
 const readExpoPublicAiAsyncAnalyzeEnabledStaticValue = (): string | undefined =>
-    readDefinedEnvValue(process.env['EXPO_PUBLIC_AI_ASYNC_ANALYZE_ENABLED']);
+    readDefinedEnvValue(process.env.EXPO_PUBLIC_AI_ASYNC_ANALYZE_ENABLED);
 
 const readExpoPublicAiCacheTtlSecondsStaticValue = (): string | undefined =>
-    readDefinedEnvValue(process.env['EXPO_PUBLIC_AI_CACHE_TTL_SECONDS']);
+    readDefinedEnvValue(process.env.EXPO_PUBLIC_AI_CACHE_TTL_SECONDS);
 
 export const readExpoPublicAnalysisServerUrl = (): string | undefined => {
     const runtimeValue = normalizeServerUrl(readRuntimeEnvValue(EXPO_PUBLIC_ANALYSIS_SERVER_URL_KEY));

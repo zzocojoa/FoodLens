@@ -17,6 +17,7 @@
   - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`
   - `EXPO_PUBLIC_ANALYSIS_SERVER_URL=https://foodlens-2-w1xu.onrender.com`
   - `EXPO_PUBLIC_AUTH_OAUTH_MODE=live`
+  - 운영 로그인, provider logout, server URL처럼 release-critical한 `EXPO_PUBLIC_*` 값은 앱 코드에서 `process.env.EXPO_PUBLIC_*` 점 표기로 읽어야 한다. Expo production bundle은 동적 bracket 접근(`process.env['EXPO_PUBLIC_...']`)을 대체하지 않으므로, 운영 빌드에서 값이 빠지면 앱이 provider browser를 열기 전에 `AUTH_PROVIDER_MISCONFIGURED`로 멈춘다.
 - Backend:
   - `AUTH_PUBLIC_BASE_URL=https://foodlens-2-w1xu.onrender.com`
   - `AUTH_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com`
@@ -121,11 +122,14 @@ Provider console에 등록하지 않는 값:
 ## 배포 전 확인
 
 - `EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL`와 `AUTH_OAUTH_REDIRECT_BASE_URL`는 `https://foodlens-2-w1xu.onrender.com`이다.
+- release-critical 모바일 env 접근은 `process.env.EXPO_PUBLIC_*` 점 표기를 사용한다. Jest/dev에서 runtime mutation이 필요한 helper는 허용하지만, 정적 fallback도 함께 있어야 한다.
 - iOS build config에 `associatedDomains=["applinks:foodlens-2-w1xu.onrender.com"]`가 포함된다.
 - Android build config에 `scheme=https`, 같은 host, `pathPrefix=/oauth/`, `autoVerify=true` intent filter가 포함된다.
 - backend `AUTH_APP_ALLOWED_REDIRECT_URIS`와 `AUTH_APP_ALLOWED_LOGOUT_REDIRECT_URIS`가 비어 있거나 HTTPS URI만 포함한다.
 - provider console에는 backend callback URI만 등록되어 있고 `foodlens://` custom scheme URI가 운영 앱 항목에 남아 있지 않다.
 - live provider 호출 없이 `/auth/{provider}/start`의 `302 Location` host와 query key만 검증한다. provider redirect를 follow하지 않는다.
+- Android 내부 테스트 build `28` 기준으로 `adb shell dumpsys package com.hoihou.foodlens`는 `versionCode=28`, `adb shell cmd package get-app-links com.hoihou.foodlens`는 `foodlens-2-w1xu.onrender.com: verified`를 보여야 한다.
+- 실기기에서 Google/Kakao 로그인을 각각 실행해 provider browser 전환, FoodLens 앱 복귀, 세션 생성까지 확인한다.
 
 ## 검증 명령
 
@@ -135,6 +139,12 @@ Provider console에 등록하지 않는 값:
 cd FoodLens
 npx jest --runInBand services/auth/__tests__/oauthProvider.test.ts services/auth/__tests__/providerLogout.test.ts scripts/__tests__/appConfigLinks.test.ts
 EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com npm run release:env:gate
+rm -rf /tmp/foodlens-export-env-check
+EXPO_PUBLIC_ANALYSIS_SERVER_URL=https://foodlens-2-w1xu.onrender.com \
+EXPO_PUBLIC_OAUTH_REDIRECT_BASE_URL=https://foodlens-2-w1xu.onrender.com \
+EXPO_PUBLIC_AUTH_OAUTH_MODE=live \
+npx expo export --platform android --output-dir /tmp/foodlens-export-env-check --no-bytecode
+rg "foodlens-2-w1xu\\.onrender\\.com/auth/(google|kakao)/start|foodlens-2-w1xu\\.onrender\\.com/oauth/(google|kakao)-callback" /tmp/foodlens-export-env-check/_expo/static/js/android/*.js
 cd ..
 ./.venv/bin/python -m unittest \
   backend.tests.runtime.test_auth_phase1.AuthPhase1RuntimeTests.test_apple_app_site_association_uses_configured_app_ids \
@@ -165,3 +175,4 @@ curl -fsS "https://${APP_LINK_DOMAIN}/.well-known/assetlinks.json"
 - Android App Links verification: https://developer.android.com/training/app-links/verify-applinks
 - Google OAuth redirect URI rules: https://developers.google.com/identity/protocols/oauth2/web-server
 - Kakao Login redirect URI prerequisites: https://developers.kakao.com/docs/en/kakaologin/prerequisite
+- Expo environment variables: https://docs.expo.dev/guides/environment-variables/
