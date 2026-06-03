@@ -59,6 +59,7 @@ const validSubmitConfig = {
 
 const createValidExpoConfig = (): Record<string, unknown> => ({
   expo: {
+    scheme: ['foodlens', 'com.hoihou.foodlens'],
     android: {
       package: 'com.hoihou.foodlens',
       intentFilters: [
@@ -254,7 +255,7 @@ describe('validate-eas-release-env', () => {
     ]);
   });
 
-  it('rejects production Expo config that still registers a custom URL scheme', () => {
+  it('allows the production app scheme required by Expo Router', () => {
     const config = createValidExpoConfig();
     const expo = config['expo'] as Record<string, unknown>;
     expo['scheme'] = 'foodlens';
@@ -264,9 +265,37 @@ describe('validate-eas-release-env', () => {
       createValidExpoEnv()
     );
 
-    expect(errors).toEqual([
-      expect.stringContaining('custom URL scheme'),
-    ]);
+    expect(errors).toEqual([]);
+  });
+
+  it('allows explicit app-link OAuth redirect transport for production EAS builds', () => {
+    const errors = releaseEnvGate.collectOAuthAppLinkConfigErrors(
+      (createValidExpoConfig()['expo'] as Record<string, unknown>),
+      {
+        ...createValidExpoEnv(),
+        EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT: 'app-link',
+      }
+    );
+
+    expect(errors).toEqual([]);
+  });
+
+  it('rejects custom scheme OAuth redirect transport for production EAS builds', () => {
+    const errors = releaseEnvGate.collectOAuthAppLinkConfigErrors(
+      (createValidExpoConfig()['expo'] as Record<string, unknown>),
+      {
+        ...createValidExpoEnv(),
+        EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT: 'custom-scheme',
+        EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME: 'com.hoihou.foodlens',
+      }
+    );
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('EXPO_PUBLIC_OAUTH_REDIRECT_TRANSPORT'),
+        expect.stringContaining('EXPO_PUBLIC_OAUTH_CUSTOM_REDIRECT_SCHEME'),
+      ])
+    );
   });
 
   it('rejects production Expo config without matching Universal Links and App Links', () => {
